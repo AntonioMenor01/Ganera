@@ -17,7 +17,7 @@ ganera:
     secret: test-jwt-secret-de-al-menos-32-bytes-de-longitud
     expiration-minutes: 480
   encryption:
-    key: 0123456789abcdef0123456789abcdef
+    key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
   onboarding:
     secret: test-onboarding-secret
 
