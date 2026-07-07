@@ -1,0 +1,7 @@
+CREATE TABLE contacto (
+    id BIGSERIAL PRIMARY KEY,
+    telefono VARCHAR(30) NOT NULL UNIQUE,
+    nombre VARCHAR(255) NOT NULL,
+    tipo VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT now()
+);
