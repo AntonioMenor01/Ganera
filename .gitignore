@@ -1,0 +1,10 @@
+.env
+*.env.local
+target/
+node_modules/
+dist/
+*.iml
+.idea/
+.vscode/
+*.log
+.claude/settings.local.json
