@@ -55,4 +55,10 @@ class EncryptedStringConverterTest {
         assertThatThrownBy(() -> converter.convertToDatabaseColumn("valor"))
                 .isInstanceOf(IllegalStateException.class);
     }
+
+    @Test
+    void verificacionAlArrancarFallaSiLaClaveFaltaOEsInvalida() {
+        EncryptedStringConverter converter = new EncryptedStringConverter(() -> "");
+        assertThatThrownBy(converter::verificarClaveAlArrancar).isInstanceOf(IllegalStateException.class);
+    }
 }

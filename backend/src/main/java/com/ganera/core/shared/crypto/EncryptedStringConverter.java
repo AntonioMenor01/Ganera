@@ -35,6 +35,11 @@ public class EncryptedStringConverter implements AttributeConverter<String, Stri
         this.keyHolder = new EncryptionKeyHolder(keySource);
     }
 
+    @jakarta.annotation.PostConstruct
+    void verificarClaveAlArrancar() {
+        keyHolder.requireKey();
+    }
+
     @Override
     public String convertToDatabaseColumn(String attribute) {
         if (attribute == null) {
