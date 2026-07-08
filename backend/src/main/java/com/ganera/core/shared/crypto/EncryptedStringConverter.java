@@ -2,6 +2,7 @@ package com.ganera.core.shared.crypto;
 
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -27,6 +28,13 @@ public class EncryptedStringConverter implements AttributeConverter<String, Stri
     private final EncryptionKeyHolder keyHolder;
     private final SecureRandom secureRandom = new SecureRandom();
 
+    // Spring solo instancia este bean como @Component (para el @PostConstruct que falla
+    // rapido al arrancar si falta ENCRYPTION_KEY). El converter que JPA realmente usa por
+    // fila se resuelve por el mecanismo estandar de @Convert; este bean es el "singleton"
+    // registrado en el contexto. Con dos constructores declarados (este + el de test más
+    // abajo) Spring no puede elegir uno implícitamente y cae a instanciación sin argumentos,
+    // que no existe — de ahí el @Autowired explícito.
+    @Autowired
     public EncryptedStringConverter(@Value("${ganera.encryption.key:}") String encryptionKey) {
         this.keyHolder = new EncryptionKeyHolder(() -> encryptionKey);
     }

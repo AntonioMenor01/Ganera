@@ -154,6 +154,28 @@ Cuando termines, confírmame que backend y frontend siguen compilando.
 - Playwright: navegadores instalados (Chromium, Firefox, WebKit, FFMPEG).
 - Backend y frontend compilan/buildan correctamente tras todos los cambios.
 
+**Nota de estado (2026-07-09):** el monorepo completo (`/backend` + `/frontend` + `docker-compose.yml`)
+fue **reconstruido desde cero** en esta fecha, sin backend/frontend previos que reutilizar, siguiendo
+el plan `docs/superpowers/plans/2026-07-08-paso1-infraestructura.md` (9 tareas). El plan cubre y cierra
+todo el alcance original de este Prompt 1 más las correcciones históricas ya documentadas arriba
+(`UNIQUE(telefono)` global, credenciales OVZ en `Ganadero`, cifrado AES-256-GCM real desde el día uno),
+además de los esqueletos de integración de Prompts 2, 2.5 y 2.7 (JWT, onboarding manual, Stripe) que ya
+estaban resueltos quedaron incorporados en la reconstrucción. Verificado end-to-end con el smoke test
+H2 en memoria (modo PostgreSQL, con Flyway habilitado): las 9 migraciones `V1`-`V9` se aplicaron
+limpiamente y la aplicación completa arrancó sin errores de Hibernate ni de Spring Security — ver
+`.superpowers/sdd/task-9b-report.md` para el detalle. El frontend (`npm run build`) compila limpio.
+
+**Bug real encontrado y corregido durante este smoke test:** `EncryptedStringConverter` (cifrado
+AES-256-GCM de credenciales OVZ, Prompt 1) declara dos constructores — el público usado por Spring
+(`@Value("${ganera.encryption.key:}")`) y uno package-private solo para tests (`Supplier<String>`).
+Sin ninguno marcado `@Autowired`, Spring no podía elegir cuál usar al construir el bean `@Component`
+y caía a instanciación sin argumentos, que no existe — la app entera fallaba al arrancar con
+`BeanCreationException: ... No default constructor found`, aunque `mvn test` (con `@DataJpaTest`,
+que no carga el contexto completo) nunca lo había mostrado. Corregido añadiendo `@Autowired`
+explícito al constructor público; no afecta al test existente, que sigue invocando el constructor
+package-private directamente. Backend y frontend en su estado post-reconstrucción, listos para
+continuar con Prompt 2.7 (lógica de negocio) tal como estaba planificado antes de esta reconstrucción.
+
 ---
 
 ## Prompt 2 — Cierre del modelo de datos (✅ completado)
