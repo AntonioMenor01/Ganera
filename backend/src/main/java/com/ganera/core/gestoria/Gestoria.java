@@ -26,6 +26,9 @@ public class Gestoria {
     @Column(nullable = false)
     private String nombre;
 
+    @Column(name = "modo_cartera", nullable = false)
+    private boolean modoCartera = false;
+
     private Instant createdAt = Instant.now();
 
     public Gestoria(String nombre) {

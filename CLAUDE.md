@@ -203,14 +203,18 @@ Root:
 
 ## Current status
 
-Steps 1, 2, 2.5, and 2.7 are complete: infrastructure scaffold, the remaining data model
-(`EstadoSuscripcion`'s final 6 states, `SuscripcionService.puedeAprobarTramites`,
-`Gestoria.modoCartera` + `usuario_explotacion`), real Usuario authentication (`POST /auth/login`,
-`GET /auth/me`) plus manual pilot onboarding (`POST /internal/onboarding/gestoria`, temporary — see
-Architecture notes), and the full Stripe integration (`POST /facturacion/checkout`, the
-`StripeWebhookService` state machine, and the nightly quantity-sync job). Backend and frontend
-compile/build cleanly, backend tests pass (verified once by actually booting the app — see the H2
-smoke-test command above — not just by compiling). No business logic is wired end-to-end yet for
+Steps 1, 2, 2.5, and 2.7 are complete: infrastructure scaffold; the data model closing out Prompt 2
+(`EstadoSuscripcion`'s final 6 states, `SuscripcionService.puedeAprobarTramites` fail-closed when no
+`Suscripcion` row exists, `Gestoria.modoCartera` + `UsuarioExplotacion`) was rebuilt from scratch and
+re-verified end-to-end on 2026-07-09 following
+`docs/superpowers/plans/2026-07-09-prompt2-estados-suscripcion-cartera.md` (migrations `V10`-`V12`,
+full backend suite green at 32 tests, H2 smoke test confirming all 12 migrations apply cleanly with
+no bean-wiring errors); real Usuario authentication (`POST /auth/login`, `GET /auth/me`) plus manual
+pilot onboarding (`POST /internal/onboarding/gestoria`, temporary — see Architecture notes); and the
+full Stripe integration (`POST /facturacion/checkout`, the `StripeWebhookService` state machine, and
+the nightly quantity-sync job). Backend and frontend compile/build cleanly, backend tests pass
+(verified once by actually booting the app — see the H2 smoke-test command above — not just by
+compiling). No business logic is wired end-to-end yet for
 trámites — Twilio's webhook validates signatures and persists raw data, but doesn't yet trigger AI
 extraction or trámite creation; `TramiteExtractionService`'s system prompt and
 `OvzAutomationService`'s Playwright logic are still unimplemented skeletons; `puedeAprobarTramites`
