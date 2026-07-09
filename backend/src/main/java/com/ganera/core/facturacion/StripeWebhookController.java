@@ -14,9 +14,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class StripeWebhookController {
 
     private final String webhookSecret;
+    private final StripeWebhookService stripeWebhookService;
 
-    public StripeWebhookController(@Value("${stripe.webhook-secret:}") String webhookSecret) {
+    public StripeWebhookController(@Value("${stripe.webhook-secret:}") String webhookSecret,
+                                    StripeWebhookService stripeWebhookService) {
         this.webhookSecret = webhookSecret;
+        this.stripeWebhookService = stripeWebhookService;
     }
 
     @PostMapping("/webhooks/stripe")
@@ -31,8 +34,7 @@ public class StripeWebhookController {
             return ResponseEntity.badRequest().build();
         }
 
-        // Sin logica de negocio de facturacion todavia (Prompt 2.7): solo se
-        // confirma la recepcion del evento verificado.
+        stripeWebhookService.procesarEvento(evento);
         return ResponseEntity.ok().build();
     }
 }
