@@ -2,7 +2,7 @@
 
 Documento de referencia con todos los prompts, en orden, tal como se han ido cerrando. Cada uno se lanza en la **misma sesión continua** de Claude Code (para que mantenga el contexto), salvo que se indique lo contrario.
 
-Estado actual: **Prompts 0, 1, 2 y 2.5 completados y verificados end-to-end.** Repo en GitHub (`github.com/AntonioMenor01/ganera-core`). Login, JWT y onboarding manual de gestorías piloto probados con curl y funcionando. Siguiente paso: Prompt 2.7 (Stripe).
+Estado actual: **Prompts 0, 1, 2, 2.5 y 2.7 completados y verificados end-to-end.** Repo en GitHub (`github.com/AntonioMenor01/ganera-core`). Login, JWT, onboarding manual de gestorías piloto y la integración completa de Stripe (checkout, webhook, job nocturno) probados con curl/H2 y funcionando. Pendiente de Antonio: crear el `Price` real en el dashboard de Stripe (test mode) para poder probar un checkout real de principio a fin. Siguiente paso: Prompt 3a/3b (catálogo OVZ.net, bloqueado a la espera de credenciales de Antonio).
 
 ---
 
@@ -252,13 +252,52 @@ en 401. Detalle de la sesión en `.superpowers/sdd/progress.md`.
 
 ---
 
-## Prompt 2.7 — Integración Stripe completa (pendiente de redactar)
+## Prompt 2.7 — Integración Stripe completa (✅ completado)
 
-Contenido a incluir:
-- Checkout de Stripe (por número de explotaciones, `licensed` price, trial de 15 días).
-- Webhook completo: `checkout.session.completed`, `invoice.payment_failed` → `IMPAGO_GRACIA`, `customer.subscription.updated` (unpaid) → `SUSPENDIDA`.
-- Job nocturno de sincronización de `quantity` (nº de explotaciones activas) con Stripe.
-- Método `puedeAprobarTramites(gestoriaId)` que bloquea el botón de aprobar trámites cuando el estado es `TRIAL_EXPIRADO_SIN_PAGO` o `SUSPENDIDA` (pero mantiene acceso de solo lectura).
+Plan escrito y aprobado por Antonio en persona (gate humano explícito, ver
+`docs/superpowers/plans/2026-07-09-prompt2.7-stripe.md`) antes de dispatchar ningún subagente de
+implementación. Ejecutado en 4 tareas sobre el scaffolding de Prompt 2, subagent-driven development
+(implementador → revisor por tarea, las 3 revisadas Approved):
+
+- **Task 1** (`c0ff6a5`): migración `V13` — `stripeSubscriptionId` (UNIQUE), `explotacionesContratadas`
+  (nullable), `stripeUltimoEventoEpoch` en `Suscripcion`; `SuscripcionService.obtenerOCrearSuscripcion`
+  idempotente ante doble-click/carrera vía `saveAndFlush` + catch de la violación `UNIQUE(gestoria_id)`.
+- **Task 2** (`e1c784e`): `StripeConfig` (fija `Stripe.apiKey` estático, tolera clave en blanco al
+  arrancar — misma lección que el footgun de Twilio), `StripeCheckoutService` (Checkout Session modo
+  `SUBSCRIPTION`, `client_reference_id = gestoriaId`, `quantity = max(1, nº Explotaciones)`, trial de
+  15 días en `subscription_data`), `POST /facturacion/checkout` → `503` si Stripe no está configurado
+  (clave o price id en blanco), nunca `500`.
+- **Task 3** (`1b4d753`): `StripeWebhookService` — máquina de estados completa dirigida por los
+  eventos de Stripe (`checkout.session.completed` → `TRIAL`, `invoice.payment_succeeded` → `ACTIVA`,
+  `invoice.payment_failed` → `TRIAL_EXPIRADO_SIN_PAGO` o `IMPAGO_GRACIA` según el estado almacenado,
+  `customer.subscription.updated` con el mapa de 6 estados por `status`/`previous_attributes.status`,
+  `customer.subscription.deleted` → `CANCELADA`), con guard monotónico por `event.created`
+  (`stripeUltimoEventoEpoch`, comparación estrictamente-menor) contra re-entrega tardía/desorden de
+  webhooks. **Limitación conocida y aceptada:** no hay dedupe por `event.id` — dos eventos distintos
+  que caigan en el mismo epoch-second pueden aplicarse en cualquier orden; aceptable para volumen
+  piloto, a reconsiderar antes de escalar (ver también CLAUDE.md).
+- **Task 4** (cierre del prompt): `SuscripcionSyncScheduler` — job nocturno (`@Scheduled(cron = "0 0
+  3 * * *", zone = "Europe/Madrid")`) que reconcilia `explotacionesContratadas` para toda `Suscripcion`
+  en `ACTIVA`/`IMPAGO_GRACIA` contra el conteo real de Explotaciones, con proración por defecto de
+  Stripe al empujar el cambio de `quantity`; decisión de negocio: nocturno, no por webhook ni por
+  alta/baja de Explotación, para no acoplar ese CRUD a Stripe. Corre sin request HTTP → sin
+  `gestoriaFilter` activo → sus queries son cross-tenant a propósito (documentado en el código, no
+  una fuga). Un fallo al empujar una Suscripción concreta no aborta el resto del batch (try/catch
+  por iteración, logueado). `@EnableScheduling` añadido a `GaneraApplication`.
+
+**Resultado:** suite completa backend en verde a **79 tests** (subida desde 73 tras las 6 pruebas
+puras de `SuscripcionSyncSchedulerTest`, sin mocks del SDK de Stripe — convención
+`test-sin-mocks-externos` en las 4 tareas). Smoke test H2 manual (Flyway deshabilitado, `ddl-auto`
+para arrancar sin Postgres real; el propio full-suite sí valida las 13 migraciones reales contra
+H2) con todo lo de Stripe en blanco: `POST /facturacion/checkout` → `401` sin JWT, `503` con un JWT
+real (onboarding → login) por falta de `STRIPE_API_KEY`/`STRIPE_PRICE_ID_EXPLOTACION`;
+`POST /webhooks/stripe` → `400` con una firma inválida. Ninguna llamada real a Stripe en ningún
+momento (tests ni smoke) — solo claves `sk_test_...`/`whsec_...` de test, nunca usadas de verdad en
+este entorno. `puedeAprobarTramites` (de Prompt 2) sigue sin conectarse a ningún endpoint — llega
+con la lógica de negocio de trámites (Prompt 3d), tal y como estaba planificado, no es un olvido de
+este prompt. **Pendiente de Antonio:** crear el `Price` real en el dashboard de Stripe (modo test
+primero) y fijar `STRIPE_PRICE_ID_EXPLOTACION` — sin eso, un checkout real de principio a fin contra
+Stripe test-mode no se puede probar todavía; ninguna tarea de este prompt lo hace por él.
 
 ---
 

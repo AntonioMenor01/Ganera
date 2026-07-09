@@ -66,3 +66,35 @@ Registro de tareas cerradas (qué se hizo, commit, estado de revisión). Una lí
   `crearSesionCheckout` en una transacción propia — el `saveAndFlush` fallido del perdedor de la
   carrera en `obtenerOCrearSuscripcion` marcaría la transacción como rollback-only si hubiera una
   envolvente, y lanzaría `UnexpectedRollbackException` en vez de recuperarse limpiamente.
+- **Prompt 2.7 / Task 2** (`StripeConfig` + `StripeCheckoutService` + `POST /facturacion/checkout`):
+  commit `e1c784e`, suite 52/52 en verde, `mvnw compile` limpio, smoke test H2 manual confirmó 401
+  (sin JWT) y 503 (Stripe sin configurar). Firmas del SDK stripe-java 28.2.0 verificadas con `javap`
+  contra el jar real — sin desviaciones del plan. Revisión: **Approved** sin Critical/Important, 1
+  Minor (success/cancel URL hardcodeadas sin `${ENV:default}` — aceptado, el brief no pedía
+  respaldo por variable de entorno ahí; revisar cuando exista la página real de facturación en el
+  frontend). El servicio añadió `SuscripcionRepository` como 4ª dependencia (no listada en el brief)
+  para persistir `explotacionesContratadas` sobre la entidad detached que devuelve
+  `obtenerOCrearSuscripcion` — verificado correcto por el revisor (no reintroduce el riesgo de
+  transacción de la advertencia de Task 1, no hay `@Transactional` en ningún lado de esta task).
+- **Prompt 2.7 / Task 3** (`StripeWebhookService` — máquina de estados + guard monotónico por
+  `event.created`): commit `1b4d753`, suite 73/73 en verde. Tabla de 9 casos de
+  `calcularEstadoTrasActualizacion` y `esEventoObsoleto` verificadas contra la Decisión de diseño 4
+  del plan, con test de integración que prueba el efecto real del guard (reentrega tardía de
+  `checkout.session.completed` tras un `payment_succeeded` más reciente NO regresa el estado ni el
+  epoch). `StripeWebhookController` solo ganó la inyección + el despacho — verificación de firma
+  intacta byte a byte. Revisión: **Approved** sin Critical/Important, 2 Minor sin acción (un helper
+  de test muerto sin llamar; `customer.subscription.deleted`→`CANCELADA` sin test dedicado del
+  guard en ese path concreto, consistente con que los `manejarXxx` no llevan cobertura directa).
+- **Prompt 2.7 / Task 4** (`SuscripcionSyncScheduler` + cierre del prompt): `calcularAjustes`
+  (pura, sin tipos del SDK de Stripe) verificada con 6 casos: ignora sin `stripeSubscriptionId`,
+  no ajusta cuando la cantidad ya coincide, ajusta cuando difiere, aplica `max(1, count)` cuando el
+  count real es 0 (con y sin ya estar en 1), y filtra correctamente entre varias suscripciones
+  mezcladas. `pushCantidadAStripe` (retrieve + update de quantity del primer `SubscriptionItem`,
+  proración por defecto — sin `setProrationBehavior` explícito) queda sin cobertura unitaria directa
+  por convención. Suite completa 79/79 en verde (73 + 6 nuevos). Smoke test H2: app arranca limpio
+  con `@EnableScheduling` y el nuevo bean sin errores de wiring; `POST /facturacion/checkout` → `401`
+  sin JWT y `503` con JWT real (onboarding→login) por falta de credenciales Stripe;
+  `POST /webhooks/stripe` → `400` con firma inválida; full-suite confirma las 13 migraciones
+  validando contra H2 real. `CLAUDE.md` y `ganera-prompts.md` actualizados para reflejar Prompt 2.7
+  como completado, incluyendo la limitación conocida del guard por `event.created` (sin dedupe por
+  `event.id`) y que `STRIPE_PRICE_ID_EXPLOTACION` sigue pendiente de la acción manual de Antonio.
