@@ -49,3 +49,20 @@ Registro de tareas cerradas (qué se hizo, commit, estado de revisión). Una lí
   `ddl-auto=validate` la validación de esquema falla (CLOB vs VARCHAR). No afecta al smoke
   documentado (usa `ddl-auto=update` sin Flyway) ni a Postgres real (`ddl-auto=none`). Tenerlo en
   cuenta si algún smoke usa `validate`.
+
+## 2026-07-09 (noche) — Continuación tras corte por créditos en otro dispositivo
+
+- **Diagnóstico**: esta sesión (dispositivo distinto, misma cuenta) tenía HEAD en `f73fbca`
+  (cierre de Prompt 2), 9 commits por detrás de `origin/main`. `git fetch` + comparación confirmó
+  los 9 commits remotos (Prompt 2.5 completo, plan de 2.7 aprobado con la decisión de webhooks,
+  Task 1 de 2.7 con su fix de revisión) terminando en `1e1b2a3`, tal como describió Antonio.
+  `git status` local limpio (nada que perder) → `git pull --ff-only origin main` sin conflicto.
+  Verificado tras el pull: suite completa 47/47 en verde (`BUILD SUCCESS`), migraciones V1-V13
+  presentes. No existía ningún `task-2-brief`/`task-2-report` de Prompt 2.7 en `.superpowers/sdd/`
+  ni archivos sin commitear — la Task 2 (`StripeConfig`/`StripeCheckoutService`/`CheckoutResponse`/
+  `FacturacionController`) no se había empezado en absoluto (ni local ni remoto). Decisión: arrancar
+  Task 2 de cero siguiendo el plan tal cual, sin recrear nada de Task 1.
+- Advertencia trasladada por el revisor de Task 1 (Minor 1, aún vigente): NO envolver
+  `crearSesionCheckout` en una transacción propia — el `saveAndFlush` fallido del perdedor de la
+  carrera en `obtenerOCrearSuscripcion` marcaría la transacción como rollback-only si hubiera una
+  envolvente, y lanzaría `UnexpectedRollbackException` en vez de recuperarse limpiamente.

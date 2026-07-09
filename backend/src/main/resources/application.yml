@@ -38,3 +38,7 @@ twilio:
 stripe:
   api-key: ${STRIPE_API_KEY:}
   webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+  price-id-explotacion: ${STRIPE_PRICE_ID_EXPLOTACION:}
+  checkout:
+    success-url: http://localhost:5173/facturacion?checkout=exito
+    cancel-url: http://localhost:5173/facturacion?checkout=cancelado
