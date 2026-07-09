@@ -1,0 +1,32 @@
+# SDD Progress — Ganera
+
+Registro de tareas cerradas (qué se hizo, commit, estado de revisión). Una línea por hito.
+
+## 2026-07-09 — Sesión autónoma (Prompt 2.5)
+
+- **Diagnóstico inicial**: la sesión anterior se cortó tras commitear solo los planes
+  (`a8e56df` — planes de Prompt 2 y 2.5). No había código de Prompt 2.5 (ni paquete `auth` ni
+  `onboarding`), ni archivos sin commitear, ni procesos java huérfanos (el único java.exe era el
+  language server de VS Code — no se tocó). `.superpowers/sdd/` no existía; se crea con este
+  archivo. Nota: la sección "Current status" de `CLAUDE.md` estaba adelantada a la realidad
+  (describía 2.5 y 2.7 como completos sin estarlo) — pendiente de corregir al cierre de 2.5.
+- Decisión: empezar Task 1 de Prompt 2.5 de cero (no había nada que reutilizar).
+- **Prompt 2.5 / Task 1** (`AuthService` + `AuthController`, `POST /auth/login` + `GET /auth/me`):
+  implementada TDD según el plan, commit `2d49f3e`, suite 36 tests en verde. Revisión: **Approved**
+  con 3 Minor. El Minor 1 (password null → 500, oráculo de enumeración) se arregló en `5eb2b97`
+  (guard + test nuevo, 37 tests). Minor 2 (`orElseThrow` en /auth/me si el Usuario se borrara) y
+  Minor 3 (javadoc atribuye a gestoriaFilter lo que garantiza la firma del JWT) anotados, sin acción.
+- **Prompt 2.5 / Task 2** (`OnboardingController`, `POST /internal/onboarding/gestoria`): implementada
+  TDD según el plan, commit `d87d207`, suite 43 tests en verde, smoke test H2 E2E completo
+  (onboarding 200 → login 200 → /auth/me 200; sin token 401, password mala 401, secreto malo 401),
+  proceso java del smoke limpiado. CLAUDE.md corregido: ya no afirma que Prompt 2.7/Stripe esté
+  hecho (estaba adelantado a la realidad). Revisión: **Approved** con 2 Minor (nulls/email duplicado
+  → 500 en endpoint interno protegido; aceptado, fuera de alcance del plan). **PROMPT 2.5 CERRADO.**
+- **Prompt 2.7 (Stripe) — SOLO PLAN, sin implementar**: brainstorming resuelto y plan completo
+  escrito en `docs/superpowers/plans/2026-07-09-prompt2.7-stripe.md`, commit `5466616`. 4 tareas
+  (V13 + obtenerOCrearSuscripcion; checkout; máquina de estados webhook; scheduler nocturno + smoke).
+  **PARADO AQUÍ a propósito**, como pediste: no se dispatchó ningún subagente de implementación de
+  2.7 — el plan tiene un gate humano explícito en cabecera (revisarlo contigo antes de tocar Stripe;
+  solo claves test; el Price del dashboard lo creas tú a mano).
+- Estado final de la sesión: rama `main` limpia (salvo `.superpowers/` sin trackear, deliberado),
+  43 tests en verde, ningún java.exe huérfano. Nada pendiente de mi lado salvo tu revisión del plan 2.7.
