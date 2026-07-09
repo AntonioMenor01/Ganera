@@ -48,6 +48,8 @@ public class SuscripcionService {
             return suscripcionRepository.saveAndFlush(suscripcion);
         } catch (DataIntegrityViolationException e) {
             // Carrera sobre UNIQUE(gestoria_id): otro hilo la creo primero; releer la ganadora.
+            // Este catch tambien atrapa la FK violation de un gestoriaId inexistente: en ese
+            // caso la relectura no encuentra nada y se relanza la excepcion original (fail-explicit).
             return suscripcionRepository.findByGestoriaId(gestoriaId)
                     .orElseThrow(() -> e);
         }

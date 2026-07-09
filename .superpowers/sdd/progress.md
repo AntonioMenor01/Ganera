@@ -30,3 +30,22 @@ Registro de tareas cerradas (qué se hizo, commit, estado de revisión). Una lí
   solo claves test; el Price del dashboard lo creas tú a mano).
 - Estado final de la sesión: rama `main` limpia (salvo `.superpowers/` sin trackear, deliberado),
   43 tests en verde, ningún java.exe huérfano. Nada pendiente de mi lado salvo tu revisión del plan 2.7.
+
+## 2026-07-09 — Prompt 2.7 (Stripe) — ejecución aprobada por Antonio
+
+- Antonio revisó el plan, pidió añadir la decisión sobre re-entrega/desorden de webhooks (guard
+  monotónico por `event.created`, sin dedupe por `event.id` en esta fase — commit `2abf564`) y
+  aprobó dispatchar. Restricciones recordadas a cada implementador: solo claves `sk_test_`/`whsec_`,
+  el Price del dashboard lo crea Antonio a mano.
+- **Prompt 2.7 / Task 1** (V13 + campos Stripe en `Suscripcion` + `obtenerOCrearSuscripcion`
+  idempotente + `countByGestoriaId`): commit `c0ff6a5`, suite 47 tests en verde, V13 verificada en
+  vivo con H2+Flyway ("Successfully applied 13 migrations"). Revisión: **Approved** con 2 Minor.
+  Minor 2 (comentario sobre el camino de FK violation) aplicado a mano. Minor 1 (si Task 2 envuelve
+  el checkout en `@Transactional`, el saveAndFlush fallido del perdedor de la carrera marcaría
+  rollback-only → `UnexpectedRollbackException`) → trasladado como advertencia al implementador de
+  Task 2: NO envolver el checkout en una transacción propia.
+- **Hallazgo preexistente del revisor (no de esta task, anotado para no perderlo):**
+  `MensajeCampo.cuerpo` es `@Lob` pero `V9` lo creó como `TEXT` — en H2 modo PostgreSQL con
+  `ddl-auto=validate` la validación de esquema falla (CLOB vs VARCHAR). No afecta al smoke
+  documentado (usa `ddl-auto=update` sin Flyway) ni a Postgres real (`ddl-auto=none`). Tenerlo en
+  cuenta si algún smoke usa `validate`.
