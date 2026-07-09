@@ -72,6 +72,16 @@ class AuthServiceTest {
     }
 
     @Test
+    void passwordNullNoDevuelveTokenNiLanzaAunqueElEmailExista() {
+        AuthService authService = new AuthService(usuarioRepository, passwordEncoder, jwtService);
+        crearUsuario("passwordnull@gestoria.com", "password-correcta", true);
+
+        Optional<String> token = authService.autenticar("passwordnull@gestoria.com", null);
+
+        assertThat(token).isEmpty();
+    }
+
+    @Test
     void usuarioInactivoNoDevuelveTokenAunqueLaPasswordSeaCorrecta() {
         AuthService authService = new AuthService(usuarioRepository, passwordEncoder, jwtService);
         crearUsuario("inactivo@gestoria.com", "password-correcta", false);

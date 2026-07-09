@@ -23,6 +23,11 @@ public class AuthService {
     }
 
     public Optional<String> autenticar(String email, String password) {
+        // BCrypt lanza IllegalArgumentException con password null: sin este guard, un body
+        // malformado responderia 500 solo cuando el email existe (oraculo de enumeracion).
+        if (email == null || password == null) {
+            return Optional.empty();
+        }
         return usuarioRepository.findByEmail(email)
                 .filter(Usuario::isActivo)
                 .filter(usuario -> passwordEncoder.matches(password, usuario.getPasswordHash()))
