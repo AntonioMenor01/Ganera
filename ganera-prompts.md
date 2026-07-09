@@ -242,6 +242,14 @@ Antes de generar código, dime si tienes alguna duda. Cuando termines, confirma 
 
 **Nota:** el smoke test usó H2 en memoria, no PostgreSQL real — válida la lógica de negocio pero no las migraciones de Flyway contra el motor real. Pendiente (no bloqueante) probarlo alguna vez con Docker+Postgres antes de producción.
 
+**Nota de estado (2026-07-09):** este prompt fue **re-implementado desde cero** en esta fecha (la
+sesión anterior se cortó tras commitear solo el plan, sin código), siguiendo
+`docs/superpowers/plans/2026-07-09-prompt2.5-autenticacion.md` con subagent-driven development
+(implementador → revisor por tarea, ambas Approved). Commits `2d49f3e`, `5eb2b97` (fix Minor del
+revisor: guard de credenciales null para 401 uniforme) y `d87d207`. Suite completa: 43 tests en
+verde. Smoke test H2 E2E re-verificado: onboarding → login → `/auth/me` en 200 y los 3 negativos
+en 401. Detalle de la sesión en `.superpowers/sdd/progress.md`.
+
 ---
 
 ## Prompt 2.7 — Integración Stripe completa (pendiente de redactar)
