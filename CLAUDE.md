@@ -87,25 +87,20 @@ approval step before anything is written to OVZ.net.
   frontend must surface a warning), `SUSPENDIDA` (read-only, no approvals, grace period over),
   `CANCELADA`. The read-only/no-approval gate is `SuscripcionService.puedeAprobarTramites` —
   not wired to any endpoint yet, that comes with the trámite-approval business logic.
-- **Stripe integration** (`facturacion` package): a single `Price` (`STRIPE_PRICE_ID_EXPLOTACION`,
-  placeholder until one is created in the Stripe dashboard) with quantity = active Explotaciones
-  count, 15-day trial baked into the Checkout Session. `POST /facturacion/checkout`
-  (`StripeCheckoutService`) sets `client_reference_id` = `gestoriaId` on the Checkout Session — this
-  is how the `checkout.session.completed` webhook maps back to a Gestoría, not the Stripe customer
-  ID. Pilot Gestorías (created via `/internal/onboarding/gestoria`) never touch this flow; a real
-  paying Gestoría's Usuario hits checkout, and if no `Suscripcion` row exists yet for their Gestoría,
-  `SuscripcionService.obtenerOCrearSuscripcion` creates one in `TRIAL` on the spot (idempotent via
-  `saveAndFlush` + catching the `UNIQUE(gestoria_id)` violation, for the double-click case).
-  `StripeWebhookService` dispatches the rest of the state machine — the one non-obvious mapping:
-  on `customer.subscription.updated` with `status=past_due`, whether that means
-  `TRIAL_EXPIRADO_SIN_PAGO` (trial just ended, first charge failed) or `IMPAGO_GRACIA` (an
-  already-active subscription's renewal failed) is decided by `previous_attributes.status` — if it
-  was `trialing`, the trial expired unpaid; otherwise it's a normal payment-grace case. If Stripe
-  doesn't send `previous_attributes` on that event, it falls back to whatever `EstadoSuscripcion` we
-  already had stored (`TRIAL` → `TRIAL_EXPIRADO_SIN_PAGO`, anything else → `IMPAGO_GRACIA`). A daily
-  `@Scheduled` job (`SuscripcionSyncScheduler`, 3am) reconciles `explotacionesContratadas` against
-  the live Explotación count for every `ACTIVA`/`IMPAGO_GRACIA` subscription and pushes quantity
-  changes to Stripe (default proration).
+- **Stripe integration** (`facturacion` package): **planned design for Prompt 2.7 — NOT built
+  yet.** What exists today is only the Prompt 2 scaffolding: `Suscripcion`/`EstadoSuscripcion`,
+  `SuscripcionService.puedeAprobarTramites`, and a skeleton `StripeWebhookController`
+  (`POST /webhooks/stripe`) that verifies the `Stripe-Signature` and acks the event without any
+  business logic. `StripeCheckoutService`, `StripeWebhookService`, `StripeConfig`, and
+  `SuscripcionSyncScheduler` do **not** exist yet. The intended design when Prompt 2.7 lands: a
+  single `Price` (`STRIPE_PRICE_ID_EXPLOTACION`) with quantity = active Explotaciones count, 15-day
+  trial baked into the Checkout Session; `POST /facturacion/checkout` sets `client_reference_id` =
+  `gestoriaId` on the Checkout Session (how the `checkout.session.completed` webhook maps back to a
+  Gestoría, not the Stripe customer ID); a webhook-driven state machine over `EstadoSuscripcion`;
+  and a daily `@Scheduled` job reconciling the contracted quantity against the live Explotación
+  count. Pilot Gestorías (created via `/internal/onboarding/gestoria`) never touch this flow —
+  onboarding creates their `Suscripcion` directly in `ACTIVA`, without Stripe (per the Prompt 2.5
+  plan).
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)
@@ -151,13 +146,13 @@ Package layout under `backend/src/main/java/com/ganera/core/`: `gestoria`, `gana
   optional integration's client construction back into a constructor without checking it tolerates
   a blank credential — verified live by actually starting the app, not just by compiling (see
   `mvn spring-boot:run` note below).
-- `StripeWebhookService` is package-private (`facturacion` only) and split so the actual state-machine
-  decisions (`procesarCheckoutCompletado`, `procesarPagoExitoso`, `procesarSuscripcionActualizada`,
-  and the static `calcularEstadoTrasActualizacion`) are plain methods testable without faking Stripe
-  SDK deserialization — only the `manejarXxx` methods touch `Event`/`Session`/`Invoice`/`Subscription`
-  directly. `StripeConfig` sets the static `Stripe.apiKey` once at startup from `STRIPE_API_KEY`
-  (blank is tolerated at startup, same reasoning as the Twilio fix above — it only fails when a
-  Stripe call is actually made).
+- `StripeWebhookController` is a skeleton: it verifies the `Stripe-Signature` header and returns
+  200/400, nothing more. The real billing state machine (`StripeWebhookService`, `StripeConfig`,
+  etc. — see the Stripe bullet above) is Prompt 2.7 design, not yet written. When it is written,
+  keep it package-private to `facturacion` and split so the state-machine decisions are plain
+  methods testable without faking Stripe SDK deserialization (skill `test-sin-mocks-externos`),
+  and make sure a blank `STRIPE_API_KEY` is tolerated at startup (same reasoning as the Twilio
+  fix above — it should only fail when a Stripe call is actually made).
 
 ## Architecture notes (frontend)
 
@@ -175,8 +170,8 @@ Backend (from `backend/`):
 - `mvn spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `mvn test` — runs the test suite (`SuscripcionServiceTest`, `AuthServiceTest`,
-  `StripeWebhookServiceTest`); a single test: `mvn test -Dtest=AuthServiceTest`
+- `mvn test` — runs the test suite (e.g. `SuscripcionServiceTest`, `AuthServiceTest`,
+  `OnboardingControllerTest`); a single test: `mvn test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
   `exec-maven-plugin` is configured in `pom.xml`, so `mvn exec:java` won't work out of the box):
   `mvn dependency:build-classpath -Dmdep.outputFile=cp.txt` then
@@ -203,23 +198,29 @@ Root:
 
 ## Current status
 
-Steps 1, 2, 2.5, and 2.7 are complete: infrastructure scaffold; the data model closing out Prompt 2
+Steps 1, 2, and 2.5 are complete: infrastructure scaffold; the data model closing out Prompt 2
 (`EstadoSuscripcion`'s final 6 states, `SuscripcionService.puedeAprobarTramites` fail-closed when no
 `Suscripcion` row exists, `Gestoria.modoCartera` + `UsuarioExplotacion`) was rebuilt from scratch and
 re-verified end-to-end on 2026-07-09 following
 `docs/superpowers/plans/2026-07-09-prompt2-estados-suscripcion-cartera.md` (migrations `V10`-`V12`,
-full backend suite green at 32 tests, H2 smoke test confirming all 12 migrations apply cleanly with
-no bean-wiring errors); real Usuario authentication (`POST /auth/login`, `GET /auth/me`) plus manual
-pilot onboarding (`POST /internal/onboarding/gestoria`, temporary — see Architecture notes); and the
-full Stripe integration (`POST /facturacion/checkout`, the `StripeWebhookService` state machine, and
-the nightly quantity-sync job). Backend and frontend compile/build cleanly, backend tests pass
-(verified once by actually booting the app — see the H2 smoke-test command above — not just by
-compiling). No business logic is wired end-to-end yet for
+H2 smoke test confirming all 12 migrations apply cleanly with no bean-wiring errors); and Prompt 2.5
+— real Usuario authentication (`POST /auth/login`, `GET /auth/me`) plus manual pilot onboarding
+(`POST /internal/onboarding/gestoria`, temporary — see Architecture notes; it creates the Gestoría,
+its first Usuario, and a `Suscripcion` directly in `ACTIVA`, no Stripe involved) — implemented and
+verified on 2026-07-09 following
+`docs/superpowers/plans/2026-07-09-prompt2.5-autenticacion.md`: full backend suite green at 43
+tests, plus an H2 E2E smoke test of the real HTTP flow onboarding → login → `/auth/me` with a live
+JWT, including the negative cases (`/auth/me` without token → 401, wrong password → 401, wrong
+onboarding secret → 401). Backend and frontend compile/build cleanly (verified by actually booting
+the app — see the H2 smoke-test command above — not just by compiling). **Prompt 2.7 (the Stripe
+integration) has NOT been built**: `StripeCheckoutService`, `StripeWebhookService`, `StripeConfig`,
+`SuscripcionSyncScheduler`, and `StripeWebhookServiceTest` do not exist — only the skeleton
+`StripeWebhookController` and the Prompt 2 scaffolding (see the Stripe bullet under Technical
+decisions). No business logic is wired end-to-end yet for
 trámites — Twilio's webhook validates signatures and persists raw data, but doesn't yet trigger AI
 extraction or trámite creation; `TramiteExtractionService`'s system prompt and
 `OvzAutomationService`'s Playwright logic are still unimplemented skeletons; `puedeAprobarTramites`
 isn't called from anywhere yet; portfolio filtering by `modoCartera` isn't implemented; there is
-still no public self-signup or admin panel, only the manual onboarding endpoint;
-`STRIPE_PRICE_ID_EXPLOTACION` is still an empty placeholder until a real `Price` is created in the
-Stripe dashboard. `ganera-prompts.md` at the repo root tracks the full sequence of prompts used to
+still no public self-signup or admin panel, only the manual onboarding endpoint.
+`ganera-prompts.md` at the repo root tracks the full sequence of prompts used to
 build this out, in order — check it for the detailed history/rationale behind any given step.
