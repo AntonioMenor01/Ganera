@@ -98,3 +98,13 @@ Registro de tareas cerradas (qué se hizo, commit, estado de revisión). Una lí
   validando contra H2 real. `CLAUDE.md` y `ganera-prompts.md` actualizados para reflejar Prompt 2.7
   como completado, incluyendo la limitación conocida del guard por `event.created` (sin dedupe por
   `event.id`) y que `STRIPE_PRICE_ID_EXPLOTACION` sigue pendiente de la acción manual de Antonio.
+  Commit `7a434d9`. Revisión: **Approved** sin Critical/Important. Firmas del SDK (`Subscription.retrieve`,
+  `SubscriptionItemCollection`, `SubscriptionUpdateParams.Item`) re-verificadas de forma independiente
+  por el revisor contra el jar real — coinciden. Try/catch por-ajuste confirmado dentro del bucle (no
+  envolviendo el batch entero), evitando el mismo tipo de riesgo señalado en Task 1. 2 Minor sin
+  acción (narrowing `long`→`int` sin `Math.toIntExact`; una frase de `ganera-prompts.md` podría leerse
+  como que el checkout real ya se probó end-to-end, pero va seguida de la aclaración correcta). El
+  smoke test/79-suite en sí no es re-verificable desde el diff (requiere arrancar/matar una JVM) — el
+  revisor lo marcó plausible pero no confirmado, consistente con logs previos del proyecto.
+
+**PROMPT 2.7 (STRIPE) CERRADO — plan completo, 4/4 tareas aprobadas.**

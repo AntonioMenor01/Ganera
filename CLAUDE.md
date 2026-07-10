@@ -171,6 +171,15 @@ Package layout under `backend/src/main/java/com/ganera/core/`: `gestoria`, `gana
   test, not a unit test. `StripeConfig` fixes the static `Stripe.apiKey` at startup and tolerates a
   blank `STRIPE_API_KEY` (same reasoning as the Twilio fix above — it only fails when a Stripe call
   is actually made).
+- **`mvn` is not on the system PATH on the current dev machine.** Use `backend/mvnw` (the Maven
+  Wrapper, added specifically so builds don't depend on ad hoc machine state) instead of a bare
+  `mvn` — e.g. `cd backend && ./mvnw test`. The wrapper still needs a JDK on `JAVA_HOME`; the
+  machine's global `JAVA_HOME` points at a JDK 17 install used by an unrelated project, and JDK 17
+  cannot compile this project's `--release 21` target. Override `JAVA_HOME` **per command only**
+  (never change the global env var): `JAVA_HOME="/path/to/a/jdk21+" ./mvnw test` — a newer JDK (e.g.
+  23) compiles fine targeting an older `--release`. If `mvnw` itself is missing/broken, a cached
+  Apache Maven distribution may already exist under `~/.m2/wrapper/dists/` from a prior wrapper run
+  and can be invoked directly as a fallback.
 
 ## Architecture notes (frontend)
 
@@ -183,13 +192,13 @@ that attaches the JWT from `localStorage` on every request) and `shared/layout/A
 
 ## Commands
 
-Backend (from `backend/`):
-- `mvn compile` — compile
-- `mvn spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
+Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HOME footgun above):
+- `./mvnw compile` — compile
+- `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `mvn test` — runs the test suite (e.g. `SuscripcionServiceTest`, `AuthServiceTest`,
-  `OnboardingControllerTest`); a single test: `mvn test -Dtest=AuthServiceTest`
+- `./mvnw test` — runs the test suite (79 tests as of Prompt 2.7); a single test:
+  `./mvnw test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
   `exec-maven-plugin` is configured in `pom.xml`, so `mvn exec:java` won't work out of the box):
   `mvn dependency:build-classpath -Dmdep.outputFile=cp.txt` then
@@ -197,10 +206,13 @@ Backend (from `backend/`):
 - **No Docker/Postgres in this sandbox** — to actually boot the app for a manual smoke test without
   a real Postgres, run against an in-memory H2 (PostgreSQL compatibility mode), skip Flyway, and let
   Hibernate create the schema:
-  `mvn spring-boot:run -Dspring-boot.run.useTestClasspath=true -Dspring-boot.run.arguments='--spring.datasource.url=jdbc:h2:mem:ganera;MODE=PostgreSQL;DB_CLOSE_DELAY=-1 --spring.datasource.driver-class-name=org.h2.Driver --spring.datasource.username=sa --spring.datasource.password= --spring.flyway.enabled=false --spring.jpa.hibernate.ddl-auto=update'`
+  `./mvnw spring-boot:run -Dspring-boot.run.useTestClasspath=true -Dspring-boot.run.arguments='--spring.datasource.url=jdbc:h2:mem:ganera;MODE=PostgreSQL;DB_CLOSE_DELAY=-1 --spring.datasource.driver-class-name=org.h2.Driver --spring.datasource.username=sa --spring.datasource.password= --spring.flyway.enabled=true --spring.jpa.hibernate.ddl-auto=none'`
   (`useTestClasspath=true` is required — `h2` is a test-scope dependency, not on the runtime
-  classpath otherwise). This is how the Twilio footgun above was actually caught — `mvn compile`
-  alone never would have. Still export `JWT_SECRET`/`ENCRYPTION_KEY`/`ONBOARDING_SECRET` first.
+  classpath otherwise; `flyway.enabled=true` + `ddl-auto=none` runs the real migrations against H2
+  instead of letting Hibernate generate the schema, which is what every Prompt-closure smoke test
+  since Paso 1 actually does). This is how the Twilio footgun above was actually caught — `mvn
+  compile` alone never would have. Still export `JWT_SECRET`/`ENCRYPTION_KEY`/`ONBOARDING_SECRET`
+  first (and `STRIPE_API_KEY`/`STRIPE_WEBHOOK_SECRET`/`STRIPE_PRICE_ID_EXPLOTACION` can stay blank).
   **On Windows, killing this process needs `taskkill`/`Stop-Process` on the child `java.exe` PID** —
   stopping the wrapping shell/task does not kill the spawned JVM.
 
@@ -229,8 +241,8 @@ verified on 2026-07-09 following
 `docs/superpowers/plans/2026-07-09-prompt2.5-autenticacion.md`; and Prompt 2.7 — the full Stripe
 integration (`POST /facturacion/checkout`, the `StripeWebhookService` state machine, and the nightly
 `SuscripcionSyncScheduler` quantity-reconciliation job — see the Stripe bullet under Technical
-decisions for the full design and its one known limitation) — implemented and verified across three
-tasks on 2026-07-09 following `docs/superpowers/plans/2026-07-09-prompt2.7-stripe.md`: migration
+decisions for the full design and its one known limitation) — implemented and verified across the
+plan's four tasks on 2026-07-09 following `docs/superpowers/plans/2026-07-09-prompt2.7-stripe.md`: migration
 `V13` adds `stripeSubscriptionId`/`explotacionesContratadas`/`stripeUltimoEventoEpoch` to
 `Suscripcion`; full backend suite green at 79 tests; an H2 smoke test confirming the app boots
 cleanly with all 13 Flyway migrations validating and every Stripe-related env var
@@ -249,5 +261,18 @@ extraction or trámite creation; `TramiteExtractionService`'s system prompt and
 isn't called from anywhere yet (no trámite-approval endpoint exists — that's Prompt 3d); portfolio
 filtering by `modoCartera` isn't implemented; there is still no public self-signup or admin panel,
 only the manual onboarding endpoint.
+
+**Next pending step: Prompt 3a (sincronización inicial de OVZ.net, modo lectura) — blocked.** Per
+`ganera-prompts.md`, Prompts 3a, 3b, and 3c (OVZ.net read sync, Twilio webhook + AI extraction, and
+real Playwright write-mode automation) are all blocked on the same prerequisite: Antonio needs to
+provide real OVZ.net credentials so the actual site structure and trámite catalog can be explored
+live (the Playwright MCP is set up for exactly this — driving the real site with Antonio steering,
+not guessing at its structure from assumptions). Until that happens, `TramiteExtractionService` and
+`OvzAutomationService` stay as unimplemented skeletons (see above) — don't write real prompt/scraping
+logic against assumptions about OVZ.net's structure. Prompts 3d (Excel importer, trámite dashboard,
+approval endpoint wiring `puedeAprobarTramites`) and 4 (full frontend) are not blocked by OVZ.net
+access but are also not fully specced yet ("pendiente de redactar" in `ganera-prompts.md`) — they'd
+need their own planning pass before implementation.
+
 `ganera-prompts.md` at the repo root tracks the full sequence of prompts used to
 build this out, in order — check it for the detailed history/rationale behind any given step.
