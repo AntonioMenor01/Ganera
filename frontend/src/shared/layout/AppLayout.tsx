@@ -23,10 +23,13 @@ export function AppLayout() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <header className="border-b px-6 py-4">
+      <header className="border-b border-sidebar-border bg-sidebar px-6 py-4 text-sidebar-foreground">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-6">
-            <span className="font-semibold">Ganera</span>
+            <div className="flex items-center gap-2">
+              <span className="size-2.5 rounded-full bg-primary" aria-hidden="true" />
+              <span className="font-semibold tracking-wide text-primary">GANERA</span>
+            </div>
             <nav className="flex items-center gap-1">
               {ENLACES.map((enlace) => (
                 <NavLink
@@ -36,8 +39,8 @@ export function AppLayout() {
                     cn(
                       "rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors",
                       isActive
-                        ? "bg-muted text-foreground"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                        : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground",
                     )
                   }
                 >

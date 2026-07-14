@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Pagina } from "@/shared/api/types";
 import { listarTramites } from "./api";
-import type { EstadoTramite, Tramite } from "./types";
+import { badgeVarianteDeEstado, type EstadoTramite, type Tramite } from "./types";
 import { TramiteReviewDialog } from "./TramiteReviewDialog";
 
 const TAMANIO_PAGINA = 20;
@@ -96,7 +96,7 @@ export function TramitesPage() {
         </Select>
       </div>
 
-      <div className="rounded-lg border">
+      <div className="rounded-xl border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -123,7 +123,7 @@ export function TramitesPage() {
                 <TableCell>#{tramite.id}</TableCell>
                 <TableCell>{tramite.tipoTramite ?? "—"}</TableCell>
                 <TableCell>
-                  <Badge variant="outline">{tramite.estado}</Badge>
+                  <Badge variant={badgeVarianteDeEstado(tramite.estado)}>{tramite.estado}</Badge>
                 </TableCell>
                 <TableCell>
                   {tramite.explotacionId ? `#${tramite.explotacionId}` : "Sin resolver"}

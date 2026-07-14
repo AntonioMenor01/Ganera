@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { aprobarTramite, obtenerDetalleTramite, rechazarTramite } from "./api";
-import type { TramiteDetalle } from "./types";
+import { badgeVarianteDeEstado, type TramiteDetalle } from "./types";
 
 interface TramiteReviewDialogProps {
   tramiteId: number | null;
@@ -107,7 +107,7 @@ export function TramiteReviewDialog({
           <div className="flex flex-col gap-4 text-sm">
             <div className="flex items-center gap-2">
               <span className="font-medium">Estado:</span>
-              <Badge variant="outline">{detalle.estado}</Badge>
+              <Badge variant={badgeVarianteDeEstado(detalle.estado)}>{detalle.estado}</Badge>
             </div>
 
             <div>

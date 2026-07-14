@@ -7,6 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { Pagina } from "@/shared/api/types";
 import { listarExplotaciones } from "./api";
@@ -42,10 +43,18 @@ export function ExplotacionesPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-xl font-semibold">Explotaciones</h1>
-        <p className="text-muted-foreground">
-          {pagina ? `${pagina.totalElements} explotaciones` : "Cargando…"}
-        </p>
       </div>
+
+      <Card className="w-fit min-w-48">
+        <CardContent className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Explotaciones totales
+          </span>
+          <span className="text-3xl font-semibold">
+            {pagina ? pagina.totalElements : "—"}
+          </span>
+        </CardContent>
+      </Card>
 
       <ImportarExcelSection
         onImportado={() => {
@@ -54,7 +63,7 @@ export function ExplotacionesPage() {
         }}
       />
 
-      <div className="rounded-lg border">
+      <div className="rounded-xl border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
