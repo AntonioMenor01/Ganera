@@ -69,6 +69,15 @@ approval step before anything is written to OVZ.net.
   for a Gestoría also means no approval, not a free pass.
 - `POST /auth/login` never reveals *why* it rejected a login (unknown email, wrong password, or
   inactive Usuario all return a plain 401) — don't add a more specific error message.
+- **The frontend never implies a trámite is executed against OVZ.net when "Aprobar" is clicked** —
+  `OvzAutomationService.ejecutarTramite()` is unimplemented (Prompt 3c), so the button only changes
+  `EstadoTramite` in DB, matching the backend exactly. Don't add wording, spinners, or toasts that
+  suggest anything happens in OVZ.net until 3c is real.
+- **No manual "alta de Ganadero" form in the frontend, no OVZ-credentials-onboarding screen.** The
+  only way to create Ganaderos/Explotaciones/Animales right now is the Excel importer
+  (Prompt 3d) — don't add a second, divergent creation path without an explicit decision to do so.
+  The OVZ-credentials screen is deliberately deferred until a real Ganadero is ready to hand over
+  credentials for that explicit purpose (see Prompt 3a/3b/3c blocker).
 
 ## Technical decisions already made
 
@@ -77,6 +86,34 @@ approval step before anything is written to OVZ.net.
   `TenantFilterActivationInterceptor` from the JWT's `gestoriaId` claim — it relies on
   `spring.jpa.open-in-view=true`. Public endpoints (webhooks) have no `Authentication`, so the
   filter is simply never enabled for them — that's intentional, not a gap.
+  **Critical footgun, found and fixed 2026-07-14 (Prompt 4 final verification):**
+  `WebMvcTenantConfig` registered `TenantFilterActivationInterceptor` with no explicit order.
+  Spring Boot also registers its own `OpenEntityManagerInViewInterceptor` (from
+  `open-in-view=true`) as an MVC `HandlerInterceptor`, and the relative order between two
+  different `WebMvcConfigurer` beans' interceptors is **not guaranteed** without an explicit
+  `.order(...)`. When ours happened to run before OSIV had bound the request's real
+  `EntityManager` to the thread, the injected `@PersistenceContext EntityManager` in the
+  interceptor silently fell back to a temporary, non-transactional `EntityManager` — Spring's
+  shared-EntityManager proxy creates one on the spot when no context is bound yet, calls
+  `enableFilter(...)` on it, and immediately discards it. The result: `gestoriaFilter` was
+  **never actually applied** to any real HTTP request — `GET /explotaciones` and `GET /tramites`
+  silently returned rows from *every* Gestoría, not just the authenticated one. Every existing
+  test passed anyway, because `TenantFilterActivationInterceptorTest` calls
+  `interceptor.preHandle(...)` directly (bypassing MVC dispatch and its interceptor ordering
+  entirely) and every manual smoke test up to this point only ever exercised **one** Gestoría at
+  a time — with only one tenant's data in the DB, an unfiltered query and a correctly filtered
+  one return identical results, so the bug was invisible until two real Gestorías with
+  overlapping data were compared over real HTTP. Fixed by giving the interceptor an explicit
+  `.order(Ordered.LOWEST_PRECEDENCE)` in `WebMvcTenantConfig`, guaranteeing it runs after OSIV
+  regardless of `@Configuration` bean ordering. Covered going forward by
+  `TenantIsolationEndToEndTest` (`shared/tenant`), a deliberate `@SpringBootTest(webEnvironment =
+  RANDOM_PORT)` + `TestRestTemplate` test — the *only* kind of test that exercises real
+  interceptor registration/ordering; verified this test actually fails without the fix (reverted
+  the `.order(...)` call, confirmed the test caught the leak, then restored it) before trusting
+  it as a regression guard. **Any future `HandlerInterceptor` that touches
+  `GestoriaScopedEntity` data via the shared `EntityManager` must set an explicit order relative
+  to OSIV, or add its own end-to-end two-tenant test — don't trust a direct
+  `interceptor.preHandle()` unit test alone.**
 - **AI provider**: Claude Haiku 4.5 via Spring AI, pinned to the dated snapshot
   `claude-haiku-4-5-20251001` (not the floating alias) so it can't change under us silently.
   Abstracted behind `TramiteExtractionService` so the provider is swappable. Structured Outputs
@@ -158,6 +195,21 @@ approval step before anything is written to OVZ.net.
   yet (that's Prompt 3c). A tramite id from another Gestoría or that doesn't exist returns `404`
   (`Optional`-based, not `.orElseThrow()` — this is an expected, common case, not a "should never
   happen" one).
+- **Frontend, Prompt 4 (partial — everything not blocked by OVZ.net):** login, Explotaciones
+  dashboard + Excel import, Trámites queue + review modal, Facturación status page. Two backend
+  additions this required, both driven directly by the frontend's stated needs, not speculative:
+  `GET /facturacion/suscripcion` (`FacturacionController`, `404` if the Gestoría never had a
+  `Suscripcion` — fail-closed, a `GET` must never create one as a side effect, that's what
+  `POST /facturacion/checkout` → `obtenerOCrearSuscripcion` is for) and `GET /tramites/{id}`
+  (`TramiteDetalleResponse`, adds the raw WhatsApp message body via
+  `MensajeCampoRepository.findFirstByTramiteIdOrderByCreatedAtDesc` plus the resolved Explotación's
+  `codigoRega`/`nombre` — kept out of the paginated `GET /tramites` list to avoid N+1 there).
+  **CORS** (`SecurityConfig.corsConfigurationSource`, origin from `ganera.frontend.origen` /
+  `FRONTEND_ORIGEN` env var, default `http://localhost:5173`): found by *actually driving the app in
+  a real browser* — every backend test passed and `curl` worked fine, but the browser blocks the
+  request at preflight before it ever reaches a controller, JWT valid or not. `curl`/Postman never
+  send an `Origin` header the way a browser does, so this class of bug is invisible to any
+  request-level test; only a real browser catches it.
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)
@@ -236,11 +288,43 @@ Package layout under `backend/src/main/java/com/ganera/core/`: `gestoria`, `gana
 ## Architecture notes (frontend)
 
 Vite + React 19 + TypeScript + Tailwind v4 (`@tailwindcss/vite` plugin, no `tailwind.config.js`) +
-shadcn/ui (initialized with the "Nova" preset: Radix, Lucide, Geist font). Path alias `@/*` →
-`src/*`. Structure is by feature (`features/tramites`, `features/ganaderos`,
-`features/explotaciones`, `features/facturacion`), plus `shared/api/httpClient.ts` (axios instance
-that attaches the JWT from `localStorage` on every request) and `shared/layout/AppLayout.tsx` +
-`router.tsx` (react-router-dom, default route redirects to `/tramites`).
+shadcn/ui, actually the **"base-nova"** style variant (`@base-ui/react` primitives, not Radix,
+despite this file's earlier prose — `components.json` and every installed component in
+`src/components/ui/` confirm base-ui; component *props* generally match the usual shadcn/Radix
+shape — `value`/`onValueChange` on `Select`, `open`/`onOpenChange` on `Dialog` — but check the
+actual `.d.ts` before assuming a prop exists, e.g. `Select.Value`'s label is **not** automatic: it
+needs a `children` render-function (`{(value) => label}`), unlike Radix). Path alias `@/*` →
+`src/*`. Structure is by feature (`features/auth`, `features/tramites`, `features/ganaderos`,
+`features/explotaciones`, `features/facturacion`); `features/ganaderos` is still an empty
+placeholder route (`Prompt 4` deliberately built no Ganadero screen — Excel import is the only
+creation path, see Non-negotiable rules).
+
+- **Auth is in-memory, not `localStorage`, on purpose** (session-only SPA — a page reload requires
+  logging in again, no refresh token yet). `shared/api/authSession.ts` holds the token in a
+  module-level variable (not React state) so `shared/api/httpClient.ts` — outside any React
+  tree — can read it in its request interceptor; a response interceptor calls
+  `notifyUnauthorized()` on any real `401`, which `shared/auth/AuthContext.tsx` (`AuthProvider`)
+  registers a handler for to clear its own React state. `shared/auth/RequireAuth.tsx` is a
+  pathless layout route (`<Outlet/>` or `<Navigate to="/login"/>`) wrapping the authenticated part
+  of `router.tsx` — reading `token` from context, not the module variable directly, so React
+  re-renders when it changes.
+- **`AppLayout.tsx`** now has real navigation (Explotaciones/Trámites/Facturación — deliberately no
+  Ganaderos link, see above) and fetches subscription status once
+  (`features/facturacion/useSuscripcionEstado.ts`) via `<Outlet context={{ suscripcion }}>` so
+  `FacturacionPage` reuses the same fetch instead of refetching — read it with
+  `useOutletContext<AppLayoutContext>()`. `SuscripcionBanner.tsx` shows a persistent warning for
+  `TRIAL_EXPIRADO_SIN_PAGO`/`SUSPENDIDA`/no-`Suscripcion`-at-all (all three block approving, all
+  three get an "actualiza tu suscripción" banner) and a milder one for `IMPAGO_GRACIA` — it never
+  hides the rest of the app (Explotaciones/Trámites stay browsable), only `POST /tramites/{id}/aprobar`
+  itself is blocked (`403` from `puedeAprobarTramites`), matching the backend's existing read-only
+  vs. full-access semantics from Prompt 2 — don't make the banner block navigation, that would be a
+  stricter gate than what the backend actually enforces.
+- **No frontend test tooling exists** (no Vitest, no `@testing-library/react`) — verification for
+  this prompt was `tsc -b` (clean) + `oxlint` (clean, pre-existing warnings only) + driving the real
+  built app in a headless Chromium against the real backend (login → Excel import round-trip with
+  exact resumen match → trámites list + estado filter → facturación page → logout), not automated
+  browser tests. If frontend logic grows more complex, revisit adding a test runner rather than
+  relying on manual browser checks indefinitely.
 
 ## Commands
 
@@ -249,7 +333,7 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw test` — runs the test suite (93 tests as of Prompt 3d); a single test:
+- `./mvnw test` — runs the test suite (101 tests as of Prompt 4); a single test:
   `./mvnw test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
   `exec-maven-plugin` is configured in `pom.xml`, so `mvn exec:java` won't work out of the box):
@@ -270,7 +354,11 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 
 Frontend (from `frontend/`):
 - `npm install`
-- `npm run dev` — dev server
+- `npm run dev` — dev server on `:5173`. **Needs the backend running on `:8080`** (see above) —
+  `shared/api/httpClient.ts` defaults `VITE_API_BASE_URL` to `http://localhost:8080`, and the
+  backend's `SecurityConfig` CORS bean must allow `:5173` (`ganera.frontend.origen`/`FRONTEND_ORIGEN`
+  env var, defaults to `http://localhost:5173` already) or every request 500s at the browser's
+  preflight before reaching any controller.
 - `npm run build` — `tsc -b && vite build`
 - `npm run lint` — oxlint
 - `npm run preview`
@@ -325,6 +413,46 @@ yet (Prompt 3c). Full backend suite green at 91 tests (79 + 12 new); real end-to
 file and confirm no duplication → 401 without JWT → 404 on an unknown trámite id) — not just the
 `@DataJpaTest`-level suite.
 
+Prompt 4 — functional frontend, **only the part not blocked by OVZ.net** — is complete as of
+2026-07-14: login (JWT in-memory, see Architecture notes), Explotaciones dashboard with the Excel
+importer given real UI prominence, Trámites queue with estado filter + review modal (handles a null
+WhatsApp message/unresolved Explotación without looking broken, since 3b hasn't shipped yet) +
+Aprobar/Rechazar (a `403` on Aprobar shows the real "tu suscripción no permite aprobar trámites"
+reason, never a generic error), and a Facturación status page. Deliberately **not** built (per
+explicit scope): the OVZ-credentials-onboarding screen for a new Ganadero, and any manual
+Ganadero/Explotación creation form — both would either need real OVZ.net access or open a second,
+divergent data-entry path around the Excel importer. Two backend additions this required
+(`GET /facturacion/suscripcion`, `GET /tramites/{id}`) — see the Prompt 4 bullet under Technical
+decisions. Full backend suite green at 101 tests (93 + 7 for the two new endpoints + 1 critical
+end-to-end regression test, see below). Frontend verified with `tsc -b` (clean) + `oxlint` (clean)
++ a real headless-Chromium session against the real backend (Playwright's npm package, installed
+ad hoc for this — no project skill existed yet for driving this app; consider
+`/run-skill-generator` if this becomes a recurring need) driving: login → Excel import (exact
+resumen match against the backend) → Trámites list + estado filter (confirmed the actual
+`?estado=APROBADO` query fired) → Facturación (ACTIVA, no blocking banner) → logout → redirect to
+`/login`. **Found and fixed two frontend bugs only a live browser catches:** the CORS gap above,
+and `Select`'s trigger showing the raw value (`"TODOS"`) instead of the label until given a
+`children` render-function (see Architecture notes).
+
+Before calling Prompt 4 closed, Antonio explicitly asked to also verify live (not just by backend
+integration tests/code review) the three paths that hadn't been exercised yet: the review-modal
+with a real WhatsApp message + resolved Explotación, the `403`-on-aprobar message, and the
+no-Suscripción banner — plus the null-message/unresolved-Explotación case again for real. Since
+none of these can be produced through the running app yet (no Tramite-creation UI, 3b doesn't
+exist), the data was seeded directly by SQL against the smoke-test H2 instance (a file-backed
+H2 with `AUTO_SERVER=TRUE` so a separate `org.h2.tools.RunScript` process could write to the same
+live database — no app business logic involved in the seeding itself) and driven from a real
+browser. All four looked correct — **but seeding a second real Gestoría with its own login for
+the no-Suscripción check surfaced a real, previously-undetected critical bug**: `GET /tramites`
+and `GET /explotaciones` returned rows from *every* Gestoría, not just the authenticated one. See
+the "Critical footgun" note under the Multi-tenancy bullet above for the full root cause
+(`TenantFilterActivationInterceptor` vs. Spring Boot's `OpenEntityManagerInViewInterceptor`
+ordering) and the fix. This had been latent since the interceptor was first introduced — invisible
+to every previous test and manual smoke test because none of them ever compared two Gestorías
+with overlapping data over real HTTP in the same run. Fixed, verified with a new deliberate
+end-to-end test (confirmed it fails without the fix, passes with it), full suite re-run green, and
+all four scenarios re-verified live in the browser against the fixed backend.
+
 **Next pending step: Prompt 3a (sincronización inicial de OVZ.net, modo lectura) — blocked.** Per
 `ganera-prompts.md`, Prompts 3a, 3b, and 3c (OVZ.net read sync, Twilio webhook + AI extraction, and
 real Playwright write-mode automation) are all blocked on the same prerequisite: Antonio needs to
@@ -332,9 +460,8 @@ provide real OVZ.net credentials so the actual site structure and trámite catal
 live (the Playwright MCP is set up for exactly this — driving the real site with Antonio steering,
 not guessing at its structure from assumptions). Until that happens, `TramiteExtractionService` and
 `OvzAutomationService` stay as unimplemented skeletons (see above) — don't write real prompt/scraping
-logic against assumptions about OVZ.net's structure. Prompt 4 (full frontend) is not blocked by
-OVZ.net access but is not fully specced yet ("pendiente de redactar" in `ganera-prompts.md`) — it'd
-need its own planning pass before implementation.
+logic against assumptions about OVZ.net's structure. The OVZ-credentials onboarding screen and the
+rest of Prompt 4's originally-scoped items are deferred alongside it.
 
 `ganera-prompts.md` at the repo root tracks the full sequence of prompts used to
 build this out, in order — check it for the detailed history/rationale behind any given step.

@@ -11,6 +11,12 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  ai:
+    anthropic:
+      api-key: test-key-nunca-usada-de-verdad
+      chat:
+        options:
+          model: claude-haiku-4-5-20251001
 
 ganera:
   jwt:
@@ -20,6 +26,8 @@ ganera:
     key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
   onboarding:
     secret: test-onboarding-secret
+  frontend:
+    origen: http://localhost:5173
 
 twilio:
   account-sid: ""
@@ -28,3 +36,7 @@ twilio:
 stripe:
   api-key: ""
   webhook-secret: ""
+  price-id-explotacion: ""
+  checkout:
+    success-url: http://localhost:5173/facturacion?checkout=exito
+    cancel-url: http://localhost:5173/facturacion?checkout=cancelado

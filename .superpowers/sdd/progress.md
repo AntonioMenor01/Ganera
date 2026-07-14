@@ -193,3 +193,122 @@ Registro de tareas cerradas (qué se hizo, commit, estado de revisión). Una lí
   Antonio.
 
 **PROMPT 3d CERRADO.**
+
+## 2026-07-14 (continuación) — Prompt 4 (frontend funcional, solo lo no bloqueado por OVZ.net)
+
+- Antonio pidió continuar con Prompt 4, con restricción explícita no negociable (igual que 3a/3d):
+  nada de pantalla de onboarding OVZ de un Ganadero nuevo (ni mock ni placeholder), nada de
+  formulario manual alternativo de alta de Ganadero/Explotación (el importador Excel de 3d sigue
+  siendo la única vía), y el botón Aprobar de la cola de trámites solo cambia estado en BD, sin dar
+  a entender que se ejecuta algo real en OVZ.net (`OvzAutomationService.ejecutarTramite()` sigue
+  sin implementar).
+- **Antes de generar código:** confirmé que no existía ningún endpoint de estado de Suscripción
+  (`FacturacionController` solo tenía `POST /checkout`) y pregunté el diseño antes de inventarlo.
+  Antonio aclaró la regla de negocio (Gestoría sin Suscripción = mismo tratamiento que un estado
+  bloqueante, con opción de trial de 15 días una vez por gestoría) pero su respuesta sonaba más
+  estricta que el diseño ya cerrado en Prompt 2 (`IMPAGO_GRACIA` = acceso completo con aviso,
+  `TRIAL_EXPIRADO_SIN_PAGO`/`SUSPENDIDA` = solo lectura, no bloqueo total) — pregunté explícitamente
+  el nivel de bloqueo de UI en vez de asumir el más estricto, y confirmó la opción coherente con lo
+  ya documentado (solo bloquea Aprobar, nunca la navegación).
+- **Backend, dos añadidos pequeños** dirigidos directamente por las necesidades del frontend (no
+  especulativos): `GET /facturacion/suscripcion` (404 fail-closed sin crear nada si nunca hubo
+  Suscripción) y `GET /tramites/{id}` (detalle con mensaje original de WhatsApp vía
+  `MensajeCampoRepository.findFirstByTramiteIdOrderByCreatedAtDesc` + Explotación resuelta —
+  encontré que `TramiteResponse` del listado no tenía ni el mensaje ni el nombre de la explotación,
+  necesarios para el modal de revisión que pedía el prompt).
+- **Frontend, desde cero** (scaffold de Prompt 1 reutilizado: Vite/React/Tailwind/shadcn,
+  `httpClient.ts`, `AppLayout.tsx`, `router.tsx`): auth en memoria (no `localStorage`, sesión de SPA
+  a propósito, con `authSession.ts` fuera del árbol de React para que el interceptor de axios lea
+  el token); `AppLayout` con navegación real y banner de suscripción compartido vía Outlet context
+  (evita refetch duplicado en Facturación); dashboard de Explotaciones con el importador Excel en
+  primer plano; cola de Trámites con filtro por estado y modal de revisión; página de Facturación.
+  shadcn instalado es el preset **"base-nova"** (`@base-ui/react`, no Radix pese a lo que decía
+  `CLAUDE.md` — corregido).
+- **Verificación:** suite backend completa 100/100 en verde (93 + 7 nuevos). Frontend sin skill de
+  proyecto para "correr la app" todavía — usé el patrón genérico de la skill `run` (Playwright vía
+  npm, instalado ad hoc, Chromium ya cacheado localmente) para conducir un Chromium headless real
+  contra el backend real: login → import Excel (resumen idéntico al del backend, verificado dato a
+  dato) → filtro de trámites (confirmé la query real disparada, `?estado=APROBADO`) → facturación →
+  logout → redirect a `/login`, con `console --errors` limpio en cada paso.
+- **2 bugs reales encontrados SOLO por la verificación en navegador real** (invisibles para
+  `curl`/tests de request, que no envían `Origin` como un navegador):
+  1. CORS: toda petición del frontend fallaba en el preflight del navegador antes de llegar a
+     ningún controller. Arreglado con `SecurityConfig.corsConfigurationSource`
+     (`FRONTEND_ORIGEN`/`ganera.frontend.origen`, default `http://localhost:5173`).
+  2. El `Select` del filtro de trámites mostraba el valor crudo (`"TODOS"`) en vez de la etiqueta —
+     `@base-ui/react/select` no resuelve la etiqueta sola, necesita `children` función en
+     `SelectValue`. Reproduje el primer intento con `page.goto()` para navegar entre pantallas y
+     pensé que era un bug (redirigía a `/login`) — en realidad era el comportamiento correcto (JWT
+     en memoria, recarga de página exige login de nuevo); corregido el script de verificación para
+     navegar con clics reales, no con `goto`.
+- **No verificado en vivo, dicho explícitamente en vez de asumir cobertura:** el contenido del modal
+  de revisión con un mensaje real, el 403 al aprobar, y el banner de "sin suscripción" — no hay
+  forma todavía de crear un Trámite real ni un estado de Suscripción no-ACTIVA a través de la app en
+  marcha (3b y el alta pública no existen). Cubierto por tests de integración del backend y revisión
+  manual del código únicamente.
+- `CLAUDE.md` y `ganera-prompts.md` actualizados: Prompt 4 (parcial) marcado completo, sección de
+  frontend reescrita con el diseño real, conteo de tests a 100, "Next pending step" sigue apuntando
+  a 3a/3b/3c bloqueados por OVZ.net.
+
+## 2026-07-14 (continuación) — Verificación final antes de comitear Prompt 4: bug crítico de multi-tenancy encontrado y arreglado
+
+- Antes de dar Prompt 4 por cerrado del todo, Antonio pidió verificar en vivo (sembrando datos
+  directamente por SQL contra el H2 del smoke test, sin pasar por lógica de negocio nueva) los 3
+  casos que solo estaban cubiertos por tests de backend/revisión de código: el modal de revisión
+  con un Trámite real (mensaje de WhatsApp + Explotación resuelta), el bloqueo 403 al aprobar
+  (Suscripción `SUSPENDIDA`), y el banner de "sin suscripción" (Gestoría sin fila de `Suscripcion`)
+  — más el caso de mensaje/Explotación nulos, otra vez, pero de verdad.
+- **Interrupción por corte de contexto/límite de ejecución** a mitad de la investigación (justo
+  después de sembrar los datos y detectar algo raro en el escenario 3); retomado en una sesión
+  nueva reiniciando el backend sobre el mismo fichero H2 (`AUTO_SERVER=TRUE`), que conservó todos
+  los datos sembrados sin necesidad de rehacer nada.
+- **Hallazgo:** sembrar una SEGUNDA Gestoría real (para probar el banner de "sin suscripción")
+  reveló que `GET /tramites` y `GET /explotaciones` devolvían filas de la OTRA Gestoría —
+  confirmado decodificando el JWT de la segunda Gestoría a mano (byte a byte) para descartar un
+  error de prueba antes de asumir un bug real, y reproducido dos veces por vías independientes
+  (`curl` directo y una sesión de navegador real completamente aislada).
+- Investigación bloqueada un buen rato por una indisponibilidad temporal del clasificador de
+  seguridad que autoriza comandos de red (Bash/PowerShell); comandos triviales sin red seguían
+  funcionando. Se avisó a Antonio del bloqueo y se continuó con revisión de código mientras tanto
+  (`TenantFilterActivationInterceptor`, `WebMvcTenantConfig`, `JwtService`, decodificación manual
+  del JWT) hasta que el servicio se recuperó.
+- **Causa raíz:** `WebMvcTenantConfig` registraba `TenantFilterActivationInterceptor` sin orden
+  explícito. Spring Boot registra su propio `OpenEntityManagerInViewInterceptor` (de
+  `open-in-view=true`) como otro `HandlerInterceptor` de MVC, y el orden relativo entre dos
+  `WebMvcConfigurer` distintos no está garantizado sin `.order(...)`. Cuando el nuestro corría
+  antes de que OSIV atara el `EntityManager` real de la request al hilo, el `EntityManager`
+  compartido inyectado por `@PersistenceContext` creaba uno temporal y no transaccional solo para
+  esa llamada — `enableFilter(...)` se aplicaba a una `Session` que se descartaba al momento, sin
+  ningún efecto sobre las queries reales que ejecutaba el controller después. `gestoriaFilter`
+  **nunca se aplicaba de verdad** en ninguna request HTTP real — llevaba así desde que se creó el
+  interceptor (Prompt 1), invisible para toda la suite porque
+  `TenantFilterActivationInterceptorTest` invoca `preHandle()` a mano (sin pasar por el
+  registro/orden real de Spring MVC) y ningún smoke test manual anterior había comparado dos
+  Gestorías reales con datos solapados en la misma ejecución — con una sola Gestoría, una query
+  sin filtrar y una filtrada devuelven exactamente lo mismo.
+- **Arreglado** con `.order(Ordered.LOWEST_PRECEDENCE)` explícito en `WebMvcTenantConfig`.
+- **Verificado con TDD real, no solo confiando en el razonamiento:** se escribió
+  `TenantIsolationEndToEndTest` (`@SpringBootTest(webEnvironment=RANDOM_PORT)` +
+  `TestRestTemplate` — el único tipo de test que ejercita el registro/orden real de interceptors
+  de Spring MVC; ni `@DataJpaTest` ni una llamada directa al interceptor lo hacen). Se revirtió el
+  `.order(...)` momentáneamente, se confirmó que el test **falla** exactamente como se esperaba
+  (Gestoría B ve la Explotación de Gestoría A), y se restauró el fix confirmando que el test
+  **pasa**. Esto de paso sacó a la luz dos huecos más en `test/resources/application.yml` (nunca
+  antes se había arrancado el contexto COMPLETO de Spring en un test, solo slices
+  `@DataJpaTest`): faltaban `stripe.checkout.success-url`/`cancel-url` y
+  `spring.ai.anthropic.api-key` (Spring AI no tolera una key en blanco al construir su bean, a
+  diferencia de Stripe/Twilio que sí lo hacen a propósito) — añadidos con valores de prueba nunca
+  usados de verdad.
+- Suite completa backend re-verificada en verde: **101/101** (100 + el test de regresión nuevo).
+  Los 4 escenarios pedidos por Antonio re-confirmados en un navegador real contra el backend ya
+  arreglado: modal con mensaje/Explotación reales ✓, modal con mensaje/Explotación nulos (sin
+  romperse) ✓, 403 al aprobar con mensaje claro ✓, banner de "sin suscripción" con conteos
+  correctos (ya no filas ajenas) ✓.
+- `CLAUDE.md` y `ganera-prompts.md` actualizados con la causa raíz completa (bullet de
+  Multi-tenancy en CLAUDE.md) y la advertencia para el futuro: cualquier `HandlerInterceptor`
+  nuevo que toque datos `GestoriaScopedEntity` vía el `EntityManager` compartido necesita un orden
+  explícito relativo a OSIV, o su propio test end-to-end de dos tenants — no basta con un test
+  unitario que invoque `preHandle()` a mano.
+
+**PROMPT 4 (PARCIAL — SIN LO BLOQUEADO POR OVZ.NET) CERRADO — con un fix crítico de aislamiento
+multi-tenant encontrado y arreglado en la verificación final, antes de comitear.**

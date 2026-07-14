@@ -375,12 +375,81 @@ Suite completa 93/93 en verde (91 + el test de la colisión real + un test nuevo
 
 ---
 
-## Prompt 4 — Frontend completo (pendiente de redactar)
+## Prompt 4 — Frontend funcional, solo lo que no depende de OVZ.net (completado, 2026-07-14)
 
-Incluirá, además de lo ya scaffoldeado en el Prompt 1:
-- Onboarding de un Ganadero nuevo (conectar credenciales OVZ + disparar sincronización inicial).
-- Pantalla de suscripción/facturación con aviso visible de impago o trial expirado.
-- Cola de trámites con modal de revisión (texto original WhatsApp + JSON extraído + edición manual + resolución de explotación ambigua).
+Del roadmap original de Prompt 4 se dejó fuera **a propósito** todo lo que necesita OVZ.net real:
+la pantalla de onboarding de un Ganadero nuevo (conectar credenciales OVZ + disparar sincronización
+inicial) — ni siquiera como mock/placeholder visual — y cualquier formulario manual alternativo de
+alta de Ganadero/Explotación (el importador Excel de 3d sigue siendo la única vía). Ambas cosas
+esperan a un Ganadero real dispuesto a dar sus credenciales, igual que 3a/3b/3c.
+
+Antes de generar código se confirmó con Antonio que no existía ningún endpoint que expusiera el
+estado de la Suscripción (había que añadirlo) y se aclaró el nivel de bloqueo de UI para Gestorías
+sin acceso: solo se bloquea el botón Aprobar (con mensaje claro), nunca la navegación — coherente
+con el diseño ya cerrado en el Prompt 2 (`IMPAGO_GRACIA` = acceso completo con aviso;
+`TRIAL_EXPIRADO_SIN_PAGO`/`SUSPENDIDA` = solo lectura, no bloqueo total). Una Gestoría que nunca tuvo
+Suscripción recibe el mismo aviso que un estado bloqueante, con opción de empezar el trial de 15
+días (mismo `POST /facturacion/checkout` ya existente, sin lógica nueva).
+
+Entregado:
+- **Backend** (dos añadidos pequeños, pedidos directamente por las necesidades del frontend):
+  `GET /facturacion/suscripcion` (404 fail-closed si nunca hubo Suscripción, sin crear nada como
+  efecto secundario) y `GET /tramites/{id}` (detalle con el mensaje original de WhatsApp y la
+  Explotación resuelta, separado del listado paginado para no meter un N+1 ahí).
+- **Frontend**: login con JWT en memoria (no `localStorage`, sesión de SPA a propósito);
+  `AppLayout` con navegación real (Explotaciones/Trámites/Facturación) y banner persistente de
+  suscripción; dashboard de Explotaciones con el importador Excel en primer plano; cola de Trámites
+  con filtro por estado y modal de revisión (maneja mensaje/explotación nulos sin parecer roto,
+  ya que 3b tampoco está implementado); Aprobar/Rechazar con mensaje claro en el 403; página de
+  Facturación con el aviso y el botón de trial/actualizar.
+
+Suite completa backend en verde a **101 tests** (93 + 3 de `GET /facturacion/suscripcion` + 4 de
+`GET /tramites/{id}` + 1 test crítico de regresión, ver más abajo). Frontend: `tsc -b` y `oxlint`
+limpios; verificado además con una sesión real de Chromium headless (paquete npm de Playwright,
+instalado ad hoc — no había skill de proyecto para esto todavía) contra el backend real: login →
+import Excel (resumen idéntico al del backend) → filtro de trámites (confirmando la query real
+`?estado=APROBADO`) → facturación → logout → redirect a `/login`.
+
+**2 bugs de frontend encontrados solo gracias a la verificación en navegador real (invisibles para
+`curl`/tests de request):**
+1. **CORS**: el backend no permitía peticiones cross-origin desde `:5173` — cualquier request
+   fallaba en el preflight del navegador antes de llegar a ningún controller, JWT válido o no.
+   Arreglado con `SecurityConfig.corsConfigurationSource` (origen configurable por
+   `FRONTEND_ORIGEN`, default `http://localhost:5173`).
+2. El `Select` del filtro de trámites mostraba el valor crudo (`"TODOS"`) en vez de la etiqueta —
+   la primitiva `@base-ui/react/select` (el preset shadcn instalado es "base-nova", no Radix pese a
+   lo que decía este archivo) no resuelve la etiqueta automáticamente; necesita un `children` de
+   tipo función en `SelectValue`.
+
+**Verificación final pedida por Antonio antes de comitear — y el hallazgo más importante de todo
+el prompt.** Antes de dar el prompt por cerrado, Antonio pidió verificar en vivo (no solo con tests
+de integración/revisión de código) los tres casos que habían quedado sin exercitar: el modal de
+revisión con un mensaje real de WhatsApp + Explotación resuelta, el mensaje de error 403 al
+aprobar, y el banner de "sin suscripción" — más el caso de mensaje/Explotación nulos otra vez, pero
+de verdad. Como no hay forma de crear un Trámite ni un estado de Suscripción no-ACTIVA a través de
+la app en marcha (3b y el alta pública no existen), los datos se sembraron directamente por SQL
+contra la instancia H2 del smoke test (H2 en fichero con `AUTO_SERVER=TRUE` para que un proceso
+`org.h2.tools.RunScript` separado pudiera escribir en la misma base de datos viva — sin pasar por
+ninguna lógica de negocio de la app) y se condujo desde un navegador real. Los cuatro se veían
+bien — **pero sembrar una SEGUNDA Gestoría real con su propio login para probar el banner de "sin
+suscripción" sacó a la luz un bug crítico, real y hasta ahora no detectado**: `GET /tramites` y
+`GET /explotaciones` devolvían filas de *cualquier* Gestoría, no solo la autenticada — confirmado
+con el JWT de la segunda Gestoría decodificado a mano, byte a byte, para descartar un error de
+prueba. Causa raíz: `TenantFilterActivationInterceptor` no tenía un orden explícito frente al
+`OpenEntityManagerInViewInterceptor` de Spring Boot (`open-in-view=true`); cuando el nuestro corría
+antes de que Spring atara el `EntityManager` real de la request al hilo, `enableFilter(...)` se
+aplicaba a una `Session` temporal que se descartaba al momento, sin ningún efecto sobre las queries
+reales — `gestoriaFilter` **nunca se aplicaba de verdad** en ninguna request HTTP real. Llevaba así
+desde que se creó el interceptor (Prompt 1), invisible porque el test unitario invoca
+`preHandle()` a mano (sin pasar por el registro/orden real de Spring MVC) y ningún smoke test
+manual anterior había comparado dos Gestorías reales con datos solapados en la misma ejecución — con
+una sola Gestoría, una query sin filtrar y una filtrada devuelven lo mismo. Arreglado con
+`.order(Ordered.LOWEST_PRECEDENCE)` explícito en `WebMvcTenantConfig`. Verificado con TDD real:
+se escribió `TenantIsolationEndToEndTest` (el único tipo de test — `@SpringBootTest` con servidor
+embebido real — que puede detectar un bug de orden de interceptores), se confirmó que **falla**
+sin el fix (revirtiendo el `.order(...)` momentáneamente) y que **pasa** con él. Suite completa
+re-verificada en verde (101/101) y los 4 escenarios re-confirmados en el navegador contra el
+backend ya arreglado. Detalle completo de la causa raíz en `CLAUDE.md`, bullet de Multi-tenancy.
 
 ---
 

@@ -2,6 +2,8 @@ package com.ganera.core.tramite;
 
 import com.ganera.core.facturacion.SuscripcionService;
 import com.ganera.core.shared.security.GaneraUserPrincipal;
+import com.ganera.core.whatsapp.MensajeCampo;
+import com.ganera.core.whatsapp.MensajeCampoRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
@@ -19,10 +21,15 @@ public class TramiteController {
 
     private final TramiteRepository tramiteRepository;
     private final SuscripcionService suscripcionService;
+    private final MensajeCampoRepository mensajeCampoRepository;
 
-    public TramiteController(TramiteRepository tramiteRepository, SuscripcionService suscripcionService) {
+    public TramiteController(
+            TramiteRepository tramiteRepository,
+            SuscripcionService suscripcionService,
+            MensajeCampoRepository mensajeCampoRepository) {
         this.tramiteRepository = tramiteRepository;
         this.suscripcionService = suscripcionService;
+        this.mensajeCampoRepository = mensajeCampoRepository;
     }
 
     /** El filtro gestoriaFilter ya esta activo para esta request -- solo ve los Tramites de la Gestoria autenticada. */
@@ -34,6 +41,20 @@ public class TramiteController {
                 ? tramiteRepository.findByEstado(estado, pageable)
                 : tramiteRepository.findAll(pageable);
         return pagina.map(TramiteResponse::from);
+    }
+
+    /** Detalle para el modal de revision -- incluye el texto original de WhatsApp (null si 3b,
+     * la extraccion IA, aun no lo ha generado) y el nombre/codigo de la Explotacion resuelta. */
+    @GetMapping("/tramites/{id}")
+    public ResponseEntity<TramiteDetalleResponse> detalle(@PathVariable Long id) {
+        Optional<Tramite> tramite = tramiteRepository.findById(id);
+        if (tramite.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        String mensajeOriginal = mensajeCampoRepository.findFirstByTramiteIdOrderByCreatedAtDesc(id)
+                .map(MensajeCampo::getCuerpo)
+                .orElse(null);
+        return ResponseEntity.ok(TramiteDetalleResponse.from(tramite.get(), mensajeOriginal));
     }
 
     /** No dispara OvzAutomationService todavia (Prompt 3c) -- solo cambia el estado en BD. */

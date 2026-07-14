@@ -30,6 +30,8 @@ ganera:
     key: ${ENCRYPTION_KEY:}
   onboarding:
     secret: ${ONBOARDING_SECRET:}
+  frontend:
+    origen: ${FRONTEND_ORIGEN:http://localhost:5173}
 
 twilio:
   account-sid: ${TWILIO_ACCOUNT_SID:}
