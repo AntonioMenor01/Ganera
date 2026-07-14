@@ -2,37 +2,62 @@ package com.ganera.core.shared.tenant;
 
 import com.ganera.core.auth.LoginRequest;
 import com.ganera.core.auth.LoginResponse;
+import com.ganera.core.contacto.Contacto;
+import com.ganera.core.contacto.ContactoRepository;
+import com.ganera.core.contacto.TipoContacto;
 import com.ganera.core.explotacion.Explotacion;
 import com.ganera.core.explotacion.ExplotacionRepository;
+import com.ganera.core.facturacion.EstadoSuscripcion;
+import com.ganera.core.facturacion.Suscripcion;
+import com.ganera.core.facturacion.SuscripcionRepository;
 import com.ganera.core.ganadero.Ganadero;
 import com.ganera.core.ganadero.GanaderoRepository;
 import com.ganera.core.gestoria.Gestoria;
 import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.gestoria.Usuario;
 import com.ganera.core.gestoria.UsuarioRepository;
+import com.ganera.core.tramite.EstadoTramite;
+import com.ganera.core.tramite.Tramite;
+import com.ganera.core.tramite.TramiteRepository;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Deliberadamente NO es un @DataJpaTest ni una llamada directa a
- * TenantFilterActivationInterceptor.preHandle() (como TenantFilterActivationInterceptorTest) --
- * este es el UNICO tipo de test que puede detectar un bug de ORDEN de HandlerInterceptor de
- * Spring MVC: hace falta un servidor embebido real, con los interceptors registrados de verdad
- * por WebMvcConfigurationSupport, atendiendo una request HTTP real en su propio hilo. Un test que
- * invoca el interceptor a mano nunca ejercita ese registro/orden real y por eso el bug que este
- * test cubre (ver WebMvcTenantConfig) llevaba latente desde que se creo el interceptor sin que
- * ningun test lo detectara -- ninguna verificacion previa (ni unit test ni smoke test manual)
- * habia probado dos Gestorias reales con datos solapados via HTTP real.
+ * Auditoria dirigida (pedida por Antonio tras el bug de WebMvcTenantConfig): TODOS los endpoints
+ * que leen o escriben una entidad GestoriaScopedEntity via el filtro AMBIENTE de Hibernate (no via
+ * un parametro gestoriaId explicito en la query) necesitan su PROPIA prueba end-to-end con dos
+ * Gestorias reales y servidor embebido -- "usa el mismo Repository" no es suficiente, el bug de
+ * hoy fue de ORDEN DE INTERCEPTOR, no de query, y eso solo se ve en un despacho HTTP real.
+ *
+ * Cubiertos aqui: GET /explotaciones, GET /tramites, GET /tramites/{id},
+ * POST /tramites/{id}/aprobar, POST /tramites/{id}/rechazar, GET /auth/me,
+ * POST /explotaciones/importar.
+ *
+ * NO cubiertos aqui a proposito, con la razon documentada in situ:
+ * GET /facturacion/suscripcion y POST /facturacion/checkout -- ninguno de los dos usa el filtro
+ * ambiente; ambos resuelven la Suscripcion via SuscripcionRepository.findByGestoriaId(gestoriaId)
+ * / ExplotacionRepository.countByGestoriaId(gestoriaId), queries con el gestoriaId como parametro
+ * EXPLICITO de la query derivada, inmunes a este tipo de bug por construccion (fallarian igual con
+ * o sin el interceptor activo).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class TenantIsolationEndToEndTest {
@@ -48,10 +73,19 @@ class TenantIsolationEndToEndTest {
     @Autowired
     private GanaderoRepository ganaderoRepository;
     @Autowired
+    private TramiteRepository tramiteRepository;
+    @Autowired
+    private ContactoRepository contactoRepository;
+    @Autowired
+    private SuscripcionRepository suscripcionRepository;
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     @AfterEach
     void limpiar() {
+        tramiteRepository.deleteAll();
+        contactoRepository.deleteAll();
+        suscripcionRepository.deleteAll();
         explotacionRepository.deleteAll();
         ganaderoRepository.deleteAll();
         usuarioRepository.deleteAll();
@@ -59,18 +93,13 @@ class TenantIsolationEndToEndTest {
     }
 
     @Test
-    void dosGestoriasDistintasNuncaVenLosDatosLaUnaDeLaOtraViaHttpReal() {
+    void explotacionesListadoNuncaDevuelveExplotacionesDeOtraGestoria() {
         Gestoria gestoriaA = gestoriaRepository.save(new Gestoria("Gestoria E2E A"));
         Gestoria gestoriaB = gestoriaRepository.save(new Gestoria("Gestoria E2E B"));
-
         crearUsuario(gestoriaA, "e2eA@test.com");
         crearUsuario(gestoriaB, "e2eB@test.com");
 
-        Ganadero ganadero = new Ganadero();
-        ganadero.setGestoria(gestoriaA);
-        ganadero.setNombre("Ganadero E2E");
-        ganaderoRepository.save(ganadero);
-
+        Ganadero ganadero = nuevoGanadero(gestoriaA);
         Explotacion explotacion = new Explotacion();
         explotacion.setGestoria(gestoriaA);
         explotacion.setGanadero(ganadero);
@@ -81,12 +110,150 @@ class TenantIsolationEndToEndTest {
         String tokenA = login("e2eA@test.com");
         String tokenB = login("e2eB@test.com");
 
-        ResponseEntity<String> respuestaA = getExplotaciones(tokenA);
-        ResponseEntity<String> respuestaB = getExplotaciones(tokenB);
+        ResponseEntity<String> respuestaA = get("/explotaciones", tokenA);
+        ResponseEntity<String> respuestaB = get("/explotaciones", tokenB);
 
         assertThat(respuestaA.getBody()).contains("ES900000000001");
         assertThat(respuestaB.getBody()).doesNotContain("ES900000000001");
         assertThat(respuestaB.getBody()).contains("\"totalElements\":0");
+    }
+
+    @Test
+    void tramitesListadoNuncaDevuelveTramitesDeOtraGestoria() {
+        Gestoria gestoriaA = gestoriaRepository.save(new Gestoria("Gestoria E2E tramites A"));
+        Gestoria gestoriaB = gestoriaRepository.save(new Gestoria("Gestoria E2E tramites B"));
+        crearUsuario(gestoriaA, "tramA@test.com");
+        crearUsuario(gestoriaB, "tramB@test.com");
+
+        Tramite tramiteA = nuevoTramite(gestoriaA, "+34600000101");
+
+        String tokenA = login("tramA@test.com");
+        String tokenB = login("tramB@test.com");
+
+        ResponseEntity<String> respuestaA = get("/tramites", tokenA);
+        ResponseEntity<String> respuestaB = get("/tramites", tokenB);
+
+        assertThat(respuestaA.getBody()).contains("\"id\":" + tramiteA.getId());
+        assertThat(respuestaB.getBody()).doesNotContain("\"id\":" + tramiteA.getId());
+        assertThat(respuestaB.getBody()).contains("\"totalElements\":0");
+    }
+
+    @Test
+    void tramiteDetallePorIdDeOtraGestoriaDevuelve404NoLosDatos() {
+        Gestoria gestoriaA = gestoriaRepository.save(new Gestoria("Gestoria E2E detalle A"));
+        Gestoria gestoriaB = gestoriaRepository.save(new Gestoria("Gestoria E2E detalle B"));
+        crearUsuario(gestoriaA, "detA@test.com");
+        crearUsuario(gestoriaB, "detB@test.com");
+
+        Tramite tramiteA = nuevoTramite(gestoriaA, "+34600000102");
+        String tokenB = login("detB@test.com");
+
+        ResponseEntity<String> respuesta = get("/tramites/" + tramiteA.getId(), tokenB);
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(404);
+        assertThat(respuesta.getBody()).isNullOrEmpty();
+    }
+
+    @Test
+    void aprobarTramiteDeOtraGestoriaDevuelve404YNoCambiaSuEstado() {
+        Gestoria gestoriaA = gestoriaRepository.save(new Gestoria("Gestoria E2E aprobar A"));
+        Gestoria gestoriaB = gestoriaRepository.save(new Gestoria("Gestoria E2E aprobar B"));
+        crearUsuario(gestoriaA, "aprA@test.com");
+        crearUsuario(gestoriaB, "aprB@test.com");
+        // Suscripcion ACTIVA para B: si no, el 403 de puedeAprobarTramites enmascararia el
+        // chequeo de aislamiento (nunca llegaria a buscar el Tramite por id).
+        suscripcionActiva(gestoriaB);
+
+        Tramite tramiteA = nuevoTramite(gestoriaA, "+34600000103");
+        String tokenB = login("aprB@test.com");
+
+        ResponseEntity<String> respuesta = post("/tramites/" + tramiteA.getId() + "/aprobar", tokenB);
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(404);
+        assertThat(tramiteRepository.findById(tramiteA.getId()).orElseThrow().getEstado())
+                .isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+    }
+
+    @Test
+    void rechazarTramiteDeOtraGestoriaDevuelve404YNoCambiaSuEstado() {
+        Gestoria gestoriaA = gestoriaRepository.save(new Gestoria("Gestoria E2E rechazar A"));
+        Gestoria gestoriaB = gestoriaRepository.save(new Gestoria("Gestoria E2E rechazar B"));
+        crearUsuario(gestoriaA, "rechA@test.com");
+        crearUsuario(gestoriaB, "rechB@test.com");
+
+        Tramite tramiteA = nuevoTramite(gestoriaA, "+34600000104");
+        String tokenB = login("rechB@test.com");
+
+        ResponseEntity<String> respuesta = post("/tramites/" + tramiteA.getId() + "/rechazar", tokenB);
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(404);
+        assertThat(tramiteRepository.findById(tramiteA.getId()).orElseThrow().getEstado())
+                .isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+    }
+
+    @Test
+    void authMeDevuelveSiempreLosDatosDelPropioUsuarioAutenticado() {
+        Gestoria gestoriaA = gestoriaRepository.save(new Gestoria("Gestoria E2E me A"));
+        Gestoria gestoriaB = gestoriaRepository.save(new Gestoria("Gestoria E2E me B"));
+        crearUsuario(gestoriaA, "meA@test.com");
+        crearUsuario(gestoriaB, "meB@test.com");
+
+        String tokenB = login("meB@test.com");
+        ResponseEntity<String> respuesta = get("/auth/me", tokenB);
+
+        assertThat(respuesta.getBody()).contains("meB@test.com");
+        assertThat(respuesta.getBody()).contains("\"gestoriaId\":" + gestoriaB.getId());
+        assertThat(respuesta.getBody()).doesNotContain("meA@test.com");
+    }
+
+    @Test
+    void importarExcelDeUnaGestoriaNuncaCreaDatosVisiblesParaOtraGestoria() throws IOException {
+        Gestoria gestoriaA = gestoriaRepository.save(new Gestoria("Gestoria E2E import A"));
+        Gestoria gestoriaB = gestoriaRepository.save(new Gestoria("Gestoria E2E import B"));
+        crearUsuario(gestoriaA, "impA@test.com");
+        crearUsuario(gestoriaB, "impB@test.com");
+
+        String tokenA = login("impA@test.com");
+        String tokenB = login("impB@test.com");
+
+        ResponseEntity<String> respuestaImport = importarExcel(tokenA, construirExcelMinimo());
+        assertThat(respuestaImport.getStatusCode().value()).isEqualTo(200);
+        assertThat(respuestaImport.getBody()).contains("\"creadas\":1");
+
+        ResponseEntity<String> respuestaA = get("/explotaciones", tokenA);
+        ResponseEntity<String> respuestaB = get("/explotaciones", tokenB);
+
+        assertThat(respuestaA.getBody()).contains("ES910000000001");
+        assertThat(respuestaB.getBody()).doesNotContain("ES910000000001");
+        assertThat(respuestaB.getBody()).contains("\"totalElements\":0");
+    }
+
+    private void suscripcionActiva(Gestoria gestoria) {
+        Suscripcion suscripcion = new Suscripcion();
+        suscripcion.setGestoria(gestoria);
+        suscripcion.setEstado(EstadoSuscripcion.ACTIVA);
+        suscripcionRepository.save(suscripcion);
+    }
+
+    private Ganadero nuevoGanadero(Gestoria gestoria) {
+        Ganadero ganadero = new Ganadero();
+        ganadero.setGestoria(gestoria);
+        ganadero.setNombre("Ganadero E2E");
+        return ganaderoRepository.save(ganadero);
+    }
+
+    private Tramite nuevoTramite(Gestoria gestoria, String telefono) {
+        Contacto contacto = new Contacto();
+        contacto.setTelefono(telefono);
+        contacto.setNombre("Contacto E2E");
+        contacto.setTipo(TipoContacto.TITULAR);
+        contactoRepository.save(contacto);
+
+        Tramite tramite = new Tramite();
+        tramite.setGestoria(gestoria);
+        tramite.setContacto(contacto);
+        tramite.setEstado(EstadoTramite.PENDIENTE_REVISION);
+        return tramiteRepository.save(tramite);
     }
 
     private void crearUsuario(Gestoria gestoria, String email) {
@@ -105,10 +272,57 @@ class TenantIsolationEndToEndTest {
         return respuesta.getBody().token();
     }
 
-    private ResponseEntity<String> getExplotaciones(String token) {
+    private ResponseEntity<String> get(String path, String token) {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
-        return restTemplate.exchange(
-                "/explotaciones", HttpMethod.GET, new HttpEntity<>(headers), String.class);
+        return restTemplate.exchange(path, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+    }
+
+    private ResponseEntity<String> post(String path, String token) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        return restTemplate.exchange(path, HttpMethod.POST, new HttpEntity<>(headers), String.class);
+    }
+
+    private ResponseEntity<String> importarExcel(String token, byte[] contenido) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("archivo", new ByteArrayResource(contenido) {
+            @Override
+            public String getFilename() {
+                return "prueba-e2e.xlsx";
+            }
+        });
+
+        return restTemplate.postForEntity(
+                "/explotaciones/importar", new HttpEntity<>(body, headers), String.class);
+    }
+
+    private static byte[] construirExcelMinimo() throws IOException {
+        try (XSSFWorkbook workbook = new XSSFWorkbook()) {
+            Row cabeceraExplotaciones = workbook.createSheet("Explotaciones").createRow(0);
+            String[] columnasExplotaciones = {"codigo_rega", "nombre", "nif_ganadero", "nombre_ganadero"};
+            for (int c = 0; c < columnasExplotaciones.length; c++) {
+                cabeceraExplotaciones.createCell(c).setCellValue(columnasExplotaciones[c]);
+            }
+            Row filaExplotacion = workbook.getSheet("Explotaciones").createRow(1);
+            String[] valoresExplotacion = {"ES910000000001", "Finca Import E2E", "99999999R", "Ganadero Import E2E"};
+            for (int c = 0; c < valoresExplotacion.length; c++) {
+                filaExplotacion.createCell(c).setCellValue(valoresExplotacion[c]);
+            }
+
+            Row cabeceraAnimales = workbook.createSheet("Animales").createRow(0);
+            String[] columnasAnimales = {"crotal", "especie", "codigo_rega_explotacion"};
+            for (int c = 0; c < columnasAnimales.length; c++) {
+                cabeceraAnimales.createCell(c).setCellValue(columnasAnimales[c]);
+            }
+
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            workbook.write(out);
+            return out.toByteArray();
+        }
     }
 }

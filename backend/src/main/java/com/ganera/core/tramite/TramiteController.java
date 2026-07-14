@@ -32,7 +32,9 @@ public class TramiteController {
         this.mensajeCampoRepository = mensajeCampoRepository;
     }
 
-    /** El filtro gestoriaFilter ya esta activo para esta request -- solo ve los Tramites de la Gestoria autenticada. */
+    /** El filtro gestoriaFilter ya esta activo para esta request -- solo ve los Tramites de la Gestoria autenticada.
+     * findAll/findByEstado son queries derivadas de resultado, asi que SI respetan el filtro (a
+     * diferencia de findById, ver el comentario en aprobar/rechazar/detalle mas abajo). */
     @GetMapping("/tramites")
     public Page<TramiteResponse> listar(
             @RequestParam(required = false) EstadoTramite estado,
@@ -44,10 +46,16 @@ public class TramiteController {
     }
 
     /** Detalle para el modal de revision -- incluye el texto original de WhatsApp (null si 3b,
-     * la extraccion IA, aun no lo ha generado) y el nombre/codigo de la Explotacion resuelta. */
+     * la extraccion IA, aun no lo ha generado) y el nombre/codigo de la Explotacion resuelta.
+     * Usa findByIdAndGestoriaId, NUNCA findById(id) a secas: Hibernate no aplica gestoriaFilter a
+     * una busqueda por clave primaria, asi que un id de otra Gestoria se resolveria igual de bien
+     * sin el gestoriaId explicito aqui (encontrado en auditoria post-mortem, ver
+     * TenantIsolationEndToEndTest). */
     @GetMapping("/tramites/{id}")
-    public ResponseEntity<TramiteDetalleResponse> detalle(@PathVariable Long id) {
-        Optional<Tramite> tramite = tramiteRepository.findById(id);
+    public ResponseEntity<TramiteDetalleResponse> detalle(
+            @AuthenticationPrincipal GaneraUserPrincipal principal,
+            @PathVariable Long id) {
+        Optional<Tramite> tramite = tramiteRepository.findByIdAndGestoriaId(id, principal.gestoriaId());
         if (tramite.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
@@ -57,7 +65,8 @@ public class TramiteController {
         return ResponseEntity.ok(TramiteDetalleResponse.from(tramite.get(), mensajeOriginal));
     }
 
-    /** No dispara OvzAutomationService todavia (Prompt 3c) -- solo cambia el estado en BD. */
+    /** No dispara OvzAutomationService todavia (Prompt 3c) -- solo cambia el estado en BD.
+     * findByIdAndGestoriaId, no findById(id) a secas -- ver comentario en detalle(). */
     @PostMapping("/tramites/{id}/aprobar")
     public ResponseEntity<TramiteResponse> aprobar(
             @AuthenticationPrincipal GaneraUserPrincipal principal,
@@ -65,7 +74,7 @@ public class TramiteController {
         if (!suscripcionService.puedeAprobarTramites(principal.gestoriaId())) {
             return ResponseEntity.status(403).build();
         }
-        Optional<Tramite> tramite = tramiteRepository.findById(id);
+        Optional<Tramite> tramite = tramiteRepository.findByIdAndGestoriaId(id, principal.gestoriaId());
         if (tramite.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
@@ -74,9 +83,12 @@ public class TramiteController {
         return ResponseEntity.ok(TramiteResponse.from(tramite.get()));
     }
 
+    /** findByIdAndGestoriaId, no findById(id) a secas -- ver comentario en detalle(). */
     @PostMapping("/tramites/{id}/rechazar")
-    public ResponseEntity<TramiteResponse> rechazar(@PathVariable Long id) {
-        Optional<Tramite> tramite = tramiteRepository.findById(id);
+    public ResponseEntity<TramiteResponse> rechazar(
+            @AuthenticationPrincipal GaneraUserPrincipal principal,
+            @PathVariable Long id) {
+        Optional<Tramite> tramite = tramiteRepository.findByIdAndGestoriaId(id, principal.gestoriaId());
         if (tramite.isEmpty()) {
             return ResponseEntity.notFound().build();
         }

@@ -451,6 +451,26 @@ sin el fix (revirtiendo el `.order(...)` momentáneamente) y que **pasa** con é
 re-verificada en verde (101/101) y los 4 escenarios re-confirmados en el navegador contra el
 backend ya arreglado. Detalle completo de la causa raíz en `CLAUDE.md`, bullet de Multi-tenancy.
 
+**Auditoría dirigida pedida antes de dar esto por cerrado del todo, y un SEGUNDO bug crítico
+independiente.** Antonio no aceptó el fix anterior como suficiente: pidió listar TODOS los
+endpoints que tocan una entidad `GestoriaScopedEntity` y confirmar, uno por uno, si tenían
+cobertura E2E real con dos Gestorías — explícitamente rechazando "usa el mismo Repository, ya
+está cubierto" como argumento válido, porque el bug de hoy fue de orden de interceptor, no de
+query. Al escribir esa cobertura (`GET /tramites`, `GET /tramites/{id}`,
+`POST /tramites/{id}/aprobar`, `POST /tramites/{id}/rechazar`, `GET /auth/me`,
+`POST /explotaciones/importar`), tres tests fallaron con `200` en vez de `404`: **`gestoriaFilter`
+nunca se aplica a `findById(id)`** — es un comportamiento de Hibernate totalmente distinto e
+independiente del bug de hoy (no tiene que ver con el orden de interceptores, es que Hibernate no
+aplica el filtro a una carga por clave primaria). Cualquier usuario autenticado de CUALQUIER
+Gestoría podía ver, aprobar o rechazar el trámite de OTRA Gestoría adivinando su id numérico —
+esto ya estaba así incluso DESPUÉS del fix de `WebMvcTenantConfig`. Arreglado añadiendo
+`TramiteRepository.findByIdAndGestoriaId(id, gestoriaId)` (con `gestoriaId` como parámetro real de
+la query, inmune al filtro ambiente) y usándolo en los tres endpoints en vez de `findById(id)` a
+secas. `GET /facturacion/suscripcion` y `POST /facturacion/checkout` quedaron confirmados exentos
+por diseño (usan `findByGestoriaId(gestoriaId)`/`countByGestoriaId(gestoriaId)`, parámetros
+explícitos de la query, inmunes a los dos bugs). Suite completa: **110/110** en verde. Detalle
+completo en `CLAUDE.md`.
+
 ---
 
 ## Decisiones de negocio ya cerradas (para referencia rápida)

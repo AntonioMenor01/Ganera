@@ -133,7 +133,8 @@ class TramiteControllerTest {
         Tramite tramite = guardarTramite(gestoria, contacto, EstadoTramite.PENDIENTE_REVISION);
 
         TramiteController controller = nuevoController();
-        ResponseEntity<TramiteResponse> respuesta = controller.rechazar(tramite.getId());
+        ResponseEntity<TramiteResponse> respuesta = controller.rechazar(
+                new GaneraUserPrincipal(1L, gestoria.getId(), "empleado@test.com"), tramite.getId());
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
         assertThat(respuesta.getBody().estado()).isEqualTo("RECHAZADO");
@@ -143,10 +144,46 @@ class TramiteControllerTest {
 
     @Test
     void rechazarDevuelve404SiElTramiteNoExiste() {
+        Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria rechazar sin tramite"));
+
         TramiteController controller = nuevoController();
-        ResponseEntity<TramiteResponse> respuesta = controller.rechazar(999999L);
+        ResponseEntity<TramiteResponse> respuesta = controller.rechazar(
+                new GaneraUserPrincipal(1L, gestoria.getId(), "empleado@test.com"), 999999L);
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(404);
+    }
+
+    @Test
+    void rechazarUnTramiteDeOtraGestoriaDevuelve404YNoLoCambia() {
+        Gestoria gestoriaAjena = gestoriaRepository.save(new Gestoria("Gestoria ajena rechazar"));
+        Gestoria gestoriaPropia = gestoriaRepository.save(new Gestoria("Gestoria propia rechazar"));
+        Contacto contacto = nuevoContacto("+34600111229");
+        Tramite tramiteAjeno = guardarTramite(gestoriaAjena, contacto, EstadoTramite.PENDIENTE_REVISION);
+
+        TramiteController controller = nuevoController();
+        ResponseEntity<TramiteResponse> respuesta = controller.rechazar(
+                new GaneraUserPrincipal(1L, gestoriaPropia.getId(), "empleado@test.com"), tramiteAjeno.getId());
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(404);
+        assertThat(tramiteRepository.findById(tramiteAjeno.getId()).orElseThrow().getEstado())
+                .isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+    }
+
+    @Test
+    void aprobarUnTramiteDeOtraGestoriaDevuelve404YNoLoCambia() {
+        Gestoria gestoriaAjena = gestoriaRepository.save(new Gestoria("Gestoria ajena aprobar"));
+        Gestoria gestoriaPropia = gestoriaRepository.save(new Gestoria("Gestoria propia aprobar"));
+        suscripcionActiva(gestoriaPropia);
+        Contacto contacto = nuevoContacto("+34600111230");
+        Tramite tramiteAjeno = guardarTramite(gestoriaAjena, contacto, EstadoTramite.PENDIENTE_REVISION);
+
+        TramiteController controller = nuevoController();
+        ResponseEntity<TramiteResponse> respuesta = controller.aprobar(
+                new GaneraUserPrincipal(1L, gestoriaPropia.getId(), "empleado@test.com"), tramiteAjeno.getId());
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(404);
+        assertThat(tramiteRepository.findById(tramiteAjeno.getId()).orElseThrow().getEstado())
+                .isEqualTo(EstadoTramite.PENDIENTE_REVISION);
     }
 
     @Test
@@ -169,7 +206,8 @@ class TramiteControllerTest {
         mensajeCampoRepository.save(mensaje);
 
         TramiteController controller = nuevoController();
-        ResponseEntity<TramiteDetalleResponse> respuesta = controller.detalle(tramite.getId());
+        ResponseEntity<TramiteDetalleResponse> respuesta = controller.detalle(
+                new GaneraUserPrincipal(1L, gestoria.getId(), "empleado@test.com"), tramite.getId());
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
         TramiteDetalleResponse cuerpo = respuesta.getBody();
@@ -187,7 +225,8 @@ class TramiteControllerTest {
         Tramite tramite = guardarTramite(gestoria, contacto, EstadoTramite.PENDIENTE_REVISION);
 
         TramiteController controller = nuevoController();
-        ResponseEntity<TramiteDetalleResponse> respuesta = controller.detalle(tramite.getId());
+        ResponseEntity<TramiteDetalleResponse> respuesta = controller.detalle(
+                new GaneraUserPrincipal(1L, gestoria.getId(), "empleado@test.com"), tramite.getId());
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
         TramiteDetalleResponse cuerpo = respuesta.getBody();
@@ -199,8 +238,25 @@ class TramiteControllerTest {
 
     @Test
     void detalleDevuelve404SiElTramiteNoExiste() {
+        Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria detalle sin tramite"));
+
         TramiteController controller = nuevoController();
-        ResponseEntity<TramiteDetalleResponse> respuesta = controller.detalle(999999L);
+        ResponseEntity<TramiteDetalleResponse> respuesta = controller.detalle(
+                new GaneraUserPrincipal(1L, gestoria.getId(), "empleado@test.com"), 999999L);
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(404);
+    }
+
+    @Test
+    void detalleDeUnTramiteDeOtraGestoriaDevuelve404NoLosDatos() {
+        Gestoria gestoriaAjena = gestoriaRepository.save(new Gestoria("Gestoria ajena detalle"));
+        Gestoria gestoriaPropia = gestoriaRepository.save(new Gestoria("Gestoria propia detalle"));
+        Contacto contacto = nuevoContacto("+34600111231");
+        Tramite tramiteAjeno = guardarTramite(gestoriaAjena, contacto, EstadoTramite.PENDIENTE_REVISION);
+
+        TramiteController controller = nuevoController();
+        ResponseEntity<TramiteDetalleResponse> respuesta = controller.detalle(
+                new GaneraUserPrincipal(1L, gestoriaPropia.getId(), "empleado@test.com"), tramiteAjeno.getId());
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(404);
     }

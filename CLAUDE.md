@@ -63,6 +63,13 @@ approval step before anything is written to OVZ.net.
   retried delivery must never create a duplicate Tramite.
 - Multi-tenancy isolation (`gestoria_id` + Hibernate Filters) must never be bypassed for entities
   extending `GestoriaScopedEntity`.
+- **NEVER call `findById(id)` directly on a repository for an entity extending
+  `GestoriaScopedEntity` from a controller or service reachable by an authenticated endpoint.**
+  Always use an explicit finder with `gestoriaId` (e.g. `findByIdAndGestoriaId`), even when
+  `gestoriaFilter` is active — a primary-key load does not go through Hibernate's
+  result-set/query filter (confirmed in Prompt 4, see `progress.md`). Any reviewer (human or
+  subagent) must treat a bare `findById` on a `GestoriaScopedEntity` in new code as a blocking
+  finding, not a minor note.
 - Ganaderos and Contactos never authenticate. Only Usuarios have logins.
 - A Gestoría in `TRIAL_EXPIRADO_SIN_PAGO` or `SUSPENDIDA` can never approve trámites (read-only) —
   gated by `SuscripcionService.puedeAprobarTramites(gestoriaId)`. Fail-closed: no `Suscripcion` row
@@ -114,6 +121,33 @@ approval step before anything is written to OVZ.net.
   `GestoriaScopedEntity` data via the shared `EntityManager` must set an explicit order relative
   to OSIV, or add its own end-to-end two-tenant test — don't trust a direct
   `interceptor.preHandle()` unit test alone.**
+  **Second, independent critical footgun, found the same day by a targeted audit Antonio asked
+  for after the fix above** (don't assume one fix means the whole risk class is closed — audit
+  every endpoint individually): `gestoriaFilter` **only applies to Hibernate queries that
+  generate a result-set fetch** (`findAll`, `findByEstado`, any derived query) — it does **not**
+  apply to `EntityManager.find()` / Spring Data's plain `findById(id)`, a separate,
+  long-standing Hibernate behavior (a primary-key load is resolved directly, bypassing filter
+  application). `GET /tramites/{id}`, `POST /tramites/{id}/aprobar`, and
+  `POST /tramites/{id}/rechazar` all called `tramiteRepository.findById(id)` with `id` taken
+  straight from the path variable — **any authenticated user from any Gestoría could view,
+  approve, or reject another Gestoría's trámite by guessing/enumerating its numeric id**, even
+  with the interceptor-ordering fix above already in place. Confirmed by writing the failing
+  test first (as instructed): all three returned `200` with the other tenant's data instead of
+  `404`. Fixed by adding `TramiteRepository.findByIdAndGestoriaId(Long id, Long gestoriaId)` — an
+  explicit derived query with `gestoriaId` as a real query parameter, not reliant on the ambient
+  filter at all — and using it in all three endpoints instead of bare `findById(id)`. **Rule
+  going forward: any lookup of a `GestoriaScopedEntity` by an id that came from a path
+  variable/request body (as opposed to the caller's own JWT-derived id, e.g. `/auth/me`'s
+  `findById(principal.usuarioId())`, which is safe because the id is never attacker-controlled)
+  must use an explicit `findByIdAndGestoriaId`-style query — never bare `findById(id)`.** A full
+  audit of every endpoint touching a `GestoriaScopedEntity` (`GET /explotaciones`,
+  `GET /tramites`, `GET /tramites/{id}`, `POST /tramites/{id}/aprobar`,
+  `POST /tramites/{id}/rechazar`, `GET /auth/me`, `POST /explotaciones/importar`) now has its own
+  two-tenant `@SpringBootTest` case in `TenantIsolationEndToEndTest`; `GET /facturacion/suscripcion`
+  and `POST /facturacion/checkout` were confirmed exempt by design (both resolve the Gestoría via
+  `SuscripcionRepository.findByGestoriaId(gestoriaId)`/`ExplotacionRepository.countByGestoriaId(gestoriaId)`
+  — real query parameters, immune to both bug classes above regardless of filter/interceptor
+  state).
 - **AI provider**: Claude Haiku 4.5 via Spring AI, pinned to the dated snapshot
   `claude-haiku-4-5-20251001` (not the floating alias) so it can't change under us silently.
   Abstracted behind `TramiteExtractionService` so the provider is swappable. Structured Outputs
@@ -333,7 +367,7 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw test` — runs the test suite (101 tests as of Prompt 4); a single test:
+- `./mvnw test` — runs the test suite (110 tests as of Prompt 4); a single test:
   `./mvnw test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
   `exec-maven-plugin` is configured in `pom.xml`, so `mvn exec:java` won't work out of the box):
@@ -452,6 +486,19 @@ to every previous test and manual smoke test because none of them ever compared 
 with overlapping data over real HTTP in the same run. Fixed, verified with a new deliberate
 end-to-end test (confirmed it fails without the fix, passes with it), full suite re-run green, and
 all four scenarios re-verified live in the browser against the fixed backend.
+
+**Before considering that fix sufficient, Antonio asked for a targeted audit of every endpoint
+touching a `GestoriaScopedEntity`** — explicitly rejecting "it uses the same Repository, so it's
+already covered" as a valid argument, since the bug above was at the interceptor/ordering level,
+not the query level, so each endpoint needed its own real two-tenant HTTP test. That audit found
+a **second, independent critical bug**: `gestoriaFilter` never applied to `findById(id)` at all
+(a separate Hibernate behavior, unrelated to interceptor ordering — see the second footgun note
+under Multi-tenancy above), so `GET /tramites/{id}`, `POST /tramites/{id}/aprobar`, and
+`POST /tramites/{id}/rechazar` let any authenticated user view/approve/reject **any Gestoría's**
+trámite by id. Fixed with an explicit `findByIdAndGestoriaId` query in all three, again writing
+the failing test first. `TenantIsolationEndToEndTest` now has one real two-tenant case per
+affected endpoint (7 total); full backend suite green at **110 tests** (101 + 6 more E2E cases +
+3 unit-level cross-tenant checks in `TramiteControllerTest`).
 
 **Next pending step: Prompt 3a (sincronización inicial de OVZ.net, modo lectura) — blocked.** Per
 `ganera-prompts.md`, Prompts 3a, 3b, and 3c (OVZ.net read sync, Twilio webhook + AI extraction, and

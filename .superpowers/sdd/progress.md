@@ -312,3 +312,56 @@ Registro de tareas cerradas (qué se hizo, commit, estado de revisión). Una lí
 
 **PROMPT 4 (PARCIAL — SIN LO BLOQUEADO POR OVZ.NET) CERRADO — con un fix crítico de aislamiento
 multi-tenant encontrado y arreglado en la verificación final, antes de comitear.**
+
+## 2026-07-14 (continuación) — Auditoría dirigida: segundo bug crítico independiente encontrado y arreglado
+
+- Antes de dar el fix del interceptor por suficiente, Antonio pidió una auditoría completa: listar
+  TODOS los endpoints que devuelven/modifican datos de una entidad `GestoriaScopedEntity` (repo
+  por repo) y confirmar, uno por uno, si `TenantIsolationEndToEndTest` (o un test equivalente con
+  servidor embebido real y dos Gestorías con datos solapados) lo cubre ya — rechazando
+  explícitamente "usa el mismo Repository, ya está cubierto" como argumento válido, porque el bug
+  de hoy fue de orden de interceptor, no de query, y cada endpoint necesita su propia prueba.
+- **Inventario completo** (grep de `@GetMapping`/`@PostMapping`/etc en todo `src/main/java`, 13
+  endpoints en total): de los que tocan una `GestoriaScopedEntity`
+  (`Ganadero`/`Explotacion`/`Animal`/`Tramite`/`Usuario`/`Suscripcion`), se distinguieron dos
+  categorías: los que dependen del filtro AMBIENTE de Hibernate (`findAll`, `findByEstado` —
+  vulnerables al bug de hoy) y los que usan un parámetro `gestoriaId` EXPLÍCITO en la query
+  derivada (`findByGestoriaId`, `countByGestoriaId` — inmunes por construcción, sea cual sea el
+  estado del interceptor).
+- **Al escribir la cobertura que faltaba** (`GET /tramites`, `GET /tramites/{id}`,
+  `POST /tramites/{id}/aprobar`, `POST /tramites/{id}/rechazar`, `GET /auth/me`,
+  `POST /explotaciones/importar`) se confirmó un **SEGUNDO bug crítico, independiente del de hoy**:
+  tres tests fallaron con `200` (datos ajenos, o modificándolos) en vez de `404` esperado.
+  **`gestoriaFilter` nunca se aplica a `findById(id)`** — un comportamiento de Hibernate
+  completamente distinto del bug del interceptor (no es de orden, es que una carga por clave
+  primaria vía `EntityManager.find()` simplemente no pasa por el filtro de resultado-de-query).
+  Esto significa que CUALQUIER usuario autenticado de CUALQUIER Gestoría podía ver, aprobar o
+  rechazar el trámite de OTRA Gestoría con solo adivinar/enumerar su id numérico — y esto seguía
+  así incluso DESPUÉS de aplicar el fix de `WebMvcTenantConfig` de antes, porque es un problema
+  distinto a nivel de query, no de interceptor.
+- **Arreglado** añadiendo `TramiteRepository.findByIdAndGestoriaId(Long id, Long gestoriaId)` (con
+  `gestoriaId` como parámetro real de la query derivada, inmune al filtro ambiente igual que
+  `findByGestoriaId`) y usándolo en `detalle()`/`aprobar()`/`rechazar()` de `TramiteController` en
+  vez de `findById(id)` a secas. `GET /auth/me` se dejó con `findById(principal.usuarioId())` tal
+  cual: el id viene del JWT firmado, nunca de un path variable controlado por el atacante, así que
+  no hay superficie de fuga real ahí aunque técnicamente use el mismo mecanismo sin scope.
+- **Confirmado con TDD real, otra vez:** los tests nuevos de `TenantIsolationEndToEndTest`
+  (`tramiteDetallePorIdDeOtraGestoriaDevuelve404NoLosDatos`,
+  `aprobarTramiteDeOtraGestoriaDevuelve404YNoCambiaSuEstado`,
+  `rechazarTramiteDeOtraGestoriaDevuelve404YNoCambiaSuEstado`) se escribieron y se vio que fallaban
+  ANTES del fix (tal y como pidió Antonio: escribir el test primero, confirmar que falla, luego
+  arreglar), y pasan después. Añadidos también 3 tests de aislamiento cross-tenant a nivel de
+  `TramiteControllerTest` (unitario, sin servidor embebido) como capa adicional de defensa.
+- `GET /facturacion/suscripcion` y `POST /facturacion/checkout` quedaron confirmados EXENTOS de
+  ambos bugs por diseño: ambos resuelven la Suscripción vía
+  `SuscripcionRepository.findByGestoriaId(gestoriaId)`/`ExplotacionRepository.countByGestoriaId(gestoriaId)`,
+  con el `gestoriaId` como parámetro explícito de la query — no dependen del filtro ambiente ni del
+  interceptor en ningún momento.
+- Suite completa backend re-verificada en verde: **110/110** (101 + 6 nuevos casos E2E + 3 checks
+  unitarios cross-tenant en `TramiteControllerTest`).
+- `CLAUDE.md` y `ganera-prompts.md` actualizados con la causa raíz de este segundo bug y la regla
+  general para el futuro: cualquier lookup de una `GestoriaScopedEntity` por un id que venga de un
+  path variable/body (no del propio JWT del caller) debe usar una query tipo
+  `findByIdAndGestoriaId`, nunca `findById(id)` a secas.
+
+**Auditoría completa cerrada — tabla resumen entregada a Antonio antes del commit final.**
