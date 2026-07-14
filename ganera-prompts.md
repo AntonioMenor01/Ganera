@@ -319,9 +319,59 @@ Stripe test-mode no se puede probar todavía; ninguna tarea de este prompt lo ha
 
 ---
 
-## Prompt 3d — Importador Excel + controladores REST (pendiente de redactar)
+## Prompt 3d — Importador Excel + controladores REST (completado, 2026-07-14)
 
-Fallback manual para cargar inventario cuando la sincronización automática (3a) no esté disponible o falle. Dashboard, cola de trámites, endpoint de aprobación.
+Fallback manual para cargar inventario cuando la sincronización automática (3a) no esté disponible o falle, más los controladores REST básicos de trámites (sin frontend todavía).
+
+**No bloqueado por OVZ.net** (no toca el paquete `ovz`), así que se adelantó mientras 3a/3b/3c siguen
+esperando las credenciales reales.
+
+Antes de generar código se confirmaron 3 huecos que el formato de Excel propuesto por Antonio no
+cubría (ver `CLAUDE.md`, bullet "Excel inventory importer" bajo Technical decisions, para el diseño
+completo):
+- `Ganadero` no tenía campo NIF → se añadió (`V14`, `nif` globalmente único, misma convención que
+  `codigoRega`/`crotal`) y se usa como clave de upsert.
+- `Animal` no tiene (ni necesita) campo `especie` — Ganera solo gestiona bovino por ahora — pero el
+  Excel puede traer una especie incorrecta a mano: se valida (debe ser blanco o una etiqueta bovina)
+  y se marca como error de fila si no, sin persistirla nunca.
+- No existía ningún test MockMvc en el proyecto — se siguió el patrón ya establecido (llamada directa
+  al controlador con `GaneraUserPrincipal`/`MockMultipartFile` construidos a mano, sin HTTP real).
+
+Entregado: `POST /explotaciones/importar` (Apache POI, upsert por `codigoRega`/`crotal`/`nif`, nunca
+aborta el fichero completo por una fila mala), `GET /explotaciones`, `GET /tramites` (filtrable por
+`estado`), `POST /tramites/{id}/aprobar` (primera llamada real a
+`SuscripcionService.puedeAprobarTramites`, `403` si no puede) y `POST /tramites/{id}/rechazar` — estos
+dos últimos solo cambian `EstadoTramite` en BD, sin tocar `OvzAutomationService` todavía (eso es
+Prompt 3c). Suite completa en verde a 91 tests (79 + 12 nuevos); smoke test H2 end-to-end real por
+HTTP (onboarding → login → importar un `.xlsx` de prueba real → listar → reimportar el mismo fichero
+sin duplicar → 401 sin JWT → 404 en un trámite inexistente).
+
+**Footgun encontrado y arreglado:** añadir POI causó un `NoSuchMethodError` en tiempo de ejecución
+(`BoundedInputStream.builder()`) porque Twilio arrastra una versión de `commons-io` más vieja que la
+que POI necesita, y Maven la elegía por mediación "nearest-wins" — invisible en `mvn compile`, solo
+se ve al leer un fichero real. Arreglado fijando `commons-io` como dependencia directa en
+`backend/pom.xml` (detalle completo en `CLAUDE.md`).
+
+**Revisión de Antonio antes de commitear — 2 problemas reales encontrados y arreglados:**
+1. Con un único método `@Transactional` cubriendo todo el fichero, una violación real de
+   constraint en `saveAndFlush()` (no solo los errores "de validación" ya cubiertos por los tests)
+   dejaba la sesión de Hibernate inutilizable para el resto del fichero — las filas *posteriores*
+   fallaban con un error genérico ajeno a sus propios datos. Confirmado primero con un test que
+   fuerza esa colisión real (un `codigo_rega` que ya existe en otra Gestoría, oculto por el filtro
+   de tenant) antes de tocar el fix, tal y como se pidió. Arreglado extrayendo el trabajo por fila a
+   `ExplotacionImportFilaService`, un bean aparte con `@Transactional(REQUIRES_NEW)` por fila —
+   necesario en un bean separado porque la auto-invocación dentro de la misma clase no pasa por el
+   proxy de Spring. Al hacerlo se detectó un segundo efecto no obvio: `REQUIRES_NEW` suspende el
+   `EntityManager` de la request (donde estaba activo `gestoriaFilter`) y ata uno nuevo sin ningún
+   filtro — se corrigió reactivando el filtro dentro de cada método `REQUIRES_NEW` con el
+   `gestoriaId` recibido, o se habría roto el aislamiento multi-tenant en silencio.
+2. `IllegalArgumentException` por hoja de Excel faltante no estaba capturada en el controlador →
+   `500` genérico. Arreglado: `400` con el mensaje de la excepción.
+
+Suite completa 93/93 en verde (91 + el test de la colisión real + un test nuevo de
+`ExplotacionImportControllerTest` para el 400 de hoja faltante). Verificado también por HTTP real
+(smoke test H2): import normal sigue funcionando igual tras el refactor, y un fichero sin hoja
+"Animales" da `400` con el mensaje en vez de `500`.
 
 ---
 

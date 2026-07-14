@@ -108,3 +108,74 @@ Registro de tareas cerradas (qué se hizo, commit, estado de revisión). Una lí
   revisor lo marcó plausible pero no confirmado, consistente con logs previos del proyecto.
 
 **PROMPT 2.7 (STRIPE) CERRADO — plan completo, 4/4 tareas aprobadas.**
+
+## 2026-07-14 — Prompt 3d (importador Excel + controladores REST básicos)
+
+- Antonio pidió continuar con el siguiente prompt del roadmap. 3a/3b/3c siguen bloqueados (sin
+  credenciales OVZ.net todavía); 3d no depende de OVZ.net, así que se adelantó.
+- **Confirmación previa (sin plan escrito aparte — el prompt de Antonio, refinado con 3 preguntas
+  de aclaración, hizo de spec):** revisé entidades/migraciones reales antes de tocar código y
+  encontré que el formato de Excel propuesto asumía columnas (`nif_ganadero`, `especie`) sin campo
+  correspondiente en `Ganadero`/`Animal`. Antonio confirmó: añadir `nif` a `Ganadero` (migración,
+  clave de upsert) y mantener `especie` en el Excel solo como validación (Ganera es bovino-only,
+  no se persiste); y seguir el patrón de test ya establecido (llamada directa al controlador con
+  `MockMultipartFile`, sin introducir MockMvc).
+- **Implementación** (sin subagentes, en la conversación principal): migración `V14`
+  (`ganadero.nif`, único); `GanaderoRepository.findByNif`, `ExplotacionRepository.findByCodigoRega`,
+  `AnimalRepository.findByCrotal`, `TramiteRepository.findByEstado`; `ExplotacionImportService`
+  (Apache POI, upsert por fila con `saveAndFlush` + catch por fila, nunca aborta el fichero
+  completo); `POST /explotaciones/importar`, `GET /explotaciones`, `GET /tramites` (filtrable por
+  `estado`), `POST /tramites/{id}/aprobar` (primera llamada real a
+  `SuscripcionService.puedeAprobarTramites`), `POST /tramites/{id}/rechazar`. Fixture
+  `inventario-prueba.xlsx` generado con Python/openpyxl (no había Excel real de Antonio) con datos
+  ficticios cubriendo import limpio, especie no soportada, y explotación inexistente.
+- **Footgun encontrado en la primera corrida de tests** (no en el plan, imprevisto): añadir
+  `poi`/`poi-ooxml` 5.3.0 rompió en runtime con `NoSuchMethodError` en
+  `BoundedInputStream.builder()` — Twilio arrastra `commons-io:2.14.0` transitivamente, Maven lo
+  elige por nearest-wins sobre lo que POI necesita (`commons-io` 2.16+), y esto es invisible en
+  `mvn compile`, solo se ve leyendo un fichero real. Arreglado fijando `commons-io:2.16.1` como
+  dependencia directa en `backend/pom.xml` (gana la mediación por ser más cercana que la de
+  Twilio). Documentado en `CLAUDE.md` para que no se repita la sorpresa.
+- **Verificación:** suite completa 91/91 en verde (79 + 12 nuevos: 3 del importador, 2 de
+  `ExplotacionController` incluyendo aislamiento de tenant con `session.enableFilter`, 7 de
+  `TramiteController`). Smoke test H2 manual end-to-end **por HTTP real** (no solo
+  `@DataJpaTest`): arranque con las 14 migraciones reales, onboarding → login → `GET /explotaciones`
+  y `GET /tramites` vacíos → 401 sin JWT → 404 en trámite inexistente → importar el `.xlsx` real de
+  test-resources vía multipart real → resumen exacto (`2 creadas / 0 actualizadas` explotaciones,
+  `2 creadas / 2 errores` animales) → `GET /explotaciones` lista las 2 → reimportar el mismo fichero
+  → `0 creadas / 2 actualizadas`, sin duplicar (confirmado por conteo). Proceso `java.exe` limpiado
+  con `taskkill` al terminar.
+- `CLAUDE.md` y `ganera-prompts.md` actualizados: Prompt 3d marcado completo, conteo de tests a 91,
+  bullet nuevo de "Excel inventory importer" bajo Technical decisions, footgun de `commons-io`
+  documentado junto a los de Twilio/Lombok, "Next pending step" limpiado (3d ya no aparece como
+  pendiente de redactar, solo 3a/3b/3c bloqueados por OVZ.net y Prompt 4 sin especificar).
+
+- **Revisión de Antonio antes de commitear (mismo día):** pidió verificar un riesgo concreto antes
+  de cerrar el prompt — si una violación real de constraint a mitad de fichero (no solo los errores
+  de validación ya cubiertos) dejaba la sesión de Hibernate inutilizable para las filas
+  posteriores. Se escribió primero el test de la colisión real (un `codigo_rega` ya existente en
+  OTRA Gestoria, oculto por el filtro de tenant) **antes** de tocar el fix, como se pidió
+  explícitamente — confirmó el problema: `AssertionFailure: don't flush the Session after an
+  exception occurs`, la fila siguiente (sin ningún problema propio) fallaba igualmente. Arreglado
+  extrayendo el trabajo por fila a un bean nuevo, `ExplotacionImportFilaService`, con
+  `@Transactional(propagation = REQUIRES_NEW)` por fila (necesita ser un bean separado porque la
+  auto-invocación no pasa por el proxy de Spring). Al implementarlo se encontró un SEGUNDO problema
+  no pedido explícitamente pero descubierto por análisis propio: `REQUIRES_NEW` suspende el
+  `EntityManager` de la request (donde `TenantFilterActivationInterceptor` activa `gestoriaFilter`)
+  y ata uno nuevo sin filtro — se habría roto el aislamiento multi-tenant en silencio para todo el
+  importador. Arreglado reactivando el filtro dentro de cada método `REQUIRES_NEW` con el
+  `gestoriaId` recibido como parámetro. Además: escribir el test de la colisión reveló que
+  `@DataJpaTest` envuelve cada test en una transacción de rollback que las transacciones
+  `REQUIRES_NEW` (con su propia conexión real) no pueden ver — hubo que usar
+  `TestTransaction.flagForCommit()+end()` para comprometer de verdad los datos de setup antes de
+  llamar al importador, y un `@AfterEach` que limpia las 4 tablas explícitamente (los datos
+  comprometidos por `REQUIRES_NEW` no se deshacen con el rollback normal del test). Segundo hallazgo
+  de la revisión: `IllegalArgumentException` por hoja de Excel faltante no estaba capturada en
+  `ExplotacionImportController` → `500` genérico; arreglado a `400` con el mensaje. Suite completa
+  93/93 en verde (91 + el test de la colisión + un test nuevo del controlador para el 400). Smoke
+  test H2 repetido por HTTP real tras el fix: import normal idéntico a antes del refactor, fichero
+  sin hoja "Animales" → `400` con el mensaje (antes `500`). `CLAUDE.md` y `ganera-prompts.md`
+  actualizados con el diseño de `ExplotacionImportFilaService` y el efecto no obvio de
+  `REQUIRES_NEW` sobre el filtro de tenant; conteo de tests a 93.
+
+**PROMPT 3d CERRADO.**

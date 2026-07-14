@@ -21,6 +21,10 @@ public class Ganadero extends GestoriaScopedEntity {
     @Column(nullable = false)
     private String nombre;
 
+    /** NIF/CIF, clave de negocio real del Ganadero -- usada como clave de upsert por el importador Excel. */
+    @Column(name = "nif", unique = true)
+    private String nif;
+
     @Column(name = "ovz_usuario")
     private String ovzUsuario;
 

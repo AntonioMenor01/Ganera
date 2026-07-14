@@ -20,7 +20,9 @@ approval step before anything is written to OVZ.net.
   public self-signup: every Gestoría + its first Usuario is created by hand (see Current status).
 - **Ganadero** — a Gestoría's client. **Never logs in.** Holds the OVZ.net credentials
   (`ovzUsuario` / `ovzPasswordCifrada`) — one login per Ganadero, shared across all their
-  Explotaciones (not per-Explotación).
+  Explotaciones (not per-Explotación). `nif` (added in `V14`, globally unique like `codigoRega`
+  and `crotal`) is the real-world business key used by the Excel importer (Prompt 3d) to upsert a
+  Ganadero without duplicating on name variations.
 - **Explotación** — a farm belonging to a Ganadero, identified by `codigoRega`.
 - **Animal** — identified by a full crotal (`ES123456789012`); `crotalUltimosDigitos` is indexed
   separately because that's what Contactos actually type in WhatsApp.
@@ -115,6 +117,47 @@ approval step before anything is written to OVZ.net.
   `gestoriaFilter` Hibernate filter is never active for its queries — that's an intentional
   cross-tenant job, not a multi-tenancy leak. A failed push for one subscription is caught and
   logged per-iteration so it never aborts the rest of the nightly batch.
+- **Excel inventory importer** (`explotacion` package, Prompt 3d): manual fallback for loading
+  Explotaciones/Animales when the OVZ.net read sync (Prompt 3a, still blocked) isn't available.
+  `POST /explotaciones/importar` (multipart `.xlsx`, Apache POI) parses two fixed-position sheets —
+  "Explotaciones" (`codigo_rega, nombre, nif_ganadero, nombre_ganadero`) and "Animales"
+  (`crotal, especie, codigo_rega_explotacion`) — reading by column *index*, not header name. A
+  missing required sheet throws `IllegalArgumentException`, caught by `ExplotacionImportController`
+  and returned as `400` with the message (not a generic `500`). `especie` is validated (must be
+  blank or a bovine label — Ganera only handles cattle for now) but **never persisted**: `Animal`
+  has no `especie` column, an unsupported value is just a row error. `crotalUltimosDigitos` is
+  derived as the last 6 characters of the full crotal — an assumption, since no real WhatsApp-
+  matching logic (Prompt 3b) exists yet to confirm the real digit count; revisit if 3b needs a
+  different length.
+  **Per-row transaction isolation (`ExplotacionImportFilaService`):** `ExplotacionImportService`
+  upserts by `codigoRega`/`crotal`/`nif` (all real-world unique keys, see Domain model) and must
+  never abort the whole file on one bad row — but a code review caught that a *real* unique-
+  constraint violation on `saveAndFlush` (e.g. a `codigoRega` already owned by another Gestoría,
+  invisible to the current tenant filter) left Hibernate's persistence context unusable for the
+  rest of the sheet (`AssertionFailure: don't flush the Session after an exception occurs`) — rows
+  *after* the failing one broke too, with a generic error unrelated to their own data, not just the
+  bad row itself. Fixed by extracting all per-row DB work into `ExplotacionImportFilaService`, a
+  **separate** `@Service` bean (self-invocation within the same class doesn't go through Spring's
+  `@Transactional` proxy, so REQUIRES_NEW must live on another bean) whose
+  `procesarExplotacion`/`procesarAnimal` each run in `@Transactional(propagation = REQUIRES_NEW)` —
+  their own transaction, their own connection, so one row's constraint violation rolls back only
+  that row and never touches the session used for the rest of the file.
+  **Non-obvious side effect of REQUIRES_NEW:** it suspends the request's `open-in-view` entity
+  manager — the one `TenantFilterActivationInterceptor` enabled `gestoriaFilter` on — and binds a
+  brand-new one with **no filter active**, which would silently break multi-tenancy isolation for
+  every row. `ExplotacionImportFilaService` re-enables `gestoriaFilter` itself at the top of each
+  REQUIRES_NEW method using the `gestoriaId` passed in, precisely to close that gap. Any other code
+  that reaches for `REQUIRES_NEW` on a bean touching `GestoriaScopedEntity` data must do the same or
+  it will silently query across tenants.
+  `GET /explotaciones` and `GET /tramites` (filterable by `estado`) are the first paginated
+  endpoints in the codebase (`Page`/`Pageable`, Spring Data's default web support — no custom
+  config needed); both rely solely on the already-active `gestoriaFilter` for tenant scoping, no
+  manual `gestoria_id` checks. `POST /tramites/{id}/aprobar` gates on
+  `SuscripcionService.puedeAprobarTramites` (`403` if false) — the first real caller of that method
+  — and, together with `/rechazar`, just flips `EstadoTramite`; neither calls `OvzAutomationService`
+  yet (that's Prompt 3c). A tramite id from another Gestoría or that doesn't exist returns `404`
+  (`Optional`-based, not `.orElseThrow()` — this is an expected, common case, not a "should never
+  happen" one).
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)
@@ -160,6 +203,15 @@ Package layout under `backend/src/main/java/com/ganera/core/`: `gestoria`, `gana
   optional integration's client construction back into a constructor without checking it tolerates
   a blank credential — verified live by actually starting the app, not just by compiling (see
   `mvn spring-boot:run` note below).
+- **commons-io footgun (fixed)**: adding Apache POI (`poi`/`poi-ooxml` 5.3.0, for the Prompt 3d Excel
+  importer) caused a runtime `NoSuchMethodError` on `BoundedInputStream.builder()` — Twilio's SDK
+  transitively pulls `commons-io:2.14.0`, which Maven's nearest-wins mediation picked over the
+  newer version POI actually needs (`BoundedInputStream.Builder` only exists from `commons-io`
+  `2.16+`), and this only surfaces at runtime when the importer actually reads a file, never at
+  `mvn compile`. Fixed by pinning `commons-io` to `2.16.1` as an explicit direct dependency in
+  `backend/pom.xml` (a direct dependency always wins mediation over anything transitive, regardless
+  of version). If any future dependency bump touches Twilio, POI, or commons-io, re-check this pin
+  doesn't drift back out of range.
 - `StripeWebhookController` verifies the `Stripe-Signature` header (400 on an invalid signature)
   and dispatches every verified event to `StripeWebhookService.procesarEvento` — no other business
   logic lives in the controller. `StripeWebhookService` is package-private to `facturacion` and
@@ -197,7 +249,7 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw test` — runs the test suite (79 tests as of Prompt 2.7); a single test:
+- `./mvnw test` — runs the test suite (93 tests as of Prompt 3d); a single test:
   `./mvnw test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
   `exec-maven-plugin` is configured in `pom.xml`, so `mvn exec:java` won't work out of the box):
@@ -254,13 +306,24 @@ wires up with no bean errors. Backend and frontend compile/build cleanly, backen
 compiling). **`STRIPE_PRICE_ID_EXPLOTACION` is still an empty placeholder** — creating the real
 `Price` in the Stripe dashboard (test mode first) is Antonio's manual action, not something any
 agent does, so a real end-to-end Checkout Session against Stripe test-mode is still pending that
-step. No business logic is wired end-to-end yet for
-trámites — Twilio's webhook validates signatures and persists raw data, but doesn't yet trigger AI
-extraction or trámite creation; `TramiteExtractionService`'s system prompt and
-`OvzAutomationService`'s Playwright logic are still unimplemented skeletons; `puedeAprobarTramites`
-isn't called from anywhere yet (no trámite-approval endpoint exists — that's Prompt 3d); portfolio
-filtering by `modoCartera` isn't implemented; there is still no public self-signup or admin panel,
-only the manual onboarding endpoint.
+step. No AI/WhatsApp business logic is wired end-to-end yet for trámites — Twilio's webhook
+validates signatures and persists raw data, but doesn't yet trigger AI extraction or trámite
+creation; `TramiteExtractionService`'s system prompt and `OvzAutomationService`'s Playwright logic
+are still unimplemented skeletons; portfolio filtering by `modoCartera` isn't implemented; there is
+still no public self-signup or admin panel, only the manual onboarding endpoint.
+
+Prompt 3d — Excel inventory importer + basic REST controllers — is also complete, implemented and
+verified end-to-end on 2026-07-14 (no separate written plan; the prompt itself, refined through a
+few upfront clarifying questions on schema gaps, served as the spec): migration `V14` adds
+`Ganadero.nif` (globally unique); `POST /explotaciones/importar`, `GET /explotaciones`,
+`GET /tramites`, `POST /tramites/{id}/aprobar`, `POST /tramites/{id}/rechazar` (see the Excel
+importer bullet under Technical decisions for the full design). This is the **first real caller of
+`SuscripcionService.puedeAprobarTramites`** (via `/aprobar`, `403` if it returns false) — though
+`/aprobar` and `/rechazar` still only flip `EstadoTramite` in the DB, no `OvzAutomationService` call
+yet (Prompt 3c). Full backend suite green at 91 tests (79 + 12 new); real end-to-end HTTP smoke test
+(H2 + all 14 migrations, onboarding → login → import a real fixture `.xlsx` → list → re-import same
+file and confirm no duplication → 401 without JWT → 404 on an unknown trámite id) — not just the
+`@DataJpaTest`-level suite.
 
 **Next pending step: Prompt 3a (sincronización inicial de OVZ.net, modo lectura) — blocked.** Per
 `ganera-prompts.md`, Prompts 3a, 3b, and 3c (OVZ.net read sync, Twilio webhook + AI extraction, and
@@ -269,10 +332,9 @@ provide real OVZ.net credentials so the actual site structure and trámite catal
 live (the Playwright MCP is set up for exactly this — driving the real site with Antonio steering,
 not guessing at its structure from assumptions). Until that happens, `TramiteExtractionService` and
 `OvzAutomationService` stay as unimplemented skeletons (see above) — don't write real prompt/scraping
-logic against assumptions about OVZ.net's structure. Prompts 3d (Excel importer, trámite dashboard,
-approval endpoint wiring `puedeAprobarTramites`) and 4 (full frontend) are not blocked by OVZ.net
-access but are also not fully specced yet ("pendiente de redactar" in `ganera-prompts.md`) — they'd
-need their own planning pass before implementation.
+logic against assumptions about OVZ.net's structure. Prompt 4 (full frontend) is not blocked by
+OVZ.net access but is not fully specced yet ("pendiente de redactar" in `ganera-prompts.md`) — it'd
+need its own planning pass before implementation.
 
 `ganera-prompts.md` at the repo root tracks the full sequence of prompts used to
 build this out, in order — check it for the detailed history/rationale behind any given step.

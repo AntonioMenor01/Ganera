@@ -24,6 +24,8 @@
         <twilio.version>10.6.4</twilio.version>
         <stripe.version>28.2.0</stripe.version>
         <playwright.version>1.49.0</playwright.version>
+        <poi.version>5.3.0</poi.version>
+        <commons-io.version>2.16.1</commons-io.version>
     </properties>
 
     <dependencyManagement>
@@ -109,6 +111,25 @@
             <groupId>com.microsoft.playwright</groupId>
             <artifactId>playwright</artifactId>
             <version>${playwright.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi</artifactId>
+            <version>${poi.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>${poi.version}</version>
+        </dependency>
+        <!-- Fijado explicito: Twilio arrastra commons-io 2.14.0 (nearest-wins de Maven lo elegiria
+             sobre el que pide POI), pero POI 5.3.0 usa BoundedInputStream.Builder, que no existe
+             hasta commons-io 2.16; sin este pin, NoSuchMethodError en tiempo de ejecucion. -->
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>${commons-io.version}</version>
         </dependency>
 
         <dependency>
