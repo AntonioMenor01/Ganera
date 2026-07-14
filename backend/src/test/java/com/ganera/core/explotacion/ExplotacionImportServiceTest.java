@@ -192,6 +192,45 @@ class ExplotacionImportServiceTest {
         assertThat(resumen.explotaciones().filasProcesadas()).isEqualTo(3);
     }
 
+    /**
+     * Caso distinto del anterior: aqui NO hay otra Gestoria de por medio, es la MISMA gestoria con
+     * una fila duplicada por error humano en el propio Excel (mismo codigo_rega dos veces). Cada
+     * fila corre en su propia transaccion REQUIRES_NEW que hace COMMIT real al terminar (no solo
+     * flush) -- para cuando la fila 2 arranca su propia transaccion (conexion distinta), el commit
+     * de la fila 1 ya es visible bajo aislamiento read-committed, asi que findByCodigoRega(X) SI
+     * encuentra la fila 1 y la fila 2 se procesa como actualizacion, no como intento de INSERT
+     * duplicado. No debe haber ninguna violacion de constraint en este caso (a diferencia del test
+     * cross-tenant de arriba, donde el filtro de tenant oculta la fila ya existente).
+     */
+    @Test
+    void dosFilasDelMismoFicheroYLaMismaGestoriaConElMismoCodigoRegaSeTratanComoCreacionYActualizacion() throws IOException {
+        Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria duplicado interno"));
+        comprometerSetup();
+
+        MockMultipartFile archivo = construirExcel(
+                new String[]{"codigo_rega", "nombre", "nif_ganadero", "nombre_ganadero"},
+                List.of(
+                        new String[]{"ES600000000001", "Finca version 1", "20000001A", "Ganadero Duplicado"},
+                        new String[]{"ES600000000001", "Finca version 2", "20000001A", "Ganadero Duplicado"}),
+                new String[]{"crotal", "especie", "codigo_rega_explotacion"},
+                List.of());
+
+        ImportResumenResponse resumen = explotacionImportService.importar(archivo, gestoria);
+
+        TestTransaction.start();
+
+        assertThat(resumen.errores()).isEmpty();
+        assertThat(resumen.explotaciones().filasProcesadas()).isEqualTo(2);
+        assertThat(resumen.explotaciones().creadas()).isEqualTo(1);
+        assertThat(resumen.explotaciones().actualizadas()).isEqualTo(1);
+
+        assertThat(explotacionRepository.count()).isEqualTo(1);
+        assertThat(ganaderoRepository.count()).isEqualTo(1);
+
+        Explotacion explotacion = explotacionRepository.findByCodigoRega("ES600000000001").orElseThrow();
+        assertThat(explotacion.getNombre()).isEqualTo("Finca version 2");
+    }
+
     /** Comprometido de verdad (no solo flush) -- necesario para que las transacciones REQUIRES_NEW de
      * ExplotacionImportFilaService, que corren en su propia conexion, vean estos datos de setup. */
     private static void comprometerSetup() {

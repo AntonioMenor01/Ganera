@@ -176,6 +176,20 @@ Registro de tareas cerradas (qué se hizo, commit, estado de revisión). Una lí
   test H2 repetido por HTTP real tras el fix: import normal idéntico a antes del refactor, fichero
   sin hoja "Animales" → `400` con el mensaje (antes `500`). `CLAUDE.md` y `ganera-prompts.md`
   actualizados con el diseño de `ExplotacionImportFilaService` y el efecto no obvio de
-  `REQUIRES_NEW` sobre el filtro de tenant; conteo de tests a 93.
+  `REQUIRES_NEW` sobre el filtro de tenant; conteo de tests a 93. Commit `1c190e6`.
+- **Verificación adicional pedida por Antonio antes de dar el prompt por cerrado del todo:** pidió
+  ver el contenido completo de `ExplotacionImportFilaService` y del test de la colisión cross-tenant,
+  y preguntó explícitamente si el caso **same-tenant** (dos filas del mismo Excel y la misma
+  Gestoria con el mismo `codigo_rega`, ej. una fila duplicada por error humano) queda aislado igual
+  de bien, o si solo estaba probado el caso cross-tenant. Razonamiento verificado con un test nuevo
+  en vez de asumirlo: con `REQUIRES_NEW`, cada fila hace COMMIT real al terminar (no solo flush);
+  para cuando la fila 2 arranca su propia transacción (conexión distinta), el commit de la fila 1
+  ya es visible bajo aislamiento read-committed, así que `findByCodigoRega` la encuentra y la trata
+  como actualización — nunca como INSERT duplicado. Test nuevo
+  `dosFilasDelMismoFicheroYLaMismaGestoriaConElMismoCodigoRegaSeTratanComoCreacionYActualizacion`
+  confirma exactamente eso: `errores` vacío, `creadas=1`, `actualizadas=1`,
+  `explotacionRepository.count()==1`, la fila 2 gana (`nombre="Finca version 2"`). Suite completa
+  94/94 en verde. Commit separado (no se reescribió el commit anterior), a petición explícita de
+  Antonio.
 
 **PROMPT 3d CERRADO.**
