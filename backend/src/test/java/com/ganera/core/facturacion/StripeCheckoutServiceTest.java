@@ -55,4 +55,13 @@ class StripeCheckoutServiceTest {
         assertThat(StripeCheckoutService.cantidadAContratar(1)).isEqualTo(1);
         assertThat(StripeCheckoutService.cantidadAContratar(5)).isEqualTo(5);
     }
+
+    @Test
+    void crearSesionCheckoutConCantidadEstimadaRespetaLaMismaGuardaDeConfiguracionCompleta() throws Exception {
+        StripeCheckoutService servicioSinApiKey = construirServicio("", "price_explotacion_test");
+        StripeCheckoutService servicioSinPriceId = construirServicio("sk_test_123", "");
+
+        assertThat(servicioSinApiKey.crearSesionCheckoutConCantidadEstimada(42L, 15L)).isEmpty();
+        assertThat(servicioSinPriceId.crearSesionCheckoutConCantidadEstimada(42L, 15L)).isEmpty();
+    }
 }

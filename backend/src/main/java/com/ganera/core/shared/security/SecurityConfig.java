@@ -53,6 +53,7 @@ public class SecurityConfig {
                         .requestMatchers("/webhooks/**").permitAll()
                         .requestMatchers("/internal/**").permitAll()
                         .requestMatchers("/auth/login").permitAll()
+                        .requestMatchers("/gestorias/registro").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(new JwtAuthenticationFilter(jwtService), UsernamePasswordAuthenticationFilter.class);
 

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -81,6 +81,12 @@ export function LoginPage() {
               {enviando ? "Entrando…" : "Entrar"}
             </Button>
           </form>
+          <p className="mt-4 text-center text-sm text-muted-foreground">
+            ¿No tienes cuenta?{" "}
+            <Link to="/registro" className="font-medium text-primary hover:underline">
+              Regístrate
+            </Link>
+          </p>
         </CardContent>
       </Card>
     </div>

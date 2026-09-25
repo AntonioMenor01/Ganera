@@ -59,9 +59,27 @@ public class StripeCheckoutService {
         if (!configuracionCompleta()) {
             return Optional.empty();
         }
-
-        Suscripcion suscripcion = suscripcionService.obtenerOCrearSuscripcion(gestoriaId);
         long cantidad = cantidadAContratar(explotacionRepository.countByGestoriaId(gestoriaId));
+        return crearSesionConCantidad(gestoriaId, cantidad);
+    }
+
+    /**
+     * Variante para el alta publica (POST /gestorias/registro): en ese momento la Gestoria todavia
+     * no tiene ninguna Explotacion real (se registra antes de importar su inventario), asi que la
+     * quantity es una ESTIMACION derivada del rango de clientes elegido (ver RangoClientes), no un
+     * conteo real. Esta estimacion no se autocorrige hasta que la suscripcion llegue a
+     * ACTIVA/IMPAGO_GRACIA -- ver la limitacion conocida de SuscripcionSyncScheduler en CLAUDE.md.
+     */
+    public Optional<String> crearSesionCheckoutConCantidadEstimada(Long gestoriaId, long cantidadEstimada)
+            throws StripeException {
+        if (!configuracionCompleta()) {
+            return Optional.empty();
+        }
+        return crearSesionConCantidad(gestoriaId, cantidadEstimada);
+    }
+
+    private Optional<String> crearSesionConCantidad(Long gestoriaId, long cantidad) throws StripeException {
+        Suscripcion suscripcion = suscripcionService.obtenerOCrearSuscripcion(gestoriaId);
         if (suscripcion.getExplotacionesContratadas() == null) {
             suscripcion.setExplotacionesContratadas((int) cantidad);
             suscripcionRepository.save(suscripcion);
