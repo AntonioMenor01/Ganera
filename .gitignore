@@ -8,3 +8,5 @@ dist/
 .vscode/
 *.log
 .claude/settings.local.json
+# Junction de Windows a .agents/skills/impeccable (git la recorreria como carpeta y duplicaria la skill)
+.claude/skills/impeccable/

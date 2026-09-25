@@ -461,6 +461,13 @@ Frontend (from `frontend/`):
 
 Root:
 - `docker-compose up -d` — Postgres only (the Spring Boot app runs outside Docker for now).
+- **After cloning, recreate the `impeccable` skill junction.** The design skill is committed under
+  `.agents/skills/impeccable/` (pinned in `skills-lock.json`), but Claude Code loads it from
+  `.claude/skills/impeccable`. That path is a Windows directory junction, and it's in `.gitignore`:
+  git for Windows traverses junctions as plain directories (`core.symlinks=false`), so committing
+  it would store a second, drifting copy of the whole skill. Recreate it from the repo root in
+  `cmd`: `mklink /J .claude\skills\impeccable .agents\skills\impeccable`, or reinstall the skill
+  from `skills-lock.json`.
 
 ## Current status
 
