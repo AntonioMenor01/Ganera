@@ -2,7 +2,7 @@
 
 Documento de referencia con todos los prompts, en orden, tal como se han ido cerrando. Cada uno se lanza en la **misma sesión continua** de Claude Code (para que mantenga el contexto), salvo que se indique lo contrario.
 
-Estado actual: **Prompts 0, 1, 2, 2.5 y 2.7 completados y verificados end-to-end.** Repo en GitHub (`github.com/AntonioMenor01/ganera-core`). Login, JWT, onboarding manual de gestorías piloto y la integración completa de Stripe (checkout, webhook, job nocturno) probados con curl/H2 y funcionando. Pendiente de Antonio: crear el `Price` real en el dashboard de Stripe (test mode) para poder probar un checkout real de principio a fin. Siguiente paso: Prompt 3a/3b (catálogo OVZ.net, bloqueado a la espera de credenciales de Antonio).
+Estado actual (2026-09-25): **Prompts 0, 1, 2, 2.5, 2.7, 3d, 4 (parcial, sin lo bloqueado por OVZ.net), la identidad visual de marca y el alta pública de gestorías completados y verificados.** Repo en GitHub (`github.com/AntonioMenor01/Ganera.git`). Suite backend en verde a 135 tests; frontend compila (`tsc -b` + `vite build`) y pasa `oxlint`. Pendientes de Antonio: crear el `Price` real en el dashboard de Stripe (test mode) para poder probar un checkout real de principio a fin, y aportar credenciales de OVZ.net. Siguiente paso: Prompts 3a/3b/3c (bloqueados a la espera de esas credenciales). Dos bugs de Stripe detectados en la revisión completa del 2026-09-25 quedan pendientes (ver "Known bugs" en `CLAUDE.md`, bullet de Stripe).
 
 ---
 
@@ -470,6 +470,51 @@ secas. `GET /facturacion/suscripcion` y `POST /facturacion/checkout` quedaron co
 por diseño (usan `findByGestoriaId(gestoriaId)`/`countByGestoriaId(gestoriaId)`, parámetros
 explícitos de la query, inmunes a los dos bugs). Suite completa: **110/110** en verde. Detalle
 completo en `CLAUDE.md`.
+
+**Identidad visual de marca (commit `9a81219`, 2026-07-14):** paleta real de Ganera (verde
+`#1F3D2B`, fondo crema `#F7F6F1`, sidebar `#F1F0E8`) vía variables CSS en `index.css`, variantes
+`success`/`warning`/`danger` en `Badge` mapeadas desde los 7 `EstadoTramite`, barra de navegación
+con el logotipo textual GANERA, tarjeta de métrica en Explotaciones y limpieza del CSS heredado del
+scaffold de Vite. Verificado con `tsc -b`, `oxlint` y navegador real.
+
+---
+
+## Alta pública de Gestorías (completado, 2026-07-14)
+
+Vía adicional de alta para clientes reales, **en paralelo** a `/internal/onboarding/gestoria` (que
+se mantiene para pilotos y soporte, sin cambios).
+
+Entregado:
+- **Backend** (paquete `registro`): `POST /gestorias/registro`, público (sin JWT ni secreto
+  compartido, `permitAll` en `SecurityConfig`). Crea `Gestoria` + primer `Usuario` en una
+  transacción (`RegistroGestoriaService`) y a continuación abre una Stripe Checkout Session con 15
+  días de prueba vía la nueva `StripeCheckoutService.crearSesionCheckoutConCantidadEstimada`
+  (`503` si Stripe no está configurado, igual que el checkout autenticado).
+- **Rango de clientes en vez de nº de explotaciones:** una gestoría sabe cuántos clientes tiene, no
+  cuántas explotaciones suman. `RangoClientes` (1-10, 11-30, 31-75, 76+) traduce el **mínimo** del
+  rango × 1,3 explotaciones/cliente (redondeo hacia arriba) a una quantity **estimada**: 2 / 15 /
+  41 / 99. Se usa el mínimo para no sobre-cobrar antes de ver el inventario real; la estimación no
+  se autocorrige mientras la suscripción siga en `TRIAL` (limitación documentada en `CLAUDE.md`).
+- **Sin oráculo de enumeración:** email duplicado, contraseña débil (< 8), email mal formado o campo
+  en blanco devuelven el mismo `400` con el mismo mensaje genérico (mismo principio que el `401`
+  uniforme del login). La violación real de `UNIQUE(email)` propaga fuera del `@Transactional` para
+  que se deshaga también la `Gestoria` (sin huérfanas) y la captura el controlador.
+- **Frontend:** `RegistroPage` (misma identidad visual), enlazada desde `LoginPage` ("¿No tienes
+  cuenta? Regístrate"); redirige a la URL de Stripe Checkout.
+
+**Verificación:** suite completa a **135 tests** (110 + 25 nuevos: `RangoClientesTest`,
+`RegistroGestoriaValidacionTest`, `RegistroGestoriaServiceTest`, `RegistroGestoriaControllerTest`,
+`RegistroGestoriaEndToEndTest` y uno más en `StripeCheckoutServiceTest`). Smoke test H2 por HTTP
+real (ruta realmente pública + login/`/auth/me` con las credenciales recién registradas) y
+navegador real (etiquetas del `Select`, mismo mensaje para contraseña débil y email duplicado,
+mensaje de "facturación no configurada"). **Pendiente:** redirección real a Stripe Checkout, que
+necesita el `Price` real de Antonio.
+
+**Bugs detectados después, en la revisión completa del 2026-09-25 (pendientes):**
+`invoice.payment_failed` sobre una suscripción ya en `TRIAL_EXPIRADO_SIN_PAGO` la pasa a
+`IMPAGO_GRACIA` (reabre la aprobación), y una prueba cuyo checkout se abandona queda en `TRIAL`
+para siempre (la fila se crea antes de completar el checkout, también desde este alta pública).
+Detalle en `CLAUDE.md`.
 
 ---
 

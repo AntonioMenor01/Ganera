@@ -365,3 +365,42 @@ multi-tenant encontrado y arreglado en la verificación final, antes de comitear
   `findByIdAndGestoriaId`, nunca `findById(id)` a secas.
 
 **Auditoría completa cerrada — tabla resumen entregada a Antonio antes del commit final.**
+
+## 2026-07-14 (continuación) — Identidad visual de marca
+
+- Paleta real de Ganera aplicada vía variables CSS en `frontend/src/index.css` (verde `#1F3D2B`,
+  fondo crema `#F7F6F1`, sidebar `#F1F0E8`), sin tocar la estructura de componentes shadcn/ui.
+- Variantes `success`/`warning`/`danger` en `Badge`, mapeadas desde los 7 `EstadoTramite`
+  (`badgeVarianteDeEstado` en `features/tramites/types.ts`); barra de navegación con logotipo
+  textual GANERA; tarjeta de métrica en Explotaciones; limpieza del CSS heredado de Vite.
+- Verificado con `tsc -b`, `oxlint` y sesión real de navegador contra H2 sembrado con los 7
+  estados. Commit `9a81219`.
+
+## 2026-07-14 (continuación) — Alta pública de Gestorías (`POST /gestorias/registro`)
+
+- Paquete `registro` nuevo: `RangoClientes` (rango de clientes → quantity estimada de
+  explotaciones, mínimo del rango × 1,3 → 2/15/41/99), `RegistroGestoriaValidacion` (pura, sin
+  `@Valid`), `RegistroGestoriaService` (`@Transactional`, deja propagar la violación de
+  `UNIQUE(email)` para no dejar `Gestoria` huérfana), `RegistroGestoriaController` (mismo `400`
+  genérico para cualquier fallo, `503` si Stripe no está configurado). `SecurityConfig`: `permitAll`
+  para `/gestorias/registro`. `StripeCheckoutService.crearSesionCheckoutConCantidadEstimada`.
+- Frontend: `RegistroPage` + `features/auth/api.ts`, enlace desde `LoginPage`, ruta `/registro`.
+- Verificación: suite completa **135/135** (110 + 25 nuevos), smoke test H2 por HTTP real y
+  navegador real. Redirección real a Stripe Checkout sin verificar (falta el `Price` real).
+- Documentado en `CLAUDE.md` (bullet "Public self-registration") y `ganera-prompts.md`.
+- **Quedó sin commitear** al cerrar la sesión; se commitea en la sesión del 2026-09-25.
+
+## 2026-09-25 — Revisión completa del proyecto + puesta al día de documentación
+
+- Revisión de todo el repo: suite backend 135/135 en verde, frontend `npm run build` limpio,
+  `oxlint` solo con los 3 avisos preexistentes de `only-export-components`.
+- **Dos bugs de Stripe detectados, anotados como PENDIENTES en `CLAUDE.md` (sin arreglar):**
+  1. `invoice.payment_failed` sobre una suscripción ya en `TRIAL_EXPIRADO_SIN_PAGO` la pasa a
+     `IMPAGO_GRACIA` (el plan 2.7 decía mantener `TRIAL_EXPIRADO_SIN_PAGO`) — reabre la aprobación
+     de trámites tras el reintento de cobro de Stripe.
+  2. `obtenerOCrearSuscripcion` crea la fila en `TRIAL` antes de completar el checkout: un checkout
+     abandonado deja la Gestoría en `TRIAL` indefinidamente, con aprobación permitida.
+- Documentación puesta al día: contradicciones sobre el registro público eliminadas de
+  `CLAUDE.md`, `/gestorias/registro` añadido a las rutas públicas, cabecera de estado y repo
+  (`AntonioMenor01/Ganera.git`) corregidos en `ganera-prompts.md`, skill `smoke-test-h2`
+  alineada con `CLAUDE.md` (`./mvnw`, Flyway activo, `ddl-auto=none`).

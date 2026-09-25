@@ -16,8 +16,11 @@ approval step before anything is written to OVZ.net.
   Usuario to a portfolio of Explotaciones via `usuario_explotacion` — the data model exists but
   filtering isn't implemented yet (see Current status).
 - **Usuario** — an employee of a Gestoría. Has a login (JWT, via `POST /auth/login`). No role
-  differentiation yet — any Usuario can operate anywhere within their own Gestoría. There is no
-  public self-signup: every Gestoría + its first Usuario is created by hand (see Current status).
+  differentiation yet — any Usuario can operate anywhere within their own Gestoría. A Gestoría +
+  its first Usuario are created either through the public self-registration
+  (`POST /gestorias/registro`, real customers, goes straight to Stripe Checkout) or by hand through
+  the internal onboarding endpoint (`POST /internal/onboarding/gestoria`, pilots/support) — see
+  Technical decisions and Architecture notes.
 - **Ganadero** — a Gestoría's client. **Never logs in.** Holds the OVZ.net credentials
   (`ovzUsuario` / `ovzPasswordCifrada`) — one login per Ganadero, shared across all their
   Explotaciones (not per-Explotación). `nif` (added in `V14`, globally unique like `codigoRega`
@@ -188,6 +191,63 @@ approval step before anything is written to OVZ.net.
   `gestoriaFilter` Hibernate filter is never active for its queries — that's an intentional
   cross-tenant job, not a multi-tenancy leak. A failed push for one subscription is caught and
   logged per-iteration so it never aborts the rest of the nightly batch.
+  **Known limitation:** `SuscripcionSyncScheduler` only reconciles `ACTIVA`/`IMPAGO_GRACIA`
+  subscriptions — a Gestoría still in `TRIAL` never gets its `explotacionesContratadas`
+  auto-corrected against its real Explotación count during the trial window. This matters for the
+  public self-registration flow (`POST /gestorias/registro`, see below): the quantity it sends to
+  Stripe is an *estimate* derived from a client-count range, not a real Explotación count (there
+  are no Explotaciones yet at registration time), and that estimate will not self-correct until
+  the subscription actually reaches `ACTIVA`/`IMPAGO_GRACIA` — or until a future manual adjustment
+  screen exists (deliberately out of scope for now). Don't assume `explotacionesContratadas` is
+  accurate for a `TRIAL` subscription.
+  **Known bugs, detected 2026-09-25 in a full-project review, PENDING (not fixed yet):**
+  1. *`invoice.payment_failed` on an already-`TRIAL_EXPIRADO_SIN_PAGO` subscription.*
+     `StripeWebhookService.procesarPagoFallido` only maps a stored `TRIAL` to
+     `TRIAL_EXPIRADO_SIN_PAGO`; any other stored state goes to `IMPAGO_GRACIA`. The Prompt 2.7 plan
+     (Decision 4) says `TRIAL` **or** `TRIAL_EXPIRADO_SIN_PAGO` → `TRIAL_EXPIRADO_SIN_PAGO`. Stripe
+     retries failed charges, so the second failed retry after an unpaid trial flips the
+     subscription to `IMPAGO_GRACIA` — which **re-enables** `puedeAprobarTramites`. No test covers
+     that transition today. Fix test-first.
+  2. *Abandoned trial never expires.* `SuscripcionService.obtenerOCrearSuscripcion` creates the
+     `Suscripcion` row in `TRIAL` **before** the Checkout Session is completed (both from
+     `POST /facturacion/checkout` and from `POST /gestorias/registro`). If the Gestoría abandons
+     Stripe Checkout, no webhook ever arrives and nothing local expires the row, so it stays in
+     `TRIAL` — with full approval rights — indefinitely. Needs a design decision (e.g. don't grant
+     `TRIAL` until `checkout.session.completed`, or a local trial-expiry check) before fixing.
+- **Public self-registration** (`registro` package): `POST /gestorias/registro`, public (no JWT,
+  no shared secret), in parallel with `/internal/onboarding/gestoria` — the internal endpoint is
+  unchanged and stays for support/manual cases; this is an additional entry point for real
+  customers, not a replacement. Reuses the exact Gestoria→Usuario creation shape already proven by
+  `OnboardingController` (`RegistroGestoriaService.crearGestoriaYUsuario`, `@Transactional`), but
+  does not set a `Suscripcion` itself — it lets the immediate `StripeCheckoutService` call create it
+  in `TRIAL` via the already-existing `obtenerOCrearSuscripcion`, exactly like the authenticated
+  checkout flow already does. A Gestoría knows its number of clients (Ganaderos), not how many
+  Explotaciones they add up to, so the form asks for a **client-count range**
+  (`RangoClientes`: `UNO_A_DIEZ`, `ONCE_A_TREINTA`, `TREINTA_UNO_A_SETENTA_Y_CINCO`,
+  `SETENTA_Y_SEIS_O_MAS`) instead of an Explotación count. Stripe still bills by Explotaciones
+  (unchanged) — each range's **minimum** client count is multiplied by a starting ratio of 1.3
+  Explotaciones/client (a normal Ganadero has 1 Explotación, some have more — an explicit
+  **estimate**, not a real count) and rounded up (`RangoClientes.quantityExplotacionesEstimada()`),
+  giving quantities 2 / 15 / 41 / 99. Using the range's minimum (not its midpoint) is deliberate: it
+  never over-charges before the real inventory is known — see the `SuscripcionSyncScheduler`/`TRIAL`
+  limitation just above, which is exactly why this estimate won't self-correct until the
+  subscription leaves `TRIAL`. `StripeCheckoutService` gained
+  `crearSesionCheckoutConCantidadEstimada(gestoriaId, cantidadEstimada)`, a sibling of the existing
+  `crearSesionCheckout(gestoriaId)` that skips the real Explotación count and shares the same
+  private helper and `configuracionCompleta()` guard. Validation
+  (`RegistroGestoriaValidacion`, package-private, pure static methods — deliberately not
+  `spring-boot-starter-validation`'s `@Valid`/`@Email`, which is on the classpath but unused
+  anywhere in this codebase, to avoid introducing a first `@ControllerAdvice` just for this one
+  endpoint) and the duplicate-email case (a real `UNIQUE(email)` violation, not a pre-check
+  `findByEmail`) all collapse into **one identical `400` + generic message** — same principle as
+  `AuthService.autenticar`'s uniform `401`, so a duplicate email can't be distinguished from a weak
+  password or a malformed one (no enumeration oracle for which Gestorías are already customers).
+  `RegistroGestoriaService.crearGestoriaYUsuario` deliberately does **not** catch
+  `DataIntegrityViolationException` itself — it must propagate out of the `@Transactional` method
+  so Spring rolls back the `Gestoria` insert together with the failed `Usuario` insert; catching it
+  inside would leave an orphan `Gestoria` row. `RegistroGestoriaController`, outside that
+  transaction, is the one that catches it to shape the `400` response — same pattern as
+  `FacturacionController` catching `StripeException` one level above where it's thrown.
 - **Excel inventory importer** (`explotacion` package, Prompt 3d): manual fallback for loading
   Explotaciones/Animales when the OVZ.net read sync (Prompt 3a, still blocked) isn't available.
   `POST /explotaciones/importar` (multipart `.xlsx`, Apache POI) parses two fixed-position sheets —
@@ -267,12 +327,14 @@ Package layout under `backend/src/main/java/com/ganera/core/`: `gestoria`, `gana
   controllers via `@AuthenticationPrincipal GaneraUserPrincipal`. `SecurityConfig` has an explicit
   `authenticationEntryPoint` so a missing/invalid JWT on a protected endpoint returns `401`, not
   Spring Security's default `403`.
-- Public paths: `/webhooks/**`, `/auth/login`, and `/internal/**` (the last one only at the Spring
-  Security layer — `/internal/onboarding/gestoria` still gates itself on the `X-Internal-Secret`
-  header inside `OnboardingController`). Everything else requires a valid JWT.
+- Public paths: `/webhooks/**`, `/auth/login`, `/gestorias/registro` (public self-registration,
+  no JWT and no shared secret), and `/internal/**` (the last one only at the Spring Security layer —
+  `/internal/onboarding/gestoria` still gates itself on the `X-Internal-Secret` header inside
+  `OnboardingController`). Everything else requires a valid JWT.
 - **`OnboardingController` (`POST /internal/onboarding/gestoria`) is a temporary bootstrap, not the
-  final design.** There's no public self-signup yet, so every pilot Gestoría + its first Usuario is
-  created by hitting this endpoint by hand, guarded by a shared secret (`ONBOARDING_SECRET`,
+  final design.** Real customers now sign up through `POST /gestorias/registro`; this endpoint
+  stays only for pilot Gestorías (created directly in `ACTIVA`, no Stripe) and support/manual
+  cases, hit by hand and guarded by a shared secret (`ONBOARDING_SECRET`,
   constant-time compare, fails closed if unset) instead of a JWT — at the time it's called, no admin
   Usuario exists yet to authenticate as. Replace it with a real admin panel (with its own access
   control) once one exists; don't build more features on top of the shared-secret pattern.
@@ -432,7 +494,7 @@ step. No AI/WhatsApp business logic is wired end-to-end yet for trámites — Tw
 validates signatures and persists raw data, but doesn't yet trigger AI extraction or trámite
 creation; `TramiteExtractionService`'s system prompt and `OvzAutomationService`'s Playwright logic
 are still unimplemented skeletons; portfolio filtering by `modoCartera` isn't implemented; there is
-still no public self-signup or admin panel, only the manual onboarding endpoint.
+still no admin panel (public self-registration was added later, see below).
 
 Prompt 3d — Excel inventory importer + basic REST controllers — is also complete, implemented and
 verified end-to-end on 2026-07-14 (no separate written plan; the prompt itself, refined through a
@@ -499,6 +561,28 @@ trámite by id. Fixed with an explicit `findByIdAndGestoriaId` query in all thre
 the failing test first. `TenantIsolationEndToEndTest` now has one real two-tenant case per
 affected endpoint (7 total); full backend suite green at **110 tests** (101 + 6 more E2E cases +
 3 unit-level cross-tenant checks in `TramiteControllerTest`).
+
+**Public self-registration (`POST /gestorias/registro`) is complete**, implemented and verified on
+2026-07-14: the `registro` package (see the Technical decisions bullet above for the full design —
+`RangoClientes`, `RegistroGestoriaService`, `RegistroGestoriaController`, the new
+`StripeCheckoutService.crearSesionCheckoutConCantidadEstimada` overload, and the `SecurityConfig`
+`permitAll` for this route), plus a matching frontend `RegistroPage` (same brand styling as the rest
+of Prompt 4/the branding pass) reachable from a new "¿No tienes cuenta? Regístrate" link on
+`LoginPage`. Full backend suite green at **135 tests** (110 + 25 new: `RangoClientesTest`,
+`RegistroGestoriaValidacionTest`, `RegistroGestoriaServiceTest`, `RegistroGestoriaControllerTest`, a
+new `RegistroGestoriaEndToEndTest`, and one addition to `StripeCheckoutServiceTest`). Verified with
+a real H2 smoke test over HTTP (`curl`, no `Authorization` header — confirms the route is genuinely
+public, not just returning `401` before ever reaching the controller — followed by a real
+`/auth/login` + `/auth/me` round-trip with the credentials just registered, proving Gestoria+Usuario
+were actually persisted) and in a real browser (Playwright): the "Regístrate" link, the client-range
+`Select` showing real labels (not raw enum values — same care already needed for `TramitesPage`'s
+`Select`), a weak password and a duplicate email producing the exact same generic error message
+(confirming the no-enumeration guard holds visually, not just in a unit test), and a genuinely new
+registration correctly showing the "facturación no configurada" message. **A real end-to-end
+redirect to Stripe's hosted Checkout page is still unverifiable in this sandbox**, for the same
+pre-existing reason as the rest of the Checkout flow: `STRIPE_PRICE_ID_EXPLOTACION` is still an
+empty placeholder (see Prompt 2.7 above) — creating the real `Price` in the Stripe dashboard remains
+Antonio's manual action.
 
 **Next pending step: Prompt 3a (sincronización inicial de OVZ.net, modo lectura) — blocked.** Per
 `ganera-prompts.md`, Prompts 3a, 3b, and 3c (OVZ.net read sync, Twilio webhook + AI extraction, and
