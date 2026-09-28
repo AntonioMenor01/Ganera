@@ -8,8 +8,6 @@ import java.util.List;
 import java.util.Optional;
 
 public interface AnimalRepository extends JpaRepository<Animal, Long> {
-    List<Animal> findByExplotacionIdAndCrotalUltimosDigitos(Long explotacionId, String crotalUltimosDigitos);
-
     /** Upsert del importador por crotal (UNIQUE global), con gestoriaId explicito: vacio tanto si
      * no existe como si es de otra Gestoria -- no depende del gestoriaFilter ambiente. */
     Optional<Animal> findByCrotalAndGestoriaId(String crotal, Long gestoriaId);

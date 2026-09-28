@@ -105,12 +105,11 @@ approval step before anything is written to OVZ.net.
   subagent) must treat a bare `findById` on a `GestoriaScopedEntity` in new code as a blocking
   finding, not a minor note. The same goes for lookups by a business key: since Prompt A1 the
   unscoped `findByCodigoRega`/`findByNif`/`findByCrotal` no longer exist in the repositories (going
-  back to one is a compile error), and the only unscoped finder meant to be used is
+  back to one is a compile error), and the only unscoped finder left is
   `ContactoRepository.findByTelefono`, reserved for the 3b webhook (see Operational flow step 2).
-  One pre-A1 unscoped finder still exists with no callers —
-  `AnimalRepository.findByExplotacionIdAndCrotalUltimosDigitos` (no `gestoriaId`). Don't call it
-  (A1 resolves crotales with `findByExplotacionIdAndGestoriaIdAndCrotalEndingWithOrderByIdAsc`);
-  remove it or scope it with `gestoriaId` before 3b (Antonio's call).
+  The pre-A1 `AnimalRepository.findByExplotacionIdAndCrotalUltimosDigitos` (no `gestoriaId`, no
+  callers) was removed right after A1; crotales are resolved by last digits with
+  `findByExplotacionIdAndGestoriaIdAndCrotalEndingWithOrderByIdAsc` — use that in 3b too.
 - Ganaderos and Contactos never authenticate. Only Usuarios have logins.
 - A Gestoría in `TRIAL_EXPIRADO_SIN_PAGO` or `SUSPENDIDA` can never approve trámites (no
   approvals) — gated by `SuscripcionService.puedeAprobarTramites(gestoriaId)`. Fail-closed: no
