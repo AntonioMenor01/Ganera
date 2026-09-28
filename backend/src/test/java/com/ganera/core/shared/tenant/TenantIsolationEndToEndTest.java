@@ -4,7 +4,6 @@ import com.ganera.core.auth.LoginRequest;
 import com.ganera.core.auth.LoginResponse;
 import com.ganera.core.contacto.Contacto;
 import com.ganera.core.contacto.ContactoRepository;
-import com.ganera.core.contacto.TipoContacto;
 import com.ganera.core.explotacion.Explotacion;
 import com.ganera.core.explotacion.ExplotacionRepository;
 import com.ganera.core.facturacion.EstadoSuscripcion;
@@ -17,7 +16,9 @@ import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.gestoria.Usuario;
 import com.ganera.core.gestoria.UsuarioRepository;
 import com.ganera.core.tramite.EstadoTramite;
+import com.ganera.core.tramite.TipoTramite;
 import com.ganera.core.tramite.Tramite;
+import com.ganera.core.tramite.TramiteCrotalRepository;
 import com.ganera.core.tramite.TramiteRepository;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -75,6 +76,8 @@ class TenantIsolationEndToEndTest {
     @Autowired
     private TramiteRepository tramiteRepository;
     @Autowired
+    private TramiteCrotalRepository tramiteCrotalRepository;
+    @Autowired
     private ContactoRepository contactoRepository;
     @Autowired
     private SuscripcionRepository suscripcionRepository;
@@ -83,6 +86,8 @@ class TenantIsolationEndToEndTest {
 
     @AfterEach
     void limpiar() {
+        // tramite_crotal antes que tramite (FK): si otra clase deja crotales, no arrastra errores aqui.
+        tramiteCrotalRepository.deleteAll();
         tramiteRepository.deleteAll();
         contactoRepository.deleteAll();
         suscripcionRepository.deleteAll();
@@ -165,13 +170,28 @@ class TenantIsolationEndToEndTest {
         suscripcionActiva(gestoriaB);
 
         Tramite tramiteA = nuevoTramite(gestoriaA, "+34600000103");
+        // Aprobable (explotacion + tipo): si el aislamiento fallara, B lo aprobaria (200) en vez
+        // de recibir un 409 por las reglas de aprobacion de Task 6 que enmascararia la fuga.
+        Explotacion explotacionA = new Explotacion();
+        explotacionA.setGestoria(gestoriaA);
+        explotacionA.setGanadero(nuevoGanadero(gestoriaA));
+        explotacionA.setCodigoRega("ES900000000103");
+        explotacionA.setNombre("Finca E2E aprobar");
+        tramiteA.setExplotacion(explotacionRepository.save(explotacionA));
+        tramiteA.setTipoTramite(TipoTramite.ALTA);
+        tramiteA = tramiteRepository.save(tramiteA);
         String tokenB = login("aprB@test.com");
 
-        ResponseEntity<String> respuesta = post("/tramites/" + tramiteA.getId() + "/aprobar", tokenB);
+        // Decision 27: B envia la version ACTUAL y correcta del Tramite de A -- si el aislamiento
+        // fallara, la aprobacion pasaria (200); la version no puede abrir la puerta a un 404.
+        Long versionA = tramiteA.getVersion();
+        ResponseEntity<String> respuesta = postJson("/tramites/" + tramiteA.getId() + "/aprobar", tokenB,
+                java.util.Map.of("version", versionA));
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(404);
-        assertThat(tramiteRepository.findById(tramiteA.getId()).orElseThrow().getEstado())
-                .isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+        Tramite despues = tramiteRepository.findById(tramiteA.getId()).orElseThrow();
+        assertThat(despues.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+        assertThat(despues.getVersion()).isEqualTo(versionA);
     }
 
     @Test
@@ -246,7 +266,7 @@ class TenantIsolationEndToEndTest {
         Contacto contacto = new Contacto();
         contacto.setTelefono(telefono);
         contacto.setNombre("Contacto E2E");
-        contacto.setTipo(TipoContacto.TITULAR);
+        contacto.setGestoria(gestoria);
         contactoRepository.save(contacto);
 
         Tramite tramite = new Tramite();
@@ -282,6 +302,13 @@ class TenantIsolationEndToEndTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         return restTemplate.exchange(path, HttpMethod.POST, new HttpEntity<>(headers), String.class);
+    }
+
+    private ResponseEntity<String> postJson(String path, String token, Object cuerpo) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return restTemplate.exchange(path, HttpMethod.POST, new HttpEntity<>(cuerpo, headers), String.class);
     }
 
     private ResponseEntity<String> importarExcel(String token, byte[] contenido) {

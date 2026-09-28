@@ -2,7 +2,6 @@ package com.ganera.core.tramite;
 
 import com.ganera.core.contacto.Contacto;
 import com.ganera.core.contacto.ContactoRepository;
-import com.ganera.core.contacto.TipoContacto;
 import com.ganera.core.gestoria.Gestoria;
 import com.ganera.core.gestoria.GestoriaRepository;
 import org.junit.jupiter.api.Test;
@@ -31,7 +30,7 @@ class TramiteRepositoryTest {
         Contacto contacto = new Contacto();
         contacto.setTelefono("+34600555666");
         contacto.setNombre("Titular ambiguo");
-        contacto.setTipo(TipoContacto.TITULAR);
+        contacto.setGestoria(gestoria);
         contactoRepository.save(contacto);
 
         Tramite tramite = new Tramite();

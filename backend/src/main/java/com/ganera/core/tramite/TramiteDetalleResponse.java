@@ -1,6 +1,9 @@
 package com.ganera.core.tramite;
 
-/** Respuesta de GET /tramites/{id} -- el listado (TramiteResponse) se queda ligero a proposito. */
+import java.util.List;
+
+/** Respuesta de GET /tramites/{id} -- el listado (TramiteResponse) se queda ligero a proposito.
+ * version (decision 27) es la que el cliente debe devolver en PATCH y aprobar. */
 public record TramiteDetalleResponse(
         Long id,
         String tipoTramite,
@@ -9,9 +12,12 @@ public record TramiteDetalleResponse(
         Long explotacionId,
         String explotacionCodigoRega,
         String explotacionNombre,
-        String mensajeOriginal) {
+        String mensajeOriginal,
+        List<TramiteCrotalResponse> crotales,
+        Long version) {
 
-    public static TramiteDetalleResponse from(Tramite tramite, String mensajeOriginal) {
+    public static TramiteDetalleResponse from(
+            Tramite tramite, String mensajeOriginal, List<TramiteCrotalResponse> crotales) {
         boolean tieneExplotacion = tramite.getExplotacion() != null;
         return new TramiteDetalleResponse(
                 tramite.getId(),
@@ -21,6 +27,8 @@ public record TramiteDetalleResponse(
                 tieneExplotacion ? tramite.getExplotacion().getId() : null,
                 tieneExplotacion ? tramite.getExplotacion().getCodigoRega() : null,
                 tieneExplotacion ? tramite.getExplotacion().getNombre() : null,
-                mensajeOriginal);
+                mensajeOriginal,
+                crotales != null ? crotales : List.of(),
+                tramite.getVersion());
     }
 }

@@ -28,10 +28,26 @@ approval step before anything is written to OVZ.net.
   Ganadero without duplicating on name variations.
 - **Explotación** — a farm belonging to a Ganadero, identified by `codigoRega`.
 - **Animal** — identified by a full crotal (`ES123456789012`); `crotalUltimosDigitos` is indexed
-  separately because that's what Contactos actually type in WhatsApp.
-- **Contacto** — whoever writes on WhatsApp (titular or trabajador of a Ganadero), identified by
-  phone number. A trabajador is linked to exactly one Explotación; a titular can be linked to
-  several (`ContactoExplotacion`).
+  separately because that's what Contactos actually type in WhatsApp. The crotales a Tramite
+  mentions live in `tramite_crotal` (Prompt A1, see the "Prompt A1" bullet under Technical
+  decisions).
+- **Contacto** — whoever writes on WhatsApp (titular or employee of a Ganadero), identified by
+  phone number. Since Prompt A1 (`V15`) it extends `GestoriaScopedEntity` (`gestoria_id` NOT NULL),
+  but `telefono` stays **globally** `UNIQUE` (see Operational flow step 2). The role lives on the
+  **relation**, not on the Contacto: `ContactoExplotacion.rol` (`RolContacto`: `TITULAR`,
+  `EMPLEADO`; the old `TipoContacto`/`contacto.tipo` was dropped), so the same person can be
+  `TITULAR` of one Explotación and `EMPLEADO` of another. Any Contacto (either role) can be linked
+  to any number of Explotaciones — there is no "an employee belongs to exactly one Explotación"
+  limit. Phones are normalized to E.164 by `TelefonoNormalizador` (pure, no Spring — reusable by
+  the 3b webhook): spaces/dots/dashes and a `whatsapp:` prefix are stripped, a bare 9-digit Spanish
+  number (starting 6/7/8/9) or `34…`/`0034…` becomes `+34…`, other `+` numbers need 8–15 digits
+  and no leading `0`, and `+` + 9 digits starting 6–9 (a Spanish mobile missing its `34`) is
+  rejected. **Logical delete:** `Contacto.activo` (`DELETE /contactos/{id}` sets it to `false`,
+  `POST /contactos/{id}/reactivar` sets it back). This keeps the history of trámites and mensajes.
+  Inactive Contactos never show in listings (unless `?incluirInactivos=true`), never appear in a
+  Ganadero's detail, and can't be linked to Explotaciones (`409` via the API, a row error in the
+  importer). **When 3b wires the Twilio webhook, it must ignore messages from an inactive Contacto**
+  (no Tramite created).
 
 ## Operational flow
 
@@ -41,6 +57,16 @@ approval step before anything is written to OVZ.net.
    globally unique (not scoped per-gestoría), and `ContactoRepository.findByTelefono` is a
    deliberately tenant-unscoped lookup: it's the only way to resolve which Gestoría a message
    belongs to when it arrives. Don't "fix" this into a per-tenant lookup.
+   **`findByTelefono` is reserved exclusively for the 3b webhook** (no `Authentication`, so no
+   tenant yet) — no authenticated code path ever uses it: the importer looks the phone up with
+   `ContactoRepository.findByGestoriaIdAndTelefono` (decision 11 of Prompt A1; the method's Javadoc
+   says so too), and the `/contactos` endpoints do no phone lookup at all. Creating a Contacto with a phone that already exists anywhere is
+   detected by the global `UNIQUE` violation itself (never by a pre-check query) and rejected with
+   one generic message. **Known limitation (A1 decision 1):** a phone can't belong to Contactos in
+   two Gestorías, and that rejection lets a Gestoría deduce the number exists in another one.
+   **Future path:** one WhatsApp number per Gestoría, identifying the Gestoría by the message's
+   *destination* number — which would allow `UNIQUE(gestoria_id, telefono)` instead.
+   When the webhook is wired (3b), it must ignore messages from an inactive Contacto.
 3. If the Contacto has more than one Explotación and the message doesn't disambiguate, the Tramite
    is created with `explotacion = null` and `estado = PENDIENTE_REVISION` — an employee assigns the
    Explotación by hand in the UI. There is no automatic WhatsApp round-trip asking the Ganadero to
@@ -48,8 +74,13 @@ approval step before anything is written to OVZ.net.
 4. Claude Haiku 4.5 (via Spring AI, `TramiteExtractionService`) extracts `{tipoTramite,
    últimosDigitosCrotales}` as Structured Output from the raw message text.
 5. Crotales are resolved by matching last digits within the resolved Explotación. No match, or more
-   than one match, → `PENDIENTE_REVISION`. It is never auto-approved.
-6. An employee reviews and clicks "Aprobar" → `APROBADO`.
+   than one match, → `PENDIENTE_REVISION`. It is never auto-approved. (Since Prompt A1 each
+   mentioned crotal is stored in `tramite_crotal` with its resolution — see the "Prompt A1"
+   bullet under Technical decisions. 3b must deduplicate crotales that resolve to the same Animal
+   before creating the Tramite.)
+6. An employee reviews the Tramite, corrects it if needed (`PATCH /tramites/{id}`: Explotación,
+   tipo, crotales), and clicks "Aprobar" → `APROBADO`, subject to the approval rule in the
+   "Prompt A1" bullet.
 7. Playwright executes the trámite against OVZ.net using the **Ganadero's** encrypted credentials.
    One immediate automatic retry on failure; if it fails again, `ERROR_OVZ` with the reason
    recorded — never silent. The same Playwright service is also used read-only to sync a newly
@@ -72,20 +103,38 @@ approval step before anything is written to OVZ.net.
   `gestoriaFilter` is active — a primary-key load does not go through Hibernate's
   result-set/query filter (confirmed in Prompt 4, see `progress.md`). Any reviewer (human or
   subagent) must treat a bare `findById` on a `GestoriaScopedEntity` in new code as a blocking
-  finding, not a minor note.
+  finding, not a minor note. The same goes for lookups by a business key: since Prompt A1 the
+  unscoped `findByCodigoRega`/`findByNif`/`findByCrotal` no longer exist in the repositories (going
+  back to one is a compile error), and the only unscoped finder meant to be used is
+  `ContactoRepository.findByTelefono`, reserved for the 3b webhook (see Operational flow step 2).
+  One pre-A1 unscoped finder still exists with no callers —
+  `AnimalRepository.findByExplotacionIdAndCrotalUltimosDigitos` (no `gestoriaId`). Don't call it
+  (A1 resolves crotales with `findByExplotacionIdAndGestoriaIdAndCrotalEndingWithOrderByIdAsc`);
+  remove it or scope it with `gestoriaId` before 3b (Antonio's call).
 - Ganaderos and Contactos never authenticate. Only Usuarios have logins.
-- A Gestoría in `TRIAL_EXPIRADO_SIN_PAGO` or `SUSPENDIDA` can never approve trámites (read-only) —
-  gated by `SuscripcionService.puedeAprobarTramites(gestoriaId)`. Fail-closed: no `Suscripcion` row
-  for a Gestoría also means no approval, not a free pass.
+- A Gestoría in `TRIAL_EXPIRADO_SIN_PAGO` or `SUSPENDIDA` can never approve trámites (no
+  approvals) — gated by `SuscripcionService.puedeAprobarTramites(gestoriaId)`. Fail-closed: no
+  `Suscripcion` row for a Gestoría also means no approval, not a free pass. The gate is **only**
+  on approving (`POST /tramites/{id}/aprobar`, `403`): editing a trámite (`PATCH`), rejecting it,
+  the Excel import and the Contactos endpoints stay allowed (A1 decision 30 — deliberate, not an
+  oversight).
 - `POST /auth/login` never reveals *why* it rejected a login (unknown email, wrong password, or
   inactive Usuario all return a plain 401) — don't add a more specific error message.
 - **The frontend never implies a trámite is executed against OVZ.net when "Aprobar" is clicked** —
   `OvzAutomationService.ejecutarTramite()` is unimplemented (Prompt 3c), so the button only changes
   `EstadoTramite` in DB, matching the backend exactly. Don't add wording, spinners, or toasts that
-  suggest anything happens in OVZ.net until 3c is real.
+  suggest anything happens in OVZ.net until 3c is real. **Known breakage since Prompt A1, until
+  Prompt A2:** the backend now requires the trámite's `version` in the `aprobar` body (see the
+  "Prompt A1" bullet), and the current frontend (`TramiteReviewDialog`) still calls it with no
+  body — so every "Aprobar" from the UI gets `400` and shows a generic error (except for a Gestoría
+  whose subscription blocks approving, or that has no `Suscripcion`: the `403` is checked first,
+  so it still gets its specific subscription message). Approving from the UI does not work until
+  A2 sends the `version`. Rechazar still works (it needs no version).
 - **No manual "alta de Ganadero" form in the frontend, no OVZ-credentials-onboarding screen.** The
   only way to create Ganaderos/Explotaciones/Animales right now is the Excel importer
   (Prompt 3d) — don't add a second, divergent creation path without an explicit decision to do so.
+  (Contactos are the exception, by an explicit A1 decision: they can come from the importer's
+  optional "Contactos" sheet **or** from the `/contactos` CRUD endpoints — backend only, no UI yet.)
   The OVZ-credentials screen is deliberately deferred until a real Ganadero is ready to hand over
   credentials for that explicit purpose (see Prompt 3a/3b/3c blocker).
 
@@ -159,10 +208,11 @@ approval step before anything is written to OVZ.net.
 - **Automation**: Playwright (Java) for OVZ.net, both read-only sync and write-mode execution.
 - **Billing**: Stripe, priced by number of contracted active Explotaciones, 15-day trial.
   `EstadoSuscripcion` has exactly 6 values: `TRIAL` (full access), `TRIAL_EXPIRADO_SIN_PAGO`
-  (read-only, no approvals), `ACTIVA` (full access), `IMPAGO_GRACIA` (full access, but the
-  frontend must surface a warning), `SUSPENDIDA` (read-only, no approvals, grace period over),
-  `CANCELADA`. The read-only/no-approval gate is `SuscripcionService.puedeAprobarTramites` —
-  not wired to any endpoint yet, that comes with the trámite-approval business logic.
+  (no approvals), `ACTIVA` (full access), `IMPAGO_GRACIA` (full access, but the
+  frontend must surface a warning), `SUSPENDIDA` (no approvals, grace period over),
+  `CANCELADA`. The no-approval gate is `SuscripcionService.puedeAprobarTramites`, wired only to
+  `POST /tramites/{id}/aprobar` (`403`) — everything else, including editing/rejecting trámites
+  and importing, stays available (A1 decision 30).
 - **Stripe integration** (`facturacion` package): a single `Price` (`STRIPE_PRICE_ID_EXPLOTACION`,
   placeholder until one is created in the Stripe dashboard) with quantity = active Explotaciones
   count, 15-day trial baked into the Checkout Session. `POST /facturacion/checkout`
@@ -256,10 +306,41 @@ approval step before anything is written to OVZ.net.
   missing required sheet throws `IllegalArgumentException`, caught by `ExplotacionImportController`
   and returned as `400` with the message (not a generic `500`). `especie` is validated (must be
   blank or a bovine label — Ganera only handles cattle for now) but **never persisted**: `Animal`
-  has no `especie` column, an unsupported value is just a row error. `crotalUltimosDigitos` is
-  derived as the last 6 characters of the full crotal — an assumption, since no real WhatsApp-
-  matching logic (Prompt 3b) exists yet to confirm the real digit count; revisit if 3b needs a
-  different length.
+  has no `especie` column, an unsupported value is just a row error. Since Prompt A1 (decision 22)
+  the crotal is normalized with `CrotalNormalizador` (see the "Prompt A1" bullet) **before** it is
+  stored, so `"es-0100 0000.1234"` is saved as `ES010000001234`; an invalid crotal (including 3
+  digits or fewer) or one longer than 20 characters after normalization (`animal.crotal
+  VARCHAR(20)`) is a row error. The importer still accepts an *incomplete* crotal (4–12 bare
+  digits) into inventory — it is the approval rule that blocks sending one to OVZ.net.
+  `crotalUltimosDigitos` is derived as the last 6 characters of the (normalized) crotal — an
+  assumption kept from 3d; A1's trámite resolution doesn't depend on it (it matches by suffix).
+  An optional third sheet, **"Contactos"** (Prompt A1: `telefono, nombre, codigo_explotacion
+  (= codigo_rega), rol`), is processed after the other two if present; `ImportResumenResponse`
+  gained a `contactos` summary (0/0/0 without the sheet). Per row: phone normalized, name
+  non-blank, rol `TITULAR`/`EMPLEADO` (case-insensitive), Explotación by
+  `findByCodigoRegaAndGestoriaId`, Contacto by `findByGestoriaIdAndTelefono` — own and active →
+  link added/role updated; own and inactive → row error; absent → inserted, and if the insert hits
+  the global `UNIQUE(telefono)` (the phone belongs to another Gestoría) → a generic row error that
+  never mentions another Gestoría. **Never `findByTelefono` here.**
+  **Known limitation (A1 review M4): existing `Animal.crotal` values were not migrated.** A crotal
+  imported before A1 with separators or lowercase (`ES 0100 0000 1234`) is not equal to its
+  normalized form, so re-importing the same animal now creates a *second* Animal (no UNIQUE
+  collision, the strings differ), and its last digits become `AMBIGUO` forever (there is no UI to
+  delete animals). Such a legacy crotal is also blocked at approval by the format rule. If a real
+  environment ever holds pre-A1 imported data, run a one-off normalizing `UPDATE` on
+  `animal.crotal` (checking for collisions first).
+  **Cross-tenant existence (A1 decision 17):** `codigo_rega`, `ganadero.nif`, `animal.crotal` and
+  `contacto.telefono` are all *globally* unique, so a Gestoría can still deduce that a value exists
+  in another Gestoría (its own value updates, a foreign one fails) — an inherent limitation, same
+  as decision 1 for phones. What A1 closed: the importer used to answer "posible duplicado entre
+  gestorias"; it now answers a neutral "No se ha podido guardar la fila: alguno de sus
+  identificadores (código REGA, NIF o crotal) no está disponible.", and `procesarExplotacion`/
+  `procesarAnimal` only use finders with an explicit `gestoriaId`
+  (`findByCodigoRegaAndGestoriaId`, `findByNifAndGestoriaId`, `findByCrotalAndGestoriaId`). The
+  unscoped `findByCodigoRega`/`findByNif`/`findByCrotal` were **removed** from the repositories.
+  Caveat (A1 review M3): that neutral message also covers any other constraint violation on those
+  sheets — e.g. an over-long NIF or name, which aren't length-validated before the DB yet — and is
+  misleading there.
   **Per-row transaction isolation (`ExplotacionImportFilaService`):** `ExplotacionImportService`
   upserts by `codigoRega`/`crotal`/`nif` (all real-world unique keys, see Domain model) and must
   never abort the whole file on one bad row — but a code review caught that a *real* unique-
@@ -270,24 +351,33 @@ approval step before anything is written to OVZ.net.
   bad row itself. Fixed by extracting all per-row DB work into `ExplotacionImportFilaService`, a
   **separate** `@Service` bean (self-invocation within the same class doesn't go through Spring's
   `@Transactional` proxy, so REQUIRES_NEW must live on another bean) whose
-  `procesarExplotacion`/`procesarAnimal` each run in `@Transactional(propagation = REQUIRES_NEW)` —
-  their own transaction, their own connection, so one row's constraint violation rolls back only
-  that row and never touches the session used for the rest of the file.
-  **Non-obvious side effect of REQUIRES_NEW:** it suspends the request's `open-in-view` entity
-  manager — the one `TenantFilterActivationInterceptor` enabled `gestoriaFilter` on — and binds a
-  brand-new one with **no filter active**, which would silently break multi-tenancy isolation for
-  every row. `ExplotacionImportFilaService` re-enables `gestoriaFilter` itself at the top of each
-  REQUIRES_NEW method using the `gestoriaId` passed in, precisely to close that gap. Any other code
-  that reaches for `REQUIRES_NEW` on a bean touching `GestoriaScopedEntity` data must do the same or
-  it will silently query across tenants.
+  `procesarExplotacion`/`procesarAnimal`/`procesarContacto` each run in
+  `@Transactional(propagation = REQUIRES_NEW)` — their own transaction, so one row's constraint
+  violation rolls back only that row and never touches the rest of the file.
+  **Which `EntityManager` a REQUIRES_NEW row uses (corrected in Prompt A1, decision 19 — the
+  original 3d explanation here was wrong for HTTP).** Over HTTP, open-in-view binds the request's
+  `EntityManager` to the thread *without* a transaction, and `ExplotacionImportService` is not
+  `@Transactional`, so REQUIRES_NEW has nothing to suspend: it starts its transaction on that same
+  OSIV `EntityManager`, where `TenantFilterActivationInterceptor` has already enabled
+  `gestoriaFilter`. A brand-new `EntityManager` with **no filter active** is only opened when there
+  is **no `EntityManager` bound to the thread** (a `@Scheduled` job or any other non-request thread
+  — no outer transaction needed for this) **or there is an outer transaction** for REQUIRES_NEW to
+  suspend (a `@Transactional` caller, `@DataJpaTest`). That's why each REQUIRES_NEW method still
+  re-enables `gestoriaFilter` with the `gestoriaId` passed in — and, since A1, every query there
+  also takes that `gestoriaId` as an explicit parameter, so it doesn't depend on the filter at all.
+  Any other code that reaches for `REQUIRES_NEW` on a bean touching `GestoriaScopedEntity` data
+  must do the same. (Nit left from the A1 7a review, N2: the Javadoc of `ExplotacionImportFilaService`
+  still lists "a scheduler" under "only when there IS an outer transaction"; the precise condition
+  is the one stated here.)
   `GET /explotaciones` and `GET /tramites` (filterable by `estado`) are the first paginated
   endpoints in the codebase (`Page`/`Pageable`, Spring Data's default web support — no custom
-  config needed); both rely solely on the already-active `gestoriaFilter` for tenant scoping, no
-  manual `gestoria_id` checks. `POST /tramites/{id}/aprobar` gates on
-  `SuscripcionService.puedeAprobarTramites` (`403` if false) — the first real caller of that method
-  — and, together with `/rechazar`, just flips `EstadoTramite`; neither calls `OvzAutomationService`
-  yet (that's Prompt 3c). A tramite id from another Gestoría or that doesn't exist returns `404`
-  (`Optional`-based, not `.orElseThrow()` — this is an expected, common case, not a "should never
+  config needed). Since Prompt A1 (decision 21) both query with the JWT's `gestoriaId` as an
+  explicit parameter (`findByGestoriaId…`), not only the ambient `gestoriaFilter`, and validate
+  `?sort=` against a whitelist (see the "Prompt A1" bullet). `POST /tramites/{id}/aprobar` gates on
+  `SuscripcionService.puedeAprobarTramites` (`403` if false) — the first real caller of that method.
+  Neither `/aprobar` nor `/rechazar` calls `OvzAutomationService` yet (that's Prompt 3c); since A1
+  both go through `TramiteRevisionService` (see the "Prompt A1" bullet). A tramite id from another
+  Gestoría or that doesn't exist returns `404` (an expected, common case, not a "should never
   happen" one).
 - **Frontend, Prompt 4 (partial — everything not blocked by OVZ.net):** login, Explotaciones
   dashboard + Excel import, Trámites queue + review modal, Facturación status page. Two backend
@@ -304,13 +394,138 @@ approval step before anything is written to OVZ.net.
   request at preflight before it ever reaches a controller, JWT valid or not. `curl`/Postman never
   send an `Origin` header the way a browser does, so this class of bug is invisible to any
   request-level test; only a real browser catches it.
+- **Prompt A1 — Contactos, crotales in trámites, editable review** (backend only; plan with all 31
+  decisions in `docs/superpowers/plans/2026-09-25-promptA1-contactos-crotales-revision.md`).
+  Prepares 3b without depending on OVZ.net: which Explotación(es) a phone belongs to, which
+  crotales a Tramite mentions, and letting the Gestoría correct a Tramite before approving it.
+  Migrations `V15` (Contacto/ContactoExplotacion become tenant-scoped, `rol`, `activo`, drop
+  `contacto.tipo`), `V16` (`tramite_crotal`), `V17` (`tramite.version`).
+  **Error format (all new endpoints, decision 8):** `409` + `{ "motivo": "..." }` for state
+  conflicts; `404` with **no body** for any resource of another Gestoría *or* nonexistent (never
+  reveals existence); `400` for invalid data, with `{ "motivo" }` when the controller decides it
+  (Spring's own 400s — malformed JSON, wrong type, non-numeric path id — use Boot's default error
+  body). Shared DTO: `shared/web/MotivoErrorResponse`. Every lookup takes the JWT's `gestoriaId`
+  as an explicit query parameter; every new endpoint has two-Gestoría `@SpringBootTest` E2E tests.
+  **New endpoints:**
+  - `GET /contactos?incluirInactivos=false` (paginated; each Contacto with its Explotaciones + rol,
+    batch-loaded), `POST /contactos` `{telefono, nombre}` (`201`; `400` invalid phone/blank name;
+    `409` generic "No se puede usar ese teléfono para un contacto." if the phone exists anywhere —
+    detected by the `UNIQUE` violation propagating out of `ContactoService`'s `@Transactional` and
+    caught in the controller, same pattern as `RegistroGestoriaController`), `PUT /contactos/{id}`,
+    `DELETE /contactos/{id}` (`204`, logical delete, idempotent), `POST /contactos/{id}/reactivar`,
+    `POST /contactos/{id}/explotaciones` `{explotacionId, rol}` (link, or update the role if the
+    link exists; `404` if the Contacto **or** the Explotación isn't the caller's; `409` if the
+    Contacto is inactive; the service also checks explicitly that Contacto, Explotación and caller
+    share the same Gestoría — decision 15, applied in the importer too),
+    `DELETE /contactos/{id}/explotaciones/{explotacionId}` (`204`; `404` if the link isn't in the
+    caller's Gestoría).
+  - `GET /ganaderos` (paginated `{id, nombre, nif, numeroExplotaciones}`) and `GET /ganaderos/{id}`
+    (`{id, nombre, nif, explotaciones: [{id, codigoRega, nombre, contactos: [{contactoId, nombre,
+    telefono, rol}]}]}`, active Contactos only, one query for explotaciones + one batch query for
+    contactos). **No Ganadero response ever exposes `ovzUsuario`/`ovzPasswordCifrada`.**
+  - `GET /explotaciones/{id}/animales` (paginated; `404` if the Explotación isn't the caller's).
+  - `PATCH /tramites/{id}` (see below).
+  **`sort` whitelists on every listing (decision 21 + 7a review M1):** `?sort=` outside the list →
+  `400 {"motivo": "Campo de ordenación no permitido."}` (`shared/web/OrdenacionPermitida`) — before,
+  an unknown property was a `500` and a nested one (`ganadero.ovzUsuario`, `gestoria.id`) was
+  accepted. `/explotaciones`: `codigoRega, nombre, id` (default `codigoRega, id`); `/tramites`:
+  `id, estado, createdAt` (default `createdAt desc, id desc`); `/ganaderos`: `nombre, nif, id`
+  (default `nombre, id`); `/explotaciones/{id}/animales`: `crotal, id` (default `crotal`);
+  `/contactos`: `nombre, telefono, id` (default `nombre, id`). A client-chosen non-unique sort
+  (`?sort=estado`) has no `id` tie-breaker.
+  **`tramite_crotal` (`TramiteCrotal`, `GestoriaScopedEntity`):** one row per crotal a Tramite
+  mentions — `crotal_indicado` (what was written, normalized; never lost, `UNIQUE(tramite_id,
+  crotal_indicado)`), `crotal` (the full crotal if it resolved to exactly one Animal, otherwise =
+  `crotal_indicado`), `animal_id`, `resolucion` (`ResolucionCrotal`). `crotal_indicado` is kept
+  separately so that changing the Explotación re-resolves from what was *written*, not from the
+  crotal completed against the previous Explotación. Exposed as `crotales: [{crotalIndicado,
+  crotal, animalId, enInventario, resolucion}]` in `GET /tramites` (loaded in **one** query for the
+  whole page), `GET /tramites/{id}` and the PATCH/aprobar/rechazar responses.
+  **`CrotalNormalizador`** (pure, no Spring — also used by the importer, decision 22): strips all
+  whitespace (including non-breaking spaces pasted from Excel) and `-`, `.`, `/` (decision 24),
+  uppercases; must then be `[A-Z0-9]{1,30}` → else `400`. Digits only and ≤ 3 → `400` ("indica al
+  menos los últimos 4 dígitos"). Digits only, 4–12 → **INCOMPLETO** (a suffix; a Spanish crotal
+  without `ES` is exactly 12 digits). Two leading letters, 13+ digits, or any other valid shape →
+  **COMPLETO**. **Resolution** (`TramiteCrotalService`), always within the Tramite's Explotación and
+  the caller's Gestoría (an Animal of another Explotación/Gestoría is never linked nor used to
+  complete): COMPLETO by exact match, INCOMPLETO by suffix (`crotal` ends with the digits) →
+  `EN_INVENTARIO` (exactly one Animal: full crotal stored, `animal_id` linked), `AMBIGUO` (several),
+  `NO_ENCONTRADO` (none), `SIN_EXPLOTACION` (the Tramite has no Explotación yet). Re-resolved when
+  the Explotación changes and again on every approve. Duplicate `crotal_indicado` values collapse.
+  **`PATCH /tramites/{id}`** `{version, explotacionId?, tipoTramite?, crotales?}` (null = don't
+  change; `crotales` is the **complete** list and replaces the previous one — `[]` removes them
+  all; PATCH **cannot clear** the Explotación or the tipo). The Explotación is set before the
+  crotales are resolved; changing it alone re-resolves the stored ones. Returns
+  `TramiteDetalleResponse`. Order of checks: `400` no `version` (in the controller, before any DB
+  access — same answer for an own, foreign or nonexistent Tramite) → `400` invalid `tipoTramite`
+  (parsed in the controller) → `404` → `409` not `PENDIENTE_REVISION` → `409` stale `version` →
+  `404` Explotación of another Gestoría / `400` invalid crotal → `409` two crotales resolve to the
+  same Animal (decision 23) → `200`, `version + 1`. If stored crotales collide after an Explotación
+  change, a PATCH without `crotales` gets that `409` and the user must send both fields together.
+  **Approval rule (`POST /tramites/{id}/aprobar` `{version}`, `TramiteRevisionService.aprobar`),
+  in the order actually checked:** `403` subscription (`puedeAprobarTramites`) → `400` no body /
+  `{}` / `version: null` (body is `@RequestBody(required = false)` precisely so the `403` still
+  comes first) → `404` → `409` not in `PENDIENTE_REVISION` (**approve and reject only from
+  `PENDIENTE_REVISION`**, decision 12 — with 3c, re-approving would resend to OVZ.net) → `409`
+  stale `version` → re-resolve every crotal against the current inventory: if **any** resolution
+  changed (another Animal, now ambiguous, gone…) → `ResolucionCrotalesCambiadaException`, a `409`
+  that **commits** the new resolution and increments the version (`noRollbackFor`, only on
+  `aprobar`) so the detail screen shows the fresh state — **the only `409` in the codebase that
+  persists data**; never approve something other than what the reviewer saw → otherwise one `409`
+  listing **every** failing reason, with full rollback: Explotación missing, tipo missing, a
+  crotal `AMBIGUO` or `SIN_EXPLOTACION`, a `NO_ENCONTRADO` crotal that is INCOMPLETO (OVZ.net needs
+  the full crotal; a complete `NO_ENCONTRADO` is allowed — an animal entering that isn't in
+  inventory yet), the format rule below, two crotales resolving to the same Animal → `200
+  APROBADO`, `version + 1`. Crotales themselves are not mandatory.
+  **Format rule — PROVISIONAL (decision 28, other countries' lengths still to be confirmed):** to
+  approve, a crotal must be `ES` + exactly 12 digits, or another country's 2 letters + 8–12 digits.
+  It applies to a `NO_ENCONTRADO` complete crotal (the written one) **and** to an `EN_INVENTARIO`
+  one — checked on the **Animal's** stored crotal (Antonio's decision after the 7a review, I1): an
+  inventory imported without the `ES` prefix (`010000001234`) would otherwise resolve fine by last
+  digits and send an incomplete crotal to OVZ.net. Its `409` motivo tells the user to re-import the
+  inventory with the full crotal — there is no endpoint to edit an Animal, so re-importing is the
+  only fix. The resolution classification itself doesn't change. `rechazar` has no data
+  requirements.
+  **Concurrency:** every PATCH/aprobar/rechazar loads the Tramite with
+  `findConBloqueoByIdAndGestoriaId` (`PESSIMISTIC_WRITE`, `SELECT … FOR UPDATE`, explicit
+  `gestoriaId`) and then `refresh`es it — if anything had already loaded that Tramite into the same
+  OSIV `EntityManager`, Hibernate would return the cached, possibly stale instance even though the
+  query locks (review M3); keep the lock read the first load of that Tramite in the request, or
+  keep the refresh. Validation exceptions propagate out of the service's `@Transactional` and are
+  mapped in `TramiteController` (never caught inside and committed). `ConcurrencyFailureException`
+  (lock not acquired, optimistic conflict) and `DataIntegrityViolationException` → `409` "se estaba
+  modificando a la vez", never `500`. **Optimistic version (decision 27):** `@Version Long version`
+  on `Tramite`, returned in `TramiteResponse`/`TramiteDetalleResponse`. PATCH and aprobar
+  **require** the `version` the screen showed (`400` if missing, `409` if stale, nothing changes);
+  `rechazar` doesn't require it but increments it. **Every accepted write leaves the version at
+  exactly read + 1**, including a crotal-only PATCH, a no-op PATCH and the committed re-resolution
+  on aprobar (those only touch `tramite_crotal`, so the increment is forced with an explicit JPQL
+  `UPDATE … SET version = version + 1` after a flush — not `PESSIMISTIC_FORCE_INCREMENT`, which
+  Hibernate 6.6 silently skipped in `@DataJpaTest`). Estado is checked before version on purpose (a
+  Tramite no longer pending gets its specific motivo, true with any version). Caveat (7a review M2):
+  those raw `EntityManager` calls bypass Spring's exception translation, so a failure there would
+  be a `500`, not a `409` — unreachable while the row lock is held.
+  **Risks to respect in 3c (Task 6 review M2):** never run Playwright/OVZ.net inside the
+  transaction that holds this row lock (other editors/approvers would block for the whole OVZ
+  session, each holding a pooled connection) — approve and commit, then execute asynchronously.
+  On PostgreSQL, if a `statement_timeout` is ever configured, SQLState `57014` becomes Spring's
+  `QueryTimeoutException` (not a `ConcurrencyFailureException`) → `500`; a `lock_timeout`
+  (`55P03`) does map to `CannotAcquireLock` → `409`. (The lock-timeout `500` seen on H2 is an
+  H2+Hikari artifact; tests use `LOCK_TIMEOUT=10000` in the H2 URL, decision 31.)
+  **`/error` is public (decision 29):** Spring's error dispatch (malformed JSON, wrong type,
+  non-numeric id) runs unauthenticated — `JwtAuthenticationFilter` is a `OncePerRequestFilter`
+  and doesn't re-run on the error dispatch — so without `permitAll("/error")` every such `400`
+  became a `401`, and the frontend treats a `401` as a logout. `/error` only renders the already
+  decided status (Boot defaults: no message, no stack trace) and makes no other route public;
+  `/error/x` and every protected route still return `401` without a JWT.
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)
 
 Package layout under `backend/src/main/java/com/ganera/core/`: `gestoria`, `ganadero`,
 `explotacion`, `contacto`, `tramite`, `facturacion`, `whatsapp`, `ovz`, `auth`, `onboarding`, and
-`shared` (`shared/tenant`, `shared/security`, `shared/crypto`).
+`shared` (`shared/tenant`, `shared/security`, `shared/crypto`, `shared/web` — `MotivoErrorResponse`,
+`OrdenacionPermitida`).
 
 - `Tramite.estado` (`EstadoTramite`) has exactly 7 values:
   `PENDIENTE_EXTRACCION, PENDIENTE_REVISION, APROBADO, EN_PROCESO, EJECUTADO_OVZ, ERROR_OVZ,
@@ -320,17 +535,20 @@ Package layout under `backend/src/main/java/com/ganera/core/`: `gestoria`, `gana
   the Gestoría isn't known yet. `gestoria_id`/`contacto`/`tramite` are nullable and populated once
   the Contacto is resolved by phone.
 - `UsuarioExplotacion` (in the `gestoria` package, mirroring how `ContactoExplotacion` lives in
-  `contacto`) is an empty, unused join table for the future portfolio feature — no repository yet,
-  same as `ContactoExplotacion`.
+  `contacto`) is an empty, unused join table for the future portfolio feature — no repository yet.
+  (`ContactoExplotacion` stopped being unused in Prompt A1: it has `ContactoExplotacionRepository`
+  and carries the Contacto's `rol`.)
 - Security is stateless JWT (`jjwt`). `JwtService` puts `usuarioId`, `gestoriaId`, `email` in the
   token; `JwtAuthenticationFilter` reconstructs a `GaneraUserPrincipal` from it, resolvable in
   controllers via `@AuthenticationPrincipal GaneraUserPrincipal`. `SecurityConfig` has an explicit
   `authenticationEntryPoint` so a missing/invalid JWT on a protected endpoint returns `401`, not
   Spring Security's default `403`.
 - Public paths: `/webhooks/**`, `/auth/login`, `/gestorias/registro` (public self-registration,
-  no JWT and no shared secret), and `/internal/**` (the last one only at the Spring Security layer —
+  no JWT and no shared secret), `/internal/**` (only at the Spring Security layer —
   `/internal/onboarding/gestoria` still gates itself on the `X-Internal-Secret` header inside
-  `OnboardingController`). Everything else requires a valid JWT.
+  `OnboardingController`), and `/error` (Prompt A1, decision 29: Spring's error dispatch runs
+  without the JWT filter, so without this a malformed-body `400` turned into a `401` that logs the
+  frontend out — see the "Prompt A1" bullet). Everything else requires a valid JWT.
 - **`OnboardingController` (`POST /internal/onboarding/gestoria`) is a temporary bootstrap, not the
   final design.** Real customers now sign up through `POST /gestorias/registro`; this endpoint
   stays only for pilot Gestorías (created directly in `ACTIVA`, no Stripe) and support/manual
@@ -380,6 +598,12 @@ Package layout under `backend/src/main/java/com/ganera/core/`: `gestoria`, `gana
   23) compiles fine targeting an older `--release`. If `mvnw` itself is missing/broken, a cached
   Apache Maven distribution may already exist under `~/.m2/wrapper/dists/` from a prior wrapper run
   and can be invoked directly as a fallback.
+- **Always validate with `./mvnw clean test`, never a bare `./mvnw test`.** VS Code's Java
+  extension compiles classes into `backend/target/` with its own compiler (ECJ), and Maven reuses
+  them: in Prompt A1 (Task 7a) a suite that "ran" 387 tests with failures was actually code that
+  did not compile at all with `javac` (a clean build failed at `testCompile`), and a non-clean run
+  later picked up ECJ's "Unresolved compilation problem" stubs. `clean` is the only trustworthy
+  signal.
 
 ## Architecture notes (frontend)
 
@@ -412,9 +636,18 @@ creation path, see Non-negotiable rules).
   `TRIAL_EXPIRADO_SIN_PAGO`/`SUSPENDIDA`/no-`Suscripcion`-at-all (all three block approving, all
   three get an "actualiza tu suscripción" banner) and a milder one for `IMPAGO_GRACIA` — it never
   hides the rest of the app (Explotaciones/Trámites stay browsable), only `POST /tramites/{id}/aprobar`
-  itself is blocked (`403` from `puedeAprobarTramites`), matching the backend's existing read-only
-  vs. full-access semantics from Prompt 2 — don't make the banner block navigation, that would be a
-  stricter gate than what the backend actually enforces.
+  itself is blocked (`403` from `puedeAprobarTramites`), matching the backend's existing
+  no-approvals vs. full-access semantics from Prompt 2 (editing, rejecting and importing stay
+  allowed) — don't make the banner block navigation, that would be a stricter gate than what the
+  backend actually enforces.
+- **`TramiteReviewDialog` is out of date with the backend since Prompt A1 (fix in Prompt A2):** it
+  calls `POST /tramites/{id}/aprobar` with no body, so it always gets `400` "Falta la versión…" now
+  — except when the subscription blocks approving, where the `403` still comes first with its own
+  message — (approving from the UI is impossible until A2); it shows Aprobar/Rechazar for every estado; every
+  `409` falls through to a generic "Inténtalo de nuevo" instead of the backend's `motivo`; and
+  there is no UI for `PATCH /tramites/{id}` (assigning Explotación/tipo/crotales). A2 must send
+  `version` (from `TramiteDetalleResponse.version`), re-fetch the detail and show `motivo` on
+  **any** `409`, hide/disable Aprobar/Rechazar outside `PENDIENTE_REVISION`, and add the PATCH UI.
 - **No frontend test tooling exists** (no Vitest, no `@testing-library/react`) — verification for
   this prompt was `tsc -b` (clean) + `oxlint` (clean, pre-existing warnings only) + driving the real
   built app in a headless Chromium against the real backend (login → Excel import round-trip with
@@ -429,8 +662,9 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw test` — runs the test suite (110 tests as of Prompt 4); a single test:
-  `./mvnw test -Dtest=AuthServiceTest`
+- `./mvnw clean test` — runs the test suite (415 tests as of Prompt A1); **always with `clean`**
+  (see the VS Code/ECJ note under Architecture notes). A single test:
+  `./mvnw clean test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
   `exec-maven-plugin` is configured in `pom.xml`, so `mvn exec:java` won't work out of the box):
   `mvn dependency:build-classpath -Dmdep.outputFile=cp.txt` then
@@ -591,6 +825,27 @@ pre-existing reason as the rest of the Checkout flow: `STRIPE_PRICE_ID_EXPLOTACI
 empty placeholder (see Prompt 2.7 above) — creating the real `Price` in the Stripe dashboard remains
 Antonio's manual action.
 
+**Prompt A1 — Contactos, crotales in trámites and editable review (backend only) — is complete**
+(2026-09-25 → 2026-09-28), following
+`docs/superpowers/plans/2026-09-25-promptA1-contactos-crotales-revision.md` (31 closed decisions)
+with the Superpowers flow: one implementer subagent + one independent reviewer subagent per task,
+briefs/reports/reviews in `.superpowers/sdd/a1-*`. See the "Prompt A1" bullet under Technical
+decisions for the full design: Contacto tenant-scoped with role on the relation and logical
+delete, `/contactos` CRUD, `/ganaderos`, `/explotaciones/{id}/animales`, the importer's optional
+"Contactos" sheet, `tramite_crotal` + `CrotalNormalizador`, `PATCH /tramites/{id}`, the full
+approval rule (provisional crotal format, decision 28), optimistic `version`, `sort` whitelists
+on every listing, public `/error`. Migrations `V15`–`V17`. Full backend suite green at **415
+tests** (`./mvnw clean test`), plus a real HTTP smoke test on a file-backed H2 (onboarding → login
+→ import with a Contactos sheet → `GET /ganaderos/{id}` with contactos and rol → `GET /contactos` +
+`?sort=noExiste` `400` → a Tramite seeded by SQL → `aprobar` without version `400` / with it `409`
+"Falta asignar la explotación. Falta el tipo de trámite." → `PATCH` `200` (`version` 0 → 1, one
+crotal `EN_INVENTARIO` by its last digits, one full crotal `NO_ENCONTRADO`) → stale-version PATCH
+and `aprobar` `409` → `aprobar` with the new version `200 APROBADO` (`version` 2) → malformed body
+`400`, not `401`). **Not committed yet — pending Antonio's approval.** **Side effect to know
+before any demo: approving from the current frontend is broken until Prompt A2** (see the
+frontend architecture note). `TipoTramite` was deliberately left unchanged (to be replaced in
+Prompt B, see `ganera-prompts.md`).
+
 **Next pending step: Prompt 3a (sincronización inicial de OVZ.net, modo lectura) — blocked.** Per
 `ganera-prompts.md`, Prompts 3a, 3b, and 3c (OVZ.net read sync, Twilio webhook + AI extraction, and
 real Playwright write-mode automation) are all blocked on the same prerequisite: Antonio needs to
@@ -599,7 +854,8 @@ live (the Playwright MCP is set up for exactly this — driving the real site wi
 not guessing at its structure from assumptions). Until that happens, `TramiteExtractionService` and
 `OvzAutomationService` stay as unimplemented skeletons (see above) — don't write real prompt/scraping
 logic against assumptions about OVZ.net's structure. The OVZ-credentials onboarding screen and the
-rest of Prompt 4's originally-scoped items are deferred alongside it.
+rest of Prompt 4's originally-scoped items are deferred alongside it. Not blocked by OVZ.net:
+Prompt A2 (frontend for A1 — `version`, `motivo` on 409, PATCH UI; see `ganera-prompts.md`).
 
 `ganera-prompts.md` at the repo root tracks the full sequence of prompts used to
 build this out, in order — check it for the detailed history/rationale behind any given step.

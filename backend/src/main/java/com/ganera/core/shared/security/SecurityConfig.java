@@ -54,6 +54,13 @@ public class SecurityConfig {
                         .requestMatchers("/internal/**").permitAll()
                         .requestMatchers("/auth/login").permitAll()
                         .requestMatchers("/gestorias/registro").permitAll()
+                        // Decision 29: el "error dispatch" de Spring (cuerpo mal formado, id no
+                        // numerico...) corre sin autenticacion -- JwtAuthenticationFilter es un
+                        // OncePerRequestFilter y no se repite en el dispatch de error. Sin esto,
+                        // un 400 acababa en 401 y el frontend cerraba la sesion. /error solo
+                        // renderiza el estado/cuerpo de error ya decidido (sin mensaje ni traza,
+                        // valores por defecto de Spring Boot); no hace publica ninguna otra ruta.
+                        .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(new JwtAuthenticationFilter(jwtService), UsernamePasswordAuthenticationFilter.class);
 

@@ -404,3 +404,78 @@ multi-tenant encontrado y arreglado en la verificación final, antes de comitear
   `CLAUDE.md`, `/gestorias/registro` añadido a las rutas públicas, cabecera de estado y repo
   (`AntonioMenor01/Ganera.git`) corregidos en `ganera-prompts.md`, skill `smoke-test-h2`
   alineada con `CLAUDE.md` (`./mvnw`, Flyway activo, `ddl-auto=none`).
+
+## 2026-09-25 → 2026-09-28 — Prompt A1 (contactos, crotales en trámites, revisión editable) — solo backend
+
+- **Paso 0 (2026-09-25):** plan `docs/superpowers/plans/2026-09-25-promptA1-contactos-crotales-revision.md`
+  con 10 decisiones cerradas con Antonio antes de empezar (teléfono `UNIQUE` global — opción A —,
+  borrado lógico, rol en la relación, sin límite de una explotación por empleado, E.164, PATCH con
+  lista completa, formato de errores 409 `{motivo}`/404 sin cuerpo/400, `TipoTramite` sin tocar) y
+  21 más añadidas durante la ejecución (11–31), casi todas a raíz de las revisiones. Flujo
+  Superpowers: un subagente implementador + un revisor independiente por tarea; informes y
+  revisiones en `.superpowers/sdd/a1-task*-report.md` / `a1-task*-review.md`. Suite de partida: 135.
+- **Task 1** (modelo de Contactos, `V15`, `RolContacto`, `TelefonoNormalizador`,
+  `ContactoExplotacionRepository`; se borra `TipoContacto`): 135 → 167 → **171** tras la revisión
+  (**Approved**; I1 `+0…` no es E.164 y M1 espacio no separable arreglados; M2 → decisión 14:
+  rechazar `+` + 9 dígitos españoles sin `34`; M3 → decisión 15: comprobar que Contacto,
+  Explotación y usuario son de la misma Gestoría).
+- **Task 2** (CRUD `/contactos`, enlazar/desenlazar, `MotivoErrorResponse`): 204 → **206**.
+  **Approved** sin Critical/Important.
+- **Task 3** (hoja "Contactos" opcional del importador, `procesarContacto` en `REQUIRES_NEW`):
+  217 → **220**. **Approved**. Decisión 11 verificada con E2E de dos Gestorías y una mutación
+  (`findByTelefono` en vez de `findByGestoriaIdAndTelefono` rompe el test). Dos hallazgos para la
+  Task 7: **I-pre1** (preexistente) — el importador respondía "posible duplicado entre gestorias"
+  cuando un `codigo_rega`/NIF/crotal era de otra Gestoría → decisión 17; **I-doc** — la explicación
+  de `REQUIRES_NEW` en `CLAUDE.md` era incorrecta sobre HTTP (reutiliza el EntityManager de OSIV
+  con el filtro ya activo) → decisión 19.
+- **Task 4** (`/ganaderos`, `/ganaderos/{id}`, `/explotaciones/{id}/animales`): 233 → **239**.
+  **Approved**; I1 (el guard de N+1 de `GET /ganaderos` pasaba trivialmente) arreglado; M1 lista
+  blanca de `sort` (aceptaba `ovzUsuario`), M2 orden estable, M3 comprobar la Gestoría del Contacto.
+- **Task 5** (`tramite_crotal` `V16`, `CrotalNormalizador`, `TramiteCrotalService`, crotales en el
+  listado con una consulta por página): **288**. **Approved**; I1 (preexistente): el importador
+  guardaba `Animal.crotal` sin normalizar → decisión 22.
+- **Task 6** (`PATCH /tramites/{id}`, `TramiteRevisionService`, regla de aprobación): 352 →
+  **358**. Revisión: **Changes required** por I1 — aprobar re-resolvía crotales y podía aprobar un
+  animal distinto del que vio el revisor. Arreglado con `ResolucionCrotalesCambiadaException`
+  (409 que confirma la nueva resolución, `noRollbackFor`), refresh tras el bloqueo (M3) y test de
+  concurrencia aprobar-contra-aprobar (M6). Re-revisión **Approved** con **R1** residual (la
+  garantía era por petición, no por revisor) → decisión 27 (`@Version`). I2 (el "completo" de la
+  regla era demasiado laxo, `ES1234` pasaba) → decisión 28. M1 (cuerpo mal formado → 401 que cierra
+  la sesión) → decisión 29. M4 (PATCH/rechazar no bloqueados por suscripción) → decisión 30, solo
+  docs.
+- **Task 7a** (decisiones 17, 19, 21, 22, 27, 28, 29, 31). **La sesión se cortó a mitad.** Al
+  retomarla, el recuento que se daba por bueno ("387 tests, 13 fallos + 6 errores") venía de clases
+  compiladas por VS Code (ECJ) en `target/`: un `./mvnw clean test` dio **BUILD FAILURE en
+  testCompile** (8 errores de `javac` en `ExplotacionControllerTest` y `TramiteControllerTest`). Se
+  auditó lo heredado, se reforzaron sus tests y se completó: finders sin scope
+  (`findByCodigoRega`/`findByNif`/`findByCrotal`) **eliminados** de los repositorios (volver a
+  usarlos no compila), mensaje neutro en el importador, crotales normalizados en el importador,
+  `@Version` con incremento exacto +1 en toda escritura (UPDATE explícito: `PESSIMISTIC_FORCE_INCREMENT`
+  lo omitía Hibernate 6.6 en silencio), formato provisional de crotal, `/error` público, listas
+  blancas de `sort` en `/explotaciones` y `/tramites`, `LOCK_TIMEOUT=10000` en el H2 de tests.
+  **408** en verde. Revisión **Approved** con I1 (un inventario con crotales sin `ES` permitía
+  aprobar un crotal incompleto) → Antonio eligió aplicar la regla de formato también al crotal del
+  Animal `EN_INVENTARIO` (en vez de endurecer el importador), y M1 (`/contactos` sin lista blanca de
+  `sort`, `?sort=noExiste` daba 500). Ambos arreglados con TDD → **415**; re-revisión **Approved**.
+- **Task 7b (2026-09-28, cierre):**
+  - Greps en `backend/src/main`: `findById(` solo en `AuthController` `/auth/me` (id del JWT) y en
+    comentarios; `findByCodigoRega(`/`findByNif(`/`findByCrotal(` cero (ya no existen);
+    `findByTelefono(` solo su declaración (sin llamadas; el webhook aún no lo usa).
+  - `./mvnw clean test`: **415 tests, 0 fallos, 0 errores**, BUILD SUCCESS.
+  - Smoke test HTTP real con H2 en fichero (`AUTO_SERVER=TRUE`): onboarding → login → importar un
+    Excel con hojas Explotaciones/Animales/Contactos (crotal con separadores normalizado a
+    `ES010000001234`; teléfonos `612 345 678` → `+34612345678`; un teléfono inválido como error de
+    fila) → `GET /ganaderos/1` con contactos y rol → `GET /contactos` y `?sort=noExiste` 400 →
+    Trámite sembrado por SQL en `PENDIENTE_REVISION` → aprobar sin `version` 400, con `version` 0
+    409 "Falta asignar la explotación. Falta el tipo de trámite." → PATCH (explotación, `ALTA`,
+    `1234` + `ES 0100 0000 7777`) 200, versión 1, `EN_INVENTARIO` + `NO_ENCONTRADO` → PATCH y
+    aprobar con versión 0 → 409 → aprobar con 1 → 200 `APROBADO`, versión 2 → aprobar/rechazar de
+    nuevo 409 → cuerpo mal formado, tipo erróneo e id no numérico → 400, no 401. Estado final
+    comprobado por SQL. `java.exe` del smoke matado por PID (solo queda el del language server de
+    VS Code); BD H2 y ficheros temporales borrados.
+  - `CLAUDE.md`, `ganera-prompts.md` y este fichero puestos al día (nuevo bullet "Prompt A1",
+    decisiones 1/11/17/19/30, "read-only" → "no approvals", `/error` público, riesgos para 3c,
+    frontend roto hasta A2, `./mvnw clean test`).
+- **Sin commit** — pendiente de la aprobación de Antonio. **Aviso antes de cualquier demo:** aprobar
+  desde el frontend actual da siempre 400 hasta el Prompt A2 (envía `aprobar` sin `version`), salvo
+  el 403 de suscripción bloqueada o inexistente, que va antes y sigue mostrando su mensaje.

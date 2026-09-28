@@ -2,7 +2,7 @@
 
 Documento de referencia con todos los prompts, en orden, tal como se han ido cerrando. Cada uno se lanza en la **misma sesión continua** de Claude Code (para que mantenga el contexto), salvo que se indique lo contrario.
 
-Estado actual (2026-09-25): **Prompts 0, 1, 2, 2.5, 2.7, 3d, 4 (parcial, sin lo bloqueado por OVZ.net), la identidad visual de marca y el alta pública de gestorías completados y verificados.** Repo en GitHub (`github.com/AntonioMenor01/Ganera.git`). Suite backend en verde a 135 tests; frontend compila (`tsc -b` + `vite build`) y pasa `oxlint`. Pendientes de Antonio: crear el `Price` real en el dashboard de Stripe (test mode) para poder probar un checkout real de principio a fin, y aportar credenciales de OVZ.net. Siguiente paso: Prompts 3a/3b/3c (bloqueados a la espera de esas credenciales). Dos bugs de Stripe detectados en la revisión completa del 2026-09-25 quedan pendientes (ver "Known bugs" en `CLAUDE.md`, bullet de Stripe).
+Estado actual (2026-09-28): **Prompts 0, 1, 2, 2.5, 2.7, 3d, 4 (parcial, sin lo bloqueado por OVZ.net), la identidad visual de marca, el alta pública de gestorías y el Prompt A1 (contactos, crotales en trámites y revisión editable, solo backend) completados y verificados.** El Prompt A1 está **sin commitear**, pendiente de la aprobación de Antonio. Repo en GitHub (`github.com/AntonioMenor01/Ganera.git`). Suite backend en verde a 415 tests (`./mvnw clean test`); frontend compila (`tsc -b` + `vite build`) y pasa `oxlint`, pero **aprobar desde la UI no funciona hasta el Prompt A2** (el backend exige ahora la `version` del trámite). Pendientes de Antonio: crear el `Price` real en el dashboard de Stripe (test mode) para poder probar un checkout real de principio a fin, y aportar credenciales de OVZ.net. Siguiente paso no bloqueado: Prompt A2 (frontend de A1). Prompts 3a/3b/3c siguen bloqueados a la espera de las credenciales. Dos bugs de Stripe detectados en la revisión completa del 2026-09-25 quedan pendientes (ver "Known bugs" en `CLAUDE.md`, bullet de Stripe).
 
 ---
 
@@ -18,7 +18,7 @@ Ganera es una plataforma que automatiza trámites bovinos para gestorías ganade
 - La Gestoría tiene EMPLEADOS (Usuario, con login) que gestionan la plataforma. No hay roles diferenciados por ahora: todo usuario de una gestoría puede operar dentro de su gestoría (más adelante podríamos añadir reparto de cartera entre empleados, pero no ahora).
 - Cada Gestoría tiene GANADEROS como clientes. Los ganaderos NUNCA acceden a ninguna web ni tienen login: su única interacción con el sistema es mandar mensajes de WhatsApp.
 - Cada Ganadero tiene una o más EXPLOTACIONES (granjas), y cada explotación tiene ANIMALES identificados por crotal (formato tipo ES123456789012, donde los últimos 4 dígitos son los que el ganadero suele mencionar por WhatsApp).
-- Quien escribe por WhatsApp es un CONTACTO (puede ser el titular o un trabajador), identificado por su teléfono. Un trabajador está vinculado a una única explotación (sin ambigüedad). El titular puede estar vinculado a varias explotaciones de sus ganaderías.
+- Quien escribe por WhatsApp es un CONTACTO (puede ser el titular o un trabajador), identificado por su teléfono. Un trabajador está vinculado a una única explotación (sin ambigüedad). El titular puede estar vinculado a varias explotaciones de sus ganaderías. [Nota posterior: superado por A1, decisión 4 — el rol va en la relación y un empleado puede estar en varias explotaciones.]
 
 FLUJO OPERATIVO CORE:
 1. Un Contacto manda un mensaje de WhatsApp (vía Twilio) describiendo un trámite (alta, baja, censo, movimiento, demora) en lenguaje natural, mencionando animales normalmente por los últimos dígitos del crotal.
@@ -311,11 +311,20 @@ Stripe test-mode no se puede probar todavía; ninguna tarea de este prompt lo ha
 
 **Bloqueado por:** mismo catálogo que 3a. Incluirá el prompt de sistema real para `TramiteExtractionService` con ejemplos de mensajes reales de ganaderos.
 
+**Pendientes heredados del Prompt A1 (tenerlos en cuenta al implementar 3b):**
+- **Contactos inactivos (decisión 2):** el webhook debe ignorar los mensajes de un `Contacto` con `activo=false` (borrado lógico): no se crea ningún Trámite.
+- **`findByTelefono` (decisión 11):** `ContactoRepository.findByTelefono` (sin scope de Gestoría) es exclusivo de este webhook; nada más lo usa. Normalizar el `From` de Twilio con `TelefonoNormalizador` antes de buscar.
+- **Finder sin scope heredado (revisión 7b, I1):** `AnimalRepository.findByExplotacionIdAndCrotalUltimosDigitos` no lleva `gestoriaId` y no tiene llamadas (es anterior a A1). No usarlo para resolver crotales desde WhatsApp: eliminarlo o añadirle `gestoriaId` antes de 3b (decisión de Antonio). A1 resuelve con `findByExplotacionIdAndGestoriaIdAndCrotalEndingWithOrderByIdAsc`.
+- **Crotales duplicados (decisión 23):** la creación automática de trámites desde WhatsApp debe deduplicar los crotales que resuelvan al mismo Animal (el `PATCH` ya responde `409` en ese caso, y aprobar también lo bloquea).
+- **Catálogo de tipos (decisión 18):** el enum `TipoTramite` actual (`ALTA`, `BAJA`, `CENSO`, `MOVIMIENTO`, `DEMORA`) se sustituirá en el **prompt B** por los tipos reales de OVZ para vacuno: `ALTA_BOVINO`, `BAJA`, `SOLICITUD_MOVIMIENTO`, `CONFIRMACION_MOVIMIENTO`, `DECLARACION_CENSO`, `MOD_DECLARACION_CENSO`, `DEMORA_CROTALIZACION`. Ocasionales, para una fase posterior: anulación de guías y rechazo de animales en origen. **En A1 el enum NO se cambió.**
+
 ---
 
 ## Prompt 3c — Automatización real OVZ.net, modo escritura (pendiente)
 
 **Bloqueado por:** mismo catálogo. Implementará la lógica real de `PlaywrightOvzAutomationService.ejecutarTramite()` con 1 reintento automático y paso a `ERROR_OVZ` si falla.
+
+**Pendiente heredado del Prompt A1 (revisión de la Task 6, M2):** nunca ejecutar Playwright/OVZ.net dentro de la transacción que tiene el bloqueo de fila del Trámite (`PESSIMISTIC_WRITE` de `TramiteRevisionService`): se aprueba y se confirma, y la ejecución va después, de forma asíncrona. Si se configura un `statement_timeout` en Postgres, un `57014` acabaría en `500`; un `lock_timeout` (`55P03`) sí se traduce a `409`.
 
 ---
 
@@ -387,7 +396,7 @@ Antes de generar código se confirmó con Antonio que no existía ningún endpoi
 estado de la Suscripción (había que añadirlo) y se aclaró el nivel de bloqueo de UI para Gestorías
 sin acceso: solo se bloquea el botón Aprobar (con mensaje claro), nunca la navegación — coherente
 con el diseño ya cerrado en el Prompt 2 (`IMPAGO_GRACIA` = acceso completo con aviso;
-`TRIAL_EXPIRADO_SIN_PAGO`/`SUSPENDIDA` = solo lectura, no bloqueo total). Una Gestoría que nunca tuvo
+`TRIAL_EXPIRADO_SIN_PAGO`/`SUSPENDIDA` = solo lectura, no bloqueo total — superado por A1, decisión 30: solo se bloquea aprobar; editar, rechazar e importar siguen permitidos). Una Gestoría que nunca tuvo
 Suscripción recibe el mismo aviso que un estado bloqueante, con opción de empezar el trial de 15
 días (mismo `POST /facturacion/checkout` ya existente, sin lógica nueva).
 
@@ -515,6 +524,32 @@ necesita el `Price` real de Antonio.
 `IMPAGO_GRACIA` (reabre la aprobación), y una prueba cuyo checkout se abandona queda en `TRIAL`
 para siempre (la fila se crea antes de completar el checkout, también desde este alta pública).
 Detalle en `CLAUDE.md`.
+
+---
+
+## Prompt A1 — Contactos, crotales en trámites y revisión editable (completado, 2026-09-28, sin commitear)
+
+Prepara el terreno de 3b (WhatsApp + IA) **sin depender de OVZ.net**: que el sistema sepa a qué Explotación(es) pertenece un teléfono, que un Trámite guarde los crotales mencionados y que la gestoría pueda corregir el Trámite antes de aprobarlo. **Solo backend**: nada de frontend, IA, Twilio ni Stripe. Plan con las 31 decisiones cerradas con Antonio en `docs/superpowers/plans/2026-09-25-promptA1-contactos-crotales-revision.md`; ejecutado con el flujo Superpowers (un subagente implementador y un revisor independiente por tarea; informes en `.superpowers/sdd/a1-*`).
+
+Entregado (detalle completo en `CLAUDE.md`, bullet "Prompt A1" bajo Technical decisions):
+- **Contactos (Tasks 1–2):** `Contacto` pasa a `GestoriaScopedEntity` (`V15`) con `telefono` todavía `UNIQUE` global (decisión 1: limitación y camino futuro documentados); rol en la relación (`ContactoExplotacion.rol`, `RolContacto` `TITULAR`/`EMPLEADO`; se borra `TipoContacto`); sin límite de una Explotación por empleado; borrado lógico `activo`; `TelefonoNormalizador` a E.164. CRUD `/contactos` (listar con `incluirInactivos`, crear, editar, borrar lógico, reactivar, enlazar/desenlazar Explotaciones).
+- **Importador (Task 3):** hoja "Contactos" opcional (`telefono, nombre, codigo_explotacion, rol`), por fila en `REQUIRES_NEW`, siempre con `findByGestoriaIdAndTelefono`, nunca `findByTelefono`. Un teléfono de otra Gestoría da un error de fila genérico.
+- **Lectura (Task 4):** `GET /ganaderos`, `GET /ganaderos/{id}` (explotaciones con contactos activos y rol, sin credenciales OVZ), `GET /explotaciones/{id}/animales`.
+- **Crotales en trámites (Task 5):** tabla `tramite_crotal` (`V16`), `CrotalNormalizador` (completo/incompleto), resolución `EN_INVENTARIO`/`AMBIGUO`/`NO_ENCONTRADO`/`SIN_EXPLOTACION` dentro de la Explotación del Trámite; crotales en `GET /tramites` con una sola consulta por página.
+- **Revisión editable (Task 6):** `PATCH /tramites/{id}` (explotación, tipo, lista completa de crotales), bloqueo `PESSIMISTIC_WRITE` + refresh, aprobar/rechazar solo desde `PENDIENTE_REVISION`, regla de aprobación ampliada (explotación y tipo obligatorios; `AMBIGUO`, `SIN_EXPLOTACION` y `NO_ENCONTRADO` incompleto bloquean; dos crotales al mismo Animal → `409`) y re-resolución al aprobar (`ResolucionCrotalesCambiadaException`: el único `409` que confirma datos).
+- **Cierre (Task 7a):** versión optimista `@Version` (`V17`; `PATCH` y aprobar exigen `version`), formato provisional de crotal para aprobar (`ES` + 12 dígitos, u otro país 2 letras + 8–12, también sobre el crotal del Animal en inventario), `/error` público (un cuerpo mal formado da `400` y no `401`), listas blancas de `sort` en todos los listados, mensaje neutro del importador para identificadores de otra Gestoría y eliminación de los finders sin scope (`findByCodigoRega`/`findByNif`/`findByCrotal`), normalización de crotales en el importador.
+
+**Verificación:** suite completa a **415 tests** con `./mvnw clean test` (135 antes de A1). Smoke test HTTP real con H2 en fichero (`AUTO_SERVER=TRUE` para sembrar un Trámite por SQL): onboarding → login → importar un Excel con hoja Contactos → `GET /ganaderos/{id}` con contactos y rol → `GET /contactos` (y `?sort=noExiste` → `400`) → aprobar sin `version` `400`, con ella `409` con motivo → `PATCH` `200` (versión 0 → 1) → `PATCH`/aprobar con versión antigua `409` → aprobar con la nueva `200 APROBADO` → cuerpo mal formado `400`, no `401`.
+
+**Hallazgo de proceso:** la sesión de la Task 7a se cortó a mitad; al retomarla, un `./mvnw clean test` reveló que el código heredado **no compilaba con `javac`** (el recuento de "387 tests" venía de clases compiladas por VS Code en `target/`). Desde entonces se valida siempre con `clean` (anotado en `CLAUDE.md`).
+
+**Pendientes para el Prompt A2 (frontend):**
+- **Aprobar está roto en la UI hasta A2:** el frontend llama a `aprobar` sin cuerpo → `400` siempre (decisión 27), salvo el `403` de suscripción bloqueada o inexistente, que va antes y sigue mostrando su mensaje específico. A2 debe enviar la `version` (de `TramiteDetalleResponse.version`) en `PATCH` y `aprobar`.
+- Ante **cualquier** `409`: recargar el detalle y mostrar el `motivo` del backend, no un "Inténtalo de nuevo" genérico (revisiones R1 y M5).
+- Ocultar o deshabilitar Aprobar/Rechazar fuera de `PENDIENTE_REVISION`.
+- UI de `PATCH` para asignar explotación, tipo y crotales. Ojo (M7): `PATCH` no puede vaciar la explotación ni el tipo (`null` = no cambiar); `crotales: []` sí quita todos los crotales.
+
+**Otras notas abiertas:** los `Animal.crotal` importados antes de A1 no se migraron (un crotal antiguo con separadores o minúsculas puede duplicar el Animal al reimportar, y queda bloqueado al aprobar); la regla de formato de crotal de otros países es provisional; el mensaje neutro del importador también cubre violaciones que no son de unicidad (NIF o nombre demasiado largos).
 
 ---
 
