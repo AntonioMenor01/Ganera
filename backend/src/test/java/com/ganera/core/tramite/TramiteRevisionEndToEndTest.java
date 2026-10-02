@@ -325,7 +325,7 @@ class TramiteRevisionEndToEndTest {
         assertThat(seleccionConBloqueoDeTramite()).as("aprobar").isEqualTo(1);
 
         SqlCapturadoInspector.limpiar();
-        assertThat(post("/tramites/" + rechazable.getId() + "/rechazar", tokenA).getStatusCode().value()).isEqualTo(200);
+        assertThat(rechazar(rechazable, tokenA).getStatusCode().value()).isEqualTo(200);
         assertThat(seleccionConBloqueoDeTramite()).as("rechazar").isEqualTo(1);
     }
 
@@ -639,7 +639,7 @@ class TramiteRevisionEndToEndTest {
             Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, estado);
 
             ResponseEntity<String> aprobar = aprobar(tramite, tokenA);
-            ResponseEntity<String> rechazar = post("/tramites/" + tramite.getId() + "/rechazar", tokenA);
+            ResponseEntity<String> rechazar = rechazar(tramite, tokenA);
 
             assertThat(aprobar.getStatusCode().value()).as("aprobar desde " + estado).isEqualTo(409);
             assertThat(motivo(aprobar)).isEqualTo("Solo se puede aprobar un trámite pendiente de revisión.");
@@ -651,12 +651,14 @@ class TramiteRevisionEndToEndTest {
 
     /** El 403 de suscripcion va antes que cualquier otra comprobacion. */
     @Test
-    void aprobarConSuscripcionSuspendidaOSinSuscripcionDevuelve403AunqueElTramiteSeaAprobable() {
+    void aprobarConSuscripcionSuspendidaOSinSuscripcionDevuelve403AunqueElTramiteSeaAprobable() throws IOException {
         Tramite aprobable = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
         suscripcionA.setEstado(EstadoSuscripcion.SUSPENDIDA);
         suscripcionRepository.save(suscripcionA);
 
-        assertThat(aprobar(aprobable, tokenA).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<String> suspendida = aprobar(aprobable, tokenA);
+        assertThat(suspendida.getStatusCode().value()).isEqualTo(403);
+        assertThat(motivo(suspendida)).isEqualTo(TramiteController.MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR);
         assertThat(estadoEnBd(aprobable)).isEqualTo("PENDIENTE_REVISION");
 
         Gestoria gestoriaC = gestoriaRepository.save(new Gestoria("Gestoria revision E2E C sin suscripcion"));
@@ -665,7 +667,9 @@ class TramiteRevisionEndToEndTest {
         Tramite yaAprobado = nuevoTramite(gestoriaC, nuevoContacto(gestoriaC, "+34600980003"), null, null, EstadoTramite.APROBADO);
 
         // Sin Suscripcion: 403 aunque el Tramite daria 409 por estado.
-        assertThat(aprobar(yaAprobado, tokenC).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<String> sinSuscripcion = aprobar(yaAprobado, tokenC);
+        assertThat(sinSuscripcion.getStatusCode().value()).isEqualTo(403);
+        assertThat(motivo(sinSuscripcion)).isEqualTo(TramiteController.MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR);
         assertThat(estadoEnBd(yaAprobado)).isEqualTo("APROBADO");
     }
 
@@ -674,7 +678,7 @@ class TramiteRevisionEndToEndTest {
         Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
 
         ResponseEntity<String> aprobar = aprobar(tramite, tokenB);
-        ResponseEntity<String> rechazar = post("/tramites/" + tramite.getId() + "/rechazar", tokenB);
+        ResponseEntity<String> rechazar = rechazar(tramite, tokenB);
 
         assertThat(aprobar.getStatusCode().value()).isEqualTo(404);
         assertThat(aprobar.getBody()).isNullOrEmpty();
@@ -687,7 +691,7 @@ class TramiteRevisionEndToEndTest {
     void rechazarNoExigeExplotacionNiTipo() throws IOException {
         Tramite tramite = nuevoTramite(gestoriaB, contactoB, null, null, EstadoTramite.PENDIENTE_REVISION);
 
-        ResponseEntity<String> respuesta = post("/tramites/" + tramite.getId() + "/rechazar", tokenB);
+        ResponseEntity<String> respuesta = rechazar(tramite, tokenB);
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
         assertThat(objectMapper.readTree(respuesta.getBody()).get("estado").asText()).isEqualTo("RECHAZADO");
@@ -797,7 +801,7 @@ class TramiteRevisionEndToEndTest {
      * que la respuesta es identica para uno propio, uno de otra Gestoria y uno inexistente.
      */
     @Test
-    void patchYAprobarSinVersionDevuelven400ConMotivoYNoCambianNada() throws IOException {
+    void patchAprobarYRechazarSinVersionDevuelven400ConMotivoYNoCambianNada() throws IOException {
         Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
         Tramite ajeno = nuevoTramite(gestoriaB, contactoB, explotacionB, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
         Map<String, Object> antes = foto(tramite);
@@ -812,7 +816,10 @@ class TramiteRevisionEndToEndTest {
                     patchCrudo(id, tokenA, versionNula),
                     postCrudo("/tramites/" + id + "/aprobar", tokenA, null),
                     postCrudo("/tramites/" + id + "/aprobar", tokenA, "{}"),
-                    postCrudo("/tramites/" + id + "/aprobar", tokenA, "{\"version\":null}"));
+                    postCrudo("/tramites/" + id + "/aprobar", tokenA, "{\"version\":null}"),
+                    postCrudo("/tramites/" + id + "/rechazar", tokenA, null),
+                    postCrudo("/tramites/" + id + "/rechazar", tokenA, "{}"),
+                    postCrudo("/tramites/" + id + "/rechazar", tokenA, "{\"version\":null}"));
             for (ResponseEntity<String> respuesta : respuestas) {
                 assertThat(respuesta.getStatusCode().value()).as("id " + id).isEqualTo(400);
                 assertThat(motivo(respuesta)).isEqualTo(TramiteController.MOTIVO_FALTA_VERSION);
@@ -824,13 +831,18 @@ class TramiteRevisionEndToEndTest {
 
     /** El 403 de suscripcion sigue siendo lo primero, antes incluso que la version ausente. */
     @Test
-    void aprobarSinSuscripcionYSinVersionDevuelve403() {
+    void aprobarSinSuscripcionYSinVersionDevuelve403ConMotivo() throws IOException {
         Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
         suscripcionA.setEstado(EstadoSuscripcion.SUSPENDIDA);
         suscripcionRepository.save(suscripcionA);
 
-        assertThat(postCrudo("/tramites/" + tramite.getId() + "/aprobar", tokenA, null).getStatusCode().value())
-                .isEqualTo(403);
+        // El motivo es generico (no depende del Tramite): un id ajeno o inexistente da el mismo 403
+        // y el mismo texto, asi que no revela nada.
+        for (Long id : List.of(tramite.getId(), 999999L)) {
+            ResponseEntity<String> respuesta = postCrudo("/tramites/" + id + "/aprobar", tokenA, null);
+            assertThat(respuesta.getStatusCode().value()).isEqualTo(403);
+            assertThat(motivo(respuesta)).isEqualTo(TramiteController.MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR);
+        }
         assertThat(estadoEnBd(tramite)).isEqualTo("PENDIENTE_REVISION");
     }
 
@@ -857,6 +869,26 @@ class TramiteRevisionEndToEndTest {
         }
     }
 
+    /** Mini-prompt tras A2 (punto 4): rechazar con una version que no es la actual -> 409 con el
+     * mismo motivo que PATCH/aprobar, y nada cambia (estado ni version). */
+    @Test
+    void rechazarConVersionDesfasadaDevuelve409SinCambiarNada() throws IOException {
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, null, null, EstadoTramite.PENDIENTE_REVISION);
+        long vieja = versionEnBd(tramite);
+        assertThat(patch(tramite, tokenA, Map.of("version", vieja, "tipoTramite", "BAJA")).getStatusCode().value())
+                .isEqualTo(200);
+        Map<String, Object> antes = foto(tramite);
+
+        for (long otra : List.of(vieja, vieja + 5)) {
+            ResponseEntity<String> respuesta = rechazarConVersion(tramite, tokenA, otra);
+
+            assertThat(respuesta.getStatusCode().value()).as("version " + otra).isEqualTo(409);
+            assertThat(motivo(respuesta)).isEqualTo(TramiteRevisionService.MOTIVO_VERSION_DESFASADA);
+            assertThat(foto(tramite)).isEqualTo(antes);
+        }
+        assertThat(estadoEnBd(tramite)).isEqualTo("PENDIENTE_REVISION");
+    }
+
     /** Toda escritura aceptada incrementa la version exactamente en 1, tambien un PATCH que solo
      * cambia los crotales (solo toca tramite_crotal: el incremento se fuerza). */
     @Test
@@ -877,11 +909,11 @@ class TramiteRevisionEndToEndTest {
     }
 
     @Test
-    void rechazarNoExigeVersionPeroLaIncrementa() throws IOException {
+    void rechazarConLaVersionActualDevuelve200YLaIncrementaEnUno() throws IOException {
         Tramite tramite = nuevoTramite(gestoriaA, contactoA, null, null, EstadoTramite.PENDIENTE_REVISION);
         long v0 = versionEnBd(tramite);
 
-        ResponseEntity<String> respuesta = post("/tramites/" + tramite.getId() + "/rechazar", tokenA);
+        ResponseEntity<String> respuesta = rechazar(tramite, tokenA);
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
         assertThat(objectMapper.readTree(respuesta.getBody()).get("version").asLong()).isEqualTo(v0 + 1);
@@ -899,13 +931,140 @@ class TramiteRevisionEndToEndTest {
         for (long version : List.of(actual, actual + 1, actual + 100)) {
             ResponseEntity<String> edicion = patch(tramite, tokenB, Map.of("version", version, "tipoTramite", "BAJA"));
             ResponseEntity<String> aprobacion = aprobarConVersion(tramite, tokenB, version);
+            ResponseEntity<String> rechazo = rechazarConVersion(tramite, tokenB, version);
 
-            for (ResponseEntity<String> respuesta : List.of(edicion, aprobacion)) {
+            for (ResponseEntity<String> respuesta : List.of(edicion, aprobacion, rechazo)) {
                 assertThat(respuesta.getStatusCode().value()).as("version " + version).isEqualTo(404);
                 assertThat(respuesta.getBody()).isNullOrEmpty();
             }
         }
         assertThat(foto(tramite)).isEqualTo(antes);
+    }
+
+    // ------------------------- listado con REGA/nombre y crotales con completo (mini-prompt, 5 y 8)
+
+    /**
+     * Punto 5: cada fila del listado lleva el codigo REGA y el nombre de su Explotacion (null si no
+     * tiene), sin cargar la Explotacion fila a fila (EntityGraph en la consulta de la pagina), y
+     * Gestoria A nunca ve nada de B.
+     */
+    @Test
+    void listadoIncluyeRegaYNombreDeLaExplotacionSinCargarlaPorFilaNiMezclarGestorias() throws IOException {
+        Explotacion explotacionA3 = nuevaExplotacion(gestoriaA, "ES980000000003");
+        Tramite enA1 = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite enA2 = nuevoTramite(gestoriaA, contactoA, explotacionA2, null, EstadoTramite.PENDIENTE_REVISION);
+        Tramite enA3 = nuevoTramite(gestoriaA, contactoA, explotacionA3, null, EstadoTramite.APROBADO);
+        Tramite sinExplotacion = nuevoTramite(gestoriaA, contactoA, null, null, EstadoTramite.PENDIENTE_REVISION);
+        Tramite deB = nuevoTramite(gestoriaB, contactoB, explotacionB, null, EstadoTramite.PENDIENTE_REVISION);
+
+        for (String ruta : List.of("/tramites?size=20", "/tramites?size=2&page=1",
+                "/tramites?estado=PENDIENTE_REVISION&size=20", "/tramites?estado=PENDIENTE_REVISION&size=1&page=1")) {
+            SqlCapturadoInspector.limpiar();
+            ResponseEntity<String> respuesta = get(ruta, tokenA);
+            assertThat(respuesta.getStatusCode().value()).as(ruta).isEqualTo(200);
+            assertThat(consultasDeTramiteConJoinAExplotacion())
+                    .as(ruta + ": la consulta de la pagina trae la Explotacion con un join (si Hibernate cambiara "
+                            + "el formato del SQL, el contador de cargas sueltas podria quedarse en 0 sin medir nada)")
+                    .isPositive();
+            assertThat(cargasSueltasDeExplotacion()).as(ruta + ": ninguna carga de Explotacion por fila").isZero();
+            assertThat(respuesta.getBody()).as(ruta).doesNotContain("ES980000000101");
+        }
+
+        JsonNode todo = objectMapper.readTree(get("/tramites?size=20", tokenA).getBody());
+        assertThat(todo.get("totalElements").asLong()).isEqualTo(4);
+        Map<Long, JsonNode> porId = new HashMap<>();
+        todo.get("content").forEach(t -> porId.put(t.get("id").asLong(), t));
+        assertThat(porId).doesNotContainKey(deB.getId());
+        assertThat(porId.get(enA1.getId()).get("explotacionCodigoRega").asText()).isEqualTo("ES980000000001");
+        assertThat(porId.get(enA1.getId()).get("explotacionNombre").asText()).isEqualTo("Finca ES980000000001");
+        assertThat(porId.get(enA2.getId()).get("explotacionCodigoRega").asText()).isEqualTo("ES980000000002");
+        assertThat(porId.get(enA3.getId()).get("explotacionNombre").asText()).isEqualTo("Finca ES980000000003");
+        assertThat(porId.get(sinExplotacion.getId()).get("explotacionCodigoRega").isNull()).isTrue();
+        assertThat(porId.get(sinExplotacion.getId()).get("explotacionNombre").isNull()).isTrue();
+
+        // Paginacion con conteo: la consulta de conteo sigue funcionando con el EntityGraph.
+        JsonNode pagina = objectMapper.readTree(get("/tramites?size=2&page=1", tokenA).getBody());
+        assertThat(pagina.get("totalElements").asLong()).isEqualTo(4);
+        assertThat(pagina.get("content")).hasSize(2);
+        JsonNode pendientes = objectMapper.readTree(
+                get("/tramites?estado=PENDIENTE_REVISION&size=1&page=1", tokenA).getBody());
+        assertThat(pendientes.get("totalElements").asLong()).isEqualTo(3);
+
+        JsonNode vistoPorB = objectMapper.readTree(get("/tramites?size=20", tokenB).getBody());
+        assertThat(vistoPorB.get("totalElements").asLong()).isEqualTo(1);
+        assertThat(vistoPorB.get("content").get(0).get("explotacionCodigoRega").asText()).isEqualTo("ES980000000101");
+        assertThat(vistoPorB.toString()).doesNotContain("ES980000000001").doesNotContain("ES980000000002")
+                .doesNotContain("ES980000000003");
+    }
+
+    /** Punto 5, efecto colateral: aprobar y rechazar devuelven TramiteResponse, con REGA y nombre. */
+    @Test
+    void aprobarYRechazarDevuelvenRegaYNombreDeLaExplotacion() throws IOException {
+        Tramite aprobable = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite rechazable = nuevoTramite(gestoriaA, contactoA, explotacionA2, null, EstadoTramite.PENDIENTE_REVISION);
+        Tramite sinExplotacion = nuevoTramite(gestoriaA, contactoA, null, null, EstadoTramite.PENDIENTE_REVISION);
+
+        JsonNode aprobado = objectMapper.readTree(aprobar(aprobable, tokenA).getBody());
+        assertThat(aprobado.get("estado").asText()).isEqualTo("APROBADO");
+        assertThat(aprobado.get("explotacionCodigoRega").asText()).isEqualTo("ES980000000001");
+        assertThat(aprobado.get("explotacionNombre").asText()).isEqualTo("Finca ES980000000001");
+
+        JsonNode rechazado = objectMapper.readTree(rechazar(rechazable, tokenA).getBody());
+        assertThat(rechazado.get("estado").asText()).isEqualTo("RECHAZADO");
+        assertThat(rechazado.get("explotacionCodigoRega").asText()).isEqualTo("ES980000000002");
+        assertThat(rechazado.get("explotacionNombre").asText()).isEqualTo("Finca ES980000000002");
+
+        JsonNode rechazadoSin = objectMapper.readTree(rechazar(sinExplotacion, tokenA).getBody());
+        assertThat(rechazadoSin.has("explotacionCodigoRega")).isTrue();
+        assertThat(rechazadoSin.get("explotacionCodigoRega").isNull()).isTrue();
+        assertThat(rechazadoSin.get("explotacionNombre").isNull()).isTrue();
+    }
+
+    /**
+     * Punto 8: completo esta en el PATCH, el detalle y el listado, y describe lo ESCRITO: un sufijo
+     * resuelto EN_INVENTARIO sigue siendo completo=false.
+     */
+    @Test
+    void completoApareceEnPatchDetalleYListadoYDescribeLoEscrito() throws IOException {
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, null, EstadoTramite.PENDIENTE_REVISION);
+
+        ResponseEntity<String> edicion = patch(tramite, tokenA,
+                Map.of("crotales", List.of("ES-9800-0001-5678", "1234", "9999")));
+        assertThat(edicion.getStatusCode().value()).isEqualTo(200);
+
+        JsonNode enPatch = objectMapper.readTree(edicion.getBody()).get("crotales");
+        JsonNode enDetalle = objectMapper.readTree(get("/tramites/" + tramite.getId(), tokenA).getBody()).get("crotales");
+        JsonNode enListado = objectMapper.readTree(get("/tramites", tokenA).getBody())
+                .get("content").get(0).get("crotales");
+        for (JsonNode crotales : List.of(enPatch, enDetalle, enListado)) {
+            assertThat(crotales).hasSize(3);
+            assertThat(crotales.get(0).get("completo").asBoolean()).isTrue();
+            assertThat(crotales.get(1).get("crotal").asText()).isEqualTo("ES980000011234");
+            assertThat(crotales.get(1).get("resolucion").asText()).isEqualTo("EN_INVENTARIO");
+            assertThat(crotales.get(1).get("completo").isBoolean()).isTrue();
+            assertThat(crotales.get(1).get("completo").asBoolean()).isFalse();
+            assertThat(crotales.get(2).get("resolucion").asText()).isEqualTo("NO_ENCONTRADO");
+            assertThat(crotales.get(2).get("completo").isBoolean()).isTrue();
+            assertThat(crotales.get(2).get("completo").asBoolean()).isFalse();
+        }
+    }
+
+    /** Selects sueltos sobre explotacion (la carga perezosa de un proxy, una por fila). La
+     * consulta de la pagina hace "left join explotacion", que no cuenta. */
+    private long cargasSueltasDeExplotacion() {
+        return SqlCapturadoInspector.capturado().stream()
+                .map(sql -> sql.toLowerCase(java.util.Locale.ROOT))
+                .filter(sql -> sql.contains("from explotacion "))
+                .count();
+    }
+
+    /** Consultas sobre tramite que traen la Explotacion en la misma sentencia ("join explotacion "):
+     * contrapartida positiva de {@link #cargasSueltasDeExplotacion()}. */
+    private long consultasDeTramiteConJoinAExplotacion() {
+        return SqlCapturadoInspector.capturado().stream()
+                .map(sql -> sql.toLowerCase(java.util.Locale.ROOT))
+                .filter(sql -> sql.contains("from tramite ") && sql.contains("join explotacion "))
+                .count();
     }
 
     private List<Long> idsDelListado(String ruta, String token) throws IOException {
@@ -1005,6 +1164,15 @@ class TramiteRevisionEndToEndTest {
         return postCrudo("/tramites/" + tramite.getId() + "/aprobar", token, "{\"version\":" + version + "}");
     }
 
+    /** Rechazar con la version ACTUAL de la BD (pantalla recien cargada). */
+    private ResponseEntity<String> rechazar(Tramite tramite, String token) {
+        return rechazarConVersion(tramite, token, versionEnBd(tramite));
+    }
+
+    private ResponseEntity<String> rechazarConVersion(Tramite tramite, String token, long version) {
+        return postCrudo("/tramites/" + tramite.getId() + "/rechazar", token, "{\"version\":" + version + "}");
+    }
+
     /** POST con un cuerpo JSON literal (o sin cuerpo si es null). */
     private ResponseEntity<String> postCrudo(String path, String token, String cuerpoJson) {
         HttpHeaders headers = new HttpHeaders();
@@ -1023,12 +1191,6 @@ class TramiteRevisionEndToEndTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         return restTemplate.exchange(path, HttpMethod.GET, new HttpEntity<>(headers), String.class);
-    }
-
-    private ResponseEntity<String> post(String path, String token) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(token);
-        return restTemplate.exchange(path, HttpMethod.POST, new HttpEntity<>(headers), String.class);
     }
 
     private Suscripcion suscripcion(Gestoria gestoria, EstadoSuscripcion estado) {

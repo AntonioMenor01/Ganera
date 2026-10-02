@@ -3,6 +3,7 @@ package com.ganera.core.tramite;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -11,10 +12,18 @@ import org.springframework.data.repository.query.Param;
 import java.util.Optional;
 
 public interface TramiteRepository extends JpaRepository<Tramite, Long> {
-    /** Listado paginado (GET /tramites) con gestoriaId explicito, sin depender del filtro ambiente. */
+    /**
+     * Listado paginado (GET /tramites) con gestoriaId explicito, sin depender del filtro ambiente.
+     * La Explotacion (LAZY) se trae en la misma consulta con un left join (EntityGraph; mini-prompt
+     * tras A2, punto 5) para el REGA/nombre de cada fila: nunca una consulta por fila. Spring Data
+     * no aplica el EntityGraph a la consulta de conteo de la paginacion.
+     */
+    @EntityGraph(attributePaths = "explotacion")
     Page<Tramite> findByGestoriaId(Long gestoriaId, Pageable pageable);
 
-    /** Listado paginado filtrado por estado, con gestoriaId explicito. */
+    /** Listado paginado filtrado por estado, con gestoriaId explicito. Explotacion en la misma
+     * consulta, como findByGestoriaId. */
+    @EntityGraph(attributePaths = "explotacion")
     Page<Tramite> findByGestoriaIdAndEstado(Long gestoriaId, EstadoTramite estado, Pageable pageable);
 
     /**

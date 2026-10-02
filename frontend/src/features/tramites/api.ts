@@ -56,9 +56,10 @@ export async function aprobarTramite(id: number, version: number): Promise<Trami
   return data;
 }
 
-/** Sin cuerpo a propósito (H4): el backend no admite `version` al rechazar (sí la incrementa).
- * Como aprobar, solo cambia el estado en BD. */
-export async function rechazarTramite(id: number): Promise<Tramite> {
-  const { data } = await httpClient.post<Tramite>(`/tramites/${id}/rechazar`);
+/** Como aprobar, solo cambia el estado en BD. `version` es la que mostraba la pantalla y es
+ * obligatoria desde el mini-prompt de backend tras A2 (H4): sin ella el backend responde 400, y
+ * si no es la actual, 409. */
+export async function rechazarTramite(id: number, version: number): Promise<Tramite> {
+  const { data } = await httpClient.post<Tramite>(`/tramites/${id}/rechazar`, { version });
   return data;
 }

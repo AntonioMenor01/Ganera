@@ -39,7 +39,7 @@ class TramiteControllerErroresTest {
             for (ResponseEntity<?> respuesta : List.of(
                     controller.actualizar(PRINCIPAL, 1L, new TramitePatchRequest(0L, null, null, List.of("1234"))),
                     controller.aprobar(PRINCIPAL, 1L, new TramiteAprobarRequest(0L)),
-                    controller.rechazar(PRINCIPAL, 1L))) {
+                    controller.rechazar(PRINCIPAL, 1L, new TramiteRechazarRequest(0L)))) {
                 assertThat(respuesta.getStatusCode().value()).as(fallo.getClass().getSimpleName()).isEqualTo(409);
                 assertThat(respuesta.getBody()).isEqualTo(new MotivoErrorResponse(TramiteController.MOTIVO_CONCURRENCIA));
             }
@@ -60,7 +60,7 @@ class TramiteControllerErroresTest {
             }
 
             @Override
-            public TramiteResponse rechazar(Long gestoriaId, Long tramiteId) {
+            public TramiteResponse rechazar(Long gestoriaId, Long tramiteId, Long versionVista) {
                 throw fallo.get();
             }
         };

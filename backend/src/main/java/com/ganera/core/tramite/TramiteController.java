@@ -37,6 +37,12 @@ public class TramiteController {
     static final String MOTIVO_TIPO_INVALIDO = "Tipo de trámite no válido.";
     static final String MOTIVO_FALTA_VERSION =
             "Falta la versión del trámite (campo version). Vuelve a cargarlo e inténtalo de nuevo.";
+    /** Mini-prompt tras A2 (punto 2): motivo del 403 de aprobar. Un unico texto, identico al que
+     * ya mostraba el frontend (no distingue trial expirado / suspendida / sin Suscripcion: el banner
+     * de Facturacion ya lo dice) y que no depende del Tramite, asi que no revela nada de el. */
+    static final String MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR =
+            "Tu suscripción no permite aprobar trámites ahora mismo (trial expirado o suspendida). "
+                    + "Actualiza tu suscripción en Facturación.";
     static final String MOTIVO_CONCURRENCIA =
             "El trámite se estaba modificando a la vez desde otra sesión. Vuelve a cargarlo e inténtalo de nuevo.";
 
@@ -139,7 +145,7 @@ public class TramiteController {
 
     /**
      * No dispara OvzAutomationService todavia (Prompt 3c) -- solo cambia el estado en BD.
-     * Orden: 403 suscripcion -> 400 sin version (cuerpo ausente o version null; antes de buscar
+     * Orden: 403 suscripcion (con { "motivo" } generico, mini-prompt tras A2) -> 400 sin version (cuerpo ausente o version null; antes de buscar
      * el Tramite, asi que no revela nada) -> 404 (gestoriaId explicito, nunca findById a secas) ->
      * 409 si no esta en PENDIENTE_REVISION -> 409 si la version no es la actual (decision 27) ->
      * 409 si la re-resolucion de crotales cambio algo (se guarda e incrementa la version) -> 409 si
@@ -153,7 +159,8 @@ public class TramiteController {
             @PathVariable Long id,
             @RequestBody(required = false) TramiteAprobarRequest request) {
         if (!suscripcionService.puedeAprobarTramites(principal.gestoriaId())) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(new MotivoErrorResponse(MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR));
         }
         Long version = request != null ? request.version() : null;
         if (version == null) {
@@ -162,13 +169,26 @@ public class TramiteController {
         return traducirErrores(() -> ResponseEntity.ok(tramiteRevisionService.aprobar(principal.gestoriaId(), id, version)));
     }
 
-    /** 404 si no es de la Gestoria; 409 si no esta en PENDIENTE_REVISION (decision 12). No exige
-     * version, pero la incrementa (decision 27). */
+    /**
+     * Sin requisitos de datos ni de suscripcion. Desde el mini-prompt tras A2 (punto 4) exige la
+     * version que mostraba la pantalla, igual que PATCH y aprobar (decision 27). Orden: 400 sin
+     * version (cuerpo ausente, {} o version null; antes de buscar el Tramite, asi que es la misma
+     * respuesta para uno propio, uno de otra Gestoria o uno inexistente) -> 404 sin cuerpo ->
+     * 409 si no esta en PENDIENTE_REVISION (decision 12) -> 409 si la version no es la actual ->
+     * 200 con la version incrementada exactamente en 1.
+     * Cuerpo opcional para Spring (required = false) a proposito: asi un POST sin cuerpo da
+     * nuestro 400 con motivo y no el 400 generico de Boot.
+     */
     @PostMapping("/tramites/{id}/rechazar")
     public ResponseEntity<?> rechazar(
             @AuthenticationPrincipal GaneraUserPrincipal principal,
-            @PathVariable Long id) {
-        return traducirErrores(() -> ResponseEntity.ok(tramiteRevisionService.rechazar(principal.gestoriaId(), id)));
+            @PathVariable Long id,
+            @RequestBody(required = false) TramiteRechazarRequest request) {
+        Long version = request != null ? request.version() : null;
+        if (version == null) {
+            return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_FALTA_VERSION));
+        }
+        return traducirErrores(() -> ResponseEntity.ok(tramiteRevisionService.rechazar(principal.gestoriaId(), id, version)));
     }
 
     /**

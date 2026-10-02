@@ -4,6 +4,7 @@ import com.ganera.core.facturacion.StripeCheckoutService;
 import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.gestoria.Usuario;
 import com.ganera.core.gestoria.UsuarioRepository;
+import com.ganera.core.shared.web.MotivoErrorResponse;
 import com.stripe.exception.StripeException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +25,10 @@ class RegistroGestoriaControllerTest {
     private GestoriaRepository gestoriaRepository;
     @Autowired
     private UsuarioRepository usuarioRepository;
+
+    /** Unico motivo para cualquier causa de fallo (sin oraculo de enumeracion de emails). */
+    private static final MotivoErrorResponse MOTIVO_UNIFORME = new MotivoErrorResponse(
+            "No se ha podido completar el registro con esos datos. Revisa el email y la contraseña e inténtalo de nuevo.");
 
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -64,7 +69,7 @@ class RegistroGestoriaControllerTest {
         ResponseEntity<?> respuesta = controller.registrar(segundo);
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(400);
-        assertThat(respuesta.getBody()).isInstanceOf(RegistroErrorResponse.class);
+        assertThat(respuesta.getBody()).isEqualTo(MOTIVO_UNIFORME);
     }
 
     @Test
@@ -75,7 +80,7 @@ class RegistroGestoriaControllerTest {
         ResponseEntity<?> respuesta = nuevoController().registrar(request);
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(400);
-        assertThat(respuesta.getBody()).isInstanceOf(RegistroErrorResponse.class);
+        assertThat(respuesta.getBody()).isEqualTo(MOTIVO_UNIFORME);
         assertThat(usuarioRepository.findByEmail("rechazado@gestoria.com")).isEmpty();
     }
 
@@ -96,7 +101,7 @@ class RegistroGestoriaControllerTest {
 
         assertThat(respuestaMalFormado.getStatusCode().value()).isEqualTo(400);
         assertThat(respuestaDuplicado.getStatusCode().value()).isEqualTo(400);
-        assertThat(((RegistroErrorResponse) respuestaMalFormado.getBody()).mensaje())
-                .isEqualTo(((RegistroErrorResponse) respuestaDuplicado.getBody()).mensaje());
+        assertThat(respuestaMalFormado.getBody()).isEqualTo(MOTIVO_UNIFORME);
+        assertThat(respuestaDuplicado.getBody()).isEqualTo(MOTIVO_UNIFORME);
     }
 }

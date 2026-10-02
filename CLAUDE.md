@@ -286,7 +286,9 @@ approval step before anything is written to OVZ.net.
   `spring-boot-starter-validation`'s `@Valid`/`@Email`, which is on the classpath but unused
   anywhere in this codebase, to avoid introducing a first `@ControllerAdvice` just for this one
   endpoint) and the duplicate-email case (a real `UNIQUE(email)` violation, not a pre-check
-  `findByEmail`) all collapse into **one identical `400` + generic message** — same principle as
+  `findByEmail`) all collapse into **one identical `400` + generic message** (as `{motivo}`, via
+  `shared/web/MotivoErrorResponse`, since the mini-prompt after A2 — it used to be `{mensaje}`;
+  `RegistroErrorResponse` was deleted; a test checks the bodies are byte-identical) — same principle as
   `AuthService.autenticar`'s uniform `401`, so a duplicate email can't be distinguished from a weak
   password or a malformed one (no enumeration oracle for which Gestorías are already customers).
   `RegistroGestoriaService.crearGestoriaYUsuario` deliberately does **not** catch
@@ -300,8 +302,17 @@ approval step before anything is written to OVZ.net.
   `POST /explotaciones/importar` (multipart `.xlsx`, Apache POI) parses two fixed-position sheets —
   "Explotaciones" (`codigo_rega, nombre, nif_ganadero, nombre_ganadero`) and "Animales"
   (`crotal, especie, codigo_rega_explotacion`) — reading by column *index*, not header name. A
-  missing required sheet throws `IllegalArgumentException`, caught by `ExplotacionImportController`
-  and returned as `400` with the message (not a generic `500`). `especie` is validated (must be
+  missing required sheet or a file that isn't a valid `.xlsx` throws
+  `FicheroImportacionInvalidoException` (mini-prompt after A2), the **only** source of the
+  importer's `400`, returned by `ExplotacionImportController` as `{motivo}` (no longer plain text).
+  The file type is detected by **content** when opening the workbook (`abrirLibro`, which wraps
+  only `new XSSFWorkbook(...)`), not by extension or `Content-Type`: an old `.xls` (OLE2) gets
+  "El fichero es un Excel antiguo (.xls)…guárdalo como .xlsx…"; anything else (text, random bytes,
+  empty, a non-xlsx ZIP, a truncated xlsx) gets "El fichero no es un Excel .xlsx válido." POI's
+  English message never reaches the client. Any other failure while processing rows is still a
+  `500` (never disguised as "invalid file"). Known minor: an `IOException` inside
+  `new XSSFWorkbook(...)` can't be told apart from a server-side read failure of the upload, so
+  the latter would also be that `400`. `especie` is validated (must be
   blank or a bovine label — Ganera only handles cattle for now) but **never persisted**: `Animal`
   has no `especie` column, an unsupported value is just a row error. Since Prompt A1 (decision 22)
   the crotal is normalized with `CrotalNormalizador` (see the "Prompt A1" bullet) **before** it is
@@ -436,8 +447,13 @@ approval step before anything is written to OVZ.net.
   `crotal_indicado`), `animal_id`, `resolucion` (`ResolucionCrotal`). `crotal_indicado` is kept
   separately so that changing the Explotación re-resolves from what was *written*, not from the
   crotal completed against the previous Explotación. Exposed as `crotales: [{crotalIndicado,
-  crotal, animalId, enInventario, resolucion}]` in `GET /tramites` (loaded in **one** query for the
-  whole page), `GET /tramites/{id}` and the PATCH/aprobar/rechazar responses.
+  crotal, completo, animalId, enInventario, resolucion}]` in `GET /tramites` (loaded in **one**
+  query for the whole page), `GET /tramites/{id}` and the PATCH/aprobar/rechazar responses.
+  **`completo` (mini-prompt after A2) describes what was WRITTEN (`crotalIndicado`), not what it
+  resolved to**: `1234` resolved `EN_INVENTARIO` is `completo: false`. Computed when the response is
+  built (`CrotalNormalizador` on `crotalIndicado`, no column/migration); a stored value that fails
+  normalization gives `false` plus a `warn` log, never an exception. It lets the frontend paint an
+  incomplete `NO_ENCONTRADO` amber without classifying crotales itself (A2 decision 21).
   **`CrotalNormalizador`** (pure, no Spring — also used by the importer, decision 22): strips all
   whitespace (including non-breaking spaces pasted from Excel) and `-`, `.`, `/` (decision 24),
   uppercases; must then be `[A-Z0-9]{1,30}` → else `400`. Digits only and ≤ 3 → `400` ("indica al
@@ -460,7 +476,9 @@ approval step before anything is written to OVZ.net.
   same Animal (decision 23) → `200`, `version + 1`. If stored crotales collide after an Explotación
   change, a PATCH without `crotales` gets that `409` and the user must send both fields together.
   **Approval rule (`POST /tramites/{id}/aprobar` `{version}`, `TramiteRevisionService.aprobar`),
-  in the order actually checked:** `403` subscription (`puedeAprobarTramites`) → `400` no body /
+  in the order actually checked:** `403` subscription (`puedeAprobarTramites`; since the
+  mini-prompt after A2 with a fixed `{motivo}` — `TramiteController.MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR`,
+  the same text the frontend shows — that says nothing about the trámite) → `400` no body /
   `{}` / `version: null` (body is `@RequestBody(required = false)` precisely so the `403` still
   comes first) → `404` → `409` not in `PENDIENTE_REVISION` (**approve and reject only from
   `PENDIENTE_REVISION`**, decision 12 — with 3c, re-approving would resend to OVZ.net) → `409`
@@ -492,9 +510,12 @@ approval step before anything is written to OVZ.net.
   mapped in `TramiteController` (never caught inside and committed). `ConcurrencyFailureException`
   (lock not acquired, optimistic conflict) and `DataIntegrityViolationException` → `409` "se estaba
   modificando a la vez", never `500`. **Optimistic version (decision 27):** `@Version Long version`
-  on `Tramite`, returned in `TramiteResponse`/`TramiteDetalleResponse`. PATCH and aprobar
-  **require** the `version` the screen showed (`400` if missing, `409` if stale, nothing changes);
-  `rechazar` doesn't require it but increments it. **Every accepted write leaves the version at
+  on `Tramite`, returned in `TramiteResponse`/`TramiteDetalleResponse`. PATCH, aprobar **and,
+  since the mini-prompt after A2, rechazar** **require** the `version` the screen showed (`400` if
+  missing, `409` if stale, nothing changes). Rechazar's order: `400` no body / `{}` / `version: null`
+  (in the controller, before any DB access — same answer for own, foreign or nonexistent) → `404` →
+  `409` not `PENDIENTE_REVISION` → `409` stale `version` → `200 RECHAZADO`, `version + 1`
+  (`TramiteRechazarRequest`, its own record so a future rejection reason doesn't touch aprobar). **Every accepted write leaves the version at
   exactly read + 1**, including a crotal-only PATCH, a no-op PATCH and the committed re-resolution
   on aprobar (those only touch `tramite_crotal`, so the increment is forced with an explicit JPQL
   `UPDATE … SET version = version + 1` after a flush — not `PESSIMISTIC_FORCE_INCREMENT`, which
@@ -515,6 +536,38 @@ approval step before anything is written to OVZ.net.
   became a `401`, and the frontend treats a `401` as a logout. `/error` only renders the already
   decided status (Boot defaults: no message, no stack trace) and makes no other route public;
   `/error/x` and every protected route still return `401` without a JWT.
+- **Mini-prompt of backend after A2** (plan with the closed decisions in
+  `docs/superpowers/plans/2026-10-02-mini-prompt-backend-tras-a2.md`; the API gaps the A2 frontend
+  worked around). Besides the changes noted in the importer, self-registration and "Prompt A1"
+  bullets (`{motivo}` everywhere, `version` on rechazar, `403` with `motivo`, `completo`):
+  - `GET /explotaciones/{id}` → `ExplotacionResponse` (same DTO as the list), with
+    `findByIdAndGestoriaId`; `404` with no body for another Gestoría's or a nonexistent one.
+    Side effect: `GET /explotaciones/importar` is now a `400` (non-numeric id) instead of `405`.
+  - `GET /explotaciones?q=` — case-insensitive "contains" over the Explotación's `codigoRega` and
+    `nombre` **and the Ganadero's `nombre`**, **without** stripping accents (`unaccent` doesn't exist
+    in H2 and needs a Postgres extension — noted for Prompt C in `ganera-prompts.md`). `q` is
+    trimmed; absent/blank = the usual listing; more than 100 characters (UTF-16 units) →
+    `400 {motivo}`, checked **after** the `sort` whitelist. `%`, `_` and `!` are matched literally
+    (`like … escape '!'`). `ExplotacionRepository.buscarPorTexto`: JPQL with `join fetch e.ganadero`
+    and its own `countQuery`, `gestoriaId` as a real parameter in both; the `sort` applies to the
+    Explotación. No indexes (a `pg_trgm` index if it ever gets slow).
+  - `TramiteResponse` (list, aprobar, rechazar) gained `explotacionCodigoRega` and
+    `explotacionNombre` (null without Explotación), loaded in the page query with
+    `@EntityGraph(attributePaths = "explotacion")` on `TramiteRepository.findByGestoriaId`/
+    `findByGestoriaIdAndEstado` — a test counts SQL statements to guard against N+1 (it first
+    asserts the page query really contains `join explotacion`, so a SQL-format change can't make
+    it pass silently). Two-Gestoría coverage of these lives in `TramiteRevisionEndToEndTest` and
+    the new `ExplotacionEndToEndTest`, not in `TenantIsolationEndToEndTest`.
+  - **Pre-existing N+1 fixed:** `GET /explotaciones` **without** `q` used to load the Ganadero
+    lazily for every distinct Ganadero of the page (`ExplotacionResponse` reads its name), which
+    hurt with the frontend's 500-row pages. `ExplotacionRepository.findByGestoriaId` now has
+    `@EntityGraph(attributePaths = "ganadero")`; `ExplotacionEndToEndTest` asserts zero separate
+    entity fetches and exactly page + count statements (Hibernate statistics). The `q` path already
+    used `join fetch`.
+  - The frontend was touched **only** so Rechazar keeps working (`rechazarTramite(id, version)` in
+    `features/tramites/api.ts`, fed with `detalle?.version` from `useRevisionTramite`). It does
+    **not** consume the rest yet (`GET /explotaciones/{id}`, `?q=`, `explotacionCodigoRega`,
+    `completo`, the `403` `motivo`) — that's a later frontend task.
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)
@@ -641,7 +694,8 @@ reference for every frontend decision below.
   `GET /explotaciones` (size 500) and fails visibly if a page fails or the count doesn't match
   `totalElements` — never a partial list. It feeds the review dialog's combobox (client-side
   filter) and the queue's REGA column (the list DTO only has `explotacionId`). For gestorías with
-  thousands of explotaciones a backend `?q=` will be needed (backend mini-prompt).
+  thousands of explotaciones the backend's `GET /explotaciones?q=` (added in the mini-prompt after
+  A2) should replace it — not consumed by the frontend yet.
 - **`AppLayout.tsx`** has the navigation Trámites/Ganaderos/Explotaciones/Facturación and fetches
   subscription status once
   (`features/facturacion/useSuscripcionEstado.ts`) via `<Outlet context={{ suscripcion }}>` so
@@ -656,7 +710,8 @@ reference for every frontend decision below.
   backend actually enforces.
 - **Trámites queue (`TramitesPage`)** opens filtered by "Pendiente de revisión" ("Todos" stays in
   the filter). Each row's first cell is a real button ("Revisar trámite #N"); the Explotación
-  column shows the código REGA from the complete list (an error is visible, never raw ids); the
+  column shows the código REGA from the complete list (an error is visible, never raw ids; the
+  list DTO now carries `explotacionCodigoRega`, not consumed yet); the
   crotales column shows two plus a "+N más" disclosure. Labels and badge variants for estado, tipo,
   crotal resolution and contact role come from **one source**, `features/tramites/etiquetas.ts`
   (`TIPOS_TRAMITE` is the single constant to change in Prompt B).
@@ -664,27 +719,30 @@ reference for every frontend decision below.
   (`revisionTramite.ts` has the pure diff/state rules), layout in the dialog. Editable **only** in
   `PENDIENTE_REVISION`; any other estado is read-only with no action buttons. "Guardar" sends
   `PATCH` with the `version` shown plus only the changed fields (`crotales` as the full list if it
-  changed); Aprobar sends `{version}`; Rechazar sends no body (the backend ignores it) after an
+  changed); Aprobar sends `{version}`; Rechazar sends `{version}` too (required since the backend
+  mini-prompt after A2) after an
   inline confirmation. With unsaved changes Aprobar/Rechazar are disabled ("Guarda antes de
   aprobar") — the backend approves what is saved, not what is on screen. **Any `409`** (PATCH,
   aprobar, rechazar) reloads the detail, discards the form and shows the backend's `motivo`
   verbatim, never retrying by itself; a `400` keeps the edits and shows the `motivo`; a `404`
   says the trámite no longer exists or isn't yours; a `403` on aprobar shows the fixed
-  subscription text (the backend's `403` has no body — H2). Badges show **what is saved**: an
+  subscription text (the backend's `403` now carries the same text as `motivo`, not read yet).
+  Badges show **what is saved**: an
   edited field/row says "Sin guardar" until the backend answers. One request at a time.
 - **Ganaderos (`features/ganaderos`):** `/ganaderos` (paginated, sortable by nombre and NIF only)
   and `/ganaderos/:id` (stacked sections per explotación with contactos — `tel:` links, role
   badge — and a collapsed "Ver animales"); a `404` (another Gestoría's or nonexistent) shows
   "Ganadero no encontrado", never a broken page. `AnimalesDeExplotacion` (paginated
   `GET /explotaciones/{id}/animales`) is the same disclosure panel in Explotaciones and in the
-  Ganadero detail — there is no `/explotaciones/:id` route (no `GET /explotaciones/{id}` in the
-  backend yet).
+  Ganadero detail — there is no `/explotaciones/:id` route (the backend has had
+  `GET /explotaciones/{id}` since the mini-prompt after A2; no screen uses it yet).
 - **Frontend tests (Prompt A2):** Vitest + jsdom + Testing Library (`react`, `user-event`,
   `jest-dom`) + **MSW**, which mocks the API at the HTTP level so the real axios client and its
   interceptors are exercised. Config in `vitest.config.ts` (merges `vite.config.ts`, so `@/`
   works); setup in `src/test/` (`setup.ts`, `server.ts`, `handlers.ts`) — any request without a
   handler fails the test (`onUnhandledRequest: "error"`), and session state is cleared after each
-  test. `npm test` ran **475 tests in 36 files** at the end of A2. Layout can't be checked in
+  test. `npm test` ran **475 tests in 36 files** at the end of A2 (476 after the mini-prompt's
+  Rechazar change). Layout can't be checked in
   jsdom: for visual changes, also drive the real app in a browser (Playwright from npm installed
   **outside the repo**, as in Prompts 4 and A2).
 
@@ -695,7 +753,7 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw clean test` — runs the test suite (415 tests as of Prompt A1); **always with `clean`**
+- `./mvnw clean test` — runs the test suite (472 tests after the mini-prompt after A2); **always with `clean`**
   (see the VS Code/ECJ note under Architecture notes). A single test:
   `./mvnw clean test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
@@ -906,6 +964,21 @@ logout, `/ganaderos/{A's id}` → "Ganadero no encontrado", Salir clears the tok
 chunk, the import summary card says "1 filas"/"1 actualizadas" (the announced sentence already
 uses real plurals), and the minors m1–m4 of the Task 10 review.
 
+**Mini-prompt of backend after A2 — complete** (2026-10-02), following
+`docs/superpowers/plans/2026-10-02-mini-prompt-backend-tras-a2.md` (decisions closed with Antonio
+before starting) with the Superpowers flow (T1–T4, one implementer + one independent reviewer each,
+all **Approved** with minors only; reports in `.superpowers/sdd/mp-*`, not committed). See the
+"Mini-prompt of backend after A2" bullet under Technical decisions: `GET /explotaciones/{id}`,
+`?q=`, `403` with `motivo`, `version` required on rechazar (plus the one-line frontend change so
+Rechazar keeps working — the only frontend change), `explotacionCodigoRega`/`explotacionNombre`
+in the trámites list without N+1, the importer's and the registration's `400` as `{motivo}`, and
+`completo` in each crotal. No migrations. Verified with `./mvnw clean test` **472/472** (471 + the N+1 fix's test), `npm test`
+**476/476**, `npm run build` and `npm run lint` clean (known warnings only), and a real `curl`
+smoke against two Gestorías on a file-backed H2 (log in `.superpowers/sdd/mp-t5-smoke.md`; run
+before the N+1 fix, which is covered by its own test). Smoke
+tip: Git Bash's `curl -d '…'` garbles non-ASCII characters on Windows — send JSON bodies with
+`--data-binary @file`.
+
 **Next pending step: Prompt 3a (sincronización inicial de OVZ.net, modo lectura) — blocked.** Per
 `ganera-prompts.md`, Prompts 3a, 3b, and 3c (OVZ.net read sync, Twilio webhook + AI extraction, and
 real Playwright write-mode automation) are all blocked on the same prerequisite: Antonio needs to
@@ -915,8 +988,10 @@ not guessing at its structure from assumptions). Until that happens, `TramiteExt
 `OvzAutomationService` stay as unimplemented skeletons (see above) — don't write real prompt/scraping
 logic against assumptions about OVZ.net's structure. The OVZ-credentials onboarding screen and the
 rest of Prompt 4's originally-scoped items are deferred alongside it. Not blocked by OVZ.net
-(see `ganera-prompts.md`): the backend mini-prompt after A2 (small API gaps the A2 frontend works
-around) and the mobile nav bar, a small task before the pilot.
+(see `ganera-prompts.md`): the frontend task before the pilot — mobile nav bar, the importer
+summary's singulars, and consuming the mini-prompt's API (`?q=` in the review combobox,
+`explotacionCodigoRega` in the queue, `completo`, the `403` `motivo`, stale comments in
+`errores.ts`).
 
 `ganera-prompts.md` at the repo root tracks the full sequence of prompts used to
 build this out, in order — check it for the detailed history/rationale behind any given step.

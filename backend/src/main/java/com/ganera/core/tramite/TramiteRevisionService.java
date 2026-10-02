@@ -27,7 +27,8 @@ import java.util.regex.Pattern;
  * - carga el Tramite con bloqueo de fila (PESSIMISTIC_WRITE) y gestoriaId explicito -- nunca
  *   findById a secas; si no existe o es de otra Gestoria -> RecursoNoEncontradoException (404);
  * - solo actua sobre un Tramite en PENDIENTE_REVISION (decision 12) -> si no, 409;
- * - PATCH y aprobar exigen la version que mostraba la pantalla (decision 27): distinta de la
+ * - PATCH, aprobar y rechazar (este desde el mini-prompt tras A2) exigen la version que mostraba
+ *   la pantalla (decision 27): distinta de la
  *   actual -> 409 MOTIVO_VERSION_DESFASADA sin cambios. Se comprueba DESPUES del estado (un
  *   Tramite que ya no esta pendiente da su motivo concreto, que es cierto con cualquier version);
  * - toda escritura aceptada incrementa la version exactamente en 1 (incrementarVersion), tambien
@@ -187,12 +188,15 @@ public class TramiteRevisionService {
         return TramiteResponse.from(tramite, respuestas(filas));
     }
 
-    /** POST /tramites/{id}/rechazar: solo desde PENDIENTE_REVISION; sin requisitos de datos. No
-     * exige version (decision 27) pero, como toda escritura, la incrementa. */
+    /** POST /tramites/{id}/rechazar: solo desde PENDIENTE_REVISION; sin requisitos de datos.
+     * Desde el mini-prompt tras A2 (punto 4) exige la version vista, como PATCH y aprobar
+     * (decision 27): el estado se comprueba antes que la version (mismo orden que aprobar) y, como
+     * toda escritura aceptada, la incrementa exactamente en 1. */
     @Transactional
-    public TramiteResponse rechazar(Long gestoriaId, Long tramiteId) {
+    public TramiteResponse rechazar(Long gestoriaId, Long tramiteId, Long versionVista) {
         Tramite tramite = cargarConBloqueo(gestoriaId, tramiteId);
         exigirPendienteRevision(tramite, MOTIVO_RECHAZAR_SOLO_PENDIENTE);
+        exigirVersion(tramite, versionVista);
         long versionLeida = tramite.getVersion();
         tramite.setEstado(EstadoTramite.RECHAZADO);
         tramiteRepository.save(tramite);

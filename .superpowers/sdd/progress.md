@@ -538,3 +538,35 @@ principal (decisión 27). Informes en `.superpowers/sdd/a2-*` (no se suben). `ba
 - **Sin commit** — pendiente de la aprobación de Antonio. La rama `a2-wip` (commit `5543045`, con
   los informes) se conserva hasta que Antonio diga lo contrario; el commit final se monta desde
   `main` ruta a ruta.
+
+## 2026-10-02 — Mini-prompt de backend tras A2
+
+Plan y decisiones cerradas con Antonio: `docs/superpowers/plans/2026-10-02-mini-prompt-backend-tras-a2.md`
+(1, 2, 5, 6, 7 y 8 como se recomendaba; 3 también por nombre del ganadero, sin quitar acentos →
+nota en "Prompt C"; 4 opción (a), `version` obligatoria al rechazar, con el cambio mínimo de
+frontend para que Rechazar no quede roto en `main`). Un implementador + un revisor independiente por
+tarea; informes en `.superpowers/sdd/mp-*`.
+
+- **T1** (`GET /explotaciones/{id}`, `?q=`): 415 → **443**. Approved; minors: N+1 preexistente en
+  el listado sin `q`, `/explotaciones/importar` por GET da 400 en vez de 405, longitud de `q` en
+  unidades UTF-16, el test E2E con `generate_statistics` crea otro contexto Spring.
+- **T2** (`403 {motivo}`, `version` en rechazar + `api.ts`/`useRevisionTramite`): **450**, frontend
+  **476**. Approved; mutaciones A–E detectadas. Minors: comentario desfasado en `errores.ts`, falta
+  un test de "rechazar tras guardar envía la versión nueva", el E2E cross-tenant de aprobar no aísla
+  el lookup (un 404 posterior lo tapa).
+- **T3** (`explotacionCodigoRega`/`explotacionNombre` con `@EntityGraph`, `completo`): **457**.
+  Approved; m1 (el test de N+1 dependía del formato del SQL) arreglado en la T4.
+- **T4** (importador y registro con `{motivo}`, detección por contenido): **471**. Approved; minor:
+  un `IOException` real del servidor dentro de `new XSSFWorkbook` se vería como fichero inválido.
+- **T5 (cierre):** `./mvnw clean test` **471/471**; `npm test` **476/476**; `npm run build` en verde
+  (aviso del chunk); `npm run lint` con los 3 avisos de siempre. Smoke `curl` con dos gestorías en
+  H2 en fichero, 10/10 en verde (`mp-t5-smoke.md`). Aprendido: el `curl -d '…'` de Git Bash rompe
+  los caracteres no ASCII en Windows; los cuerpos JSON van con `--data-binary @fichero`. Procesos
+  del smoke parados por PID; temporales borrados. `CLAUDE.md`, `ganera-prompts.md` y este fichero
+  al día.
+- **Antes del commit (visto bueno de Antonio):** arreglado el N+1 preexistente de `GET /explotaciones`
+  sin `q` con `@EntityGraph(attributePaths = "ganadero")` en `findByGestoriaId`, con TDD (el test
+  nuevo de `ExplotacionEndToEndTest` falló primero con 2 cargas sueltas de Ganadero y pasó tras el
+  arreglo). `./mvnw clean test` **472/472**. El smoke de la T5 fue anterior a este arreglo. La
+  siguiente tarea de frontend queda completa en `ganera-prompts.md` (7 puntos).
+- Commit con el visto bueno de Antonio (2026-10-02), sin push.

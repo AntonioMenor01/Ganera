@@ -96,10 +96,10 @@ class TramiteRevisionServiceTest {
         assertThat(respuesta.tipoTramite()).isEqualTo("BAJA");
         assertThat(respuesta.estado()).isEqualTo("PENDIENTE_REVISION");
         assertThat(respuesta.crotales()).containsExactly(
-                new TramiteCrotalResponse("1234", "ES970000011234", animalA1.getId(), true, "EN_INVENTARIO"),
-                new TramiteCrotalResponse("5678", "5678", null, false, "AMBIGUO"),
+                new TramiteCrotalResponse("1234", "ES970000011234", false, animalA1.getId(), true, "EN_INVENTARIO"),
+                new TramiteCrotalResponse("5678", "5678", false, null, false, "AMBIGUO"),
                 // ...9999 solo existe en B: nunca se enlaza
-                new TramiteCrotalResponse("9999", "9999", null, false, "NO_ENCONTRADO"));
+                new TramiteCrotalResponse("9999", "9999", false, null, false, "NO_ENCONTRADO"));
     }
 
     @Test
@@ -324,7 +324,7 @@ class TramiteRevisionServiceTest {
 
         assertThat(respuesta.estado()).isEqualTo("APROBADO");
         assertThat(respuesta.crotales()).containsExactly(
-                new TramiteCrotalResponse("1234", "ES010000001234", completo.getId(), true, "EN_INVENTARIO"));
+                new TramiteCrotalResponse("1234", "ES010000001234", false, completo.getId(), true, "EN_INVENTARIO"));
     }
 
     /**
@@ -431,7 +431,7 @@ class TramiteRevisionServiceTest {
         assertThatThrownBy(() -> servicio.aprobar(gestoriaA.getId(), tramite.getId(), version(tramite)))
                 .isInstanceOf(TramiteConflictoException.class)
                 .hasMessage(TramiteRevisionService.MOTIVO_APROBAR_SOLO_PENDIENTE);
-        assertThatThrownBy(() -> servicio.rechazar(gestoriaA.getId(), tramite.getId()))
+        assertThatThrownBy(() -> servicio.rechazar(gestoriaA.getId(), tramite.getId(), version(tramite)))
                 .isInstanceOf(TramiteConflictoException.class)
                 .hasMessage(TramiteRevisionService.MOTIVO_RECHAZAR_SOLO_PENDIENTE);
         assertThatThrownBy(() -> servicio.actualizar(gestoriaA.getId(), tramite.getId(), version(tramite), null, TipoTramite.BAJA, null))
@@ -478,7 +478,7 @@ class TramiteRevisionServiceTest {
         Tramite tramite = nuevoTramite(null, null, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of("1234"), gestoriaA.getId());
 
-        TramiteResponse respuesta = servicio.rechazar(gestoriaA.getId(), tramite.getId());
+        TramiteResponse respuesta = servicio.rechazar(gestoriaA.getId(), tramite.getId(), version(tramite));
 
         assertThat(respuesta.estado()).isEqualTo("RECHAZADO");
         assertThat(respuesta.crotales()).hasSize(1);
@@ -489,7 +489,7 @@ class TramiteRevisionServiceTest {
         for (EstadoTramite estado : List.of(EstadoTramite.APROBADO, EstadoTramite.RECHAZADO)) {
             Tramite tramite = nuevoTramite(null, null, estado);
 
-            assertThatThrownBy(() -> servicio.rechazar(gestoriaA.getId(), tramite.getId()))
+            assertThatThrownBy(() -> servicio.rechazar(gestoriaA.getId(), tramite.getId(), version(tramite)))
                     .isInstanceOf(TramiteConflictoException.class)
                     .hasMessage(TramiteRevisionService.MOTIVO_RECHAZAR_SOLO_PENDIENTE);
             assertThat(tramite.getEstado()).isEqualTo(estado);
@@ -500,13 +500,42 @@ class TramiteRevisionServiceTest {
     void rechazarUnTramiteDeOtraGestoriaEsNoEncontrado() {
         Tramite tramite = nuevoTramite(null, null, EstadoTramite.PENDIENTE_REVISION);
 
-        assertThatThrownBy(() -> servicio.rechazar(gestoriaB.getId(), tramite.getId()))
+        assertThatThrownBy(() -> servicio.rechazar(gestoriaB.getId(), tramite.getId(), version(tramite)))
                 .isInstanceOf(RecursoNoEncontradoException.class);
+        assertThat(tramite.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+    }
+
+    /** Mini-prompt tras A2 (punto 4): rechazar exige la version que mostraba la pantalla, igual
+     * que PATCH y aprobar. Distinta (o null) -> 409 MOTIVO_VERSION_DESFASADA y nada cambia. */
+    @Test
+    void rechazarConVersionDistintaEsConflictoYNoCambiaNada() {
+        Tramite tramite = nuevoTramite(null, null, EstadoTramite.PENDIENTE_REVISION);
+        long v0 = version(tramite);
+
+        for (Long otra : java.util.Arrays.asList(v0 + 1, v0 - 1, null)) {
+            assertThatThrownBy(() -> servicio.rechazar(gestoriaA.getId(), tramite.getId(), otra))
+                    .as("version " + otra)
+                    .isInstanceOf(TramiteConflictoException.class)
+                    .hasMessage(TramiteRevisionService.MOTIVO_VERSION_DESFASADA);
+        }
+        assertThat(tramite.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+        assertThat(version(tramite)).isEqualTo(v0);
+    }
+
+    /** El estado se comprueba antes que la version: un Tramite ya no pendiente da su motivo
+     * concreto aunque la version tambien este desfasada. */
+    @Test
+    void rechazarFueraDePendienteConVersionDesfasadaDaElMotivoDeEstado() {
+        Tramite tramite = nuevoTramite(null, null, EstadoTramite.APROBADO);
+
+        assertThatThrownBy(() -> servicio.rechazar(gestoriaA.getId(), tramite.getId(), version(tramite) + 7))
+                .isInstanceOf(TramiteConflictoException.class)
+                .hasMessage(TramiteRevisionService.MOTIVO_RECHAZAR_SOLO_PENDIENTE);
     }
 
     @Test
     void unIdInexistenteEsNoEncontrado() {
-        assertThatThrownBy(() -> servicio.rechazar(gestoriaA.getId(), 999999L))
+        assertThatThrownBy(() -> servicio.rechazar(gestoriaA.getId(), 999999L, 0L))
                 .isInstanceOf(RecursoNoEncontradoException.class);
         assertThatThrownBy(() -> servicio.aprobar(gestoriaA.getId(), 999999L, 0L))
                 .isInstanceOf(RecursoNoEncontradoException.class);
@@ -586,7 +615,7 @@ class TramiteRevisionServiceTest {
         long vr = version(rechazable);
 
         TramiteResponse aprobado = servicio.aprobar(gestoriaA.getId(), aprobable.getId(), va);
-        TramiteResponse rechazado = servicio.rechazar(gestoriaA.getId(), rechazable.getId());
+        TramiteResponse rechazado = servicio.rechazar(gestoriaA.getId(), rechazable.getId(), vr);
 
         assertThat(version(aprobable)).isEqualTo(va + 1);
         assertThat(aprobado.version()).isEqualTo(va + 1);

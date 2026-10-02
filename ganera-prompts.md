@@ -2,7 +2,7 @@
 
 Documento de referencia con todos los prompts, en orden, tal como se han ido cerrando. Cada uno se lanza en la **misma sesión continua** de Claude Code (para que mantenga el contexto), salvo que se indique lo contrario.
 
-Estado actual (2026-10-02): **Prompts 0, 1, 2, 2.5, 2.7, 3d, 4 (parcial, sin lo bloqueado por OVZ.net), la identidad visual de marca, el alta pública de gestorías, el Prompt A1 (contactos, crotales en trámites y revisión editable, solo backend) y el Prompt A2 (su frontend) completados y verificados.** El Prompt A2 está **sin commitear**, pendiente de la aprobación de Antonio. Repo en GitHub (`github.com/AntonioMenor01/Ganera.git`). Suite backend en verde a 415 tests (`./mvnw clean test`); frontend con 475 tests (`npm test`), `npm run build` y `npm run lint` en verde. Aprobar desde la UI vuelve a funcionar (A2 envía la `version`). Pendientes de Antonio: crear el `Price` real en el dashboard de Stripe (test mode) para poder probar un checkout real de principio a fin, y aportar credenciales de OVZ.net. Siguientes pasos no bloqueados: el mini-prompt de backend tras A2 y la barra de navegación en móvil (antes del piloto). Prompts 3a/3b/3c siguen bloqueados a la espera de las credenciales. Dos bugs de Stripe detectados en la revisión completa del 2026-09-25 quedan pendientes (ver "Known bugs" en `CLAUDE.md`, bullet de Stripe).
+Estado actual (2026-10-02): **Prompts 0, 1, 2, 2.5, 2.7, 3d, 4 (parcial, sin lo bloqueado por OVZ.net), la identidad visual de marca, el alta pública de gestorías, el Prompt A1 (contactos, crotales en trámites y revisión editable, solo backend), el Prompt A2 (su frontend, commit `ae90295`) y el mini-prompt de backend tras A2 completados y verificados.** Repo en GitHub (`github.com/AntonioMenor01/Ganera.git`). Suite backend en verde a 472 tests (`./mvnw clean test`); frontend con 476 tests (`npm test`), `npm run build` y `npm run lint` en verde. Aprobar desde la UI vuelve a funcionar (A2 envía la `version`). Pendientes de Antonio: crear el `Price` real en el dashboard de Stripe (test mode) para poder probar un checkout real de principio a fin, y aportar credenciales de OVZ.net. Siguiente paso no bloqueado: la tarea de frontend antes del piloto (barra de navegación en móvil, singulares del resumen del importador y consumir lo nuevo del mini-prompt). Prompts 3a/3b/3c siguen bloqueados a la espera de las credenciales. Dos bugs de Stripe detectados en la revisión completa del 2026-09-25 quedan pendientes (ver "Known bugs" en `CLAUDE.md`, bullet de Stripe).
 
 ---
 
@@ -553,7 +553,7 @@ Entregado (detalle completo en `CLAUDE.md`, bullet "Prompt A1" bajo Technical de
 
 ---
 
-## Prompt A2 — Frontend: Ganaderos, animales y revisión editable de trámites (completado, 2026-10-02, sin commitear)
+## Prompt A2 — Frontend: Ganaderos, animales y revisión editable de trámites (completado, 2026-10-02, commit `ae90295`)
 
 Pone la UI al día con el backend de A1. **Solo frontend**: `backend/` no se tocó. Plan con 31 decisiones cerradas con Antonio en `docs/superpowers/plans/2026-09-28-promptA2-frontend-revision.md`; flujo Superpowers (implementador + revisor independiente por tarea; informes en `.superpowers/sdd/a2-*`, que no se suben). Diseño **solo con la skill Impeccable** (`critique` de la cola, `craft` de Ganaderos y del modal, `audit` + `polish` al final), ejecutada desde la sesión principal (decisión 27); contratos de dirección en `.impeccable/surfaces/`.
 
@@ -574,25 +574,38 @@ Entregado (detalle en `CLAUDE.md`, "Architecture notes (frontend)", y patrones v
 
 ---
 
-## Mini-prompt de backend tras A2 (pendiente)
+## Mini-prompt de backend tras A2 (completado, 2026-10-02)
 
-Huecos pequeños de la API que el frontend de A2 rodea (sección "Fuera de alcance" del plan de A2). Todos con su test, y con E2E de dos gestorías donde haya lookup por id:
-- `GET /explotaciones/{id}` con `findByIdAndGestoriaId` (H1-B; hoy no hay pantalla de detalle de explotación).
-- `{motivo}` también en el `403` de aprobar (H2; hoy el frontend muestra un texto fijo).
-- `?q=` en `GET /explotaciones` (H3; hoy el frontend carga la lista completa y filtra en cliente, inviable con miles de explotaciones).
-- `version` obligatoria también en rechazar (H4; hoy un rechazo desde una pantalla desfasada se aplica igual).
-- `explotacionCodigoRega` en el DTO del listado de trámites (H7; hoy la cola cruza ids con la lista completa).
-- El `400` del importador como `{motivo}` en vez de texto plano, y un `.xls` (o cualquier fichero no `.xlsx`) con un motivo en español, no el mensaje técnico en inglés de POI (`UnsupportedFileFormatException`).
-- Unificar el `400` del registro (`{mensaje}`) a `{motivo}`, manteniendo el texto uniforme (sin oráculo de enumeración).
-- Campo `completo` (boolean) en `TramiteCrotalResponse`, para pintar `NO_ENCONTRADO` incompleto en ámbar ("No está en el inventario · incompleto") sin clasificar en el frontend (decisión 21 de A2).
+Huecos pequeños de la API que el frontend de A2 rodea. Plan con las decisiones cerradas con Antonio en `docs/superpowers/plans/2026-10-02-mini-prompt-backend-tras-a2.md`; flujo Superpowers (T1–T4 con implementador + revisor independiente, todas **Approved** solo con minors; informes en `.superpowers/sdd/mp-*`, que no se suben). Sin migraciones.
+- `GET /explotaciones/{id}` (H1-B) con `findByIdAndGestoriaId`, mismo DTO que el listado; `404` sin cuerpo si es ajena o no existe.
+- `{motivo}` en el `403` de aprobar (H2), con el mismo texto que ya enseña el frontend; sigue siendo la primera comprobación.
+- `?q=` en `GET /explotaciones` (H3): "contiene", sin distinguir mayúsculas, sobre código REGA, nombre de la explotación y nombre del ganadero; **sin quitar acentos** (ver Prompt C); `%`, `_` y `!` literales; más de 100 caracteres → `400 {motivo}`.
+- `version` obligatoria al rechazar (H4): `400` sin versión (antes de buscar) → `404` → `409` estado → `409` versión → `200`. **Única excepción a "solo backend":** `rechazarTramite` en el frontend envía `{version}` para que Rechazar no quede roto en `main`.
+- `explotacionCodigoRega` y `explotacionNombre` en `TramiteResponse` (H7), con `@EntityGraph` y un test de recuento de SQL contra el N+1.
+- **N+1 preexistente arreglado (añadido por Antonio antes del commit):** `GET /explotaciones` sin `q` cargaba el ganadero de cada fila por separado; ahora `findByGestoriaId` lleva `@EntityGraph(attributePaths = "ganadero")`, con un test que cuenta las consultas (cero cargas sueltas, página + count).
+- `400` del importador como `{motivo}`; el tipo de fichero se detecta por contenido: `.xls` → "Excel antiguo… guárdalo como .xlsx"; cualquier otro → "El fichero no es un Excel .xlsx válido."; nunca el mensaje de POI.
+- `400` del registro como `{motivo}`, con el mismo texto uniforme (se borra `RegistroErrorResponse`).
+- `completo` en `TramiteCrotalResponse`: describe **lo escrito** (`crotalIndicado`), no lo resuelto.
+
+**Verificación:** `./mvnw clean test` **472/472** (415 antes); `npm test` **476/476**; `npm run build` y `npm run lint` en verde (avisos conocidos). Smoke con `curl` contra dos gestorías (H2 en fichero): 10/10 pasos en verde (`.superpowers/sdd/mp-t5-smoke.md`; hecho antes del arreglo del N+1, que cubre su propio test).
+
+**Pendientes que deja (ninguno bloquea):**
+- **Frontend sin consumir lo nuevo:** pasa a la tarea de frontend antes del piloto (ver más abajo).
+- Minors de las revisiones: `GET /explotaciones/importar` da `400` en vez de `405`; la longitud de `q` cuenta unidades UTF-16; un `IOException` real del servidor al leer el fichero subido se vería como "fichero no válido".
 
 ---
 
-## Tarea pequeña antes del piloto: barra de navegación en móvil (pendiente)
+## Tarea de frontend antes del piloto (pendiente)
 
-La barra superior no está adaptada a pantallas estrechas: a 375 px desborda y ensancha la página (scroll lateral). El gestor aprueba a veces desde el teléfono (`PRODUCT.md`), así que hay que resolverlo antes de la gestoría piloto. Con la skill Impeccable, sin cambiar paleta ni tipografía, y verificado en un navegador real a 375 y 640 px.
+Solo `frontend/` (el backend ya está listo desde el mini-prompt tras A2). Cada punto con su test (Vitest + MSW); `npm test`, `npm run build` y `npm run lint` en verde, y lo visual verificado en un navegador real (Playwright por npm fuera del repo).
 
-**Retoque menor en el mismo pase:** la tarjeta del resumen del importador (`ImportarExcelSection`) dice "1 filas" y "1 actualizadas"; debe usar singular con 1, como ya hace la frase anunciada a lectores de pantalla ("1 fila con error", "1 creada / 1 actualizada"). Con test.
+1. **Barra de navegación en móvil.** La barra superior no está adaptada a pantallas estrechas: a 375 px desborda y ensancha la página (scroll lateral). El gestor aprueba a veces desde el teléfono (`PRODUCT.md`), así que hay que resolverlo antes de la gestoría piloto. Con la skill Impeccable, sin cambiar paleta ni tipografía, y verificado en un navegador real a 375 y 640 px.
+2. **Plurales del resumen del importador.** La tarjeta del resumen (`ImportarExcelSection`) dice "1 filas" y "1 actualizadas"; debe usar singular con 1, como ya hace la frase anunciada a lectores de pantalla ("1 fila con error", "1 creada / 1 actualizada").
+3. **`?q=` en el combobox de explotación del modal de revisión.** Buscar en el backend (`GET /explotaciones?q=`, que busca en código REGA, nombre de la explotación y nombre del ganadero, sin distinguir mayúsculas ni quitar acentos) en vez de cargar la lista completa con `todasLasExplotaciones.ts` y filtrar en cliente. Con espera entre pulsaciones, cancelación de la petición anterior y los estados de carga, error y vacío de siempre; más de 100 caracteres da `400 {motivo}`.
+4. **`explotacionCodigoRega` del listado en la cola.** La columna Explotación de `TramitesPage` usa `explotacionCodigoRega`/`explotacionNombre` de `GET /tramites` en vez de cruzar ids con la lista completa. Si tras los puntos 3 y 4 nadie más usa `todasLasExplotaciones.ts`, se elimina.
+5. **`completo` en los crotales.** Pintar `NO_ENCONTRADO` incompleto en ámbar ("No está en el inventario · incompleto") a partir de `TramiteCrotalResponse.completo` (decisión 21 de A2), sin clasificar crotales en el frontend. `completo` describe lo escrito (`crotalIndicado`), no lo resuelto.
+6. **`motivo` del 403 de aprobar.** Mostrar el `motivo` que ya manda el backend en vez del texto fijo del contexto (hoy son el mismo texto; el fijo queda como reserva si no llega `motivo`).
+7. **Comentarios desfasados de `frontend/src/shared/api/errores.ts`.** Dicen que el 400 del importador es texto plano, que el registro devuelve `{mensaje}` (y nombran `MENSAJE_REGISTRO_INVALIDO`) y que el 403 de aprobar no trae cuerpo; los tres son ya `{motivo}`. El registro sigue enseñando su propio texto uniforme.
 
 ---
 
@@ -605,6 +618,12 @@ Además del catálogo real de tipos de trámite (ver los pendientes heredados en
   - el trámite se crea con el texto en bruto, en `PENDIENTE_REVISION`, para revisión manual;
   - la extracción se reintenta después;
   - la cola muestra un aviso visible en esos trámites ("no se ha podido extraer automáticamente"), para que nadie los confunda con una extracción vacía.
+
+---
+
+## Prompt C — notas acumuladas (pendiente)
+
+- **Búsqueda sin acentos en `GET /explotaciones?q=`:** hoy "Maria" no encuentra "María". En PostgreSQL, con la extensión `unaccent` (p. ej. `lower(unaccent(...)) like lower(unaccent(:patron))`, con una función `IMMUTABLE` envoltorio si se indexa) y, si la búsqueda se vuelve lenta con miles de explotaciones, un índice `pg_trgm` (GIN) sobre esa expresión. H2 no tiene `unaccent`: los tests necesitarán un alias de función en H2 o una normalización equivalente en Java para el patrón.
 
 ---
 

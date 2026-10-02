@@ -638,7 +638,7 @@ export function useRevisionTramite(
   function cerrarRevision(accion: "aprobar" | "rechazar", permitido: boolean): Promise<void> {
     const version = detalle?.version;
     return ejecutar(accion, permitido && version !== undefined, async (sesion, id) => {
-      const tramite = accion === "aprobar" ? await aprobarTramite(id, version!) : await rechazarTramite(id);
+      const tramite = accion === "aprobar" ? await aprobarTramite(id, version!) : await rechazarTramite(id, version!);
       onCambiadoRef.current();
       if (!sesion.activa) return;
       dispatch({

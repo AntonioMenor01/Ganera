@@ -132,6 +132,7 @@ class TramiteControllerTest {
                 new GaneraUserPrincipal(1L, gestoria.getId(), "empleado@test.com"), tramite.getId(), aprobarCon(tramite));
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(403);
+        assertThat(respuesta.getBody()).isEqualTo(new MotivoErrorResponse(TramiteController.MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR));
         assertThat(tramiteRepository.findById(tramite.getId()).orElseThrow().getEstado())
                 .isEqualTo(EstadoTramite.PENDIENTE_REVISION);
     }
@@ -156,7 +157,7 @@ class TramiteControllerTest {
 
         TramiteController controller = nuevoController();
         ResponseEntity<?> respuesta = controller.rechazar(
-                new GaneraUserPrincipal(1L, gestoria.getId(), "empleado@test.com"), tramite.getId());
+                new GaneraUserPrincipal(1L, gestoria.getId(), "empleado@test.com"), tramite.getId(), rechazarCon(tramite));
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
         assertThat(((TramiteResponse) respuesta.getBody()).estado()).isEqualTo("RECHAZADO");
@@ -170,7 +171,7 @@ class TramiteControllerTest {
 
         TramiteController controller = nuevoController();
         ResponseEntity<?> respuesta = controller.rechazar(
-                new GaneraUserPrincipal(1L, gestoria.getId(), "empleado@test.com"), 999999L);
+                new GaneraUserPrincipal(1L, gestoria.getId(), "empleado@test.com"), 999999L, new TramiteRechazarRequest(0L));
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(404);
     }
@@ -184,7 +185,8 @@ class TramiteControllerTest {
 
         TramiteController controller = nuevoController();
         ResponseEntity<?> respuesta = controller.rechazar(
-                new GaneraUserPrincipal(1L, gestoriaPropia.getId(), "empleado@test.com"), tramiteAjeno.getId());
+                new GaneraUserPrincipal(1L, gestoriaPropia.getId(), "empleado@test.com"), tramiteAjeno.getId(),
+                rechazarCon(tramiteAjeno));
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(404);
         assertThat(tramiteRepository.findById(tramiteAjeno.getId()).orElseThrow().getEstado())
@@ -308,10 +310,14 @@ class TramiteControllerTest {
         Map<Long, TramiteResponse> porId = new java.util.HashMap<>();
         pagina.getContent().forEach(t -> porId.put(t.id(), t));
         assertThat(porId.get(conCrotales.getId()).crotales()).containsExactly(
-                new TramiteCrotalResponse("1234", "ES700000001234", animal.getId(), true, "EN_INVENTARIO"),
-                new TramiteCrotalResponse("ES000000000000", "ES000000000000", null, false, "NO_ENCONTRADO"));
+                new TramiteCrotalResponse("1234", "ES700000001234", false, animal.getId(), true, "EN_INVENTARIO"),
+                new TramiteCrotalResponse("ES000000000000", "ES000000000000", true, null, false, "NO_ENCONTRADO"));
         assertThat(porId.get(sinCrotales.getId()).crotales()).isEmpty();
         assertThat(porId.get(conCrotales.getId()).explotacionId()).isEqualTo(explotacion.getId());
+        assertThat(porId.get(conCrotales.getId()).explotacionCodigoRega()).isEqualTo("ES700000000010");
+        assertThat(porId.get(conCrotales.getId()).explotacionNombre()).isEqualTo("Finca crotales");
+        assertThat(porId.get(sinCrotales.getId()).explotacionCodigoRega()).isNull();
+        assertThat(porId.get(sinCrotales.getId()).explotacionNombre()).isNull();
     }
 
     /**
@@ -363,7 +369,7 @@ class TramiteControllerTest {
                 new GaneraUserPrincipal(1L, gestoria.getId(), "empleado@test.com"), tramite.getId());
 
         assertThat(respuesta.getBody().crotales()).containsExactly(
-                new TramiteCrotalResponse("5555", "5555", null, false, "SIN_EXPLOTACION"));
+                new TramiteCrotalResponse("5555", "5555", false, null, false, "SIN_EXPLOTACION"));
     }
 
     @Test
@@ -394,7 +400,7 @@ class TramiteControllerTest {
         assertThat(cuerpo.explotacionId()).isEqualTo(explotacion.getId());
         assertThat(cuerpo.tipoTramite()).isEqualTo("BAJA");
         assertThat(cuerpo.crotales()).containsExactly(
-                new TramiteCrotalResponse("1234", "ES700000031234", animal.getId(), true, "EN_INVENTARIO"));
+                new TramiteCrotalResponse("1234", "ES700000031234", false, animal.getId(), true, "EN_INVENTARIO"));
     }
 
     @Test
@@ -491,7 +497,7 @@ class TramiteControllerTest {
         tramiteRepository.save(tramite);
 
         ResponseEntity<?> aprobar = nuevoController().aprobar(principal(gestoria), tramite.getId(), aprobarCon(tramite));
-        ResponseEntity<?> rechazar = nuevoController().rechazar(principal(gestoria), tramite.getId());
+        ResponseEntity<?> rechazar = nuevoController().rechazar(principal(gestoria), tramite.getId(), rechazarCon(tramite));
 
         assertThat(aprobar.getStatusCode().value()).isEqualTo(409);
         assertThat(aprobar.getBody()).isEqualTo(
@@ -567,8 +573,77 @@ class TramiteControllerTest {
         Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria sin suscripcion ni version"));
         Tramite tramite = guardarTramite(gestoria, nuevoContacto(gestoria, "+34600111264"), EstadoTramite.PENDIENTE_REVISION);
 
-        assertThat(nuevoController().aprobar(principal(gestoria), tramite.getId(), null).getStatusCode().value())
-                .isEqualTo(403);
+        ResponseEntity<?> respuesta = nuevoController().aprobar(principal(gestoria), tramite.getId(), null);
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(403);
+        assertThat(respuesta.getBody()).isEqualTo(new MotivoErrorResponse(TramiteController.MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR));
+    }
+
+    /** Mini-prompt tras A2 (punto 2): el texto del 403 es el mismo que ya enseña el frontend. */
+    @Test
+    void elMotivoDel403EsElTextoQueYaMuestraElFrontend() {
+        assertThat(TramiteController.MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR).isEqualTo(
+                "Tu suscripción no permite aprobar trámites ahora mismo (trial expirado o suspendida). "
+                        + "Actualiza tu suscripción en Facturación.");
+    }
+
+    /** Mini-prompt tras A2 (punto 4): rechazar sin version (sin cuerpo o version null) -> 400 con
+     * motivo, ANTES de buscar el Tramite: identico para uno propio, uno de otra Gestoria o uno que
+     * no existe, y nada cambia. */
+    @Test
+    void rechazarSinVersionDevuelve400ConMotivoSinTocarNada() {
+        Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria rechazar sin version"));
+        Gestoria ajena = gestoriaRepository.save(new Gestoria("Gestoria ajena rechazar sin version"));
+        Tramite tramite = guardarTramite(gestoria, nuevoContacto(gestoria, "+34600111266"), EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramiteAjeno = guardarTramite(ajena, nuevoContacto(ajena, "+34600111267"), EstadoTramite.PENDIENTE_REVISION);
+        long versionAntes = version(tramite);
+        long versionAjenoAntes = version(tramiteAjeno);
+
+        for (Long id : List.of(tramite.getId(), tramiteAjeno.getId(), 999999L)) {
+            for (TramiteRechazarRequest cuerpo : java.util.Arrays.asList(null, new TramiteRechazarRequest(null))) {
+                ResponseEntity<?> respuesta = nuevoController().rechazar(principal(gestoria), id, cuerpo);
+
+                assertThat(respuesta.getStatusCode().value()).as("id " + id).isEqualTo(400);
+                assertThat(respuesta.getBody()).isEqualTo(new MotivoErrorResponse(TramiteController.MOTIVO_FALTA_VERSION));
+            }
+        }
+        assertThat(tramite.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+        assertThat(version(tramite)).isEqualTo(versionAntes);
+        assertThat(tramiteAjeno.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+        assertThat(version(tramiteAjeno)).isEqualTo(versionAjenoAntes);
+    }
+
+    @Test
+    void rechazarConVersionDesfasadaDevuelve409ConMotivoSinTocarNada() {
+        Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria rechazar desfasada"));
+        Tramite tramite = guardarTramite(gestoria, nuevoContacto(gestoria, "+34600111268"), EstadoTramite.PENDIENTE_REVISION);
+        long vieja = version(tramite);
+        assertThat(nuevoController().actualizar(principal(gestoria), tramite.getId(),
+                new TramitePatchRequest(vieja, null, "BAJA", null)).getStatusCode().value()).isEqualTo(200);
+
+        ResponseEntity<?> respuesta = nuevoController().rechazar(principal(gestoria), tramite.getId(),
+                new TramiteRechazarRequest(vieja));
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(409);
+        assertThat(respuesta.getBody()).isEqualTo(new MotivoErrorResponse(TramiteRevisionService.MOTIVO_VERSION_DESFASADA));
+        assertThat(tramite.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+        assertThat(version(tramite)).isEqualTo(vieja + 1);
+    }
+
+    @Test
+    void rechazarConLaVersionActualDevuelve200YLaIncrementaEnUno() {
+        Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria rechazar version buena"));
+        Tramite tramite = guardarTramite(gestoria, nuevoContacto(gestoria, "+34600111269"), EstadoTramite.PENDIENTE_REVISION);
+        long v0 = version(tramite);
+
+        ResponseEntity<?> respuesta = nuevoController().rechazar(principal(gestoria), tramite.getId(),
+                new TramiteRechazarRequest(v0));
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
+        TramiteResponse cuerpo = (TramiteResponse) respuesta.getBody();
+        assertThat(cuerpo.estado()).isEqualTo("RECHAZADO");
+        assertThat(cuerpo.version()).isEqualTo(v0 + 1);
+        assertThat(version(tramite)).isEqualTo(v0 + 1);
     }
 
     @Test
@@ -639,6 +714,10 @@ class TramiteControllerTest {
 
     private TramiteAprobarRequest aprobarCon(Tramite tramite) {
         return new TramiteAprobarRequest(version(tramite));
+    }
+
+    private TramiteRechazarRequest rechazarCon(Tramite tramite) {
+        return new TramiteRechazarRequest(version(tramite));
     }
 
     private TramiteController nuevoController() {

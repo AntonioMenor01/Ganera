@@ -6,6 +6,11 @@ import com.ganera.core.contacto.TelefonoNormalizador;
 import com.ganera.core.gestoria.Gestoria;
 import com.ganera.core.tramite.CrotalInvalidoException;
 import com.ganera.core.tramite.CrotalNormalizador;
+import org.apache.poi.EmptyFileException;
+import org.apache.poi.UnsupportedFileFormatException;
+import org.apache.poi.ooxml.POIXMLException;
+import org.apache.poi.openxml4j.exceptions.OLE2NotOfficeXmlFileException;
+import org.apache.poi.openxml4j.exceptions.OpenXML4JRuntimeException;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.Row;
@@ -58,6 +63,10 @@ public class ExplotacionImportService {
     /** contacto.nombre es VARCHAR(255): mas largo fallaria en el flush como si fuera un telefono duplicado. */
     private static final int LONGITUD_MAXIMA_NOMBRE_CONTACTO = 255;
 
+    static final String MOTIVO_XLS_ANTIGUO =
+            "El fichero es un Excel antiguo (.xls). Ábrelo en Excel y guárdalo como .xlsx antes de importarlo.";
+    static final String MOTIVO_NO_ES_XLSX = "El fichero no es un Excel .xlsx válido.";
+
     /** Error inesperado en una fila de Contactos: nunca se muestra el mensaje interno. */
     static final String MOTIVO_CONTACTO_GENERICO = "No se pudo importar el contacto de esta fila";
 
@@ -71,15 +80,15 @@ public class ExplotacionImportService {
         Long gestoriaId = gestoria.getId();
         List<ImportErrorDto> errores = new ArrayList<>();
         try (InputStream inputStream = archivo.getInputStream();
-             Workbook workbook = new XSSFWorkbook(inputStream)) {
+             Workbook workbook = abrirLibro(inputStream)) {
 
             Sheet hojaExplotaciones = workbook.getSheet(HOJA_EXPLOTACIONES);
             if (hojaExplotaciones == null) {
-                throw new IllegalArgumentException("Falta la hoja '" + HOJA_EXPLOTACIONES + "' en el Excel");
+                throw new FicheroImportacionInvalidoException("Falta la hoja '" + HOJA_EXPLOTACIONES + "' en el Excel");
             }
             Sheet hojaAnimales = workbook.getSheet(HOJA_ANIMALES);
             if (hojaAnimales == null) {
-                throw new IllegalArgumentException("Falta la hoja '" + HOJA_ANIMALES + "' en el Excel");
+                throw new FicheroImportacionInvalidoException("Falta la hoja '" + HOJA_ANIMALES + "' en el Excel");
             }
 
             ImportHojaResumen resumenExplotaciones = importarExplotaciones(hojaExplotaciones, gestoriaId, errores);
@@ -90,6 +99,32 @@ public class ExplotacionImportService {
                     : importarContactos(hojaContactos, gestoriaId, errores);
 
             return new ImportResumenResponse(resumenExplotaciones, resumenAnimales, resumenContactos, errores);
+        }
+    }
+
+    /**
+     * Abre el libro detectando por <b>contenido</b> (no por extension ni Content-Type, que el
+     * navegador manda como quiere) si no es un .xlsx. Solo se capturan aqui los fallos al abrir:
+     * <ul>
+     *   <li>{@link OLE2NotOfficeXmlFileException}: formato OLE2, un .xls antiguo.</li>
+     *   <li>{@link UnsupportedFileFormatException} (incluye {@code NotOfficeXmlFileException}: texto,
+     *       bytes aleatorios), {@link EmptyFileException} (0 bytes), {@link POIXMLException} (un ZIP
+     *       que no es un paquete OOXML, p. ej. sin [Content_Types].xml),
+     *       {@link OpenXML4JRuntimeException} (paquete OOXML mal formado) e {@link IOException}
+     *       (ZIP truncado/roto): cualquier otro fichero que no es un .xlsx valido.</li>
+     * </ul>
+     * El mensaje tecnico de POI se queda en la causa; al cliente solo le llega el motivo en
+     * espanol. La lectura del {@code InputStream} del multipart se abre fuera de este metodo, asi
+     * que un fallo del propio servidor al leer la subida no se confunde con un fichero invalido.
+     */
+    private static Workbook abrirLibro(InputStream inputStream) {
+        try {
+            return new XSSFWorkbook(inputStream);
+        } catch (OLE2NotOfficeXmlFileException e) {
+            throw new FicheroImportacionInvalidoException(MOTIVO_XLS_ANTIGUO, e);
+        } catch (UnsupportedFileFormatException | EmptyFileException | POIXMLException
+                 | OpenXML4JRuntimeException | IOException e) {
+            throw new FicheroImportacionInvalidoException(MOTIVO_NO_ES_XLSX, e);
         }
     }
 

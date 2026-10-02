@@ -1,6 +1,7 @@
 package com.ganera.core.registro;
 
 import com.ganera.core.facturacion.StripeCheckoutService;
+import com.ganera.core.shared.web.MotivoErrorResponse;
 import com.stripe.exception.StripeException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
@@ -18,10 +19,12 @@ import java.util.Optional;
 @RestController
 public class RegistroGestoriaController {
 
-    /** Mismo mensaje para cualquier causa de fallo (email duplicado, password debil, email mal
+    /** Mismo motivo para cualquier causa de fallo (email duplicado, password debil, email mal
      * formado, campo en blanco) -- no revela cual fue, para no permitir enumerar que emails ya
-     * estan registrados (mismo principio que el 401 uniforme de AuthService.autenticar). */
-    private static final String MENSAJE_REGISTRO_INVALIDO =
+     * estan registrados (mismo principio que el 401 uniforme de AuthService.autenticar). Se
+     * devuelve como {@code {"motivo": "..."}} (MotivoErrorResponse), el formato de error comun;
+     * el 503 de Stripe sin configurar va sin cuerpo. */
+    private static final String MOTIVO_REGISTRO_INVALIDO =
             "No se ha podido completar el registro con esos datos. Revisa el email y la contraseña e inténtalo de nuevo.";
 
     private final RegistroGestoriaService registroGestoriaService;
@@ -37,14 +40,14 @@ public class RegistroGestoriaController {
     @PostMapping("/gestorias/registro")
     public ResponseEntity<?> registrar(@RequestBody RegistroGestoriaRequest request) throws StripeException {
         if (!RegistroGestoriaValidacion.solicitudValida(request)) {
-            return ResponseEntity.badRequest().body(new RegistroErrorResponse(MENSAJE_REGISTRO_INVALIDO));
+            return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_REGISTRO_INVALIDO));
         }
 
         Long gestoriaId;
         try {
             gestoriaId = registroGestoriaService.crearGestoriaYUsuario(request);
         } catch (DataIntegrityViolationException e) {
-            return ResponseEntity.badRequest().body(new RegistroErrorResponse(MENSAJE_REGISTRO_INVALIDO));
+            return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_REGISTRO_INVALIDO));
         }
 
         long cantidad = request.rangoClientes().quantityExplotacionesEstimada();

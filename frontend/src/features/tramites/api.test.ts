@@ -28,11 +28,6 @@ const RESPUESTA_LISTA = {
   version: 5,
 }
 
-/** Cuerpo crudo (texto) de la petición, para distinguir "sin cuerpo" de "{}". */
-async function cuerpoCrudo(request: Request): Promise<string> {
-  return await request.text()
-}
-
 describe("actualizarTramite (PATCH /tramites/{id})", () => {
   it("envía la versión y solo los campos presentes, y devuelve el detalle", async () => {
     let cuerpo: unknown
@@ -119,17 +114,29 @@ describe("aprobarTramite (POST /tramites/{id}/aprobar)", () => {
 })
 
 describe("rechazarTramite (POST /tramites/{id}/rechazar)", () => {
-  it("no envía cuerpo (H4: el backend no admite version al rechazar)", async () => {
-    let crudo: string | null = null
+  it("envía {version} en el cuerpo (obligatoria desde el mini-prompt tras A2, H4)", async () => {
+    let cuerpo: unknown
     server.use(
       http.post(apiUrl("/tramites/7/rechazar"), async ({ request }) => {
-        crudo = await cuerpoCrudo(request)
+        cuerpo = await request.json()
         return HttpResponse.json({ ...RESPUESTA_LISTA, estado: "RECHAZADO" })
       }),
     )
-    const tramite = await rechazarTramite(7)
-    expect(crudo).toBe("")
+    const tramite = await rechazarTramite(7, 4)
+    expect(cuerpo).toEqual({ version: 4 })
     expect(tramite.estado).toBe("RECHAZADO")
+  })
+
+  it("la versión 0 también se envía (no se toma por ausente)", async () => {
+    let cuerpo: unknown
+    server.use(
+      http.post(apiUrl("/tramites/7/rechazar"), async ({ request }) => {
+        cuerpo = await request.json()
+        return HttpResponse.json({ ...RESPUESTA_LISTA, estado: "RECHAZADO" })
+      }),
+    )
+    await rechazarTramite(7, 0)
+    expect(cuerpo).toEqual({ version: 0 })
   })
 })
 

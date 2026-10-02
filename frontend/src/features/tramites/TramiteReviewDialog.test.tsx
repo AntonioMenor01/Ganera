@@ -206,8 +206,8 @@ describe("TramiteReviewDialog: errores visibles", () => {
   })
 })
 
-describe("TramiteReviewDialog: aprobar envía la versión (Task 9a)", () => {
-  it("aprobar manda {version} del detalle cargado y rechazar (confirmado) no manda cuerpo", async () => {
+describe("TramiteReviewDialog: aprobar y rechazar envían la versión (Task 9a, mini-prompt tras A2)", () => {
+  it("aprobar y rechazar (confirmado) mandan {version} del detalle cargado", async () => {
     const cuerpos: string[] = []
     server.use(
       http.get(apiUrl("/tramites/7"), () => HttpResponse.json({ ...DETALLE, version: 3 })),
@@ -234,7 +234,7 @@ describe("TramiteReviewDialog: aprobar envía la versión (Task 9a)", () => {
     await user.click(screen.getByRole("button", { name: "Sí, rechazar" }))
     await vi.waitFor(() => expect(onCambiado).toHaveBeenCalledTimes(2))
 
-    expect(cuerpos).toEqual(['aprobar:{"version":3}', "rechazar:"])
+    expect(cuerpos).toEqual(['aprobar:{"version":3}', 'rechazar:{"version":3}'])
   })
 })
 
@@ -716,7 +716,7 @@ describe("TramiteReviewDialog: Rechazar se confirma en línea", () => {
     expect(boton(dialogo, "Rechazar")).toHaveFocus()
   })
 
-  it("«Sí, rechazar» envía sin cuerpo; el modal queda abierto en solo lectura con «Trámite rechazado.»", async () => {
+  it("«Sí, rechazar» envía {version} del detalle mostrado; el modal queda abierto en solo lectura con «Trámite rechazado.»", async () => {
     const cuerpos: string[] = []
     detallesEnOrden(
       () => HttpResponse.json(detalle()),
@@ -737,7 +737,7 @@ describe("TramiteReviewDialog: Rechazar se confirma en línea", () => {
     await user.click(boton(dialogo, "Sí, rechazar"))
 
     expect(await within(dialogo).findByText("Trámite rechazado.")).toBeInTheDocument()
-    expect(cuerpos).toEqual([""])
+    expect(cuerpos).toEqual(['{"version":0}'])
     expect(within(dialogo).getByText("Rechazado")).toHaveClass("bg-danger")
     expect(onCambiado).toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()

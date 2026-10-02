@@ -372,10 +372,10 @@ class TramiteCrotalServiceTest {
 
         assertThat(porTramite).containsOnlyKeys(t1.getId(), t2.getId());
         assertThat(porTramite.get(t1.getId())).containsExactly(
-                new TramiteCrotalResponse("1234", "ES010000001234", animalA1Unico.getId(), true, "EN_INVENTARIO"),
-                new TramiteCrotalResponse("5678", "5678", null, false, "AMBIGUO"));
+                new TramiteCrotalResponse("1234", "ES010000001234", false, animalA1Unico.getId(), true, "EN_INVENTARIO"),
+                new TramiteCrotalResponse("5678", "5678", false, null, false, "AMBIGUO"));
         assertThat(porTramite.get(t2.getId())).containsExactly(
-                new TramiteCrotalResponse("4321", "4321", null, false, "SIN_EXPLOTACION"));
+                new TramiteCrotalResponse("4321", "4321", false, null, false, "SIN_EXPLOTACION"));
         assertThat(servicio.crotalesPorTramite(List.of(), gestoriaA.getId())).isEmpty();
     }
 

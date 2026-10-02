@@ -204,11 +204,16 @@ class TenantIsolationEndToEndTest {
         Tramite tramiteA = nuevoTramite(gestoriaA, "+34600000104");
         String tokenB = login("rechB@test.com");
 
-        ResponseEntity<String> respuesta = post("/tramites/" + tramiteA.getId() + "/rechazar", tokenB);
+        // Mini-prompt tras A2 (punto 4): rechazar exige version. B envia la version ACTUAL y
+        // correcta del Tramite de A -- si el aislamiento fallara, el rechazo pasaria (200).
+        Long versionA = tramiteA.getVersion();
+        ResponseEntity<String> respuesta = postJson("/tramites/" + tramiteA.getId() + "/rechazar", tokenB,
+                java.util.Map.of("version", versionA));
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(404);
-        assertThat(tramiteRepository.findById(tramiteA.getId()).orElseThrow().getEstado())
-                .isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+        Tramite despues = tramiteRepository.findById(tramiteA.getId()).orElseThrow();
+        assertThat(despues.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+        assertThat(despues.getVersion()).isEqualTo(versionA);
     }
 
     @Test
@@ -296,12 +301,6 @@ class TenantIsolationEndToEndTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         return restTemplate.exchange(path, HttpMethod.GET, new HttpEntity<>(headers), String.class);
-    }
-
-    private ResponseEntity<String> post(String path, String token) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(token);
-        return restTemplate.exchange(path, HttpMethod.POST, new HttpEntity<>(headers), String.class);
     }
 
     private ResponseEntity<String> postJson(String path, String token, Object cuerpo) {

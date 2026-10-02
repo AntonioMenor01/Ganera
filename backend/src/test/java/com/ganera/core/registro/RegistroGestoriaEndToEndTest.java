@@ -12,6 +12,9 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -31,6 +34,11 @@ class RegistroGestoriaEndToEndTest {
     private GestoriaRepository gestoriaRepository;
     @Autowired
     private UsuarioRepository usuarioRepository;
+
+    /** Cuerpo exacto de todo 400 de registro: {motivo} (MotivoErrorResponse), el mismo texto para
+     * cualquier causa, y ninguna clave "mensaje" (el antiguo RegistroErrorResponse). */
+    private static final String CUERPO_UNIFORME = "{\"motivo\":\"No se ha podido completar el registro con esos "
+            + "datos. Revisa el email y la contraseña e inténtalo de nuevo.\"}";
 
     @AfterEach
     void limpiar() {
@@ -70,7 +78,7 @@ class RegistroGestoriaEndToEndTest {
                 """);
 
         assertThat(segundaRespuesta.getStatusCode().value()).isEqualTo(400);
-        assertThat(segundaRespuesta.getBody()).contains("mensaje");
+        assertThat(segundaRespuesta.getBody()).isEqualTo(CUERPO_UNIFORME);
         assertThat(gestoriaRepository.count()).isEqualTo(totalGestoriasTrasElPrimero);
     }
 
@@ -82,6 +90,40 @@ class RegistroGestoriaEndToEndTest {
                 """);
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(400);
+        assertThat(respuesta.getBody()).isEqualTo(CUERPO_UNIFORME);
         assertThat(usuarioRepository.findByEmail("e2e-debil@gestoria.com")).isEmpty();
+    }
+
+    /** Sin oraculo: email duplicado, password debil y email mal formado dan bytes identicos, con
+     * Content-Type JSON, clave "motivo" y sin "mensaje". */
+    @Test
+    void emailDuplicadoPasswordDebilYEmailMalFormadoDevuelvenElMismoCuerpoExacto() {
+        registrar("""
+                {"nombreGestoria":"Gestoria E2E Oraculo","nombreUsuario":"Empleado",
+                 "email":"e2e-oraculo@gestoria.com","password":"password123","rangoClientes":"UNO_A_DIEZ"}
+                """);
+
+        ResponseEntity<String> duplicado = registrar("""
+                {"nombreGestoria":"Gestoria E2E Oraculo Dos","nombreUsuario":"Empleado Dos",
+                 "email":"e2e-oraculo@gestoria.com","password":"password456","rangoClientes":"UNO_A_DIEZ"}
+                """);
+        ResponseEntity<String> debil = registrar("""
+                {"nombreGestoria":"Gestoria E2E Oraculo Tres","nombreUsuario":"Empleado Tres",
+                 "email":"e2e-oraculo-debil@gestoria.com","password":"corta","rangoClientes":"UNO_A_DIEZ"}
+                """);
+        ResponseEntity<String> malFormado = registrar("""
+                {"nombreGestoria":"Gestoria E2E Oraculo Cuatro","nombreUsuario":"Empleado Cuatro",
+                 "email":"no-es-un-email","password":"password123","rangoClientes":"UNO_A_DIEZ"}
+                """);
+
+        for (ResponseEntity<String> respuesta : List.of(duplicado, debil, malFormado)) {
+            assertThat(respuesta.getStatusCode().value()).isEqualTo(400);
+            assertThat(respuesta.getHeaders().getContentType()).isNotNull();
+            assertThat(respuesta.getHeaders().getContentType().isCompatibleWith(MediaType.APPLICATION_JSON)).isTrue();
+            assertThat(respuesta.getBody()).isEqualTo(CUERPO_UNIFORME).doesNotContain("mensaje");
+        }
+        assertThat(duplicado.getBody().getBytes(StandardCharsets.UTF_8))
+                .isEqualTo(debil.getBody().getBytes(StandardCharsets.UTF_8))
+                .isEqualTo(malFormado.getBody().getBytes(StandardCharsets.UTF_8));
     }
 }

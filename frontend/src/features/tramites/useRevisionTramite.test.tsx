@@ -662,7 +662,7 @@ describe("useRevisionTramite: 200", () => {
     expect(onCambiado).toHaveBeenCalledTimes(1)
   })
 
-  it("rechazar no lleva cuerpo; tras el 200 se recarga en solo lectura y avisa a la cola", async () => {
+  it("rechazar lleva {version} del detalle mostrado; tras el 200 se recarga en solo lectura y avisa a la cola", async () => {
     let crudo: string | null = null
     detallesEnOrden(
       () => HttpResponse.json(detalle()),
@@ -678,7 +678,7 @@ describe("useRevisionTramite: 200", () => {
     await act(async () => {
       await result.current.rechazar()
     })
-    expect(crudo).toBe("")
+    expect(crudo).toBe('{"version":4}')
     expect(result.current.detalle?.estado).toBe("RECHAZADO")
     expect(result.current.editable).toBe(false)
     expect(result.current.aviso).toEqual({ tipo: "exito", accion: "rechazar", mensaje: "Trámite rechazado." })
@@ -875,14 +875,16 @@ describe("useRevisionTramite: 409", () => {
   })
 
   it("rechazar 409: recarga y el trámite queda en solo lectura con el motivo", async () => {
+    const cuerpos: unknown[] = []
     detallesEnOrden(
       () => HttpResponse.json(detalle()),
       () => HttpResponse.json(detalle({ estado: "APROBADO", version: 5 })),
     )
     server.use(
-      http.post(apiUrl("/tramites/7/rechazar"), () =>
-        HttpResponse.json({ motivo: "El trámite ya no está pendiente de revisión." }, { status: 409 }),
-      ),
+      http.post(apiUrl("/tramites/7/rechazar"), async ({ request }) => {
+        cuerpos.push(await request.json())
+        return HttpResponse.json({ motivo: "El trámite ya no está pendiente de revisión." }, { status: 409 })
+      }),
     )
     const { result, onCambiado } = await montar()
     await act(async () => {
@@ -893,6 +895,8 @@ describe("useRevisionTramite: 409", () => {
       accion: "rechazar",
       mensaje: "El trámite ya no está pendiente de revisión.",
     })
+    // Se envió la versión que se mostraba; tras el 409 no se reintenta.
+    expect(cuerpos).toEqual([{ version: 4 }])
     expect(result.current.detalle?.estado).toBe("APROBADO")
     expect(result.current.editable).toBe(false)
     expect(onCambiado).toHaveBeenCalledTimes(1)
