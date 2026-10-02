@@ -2,6 +2,7 @@ import { TriangleAlertIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { mensajeDeError } from "@/shared/api/errores";
 import type { SuscripcionEstadoHook } from "./useSuscripcionEstado";
 
 const MENSAJES_BLOQUEANTES: Record<string, string> = {
@@ -17,12 +18,29 @@ const MENSAJES_AVISO: Record<string, string> = {
 };
 
 /** Persistente en el layout: null en estado significa "nunca tuvo Suscripcion" (mismo tratamiento
- * que un estado bloqueante -- ver Facturacion). Ni bloqueante ni con aviso -> no se muestra nada. */
+ * que un estado bloqueante -- ver Facturacion). Un fallo al cargar el estado se avisa con
+ * "Reintentar". Ni bloqueante ni con aviso -> no se muestra nada. */
 export function SuscripcionBanner({ suscripcion }: { suscripcion: SuscripcionEstadoHook }) {
-  const { estado, cargando, error } = suscripcion;
+  const { estado, cargando, error, recargar } = suscripcion;
 
-  if (cargando || error) {
+  if (cargando) {
     return null;
+  }
+
+  // Sin el estado no se sabe si se puede aprobar: se dice, en vez de no enseñar nada.
+  if (error) {
+    return (
+      <Alert variant="destructive" className="rounded-none border-x-0 border-t-0">
+        <TriangleAlertIcon />
+        <AlertTitle>No se ha podido comprobar tu suscripción</AlertTitle>
+        <AlertDescription>{mensajeDeError(error, "suscripcion")}</AlertDescription>
+        <AlertAction>
+          <Button size="sm" variant="outline" onClick={recargar}>
+            Reintentar
+          </Button>
+        </AlertAction>
+      </Alert>
+    );
   }
 
   if (estado === null) {

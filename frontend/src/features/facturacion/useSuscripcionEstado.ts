@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
+import { aErrorApi, type ErrorApi } from "@/shared/api/errores";
 import { obtenerEstadoSuscripcion } from "./api";
 import type { SuscripcionEstado } from "./types";
 
 export interface SuscripcionEstadoHook {
   estado: SuscripcionEstado | null;
   cargando: boolean;
-  error: boolean;
+  /** null si no hay error. Se muestra con mensajeDeError(error, "suscripcion"). */
+  error: ErrorApi | null;
   recargar: () => void;
 }
 
@@ -13,19 +15,19 @@ export interface SuscripcionEstadoHook {
 export function useSuscripcionEstado(): SuscripcionEstadoHook {
   const [estado, setEstado] = useState<SuscripcionEstado | null>(null);
   const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<ErrorApi | null>(null);
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
     let cancelado = false;
     setCargando(true);
-    setError(false);
+    setError(null);
     obtenerEstadoSuscripcion()
       .then((resultado) => {
         if (!cancelado) setEstado(resultado);
       })
-      .catch(() => {
-        if (!cancelado) setError(true);
+      .catch((err: unknown) => {
+        if (!cancelado) setError(aErrorApi(err));
       })
       .finally(() => {
         if (!cancelado) setCargando(false);

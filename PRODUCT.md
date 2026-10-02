@@ -68,8 +68,8 @@ gestoría always reviews and approves: nothing reaches the Administración witho
 - **Login and registration errors are uniform:** they never reveal why a login or a sign-up was
   rejected.
 - **Stack in place:** Vite + React 19 + TypeScript + Tailwind v4 + shadcn/ui (base-nova style,
-  `@base-ui/react`), `lucide-react` icons, Geist Variable font. Session-only authentication (a
-  reload requires logging in again).
+  `@base-ui/react`), `lucide-react` icons, Geist Variable font. Session authentication in
+  `sessionStorage`: it survives a reload and ends when the tab is closed.
 - **Terminology** stays in the domain's Spanish: Gestoría, Ganadero, Explotación, Animal, Crotal,
   Contacto, Trámite, código REGA, OVZ.net.
 - **Undecided:** per-employee portfolio (`modoCartera`, data model only), roles, a WhatsApp reply
@@ -77,14 +77,17 @@ gestoría always reviews and approves: nothing reaches the Administración witho
 
 ## Brand Commitments
 
-- **Name:** Ganera. Today the app shows the text logotype "GANERA".
+- **Name:** Ganera. The app shows the brand mark next to the text logotype "GANERA" in the
+  navigation bar, and above the "Ganera" title on the login and registration screens.
+- **Official logo:** `frontend/public/ganera-logo.svg` (`fill="currentColor"`, so it takes its
+  color from a token). Variants: `ganera-logo-verde.svg` (fixed green, for contexts without CSS),
+  `ganera-logo-512.png` and `favicon-64.png` (the favicon).
 - **Voice:** Spanish, addressing the user with tú ("tu suscripción").
 - **Fixed visual identity (only change it when Antonio asks):** primary green `#1F3D2B`, cream
   background `#F7F6F1`, sidebar `#F1F0E8`, white cards with a thin border, and colored badges per
   trámite state. Colors are always defined as Tailwind tokens or CSS variables, never hard-coded
   in individual components. Don't propose a different palette or typeface unless asked.
-- `logo.jpg` (a geometric "G" with an arrow, at the repo root, untracked) exists but has **not**
-  been confirmed as the official logo. Don't use it as the brand mark without confirmation.
+- `logo.jpg` (at the repo root) is **not** the logo and is not committed.
 
 ## Evidence on Hand
 
