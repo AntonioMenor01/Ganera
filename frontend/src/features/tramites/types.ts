@@ -1,18 +1,30 @@
-export type EstadoTramite =
-  | "PENDIENTE_EXTRACCION"
-  | "PENDIENTE_REVISION"
-  | "APROBADO"
-  | "EN_PROCESO"
-  | "EJECUTADO_OVZ"
-  | "ERROR_OVZ"
-  | "RECHAZADO";
+import type { EstadoTramite, ResolucionCrotal } from "./etiquetas";
 
+// Estados, tipos, resoluciones y sus etiquetas viven en etiquetas.ts (una sola fuente por dominio).
+// badgeVarianteDeEstado se reexporta aquí porque DESIGN.md la cita desde este fichero.
+export { badgeVarianteDeEstado } from "./etiquetas";
+export type { EstadoTramite, ResolucionCrotal, TipoTramite } from "./etiquetas";
+
+/** Crotal de un trámite (`TramiteCrotalResponse`). `crotal` es el completo si `EN_INVENTARIO` y,
+ * si no, igual a `crotalIndicado`; `animalId` es null salvo en `EN_INVENTARIO`. */
+export interface TramiteCrotal {
+  crotalIndicado: string;
+  crotal: string;
+  animalId: number | null;
+  enInventario: boolean;
+  resolucion: ResolucionCrotal;
+}
+
+// tipoTramite es string (no TipoTramite): el backend puede traer tipos que el frontend aún no
+// conoce (prompt B). Se etiqueta con etiquetaTipoTramite, que muestra tal cual lo desconocido.
 export interface Tramite {
   id: number;
   explotacionId: number | null;
   tipoTramite: string | null;
   estado: EstadoTramite;
   motivoError: string | null;
+  crotales: TramiteCrotal[];
+  version: number;
 }
 
 export interface TramiteDetalle {
@@ -24,22 +36,6 @@ export interface TramiteDetalle {
   explotacionCodigoRega: string | null;
   explotacionNombre: string | null;
   mensajeOriginal: string | null;
-}
-
-/** Mapeo de EstadoTramite a la variante de Badge semántica (ver paleta de marca).
- * PENDIENTE_EXTRACCION/PENDIENTE_REVISION/EN_PROCESO: aún no resuelto -> aviso.
- * APROBADO/EJECUTADO_OVZ: resuelto favorablemente -> positivo.
- * ERROR_OVZ/RECHAZADO: resuelto desfavorablemente -> negativo. */
-const BADGE_POR_ESTADO: Record<EstadoTramite, "success" | "warning" | "danger"> = {
-  PENDIENTE_EXTRACCION: "warning",
-  PENDIENTE_REVISION: "warning",
-  EN_PROCESO: "warning",
-  APROBADO: "success",
-  EJECUTADO_OVZ: "success",
-  ERROR_OVZ: "danger",
-  RECHAZADO: "danger",
-};
-
-export function badgeVarianteDeEstado(estado: EstadoTramite): "success" | "warning" | "danger" {
-  return BADGE_POR_ESTADO[estado];
+  crotales: TramiteCrotal[];
+  version: number;
 }

@@ -479,3 +479,62 @@ multi-tenant encontrado y arreglado en la verificación final, antes de comitear
 - **Sin commit** — pendiente de la aprobación de Antonio. **Aviso antes de cualquier demo:** aprobar
   desde el frontend actual da siempre 400 hasta el Prompt A2 (envía `aprobar` sin `version`), salvo
   el 403 de suscripción bloqueada o inexistente, que va antes y sigue mostrando su mensaje.
+
+## 2026-09-28 → 2026-10-02 — Prompt A2 (frontend de A1: Ganaderos, animales, revisión editable) — solo frontend
+
+Plan: `docs/superpowers/plans/2026-09-28-promptA2-frontend-revision.md` (31 decisiones). Un
+implementador + un revisor independiente por tarea; las pasadas de Impeccable, desde la sesión
+principal (decisión 27). Informes en `.superpowers/sdd/a2-*` (no se suben). `backend/` sin tocar.
+
+- **Task 1** (decisión 17): Vitest + jsdom + Testing Library + MSW, `npm test`. Revisión Approved.
+- **Task 2** (decisión 2, H11): `ErrorApi` + `mensajeDeError`, interceptores, migración de los usos
+  existentes. Revisión Approved tras correcciones (M4, el mensaje de POI en inglés, pasa al
+  mini-prompt de backend).
+- **Task 3** (decisión 1): sesión en `sessionStorage`, arranque con `/auth/me`, aviso de sesión
+  caducada. Approved con un minor (R1).
+- **Task 4** (decisiones 4, 5, H9): `index.html`, `LogoGanera`, `PRODUCT.md`. Approved con minors.
+- **Task 5** (decisión 6, H10): `etiquetas.ts`, badges con texto, tipos al día, Contactos en el
+  resumen del importador. Approved.
+- **Task 6** (critique de la cola, decisión 16): filas accesibles por teclado, REGA en vez del id,
+  crotales en la fila. Tras la Task 6, decisiones 27–31 de Antonio (cola filtrada por pendientes,
+  Impeccable desde la sesión principal…). Approved.
+- **Task 7** (craft de Ganaderos, decisiones 14 y 30): listado + detalle + enlace en la barra.
+  Revisión de código + finish review de Impeccable; Approved tras correcciones (I1: ganadero
+  anterior pintado bajo el id nuevo).
+- **Task 8** (decisión 15, H1-A): `AnimalesDeExplotacion` en Explotaciones y en el detalle.
+  Approved tras I1 (columna quitada en móvil del marcado, `useDesdeSm`).
+- **Task 9a** (lógica del modal, TDD): `useRevisionTramite` + `revisionTramite.ts`. Approved.
+- **Task 9b** (craft del modal, decisión 31): combobox, tipo, crotales, avisos, confirmación en
+  línea. Dos re-revisiones (código e Impeccable) aprobadas el 2026-10-02.
+- **Task 10** (audit + polish): audit 14/20, 0 fallos de contraste; polish con regiones `status`,
+  esqueleto en la cola, "+N más" desplegable, `CLASE_ENLACE` en `shared/ui`, `wrap-anywhere`.
+  Approved sin Critical ni Important.
+- **Task 11 (2026-10-02, cierre):**
+  - `npm test` **475/475** (36 ficheros); `npm run build` en verde (aviso del chunk de 622 kB);
+    `npm run lint` con los 3 avisos `only-export-components` de siempre; `./mvnw clean test`
+    **415/415**, BUILD SUCCESS.
+  - Smoke en navegador real (Playwright 1.63 por npm en el scratchpad, Vite en :5173, backend con
+    H2 en fichero `AUTO_SERVER=TRUE`), dos gestorías dadas de alta por `/internal/onboarding`,
+    trámites y mensajes sembrados por SQL. Gestoría A, 1440 px: login → recarga sin perder la
+    sesión → importación desde la UI con hoja Contactos (3/27/4 filas; reimportar no duplica: 27
+    animales) → Ganaderos → detalle (3 enlaces `tel:`, roles) → "Ver animales" paginado (20 + 5) →
+    cola filtrada por pendientes → T1: asignar explotación y tipo, `PATCH {version:0,…}` 200,
+    crotales `1234`/`5678` → `EN_INVENTARIO`, aprobar `{version:1}` 200 y solo lectura → T2:
+    aprobar sin tipo `409` "Falta el tipo de trámite." → T6: `PATCH` externo con la misma versión y
+    después Guardar en la UI → `409`, recarga con el tipo nuevo y motivo "El trámite ha cambiado
+    desde que lo abriste…", aprobar con la versión nueva 200 → T3: rechazar con confirmación en
+    línea → T4 `APROBADO` sin botones → Facturación "Activa". Gestoría B (`SUSPENDIDA`, 375 px):
+    banner, solo su trámite en la cola, aprobar `403` con el texto de suscripción y sin cerrar
+    sesión, combobox por encima del modal a pantalla completa, `/ganaderos/2` (de A) → `404` y
+    "Ganadero no encontrado", "Salir" borra `ganera.token`. Estado final comprobado por SQL.
+  - Falso positivo descartado: una primera foto tras importar mostraba la tabla vacía; era la foto
+    tomada antes de pintar la recarga. Repetido con espera real (reimportación y una tercera
+    gestoría vacía): la tabla se refresca bien.
+  - Detalle anotado (sin arreglar): la tarjeta del resumen del importador dice "1 filas" /
+    "1 actualizadas"; la frase anunciada ya usa plurales reales.
+  - Procesos `java`/`node` del smoke parados por PID; H2, Excel y temporales borrados (solo queda el
+    `java.exe` del language server de VS Code).
+  - `CLAUDE.md`, `ganera-prompts.md`, `DESIGN.md` y este fichero puestos al día.
+- **Sin commit** — pendiente de la aprobación de Antonio. La rama `a2-wip` (commit `5543045`, con
+  los informes) se conserva hasta que Antonio diga lo contrario; el commit final se monta desde
+  `main` ruta a ruta.

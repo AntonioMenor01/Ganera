@@ -165,6 +165,29 @@ body {
   margin: 0;
 }
 
+/* Símbolo de Ganera (componente LogoGanera). El SVG usa fill="currentColor", que no hereda color
+   dentro de un <img>; se usa como máscara sobre currentColor para que el color salga del token de
+   texto (text-primary) y no haya ningún hex en componentes. Vite reescribe la URL absoluta de
+   public/ con el `base` del build. */
+@utility logo-ganera {
+  background-color: currentColor;
+  -webkit-mask-image: url("/ganera-logo.svg");
+  mask-image: url("/ganera-logo.svg");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+
+  /* Alto contraste de Windows: el navegador sustituiria el fondo por el del lienzo y el simbolo
+     desapareceria. Se fija al color de texto del sistema. */
+  @media (forced-colors: active) {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -174,5 +197,13 @@ body {
   }
   html {
     @apply font-sans;
+  }
+  /* Selección y cursor de texto con el verde de la paleta, no los del navegador. */
+  ::selection {
+    background-color: color-mix(in oklab, var(--primary) 18%, transparent);
+  }
+  input,
+  textarea {
+    caret-color: var(--primary);
   }
 }

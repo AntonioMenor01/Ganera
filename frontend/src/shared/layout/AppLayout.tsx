@@ -2,12 +2,16 @@ import { NavLink, Outlet } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/shared/auth/AuthContext";
+import { LogoGanera } from "@/shared/brand/LogoGanera";
 import { SuscripcionBanner } from "@/features/facturacion/SuscripcionBanner";
 import { useSuscripcionEstado } from "@/features/facturacion/useSuscripcionEstado";
 
+// Orden de trabajo: la cola (lo diario), a quién pertenece (Ganaderos → sus explotaciones) y, al
+// final, la cuenta. /ganaderos/:id también marca "Ganaderos" (NavLink sin `end`).
 const ENLACES = [
-  { to: "/explotaciones", label: "Explotaciones" },
   { to: "/tramites", label: "Trámites" },
+  { to: "/ganaderos", label: "Ganaderos" },
+  { to: "/explotaciones", label: "Explotaciones" },
   { to: "/facturacion", label: "Facturación" },
 ];
 
@@ -27,7 +31,7 @@ export function AppLayout() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">
-              <span className="size-2.5 rounded-full bg-primary" aria-hidden="true" />
+              <LogoGanera decorativo className="size-5 text-primary" />
               <span className="font-semibold tracking-wide text-primary">GANERA</span>
             </div>
             <nav className="flex items-center gap-1">

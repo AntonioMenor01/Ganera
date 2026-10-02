@@ -2,7 +2,7 @@
 
 Documento de referencia con todos los prompts, en orden, tal como se han ido cerrando. Cada uno se lanza en la **misma sesión continua** de Claude Code (para que mantenga el contexto), salvo que se indique lo contrario.
 
-Estado actual (2026-09-28): **Prompts 0, 1, 2, 2.5, 2.7, 3d, 4 (parcial, sin lo bloqueado por OVZ.net), la identidad visual de marca, el alta pública de gestorías y el Prompt A1 (contactos, crotales en trámites y revisión editable, solo backend) completados y verificados.** El Prompt A1 está **sin commitear**, pendiente de la aprobación de Antonio. Repo en GitHub (`github.com/AntonioMenor01/Ganera.git`). Suite backend en verde a 415 tests (`./mvnw clean test`); frontend compila (`tsc -b` + `vite build`) y pasa `oxlint`, pero **aprobar desde la UI no funciona hasta el Prompt A2** (el backend exige ahora la `version` del trámite). Pendientes de Antonio: crear el `Price` real en el dashboard de Stripe (test mode) para poder probar un checkout real de principio a fin, y aportar credenciales de OVZ.net. Siguiente paso no bloqueado: Prompt A2 (frontend de A1). Prompts 3a/3b/3c siguen bloqueados a la espera de las credenciales. Dos bugs de Stripe detectados en la revisión completa del 2026-09-25 quedan pendientes (ver "Known bugs" en `CLAUDE.md`, bullet de Stripe).
+Estado actual (2026-10-02): **Prompts 0, 1, 2, 2.5, 2.7, 3d, 4 (parcial, sin lo bloqueado por OVZ.net), la identidad visual de marca, el alta pública de gestorías, el Prompt A1 (contactos, crotales en trámites y revisión editable, solo backend) y el Prompt A2 (su frontend) completados y verificados.** El Prompt A2 está **sin commitear**, pendiente de la aprobación de Antonio. Repo en GitHub (`github.com/AntonioMenor01/Ganera.git`). Suite backend en verde a 415 tests (`./mvnw clean test`); frontend con 475 tests (`npm test`), `npm run build` y `npm run lint` en verde. Aprobar desde la UI vuelve a funcionar (A2 envía la `version`). Pendientes de Antonio: crear el `Price` real en el dashboard de Stripe (test mode) para poder probar un checkout real de principio a fin, y aportar credenciales de OVZ.net. Siguientes pasos no bloqueados: el mini-prompt de backend tras A2 y la barra de navegación en móvil (antes del piloto). Prompts 3a/3b/3c siguen bloqueados a la espera de las credenciales. Dos bugs de Stripe detectados en la revisión completa del 2026-09-25 quedan pendientes (ver "Known bugs" en `CLAUDE.md`, bullet de Stripe).
 
 ---
 
@@ -527,7 +527,7 @@ Detalle en `CLAUDE.md`.
 
 ---
 
-## Prompt A1 — Contactos, crotales en trámites y revisión editable (completado, 2026-09-28, sin commitear)
+## Prompt A1 — Contactos, crotales en trámites y revisión editable (completado, 2026-09-28, commit `2538583`)
 
 Prepara el terreno de 3b (WhatsApp + IA) **sin depender de OVZ.net**: que el sistema sepa a qué Explotación(es) pertenece un teléfono, que un Trámite guarde los crotales mencionados y que la gestoría pueda corregir el Trámite antes de aprobarlo. **Solo backend**: nada de frontend, IA, Twilio ni Stripe. Plan con las 31 decisiones cerradas con Antonio en `docs/superpowers/plans/2026-09-25-promptA1-contactos-crotales-revision.md`; ejecutado con el flujo Superpowers (un subagente implementador y un revisor independiente por tarea; informes en `.superpowers/sdd/a1-*`).
 
@@ -543,13 +543,74 @@ Entregado (detalle completo en `CLAUDE.md`, bullet "Prompt A1" bajo Technical de
 
 **Hallazgo de proceso:** la sesión de la Task 7a se cortó a mitad; al retomarla, un `./mvnw clean test` reveló que el código heredado **no compilaba con `javac`** (el recuento de "387 tests" venía de clases compiladas por VS Code en `target/`). Desde entonces se valida siempre con `clean` (anotado en `CLAUDE.md`).
 
-**Pendientes para el Prompt A2 (frontend):**
-- **Aprobar está roto en la UI hasta A2:** el frontend llama a `aprobar` sin cuerpo → `400` siempre (decisión 27), salvo el `403` de suscripción bloqueada o inexistente, que va antes y sigue mostrando su mensaje específico. A2 debe enviar la `version` (de `TramiteDetalleResponse.version`) en `PATCH` y `aprobar`.
+**Pendientes para el Prompt A2 (frontend) — todos resueltos en A2:**
+- **Aprobar estaba roto en la UI hasta A2:** el frontend llama a `aprobar` sin cuerpo → `400` siempre (decisión 27), salvo el `403` de suscripción bloqueada o inexistente, que va antes y sigue mostrando su mensaje específico. A2 debe enviar la `version` (de `TramiteDetalleResponse.version`) en `PATCH` y `aprobar`.
 - Ante **cualquier** `409`: recargar el detalle y mostrar el `motivo` del backend, no un "Inténtalo de nuevo" genérico (revisiones R1 y M5).
 - Ocultar o deshabilitar Aprobar/Rechazar fuera de `PENDIENTE_REVISION`.
 - UI de `PATCH` para asignar explotación, tipo y crotales. Ojo (M7): `PATCH` no puede vaciar la explotación ni el tipo (`null` = no cambiar); `crotales: []` sí quita todos los crotales.
 
 **Otras notas abiertas:** los `Animal.crotal` importados antes de A1 no se migraron (un crotal antiguo con separadores o minúsculas puede duplicar el Animal al reimportar, y queda bloqueado al aprobar); la regla de formato de crotal de otros países es provisional; el mensaje neutro del importador también cubre violaciones que no son de unicidad (NIF o nombre demasiado largos).
+
+---
+
+## Prompt A2 — Frontend: Ganaderos, animales y revisión editable de trámites (completado, 2026-10-02, sin commitear)
+
+Pone la UI al día con el backend de A1. **Solo frontend**: `backend/` no se tocó. Plan con 31 decisiones cerradas con Antonio en `docs/superpowers/plans/2026-09-28-promptA2-frontend-revision.md`; flujo Superpowers (implementador + revisor independiente por tarea; informes en `.superpowers/sdd/a2-*`, que no se suben). Diseño **solo con la skill Impeccable** (`critique` de la cola, `craft` de Ganaderos y del modal, `audit` + `polish` al final), ejecutada desde la sesión principal (decisión 27); contratos de dirección en `.impeccable/surfaces/`.
+
+Entregado (detalle en `CLAUDE.md`, "Architecture notes (frontend)", y patrones visuales en `DESIGN.md`):
+- **Tests (Task 1):** Vitest + jsdom + Testing Library + MSW (la API se simula a nivel HTTP y se prueba el cliente axios real). `npm test`.
+- **Cliente HTTP y errores (Task 2):** `ErrorApi { tipo, status?, motivo? }` y `mensajeDeError`; ninguna pantalla usa `axios.isAxiosError`; el `401` de `/auth/login` no cierra sesión; el texto plano del `400` del importador se toma como `motivo`.
+- **Sesión (Task 3):** token en `sessionStorage` (`ganera.token`), comprobado con `GET /auth/me` al arrancar; un `401` avisa de sesión caducada; un corte de red no desloguea.
+- **Marca (Task 4):** `LogoGanera` (máscara CSS sobre `currentColor`) en la barra, login y registro; `index.html` en español con `favicon-64.png`; se borraron `favicon.svg`/`icons.svg` de Vite y `preview.png` salió de `public/` (decisión 26).
+- **Etiquetas y badges (Task 5):** una sola fuente, `features/tramites/etiquetas.ts` (`TIPOS_TRAMITE` es la constante que cambiará en el prompt B); el resumen del importador muestra la hoja Contactos.
+- **Cola (Task 6):** critique aplicada; abre filtrada por "Pendiente de revisión" (decisión 28); filas accesibles por teclado; código REGA en vez del id (lista completa de explotaciones, decisiones 20 y 22); crotales con su badge.
+- **Ganaderos (Task 7) y animales (Task 8):** `/ganaderos` (ordenable por nombre y NIF) y `/ganaderos/:id` (secciones por explotación, contactos con `tel:` y rol, índice con más de 3 explotaciones, "Ganadero no encontrado" para un `404`); panel "Ver animales" paginado en Explotaciones y en el detalle (no hay ruta `/explotaciones/:id`, H1).
+- **Modal de revisión (Tasks 9a y 9b):** editable solo en `PENDIENTE_REVISION`; combobox de explotación, tipo y lista de crotales; `PATCH` y aprobar con `version`; cualquier `409` recarga el detalle y muestra el `motivo`; un `400` conserva las ediciones; rechazar con confirmación en línea; "Sin guardar" en vez de badges que predicen.
+- **Audit + polish (Task 10):** 0 fallos de contraste (axe) a 375, 640 y 1440 px; regiones `status` siempre montadas; esqueleto de carga en la cola; "+N más" desplegable; `CLASE_ENLACE` en `shared/ui`; sin scroll lateral en tablas con nombres largos.
+
+**Verificación (Task 11):** `npm test` **475/475** (36 ficheros); `npm run build` en verde (solo el aviso del chunk de 622 kB); `npm run lint` con los 3 avisos `only-export-components` de siempre; `./mvnw clean test` **415/415**. Smoke en navegador real (Playwright por npm fuera del repo, Vite, backend con H2 en fichero) con dos gestorías: login y recarga sin perder la sesión → importación desde la UI con hoja Contactos (reimportar no duplica) → Ganaderos → detalle con contactos y `tel:` → animales paginados → cola filtrada → `PATCH` con `version` (crotales `EN_INVENTARIO`) → aprobar con `version` `200` → aprobar sin tipo `409` con su motivo → `409` de versión desfasada con recarga y motivo → rechazar con confirmación → `APROBADO` en solo lectura → Facturación. Gestoría B (suscripción `SUSPENDIDA`, a 375 px): banner, solo su trámite en la cola, aprobar `403` con el texto de suscripción y sin cerrar sesión, `/ganaderos/{id de A}` → "Ganadero no encontrado", "Salir" borra el token. Procesos parados y H2/temporales borrados.
+
+**Pendientes que deja A2 (ninguno bloquea):** la barra de navegación en móvil (ver más abajo); code-splitting del chunk de 622 kB; el aviso de "más de 100 coincidencias" del combobox sin comprobar con un lector de pantalla real (n2 de la 9b); los minors m1–m4 de la revisión de la Task 10; la tarjeta del resumen del importador dice "1 filas" / "1 actualizadas" (la frase anunciada ya usa plurales reales).
+
+---
+
+## Mini-prompt de backend tras A2 (pendiente)
+
+Huecos pequeños de la API que el frontend de A2 rodea (sección "Fuera de alcance" del plan de A2). Todos con su test, y con E2E de dos gestorías donde haya lookup por id:
+- `GET /explotaciones/{id}` con `findByIdAndGestoriaId` (H1-B; hoy no hay pantalla de detalle de explotación).
+- `{motivo}` también en el `403` de aprobar (H2; hoy el frontend muestra un texto fijo).
+- `?q=` en `GET /explotaciones` (H3; hoy el frontend carga la lista completa y filtra en cliente, inviable con miles de explotaciones).
+- `version` obligatoria también en rechazar (H4; hoy un rechazo desde una pantalla desfasada se aplica igual).
+- `explotacionCodigoRega` en el DTO del listado de trámites (H7; hoy la cola cruza ids con la lista completa).
+- El `400` del importador como `{motivo}` en vez de texto plano, y un `.xls` (o cualquier fichero no `.xlsx`) con un motivo en español, no el mensaje técnico en inglés de POI (`UnsupportedFileFormatException`).
+- Unificar el `400` del registro (`{mensaje}`) a `{motivo}`, manteniendo el texto uniforme (sin oráculo de enumeración).
+- Campo `completo` (boolean) en `TramiteCrotalResponse`, para pintar `NO_ENCONTRADO` incompleto en ámbar ("No está en el inventario · incompleto") sin clasificar en el frontend (decisión 21 de A2).
+
+---
+
+## Tarea pequeña antes del piloto: barra de navegación en móvil (pendiente)
+
+La barra superior no está adaptada a pantallas estrechas: a 375 px desborda y ensancha la página (scroll lateral). El gestor aprueba a veces desde el teléfono (`PRODUCT.md`), así que hay que resolverlo antes de la gestoría piloto. Con la skill Impeccable, sin cambiar paleta ni tipografía, y verificado en un navegador real a 375 y 640 px.
+
+**Retoque menor en el mismo pase:** la tarjeta del resumen del importador (`ImportarExcelSection`) dice "1 filas" y "1 actualizadas"; debe usar singular con 1, como ya hace la frase anunciada a lectores de pantalla ("1 fila con error", "1 creada / 1 actualizada"). Con test.
+
+---
+
+## Prompt B — notas acumuladas (pendiente)
+
+Además del catálogo real de tipos de trámite (ver los pendientes heredados en el Prompt 3b):
+- **Medir el uso de IA por gestoría:** número de mensajes procesados y tokens consumidos (entrada y salida) por Gestoría, para conocer el coste real por cliente.
+- **Si la API de Anthropic falla, no se pierde nada:**
+  - el mensaje de WhatsApp se guarda igual (`MensajeCampo`, con la misma idempotencia por `MessageSid`);
+  - el trámite se crea con el texto en bruto, en `PENDIENTE_REVISION`, para revisión manual;
+  - la extracción se reintenta después;
+  - la cola muestra un aviso visible en esos trámites ("no se ha podido extraer automáticamente"), para que nadie los confunda con una extracción vacía.
+
+---
+
+## Preguntas abiertas para la gestoría piloto
+
+- ¿Los ganaderos mandan **texto, audios o fotos** por WhatsApp? Cambia el alcance de la extracción (transcripción de audio, lectura de imágenes de crotales o documentos) y del modal de revisión.
 
 ---
 

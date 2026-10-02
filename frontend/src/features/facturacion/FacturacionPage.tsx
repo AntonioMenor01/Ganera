@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import axios from "axios";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -12,6 +11,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import type { AppLayoutContext } from "@/shared/layout/AppLayout";
+import { mensajeDeError } from "@/shared/api/errores";
 import { crearSesionCheckout } from "./api";
 
 const ETIQUETAS_ESTADO: Record<string, string> = {
@@ -21,6 +21,18 @@ const ETIQUETAS_ESTADO: Record<string, string> = {
   IMPAGO_GRACIA: "Pago fallido (periodo de gracia)",
   SUSPENDIDA: "Suspendida",
   CANCELADA: "Cancelada",
+};
+
+type VarianteBadge = "success" | "warning" | "danger" | "outline";
+
+/** Cada estado con un par de estado de DESIGN.md: el badge significa lo mismo que en la cola. */
+const VARIANTE_ESTADO: Record<string, VarianteBadge> = {
+  ACTIVA: "success",
+  TRIAL: "success",
+  IMPAGO_GRACIA: "warning",
+  TRIAL_EXPIRADO_SIN_PAGO: "danger",
+  SUSPENDIDA: "danger",
+  CANCELADA: "danger",
 };
 
 export function FacturacionPage() {
@@ -36,13 +48,7 @@ export function FacturacionPage() {
       const url = await crearSesionCheckout();
       window.location.href = url;
     } catch (err) {
-      if (axios.isAxiosError(err) && err.response?.status === 503) {
-        setErrorCheckout(
-          "La facturación todavía no está configurada. Vuelve a intentarlo más tarde.",
-        );
-      } else {
-        setErrorCheckout("No se ha podido iniciar el pago. Inténtalo de nuevo.");
-      }
+      setErrorCheckout(mensajeDeError(err, "checkout"));
     } finally {
       setIniciandoCheckout(false);
     }
@@ -52,15 +58,20 @@ export function FacturacionPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-xl font-semibold">Facturación</h1>
-        <p className="text-muted-foreground">Estado de la suscripción de tu gestoría.</p>
+        <p className="text-sm text-muted-foreground">Estado de la suscripción de tu gestoría.</p>
       </div>
 
-      {cargando && <p className="text-sm text-muted-foreground">Cargando…</p>}
+      {/* WCAG 4.1.3: siempre montado; solo cambia su texto. Vacío queda sr-only (fuera del flujo, sin
+          hueco en el gap) pero sigue en el árbol de accesibilidad: display:none lo sacaría. */}
+      <p role="status" className={cargando ? "text-sm text-muted-foreground" : "sr-only"}>
+        {cargando ? "Cargando…" : ""}
+      </p>
 
       {error && (
         <Alert variant="destructive">
           <AlertTitle>No se ha podido cargar el estado de la suscripción</AlertTitle>
           <AlertDescription>
+            <p>{mensajeDeError(error, "suscripcion")}</p>
             <Button variant="outline" size="sm" onClick={recargar} className="mt-2">
               Reintentar
             </Button>
@@ -82,7 +93,7 @@ export function FacturacionPage() {
             {estado ? (
               <>
                 <div className="flex items-center gap-2">
-                  <Badge variant={estado.puedeAprobarTramites ? "secondary" : "destructive"}>
+                  <Badge variant={VARIANTE_ESTADO[estado.estado] ?? "outline"}>
                     {ETIQUETAS_ESTADO[estado.estado] ?? estado.estado}
                   </Badge>
                 </div>
@@ -91,13 +102,11 @@ export function FacturacionPage() {
                     {estado.explotacionesContratadas} explotaciones contratadas.
                   </p>
                 )}
+                {/* Sin segundo aviso: el banner del layout ya dice que no se puede aprobar y por qué. */}
                 {!estado.puedeAprobarTramites && (
-                  <Alert variant="destructive">
-                    <AlertTitle>No puedes aprobar trámites ahora mismo</AlertTitle>
-                    <AlertDescription>
-                      Actualiza el pago de tu suscripción para poder volver a aprobar trámites.
-                    </AlertDescription>
-                  </Alert>
+                  <p className="text-sm">
+                    Actualiza el pago de tu suscripción para poder volver a aprobar trámites.
+                  </p>
                 )}
                 <Button onClick={handleCheckout} disabled={iniciandoCheckout} className="w-fit">
                   {iniciandoCheckout ? "Abriendo pago…" : "Actualizar suscripción"}

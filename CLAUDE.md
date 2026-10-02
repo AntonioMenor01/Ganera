@@ -122,18 +122,16 @@ approval step before anything is written to OVZ.net.
 - **The frontend never implies a trámite is executed against OVZ.net when "Aprobar" is clicked** —
   `OvzAutomationService.ejecutarTramite()` is unimplemented (Prompt 3c), so the button only changes
   `EstadoTramite` in DB, matching the backend exactly. Don't add wording, spinners, or toasts that
-  suggest anything happens in OVZ.net until 3c is real. **Known breakage since Prompt A1, until
-  Prompt A2:** the backend now requires the trámite's `version` in the `aprobar` body (see the
-  "Prompt A1" bullet), and the current frontend (`TramiteReviewDialog`) still calls it with no
-  body — so every "Aprobar" from the UI gets `400` and shows a generic error (except for a Gestoría
-  whose subscription blocks approving, or that has no `Suscripcion`: the `403` is checked first,
-  so it still gets its specific subscription message). Approving from the UI does not work until
-  A2 sends the `version`. Rechazar still works (it needs no version).
+  suggest anything happens in OVZ.net until 3c is real. (Since Prompt A2 the review dialog sends
+  the trámite's `version` with `PATCH` and `aprobar`, so approving from the UI works again — the
+  breakage A1 introduced is closed.)
 - **No manual "alta de Ganadero" form in the frontend, no OVZ-credentials-onboarding screen.** The
   only way to create Ganaderos/Explotaciones/Animales right now is the Excel importer
   (Prompt 3d) — don't add a second, divergent creation path without an explicit decision to do so.
   (Contactos are the exception, by an explicit A1 decision: they can come from the importer's
   optional "Contactos" sheet **or** from the `/contactos` CRUD endpoints — backend only, no UI yet.)
+  The Ganaderos screens added in Prompt A2 are **read-only** (list, detail, animales); they don't
+  change this rule.
   The OVZ-credentials screen is deliberately deferred until a real Ganadero is ready to hand over
   credentials for that explicit purpose (see Prompt 3a/3b/3c blocker).
 
@@ -614,21 +612,38 @@ shape — `value`/`onValueChange` on `Select`, `open`/`onOpenChange` on `Dialog`
 actual `.d.ts` before assuming a prop exists, e.g. `Select.Value`'s label is **not** automatic: it
 needs a `children` render-function (`{(value) => label}`), unlike Radix). Path alias `@/*` →
 `src/*`. Structure is by feature (`features/auth`, `features/tramites`, `features/ganaderos`,
-`features/explotaciones`, `features/facturacion`); `features/ganaderos` is still an empty
-placeholder route (`Prompt 4` deliberately built no Ganadero screen — Excel import is the only
-creation path, see Non-negotiable rules).
+`features/explotaciones`, `features/facturacion`) plus `shared/` (`api`, `auth`, `layout`,
+`brand` — `LogoGanera`, the CSS-mask brand mark — and `ui` — `CLASE_ENLACE`, the one text-link
+recipe). Visual rules live in `DESIGN.md`; design work goes through the Impeccable skill only.
+Prompt A2 (plan `docs/superpowers/plans/2026-09-28-promptA2-frontend-revision.md`) is the
+reference for every frontend decision below.
 
-- **Auth is in-memory, not `localStorage`, on purpose** (session-only SPA — a page reload requires
-  logging in again, no refresh token yet). `shared/api/authSession.ts` holds the token in a
-  module-level variable (not React state) so `shared/api/httpClient.ts` — outside any React
-  tree — can read it in its request interceptor; a response interceptor calls
-  `notifyUnauthorized()` on any real `401`, which `shared/auth/AuthContext.tsx` (`AuthProvider`)
-  registers a handler for to clear its own React state. `shared/auth/RequireAuth.tsx` is a
-  pathless layout route (`<Outlet/>` or `<Navigate to="/login"/>`) wrapping the authenticated part
-  of `router.tsx` — reading `token` from context, not the module variable directly, so React
-  re-renders when it changes.
-- **`AppLayout.tsx`** now has real navigation (Explotaciones/Trámites/Facturación — deliberately no
-  Ganaderos link, see above) and fetches subscription status once
+- **Session in `sessionStorage` (Prompt A2, decision 1):** only the token, under `ganera.token`. It
+  survives a reload and is gone when the tab closes; it does **not** protect against XSS (neither
+  would `localStorage` — the robust option, an httpOnly cookie, needs backend changes).
+  `shared/api/authSession.ts` keeps the token in a module variable (mirrored to `sessionStorage`,
+  every access in `try`) so `shared/api/httpClient.ts` — outside any React tree — can read it.
+  On boot with a stored token, `AuthContext` is `comprobando` (routes show a loading state, never
+  the login) and calls `GET /auth/me`: `200` restores the user; `401` clears the token and sends
+  to `/login` with "Tu sesión ha caducado…"; a network error/5xx keeps the token and offers
+  "Reintentar" (a network blip never logs out). `shared/auth/RequireAuth.tsx` is a pathless layout
+  route wrapping the authenticated part of `router.tsx`.
+- **One HTTP error model (decision 2):** `httpClient`'s response interceptor turns every failure
+  into an `ErrorApi { tipo, status?, motivo? }` (`shared/api/errores.ts`), with `tipo` ∈
+  `no-autorizado` (401: logout + notice, **except on `/auth/login`**, whose 401 is just the
+  login's uniform error), `prohibido`, `validacion`, `no-encontrado`, `conflicto`, `servidor`,
+  `red`, `desconocido`. `motivo` comes from `{motivo}` or, if the body is plain text (the
+  importer's `400`), from the text itself. `mensajeDeError(error, contexto)` gives the text to
+  show (the backend `motivo` verbatim when there is one). **No screen uses `axios.isAxiosError`
+  directly**, and no load is silent: every list/detail has loading, error-with-"Reintentar" and
+  empty states.
+- **Complete explotaciones list (decisions 20/22):** `todasLasExplotaciones.ts` walks every page of
+  `GET /explotaciones` (size 500) and fails visibly if a page fails or the count doesn't match
+  `totalElements` — never a partial list. It feeds the review dialog's combobox (client-side
+  filter) and the queue's REGA column (the list DTO only has `explotacionId`). For gestorías with
+  thousands of explotaciones a backend `?q=` will be needed (backend mini-prompt).
+- **`AppLayout.tsx`** has the navigation Trámites/Ganaderos/Explotaciones/Facturación and fetches
+  subscription status once
   (`features/facturacion/useSuscripcionEstado.ts`) via `<Outlet context={{ suscripcion }}>` so
   `FacturacionPage` reuses the same fetch instead of refetching — read it with
   `useOutletContext<AppLayoutContext>()`. `SuscripcionBanner.tsx` shows a persistent warning for
@@ -639,20 +654,39 @@ creation path, see Non-negotiable rules).
   no-approvals vs. full-access semantics from Prompt 2 (editing, rejecting and importing stay
   allowed) — don't make the banner block navigation, that would be a stricter gate than what the
   backend actually enforces.
-- **`TramiteReviewDialog` is out of date with the backend since Prompt A1 (fix in Prompt A2):** it
-  calls `POST /tramites/{id}/aprobar` with no body, so it always gets `400` "Falta la versión…" now
-  — except when the subscription blocks approving, where the `403` still comes first with its own
-  message — (approving from the UI is impossible until A2); it shows Aprobar/Rechazar for every estado; every
-  `409` falls through to a generic "Inténtalo de nuevo" instead of the backend's `motivo`; and
-  there is no UI for `PATCH /tramites/{id}` (assigning Explotación/tipo/crotales). A2 must send
-  `version` (from `TramiteDetalleResponse.version`), re-fetch the detail and show `motivo` on
-  **any** `409`, hide/disable Aprobar/Rechazar outside `PENDIENTE_REVISION`, and add the PATCH UI.
-- **No frontend test tooling exists** (no Vitest, no `@testing-library/react`) — verification for
-  this prompt was `tsc -b` (clean) + `oxlint` (clean, pre-existing warnings only) + driving the real
-  built app in a headless Chromium against the real backend (login → Excel import round-trip with
-  exact resumen match → trámites list + estado filter → facturación page → logout), not automated
-  browser tests. If frontend logic grows more complex, revisit adding a test runner rather than
-  relying on manual browser checks indefinitely.
+- **Trámites queue (`TramitesPage`)** opens filtered by "Pendiente de revisión" ("Todos" stays in
+  the filter). Each row's first cell is a real button ("Revisar trámite #N"); the Explotación
+  column shows the código REGA from the complete list (an error is visible, never raw ids); the
+  crotales column shows two plus a "+N más" disclosure. Labels and badge variants for estado, tipo,
+  crotal resolution and contact role come from **one source**, `features/tramites/etiquetas.ts`
+  (`TIPOS_TRAMITE` is the single constant to change in Prompt B).
+- **Review dialog (`TramiteReviewDialog` + `useRevisionTramite`):** logic lives in the hook
+  (`revisionTramite.ts` has the pure diff/state rules), layout in the dialog. Editable **only** in
+  `PENDIENTE_REVISION`; any other estado is read-only with no action buttons. "Guardar" sends
+  `PATCH` with the `version` shown plus only the changed fields (`crotales` as the full list if it
+  changed); Aprobar sends `{version}`; Rechazar sends no body (the backend ignores it) after an
+  inline confirmation. With unsaved changes Aprobar/Rechazar are disabled ("Guarda antes de
+  aprobar") — the backend approves what is saved, not what is on screen. **Any `409`** (PATCH,
+  aprobar, rechazar) reloads the detail, discards the form and shows the backend's `motivo`
+  verbatim, never retrying by itself; a `400` keeps the edits and shows the `motivo`; a `404`
+  says the trámite no longer exists or isn't yours; a `403` on aprobar shows the fixed
+  subscription text (the backend's `403` has no body — H2). Badges show **what is saved**: an
+  edited field/row says "Sin guardar" until the backend answers. One request at a time.
+- **Ganaderos (`features/ganaderos`):** `/ganaderos` (paginated, sortable by nombre and NIF only)
+  and `/ganaderos/:id` (stacked sections per explotación with contactos — `tel:` links, role
+  badge — and a collapsed "Ver animales"); a `404` (another Gestoría's or nonexistent) shows
+  "Ganadero no encontrado", never a broken page. `AnimalesDeExplotacion` (paginated
+  `GET /explotaciones/{id}/animales`) is the same disclosure panel in Explotaciones and in the
+  Ganadero detail — there is no `/explotaciones/:id` route (no `GET /explotaciones/{id}` in the
+  backend yet).
+- **Frontend tests (Prompt A2):** Vitest + jsdom + Testing Library (`react`, `user-event`,
+  `jest-dom`) + **MSW**, which mocks the API at the HTTP level so the real axios client and its
+  interceptors are exercised. Config in `vitest.config.ts` (merges `vite.config.ts`, so `@/`
+  works); setup in `src/test/` (`setup.ts`, `server.ts`, `handlers.ts`) — any request without a
+  handler fails the test (`onUnhandledRequest: "error"`), and session state is cleared after each
+  test. `npm test` ran **475 tests in 36 files** at the end of A2. Layout can't be checked in
+  jsdom: for visual changes, also drive the real app in a browser (Playwright from npm installed
+  **outside the repo**, as in Prompts 4 and A2).
 
 ## Commands
 
@@ -688,8 +722,11 @@ Frontend (from `frontend/`):
   backend's `SecurityConfig` CORS bean must allow `:5173` (`ganera.frontend.origen`/`FRONTEND_ORIGEN`
   env var, defaults to `http://localhost:5173` already) or every request 500s at the browser's
   preflight before reaching any controller.
-- `npm run build` — `tsc -b && vite build`
-- `npm run lint` — oxlint
+- `npm test` — Vitest, single run (`npm run test:watch` for watch mode)
+- `npm run build` — `tsc -b && vite build` (it warns that the main chunk is over 500 kB — 622 kB
+  after A2; code-splitting is noted for later, not a failure)
+- `npm run lint` — oxlint (3 known `only-export-components` warnings: `button.tsx`, `badge.tsx`,
+  `AuthContext.tsx`)
 - `npm run preview`
 
 Root:
@@ -840,10 +877,34 @@ tests** (`./mvnw clean test`), plus a real HTTP smoke test on a file-backed H2 (
 "Falta asignar la explotación. Falta el tipo de trámite." → `PATCH` `200` (`version` 0 → 1, one
 crotal `EN_INVENTARIO` by its last digits, one full crotal `NO_ENCONTRADO`) → stale-version PATCH
 and `aprobar` `409` → `aprobar` with the new version `200 APROBADO` (`version` 2) → malformed body
-`400`, not `401`). **Not committed yet — pending Antonio's approval.** **Side effect to know
-before any demo: approving from the current frontend is broken until Prompt A2** (see the
-frontend architecture note). `TipoTramite` was deliberately left unchanged (to be replaced in
-Prompt B, see `ganera-prompts.md`).
+`400`, not `401`). Committed as `2538583` (plus `880d3ca`, which removed the last unscoped
+Animal finder). `TipoTramite` was deliberately left unchanged (to be replaced in Prompt B, see
+`ganera-prompts.md`).
+
+**Prompt A2 — frontend for A1 (Ganaderos, animales, editable review) — is complete**
+(2026-09-28 → 2026-10-02), following `docs/superpowers/plans/2026-09-28-promptA2-frontend-revision.md`
+(31 decisions) with the Superpowers flow (reports in `.superpowers/sdd/a2-*`, not committed) and
+the Impeccable skill for every design pass, run from the main session (critique of the queue,
+craft of Ganaderos and the review dialog, audit + polish at the end; direction contracts in
+`.impeccable/surfaces/`). **Frontend only — nothing in `backend/` changed.** Delivered: Vitest/MSW
+test tooling, the single HTTP error model, the session in `sessionStorage`, the brand mark
+(`LogoGanera`, `index.html` in Spanish with `favicon-64.png`), labels/badges from `etiquetas.ts`,
+the queue (filtered by pending, keyboard-accessible rows, REGA column, crotales), Ganaderos list +
+detail, animales per explotación, and the editable review dialog with `version` (see the frontend
+architecture notes). `DESIGN.md` was brought up to date with the new patterns. Verified with
+`npm test` 475/475, `npm run build` and `npm run lint` clean (known warnings only), `./mvnw clean
+test` 415/415, and a real-browser smoke (Playwright from npm outside the repo, Vite dev server,
+backend on a file-backed H2) with two Gestorías: login + reload keeps the session → Excel import
+from the UI with a Contactos sheet (re-import doesn't duplicate) → Ganaderos → detail with
+contactos and `tel:` links → animales paginated → queue filtered by pending → PATCH with `version`
+(crotales resolved `EN_INVENTARIO`) → aprobar with `version` `200` → aprobar without tipo `409` with
+its `motivo` → a stale-version `409` reloads the fresh data and shows the `motivo` → rechazar with
+inline confirmation → read-only `APROBADO` → Facturación; Gestoría B (subscription `SUSPENDIDA`,
+375 px): banner, only its own trámite in the queue, aprobar `403` with the subscription text and no
+logout, `/ganaderos/{A's id}` → "Ganadero no encontrado", Salir clears the token. Known leftovers
+(none blocking): the nav bar overflows at 375 px (a small task before the pilot), the 622 kB
+chunk, the import summary card says "1 filas"/"1 actualizadas" (the announced sentence already
+uses real plurals), and the minors m1–m4 of the Task 10 review.
 
 **Next pending step: Prompt 3a (sincronización inicial de OVZ.net, modo lectura) — blocked.** Per
 `ganera-prompts.md`, Prompts 3a, 3b, and 3c (OVZ.net read sync, Twilio webhook + AI extraction, and
@@ -853,8 +914,9 @@ live (the Playwright MCP is set up for exactly this — driving the real site wi
 not guessing at its structure from assumptions). Until that happens, `TramiteExtractionService` and
 `OvzAutomationService` stay as unimplemented skeletons (see above) — don't write real prompt/scraping
 logic against assumptions about OVZ.net's structure. The OVZ-credentials onboarding screen and the
-rest of Prompt 4's originally-scoped items are deferred alongside it. Not blocked by OVZ.net:
-Prompt A2 (frontend for A1 — `version`, `motivo` on 409, PATCH UI; see `ganera-prompts.md`).
+rest of Prompt 4's originally-scoped items are deferred alongside it. Not blocked by OVZ.net
+(see `ganera-prompts.md`): the backend mini-prompt after A2 (small API gaps the A2 frontend works
+around) and the mobile nav bar, a small task before the pilot.
 
 `ganera-prompts.md` at the repo root tracks the full sequence of prompts used to
 build this out, in order — check it for the detailed history/rationale behind any given step.
