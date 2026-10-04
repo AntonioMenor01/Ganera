@@ -595,7 +595,7 @@ Huecos pequeños de la API que el frontend de A2 rodea. Plan con las decisiones 
 
 ---
 
-## Tarea de frontend antes del piloto (pendiente)
+## Tarea de frontend antes del piloto (completada, 2026-10-04)
 
 Solo `frontend/` (el backend ya está listo desde el mini-prompt tras A2). Cada punto con su test (Vitest + MSW); `npm test`, `npm run build` y `npm run lint` en verde, y lo visual verificado en un navegador real (Playwright por npm fuera del repo).
 
@@ -606,6 +606,22 @@ Solo `frontend/` (el backend ya está listo desde el mini-prompt tras A2). Cada 
 5. **`completo` en los crotales.** Pintar `NO_ENCONTRADO` incompleto en ámbar ("No está en el inventario · incompleto") a partir de `TramiteCrotalResponse.completo` (decisión 21 de A2), sin clasificar crotales en el frontend. `completo` describe lo escrito (`crotalIndicado`), no lo resuelto.
 6. **`motivo` del 403 de aprobar.** Mostrar el `motivo` que ya manda el backend en vez del texto fijo del contexto (hoy son el mismo texto; el fijo queda como reserva si no llega `motivo`).
 7. **Comentarios desfasados de `frontend/src/shared/api/errores.ts`.** Dicen que el 400 del importador es texto plano, que el registro devuelve `{mensaje}` (y nombran `MENSAJE_REGISTRO_INVALIDO`) y que el 403 de aprobar no trae cuerpo; los tres son ya `{motivo}`. El registro sigue enseñando su propio texto uniforme.
+
+Plan con las decisiones cerradas: `docs/superpowers/plans/2026-10-03-tarea-frontend-antes-piloto.md`.
+
+**Cerrada el 2026-10-04:** los 7 puntos, con un implementador y un revisor independiente por tarea (T1–T5, todas aprobadas con minors) y la navbar con Impeccable (Antonio aprobó el shape antes del craft). Verificado con `npm test` 506/506, `npm run build` y `npm run lint` en verde, `./mvnw clean test` 472/472 y un smoke en navegador real con dos gestorías a 1440/768/640/375 px (`.superpowers/sdd/fp-t6-smoke.md`). El N1 del smoke (el foco de Tab caía en un enlace de la tira cortado por el borde) se arregló antes del commit. Quedan anotados, por decisión de Antonio, dos detalles no bloqueantes: "Reintentar" del combobox no se alcanza con Tab, y la lista del combobox se vacía mientras busca (salto de altura).
+
+---
+
+## Backend — bloqueante antes del piloto (pendiente)
+
+1. **Búsqueda de explotaciones sin tildes y por palabras.** Al pasar el combobox del modal de revisión a `GET /explotaciones?q=` (punto 3 de la tarea de frontend), se perdió lo que hacía el filtro en cliente: hoy "martinez" no encuentra "Martínez", y "ES12 Pérez" no encuentra nada porque `q` se busca como una sola cadena dentro de un único campo. Antonio aceptó la regresión solo hasta el piloto. Propuesta:
+   - una columna de búsqueda normalizada en `explotacion`, calculada en Java al guardar (minúsculas, sin tildes, con el código REGA, el nombre de la explotación y el nombre del ganadero), y recalculada cuando cambie cualquiera de los tres, incluido el nombre del ganadero (que vive en otra tabla);
+   - `q` se normaliza igual en Java, se parte en palabras y cada palabra debe aparecer (AND) en esa columna;
+   - independiente de la base de datos (mismo comportamiento en H2 y PostgreSQL), **sin `unaccent`**;
+   - migración que rellene la columna de las filas existentes.
+
+   Sustituye a la nota de `unaccent` de las notas del Prompt C.
 
 ---
 
@@ -623,7 +639,7 @@ Además del catálogo real de tipos de trámite (ver los pendientes heredados en
 
 ## Prompt C — notas acumuladas (pendiente)
 
-- **Búsqueda sin acentos en `GET /explotaciones?q=`:** hoy "Maria" no encuentra "María". En PostgreSQL, con la extensión `unaccent` (p. ej. `lower(unaccent(...)) like lower(unaccent(:patron))`, con una función `IMMUTABLE` envoltorio si se indexa) y, si la búsqueda se vuelve lenta con miles de explotaciones, un índice `pg_trgm` (GIN) sobre esa expresión. H2 no tiene `unaccent`: los tests necesitarán un alias de función en H2 o una normalización equivalente en Java para el patrón.
+- **Superada (2026-10-03):** pasa a "Backend — bloqueante antes del piloto", con otra solución (columna normalizada en Java, sin `unaccent`). Se conserva como contexto. **Búsqueda sin acentos en `GET /explotaciones?q=`:** hoy "Maria" no encuentra "María". En PostgreSQL, con la extensión `unaccent` (p. ej. `lower(unaccent(...)) like lower(unaccent(:patron))`, con una función `IMMUTABLE` envoltorio si se indexa) y, si la búsqueda se vuelve lenta con miles de explotaciones, un índice `pg_trgm` (GIN) sobre esa expresión. H2 no tiene `unaccent`: los tests necesitarán un alias de función en H2 o una normalización equivalente en Java para el patrón.
 
 ---
 

@@ -10,7 +10,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { CargaTodasLasExplotaciones } from "@/features/explotaciones/useTodasLasExplotaciones";
 import { etiquetaTipoTramite, TIPOS_TRAMITE, type TipoTramite } from "./etiquetas";
 import { BadgeEstadoTramite } from "./BadgesTramite";
 import { AvisosRevision } from "./AvisosRevision";
@@ -32,9 +31,6 @@ interface TramiteReviewDialogProps {
   tramiteId: number | null;
   onClose: () => void;
   onCambiado: () => void;
-  /** Lista completa de TramitesPage (decisiones 20 y 22): el modal no la pide otra vez. */
-  explotaciones: CargaTodasLasExplotaciones;
-  onReintentarExplotaciones: () => void;
 }
 
 /** Confirmación en línea en la barra de acciones (decisión 31): nunca un segundo modal. */
@@ -52,8 +48,6 @@ export function TramiteReviewDialog({
   tramiteId,
   onClose,
   onCambiado,
-  explotaciones,
-  onReintentarExplotaciones,
 }: TramiteReviewDialogProps) {
   const revision = useRevisionTramite(tramiteId, { onCambiado });
   const { carga, detalle, editable, sucio, enviando } = revision;
@@ -202,12 +196,7 @@ export function TramiteReviewDialog({
               recargaFallida={revision.recargaFallida}
               onReintentarRecarga={revision.reintentarRecarga}
             />
-            <Cuerpo
-              revision={revision}
-              ids={ids}
-              explotaciones={explotaciones}
-              onReintentarExplotaciones={onReintentarExplotaciones}
-            />
+            <Cuerpo revision={revision} ids={ids} />
           </div>
         </div>
 
@@ -273,17 +262,7 @@ interface IdsRevision {
   crotales: string;
 }
 
-function Cuerpo({
-  revision,
-  ids,
-  explotaciones,
-  onReintentarExplotaciones,
-}: {
-  revision: RevisionTramite;
-  ids: IdsRevision;
-  explotaciones: CargaTodasLasExplotaciones;
-  onReintentarExplotaciones: () => void;
-}) {
+function Cuerpo({ revision, ids }: { revision: RevisionTramite; ids: IdsRevision }) {
   const { carga, detalle } = revision;
   switch (carga.estado) {
     case "inactivo":
@@ -342,12 +321,7 @@ function Cuerpo({
               </Alert>
             )}
             {revision.editable ? (
-              <DatosEditables
-                revision={revision}
-                ids={ids}
-                explotaciones={explotaciones}
-                onReintentarExplotaciones={onReintentarExplotaciones}
-              />
+              <DatosEditables revision={revision} ids={ids} />
             ) : (
               <DatosSoloLectura revision={revision} />
             )}
@@ -379,17 +353,7 @@ function Campo({
   );
 }
 
-function DatosEditables({
-  revision,
-  ids,
-  explotaciones,
-  onReintentarExplotaciones,
-}: {
-  revision: RevisionTramite;
-  ids: IdsRevision;
-  explotaciones: CargaTodasLasExplotaciones;
-  onReintentarExplotaciones: () => void;
-}) {
+function DatosEditables({ revision, ids }: { revision: RevisionTramite; ids: IdsRevision }) {
   const { detalle, formulario, enviando } = revision;
   if (!detalle) return null;
   const ocupado = enviando !== null;
@@ -410,8 +374,6 @@ function DatosEditables({
           idCampo={ids.explotacion}
           explotacionId={formulario.explotacionId}
           asignada={revision.explotacionAsignada}
-          carga={explotaciones}
-          onReintentarCarga={onReintentarExplotaciones}
           onCambiar={(id) => revision.cambiarExplotacion(id)}
           deshabilitado={ocupado}
         />

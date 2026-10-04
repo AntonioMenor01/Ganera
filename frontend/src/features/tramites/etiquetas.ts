@@ -77,9 +77,9 @@ export function badgeVarianteDeEstado(estado: string): VarianteBadge {
 export const RESOLUCIONES_CROTAL = {
   EN_INVENTARIO: { etiqueta: "En inventario", variante: "success" },
   AMBIGUO: { etiqueta: "Varios animales coinciden", variante: "warning" },
-  /** PROVISIONAL (plan A2, decisión 21): neutro mientras Antonio decide cómo distinguir un crotal
-   * incompleto. La API nunca devuelve `crotal` vacío, así que el frontend no puede saberlo, y no
-   * debe clasificar crotales por su cuenta. Para pasar a ámbar basta con cambiar esta entrada. */
+  /** Neutro: un crotal completo que no está en el inventario puede aprobarse (un animal que
+   * entra). Si lo escrito era incompleto, `presentacionCrotal` lo pasa a ámbar (decisión 21 de A2,
+   * cerrada con `completo` en el mini-prompt tras A2). */
   NO_ENCONTRADO: { etiqueta: "No está en el inventario", variante: "outline" },
   SIN_EXPLOTACION: { etiqueta: "Falta la explotación", variante: "warning" },
 } as const satisfies Record<string, Presentacion>;
@@ -88,6 +88,22 @@ export type ResolucionCrotal = keyof typeof RESOLUCIONES_CROTAL;
 
 export function presentacionResolucion(resolucion: string): Presentacion {
   return presentacionDe(RESOLUCIONES_CROTAL, resolucion);
+}
+
+/** `NO_ENCONTRADO` de un crotal escrito incompleto: el backend no dejará aprobarlo (OVZ.net
+ * necesita el crotal completo), así que es un aviso, no información neutra. */
+const NO_ENCONTRADO_INCOMPLETO: Presentacion = {
+  etiqueta: "No está en el inventario · incompleto",
+  variante: "warning",
+};
+
+/** Presentación de un crotal de trámite: su resolución, matizada por `completo` (que describe lo
+ * ESCRITO, `crotalIndicado`, y lo calcula el backend). Solo `NO_ENCONTRADO` + `completo === false`
+ * cambia; `completo` ausente (D5b) o cualquier otra resolución se pintan como siempre. El frontend
+ * no clasifica crotales por su cuenta: nunca mira la longitud ni el formato del texto. */
+export function presentacionCrotal(crotal: { resolucion: string; completo?: boolean }): Presentacion {
+  if (crotal.resolucion === "NO_ENCONTRADO" && crotal.completo === false) return NO_ENCONTRADO_INCOMPLETO;
+  return presentacionResolucion(crotal.resolucion);
 }
 
 // ---------------------------------------------------------------------------------------------

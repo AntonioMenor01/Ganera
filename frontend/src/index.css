@@ -207,3 +207,13 @@ body {
     caret-color: var(--primary);
   }
 }
+
+/* Oculta la barra de desplazamiento de un contenedor que sigue desplazándose (táctil, rueda,
+   teclado). La usa la tira de enlaces de AppLayout en móvil: la pista de "hay más" es el último
+   enlace cortado en el borde, no una barra. */
+@utility scrollbar-oculta {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

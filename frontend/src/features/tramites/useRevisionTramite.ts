@@ -30,9 +30,10 @@ import type { Tramite, TramiteDetalle } from "./types";
  * predice si un trámite es aprobable. Aprobar y rechazar solo cambian el estado en Ganera (BD);
  * nada se ejecuta en OVZ.net (Prompt 3c).
  *
- * Las explotaciones para el selector NO se cargan aquí: TramitesPage ya tiene la lista completa
- * (useTodasLasExplotaciones, decisiones 20 y 22) y la UI (9b) se la pasa al modal, sin pedirla dos
- * veces.
+ * Las explotaciones para el selector NO se cargan aquí: las busca el propio combobox
+ * (CampoExplotacion + useBuscarExplotaciones, `GET /explotaciones?q=`, T4 de la tarea antes del
+ * piloto) solo con el desplegable abierto. Aquí solo vive el `explotacionId` elegido y la etiqueta
+ * de la guardada (`explotacionAsignada`).
  */
 
 export type AccionRevision = "guardar" | "aprobar" | "rechazar";
@@ -283,8 +284,11 @@ function reducer(estado: Estado, evento: Evento): Estado {
         // Sin aviso: "enviar" ya quitó el anterior y un guardado correcto no deja ninguno.
       };
     case "respuesta-accion": {
-      // La respuesta de aprobar/rechazar es la del listado (sin mensaje ni etiqueta de la
-      // explotación): se aplica ya para pasar a solo lectura, y la recarga completa el resto.
+      // La respuesta de aprobar/rechazar es la del listado (`TramiteResponse`): trae la etiqueta de
+      // la explotación (explotacionCodigoRega/explotacionNombre, mini-prompt tras A2) pero no el
+      // mensaje de WhatsApp. Se aplica ya para pasar a solo lectura, y la recarga completa el resto.
+      // La etiqueta se toma de la respuesta, no del detalle anterior: va con SU explotacionId (m3 de
+      // la revisión de T3). `?? null` por si un backend anterior no la mandara.
       if (!estado.detalle) return { ...estado, aviso: evento.aviso };
       const { tramite } = evento;
       const detalle: TramiteDetalle = {
@@ -292,6 +296,8 @@ function reducer(estado: Estado, evento: Evento): Estado {
         estado: tramite.estado,
         tipoTramite: tramite.tipoTramite,
         explotacionId: tramite.explotacionId,
+        explotacionCodigoRega: tramite.explotacionCodigoRega ?? null,
+        explotacionNombre: tramite.explotacionNombre ?? null,
         motivoError: tramite.motivoError,
         crotales: tramite.crotales,
         version: tramite.version,

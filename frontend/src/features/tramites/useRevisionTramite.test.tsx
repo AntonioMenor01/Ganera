@@ -6,7 +6,7 @@ import { server } from "@/test/server"
 import { setUnauthorizedHandler } from "@/shared/api/authSession"
 import { TEXTO_ERROR_RED, TEXTO_ERROR_SERVIDOR } from "@/shared/api/errores"
 import { obtenerDetalleTramite } from "./api"
-import type { TramiteCrotal, TramiteDetalle } from "./types"
+import type { Tramite, TramiteCrotal, TramiteDetalle } from "./types"
 import { useRevisionTramite } from "./useRevisionTramite"
 
 // La API real, envuelta solo para ver el AbortSignal que el hook pasa al cargar el detalle (el
@@ -52,16 +52,20 @@ function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
   }
 }
 
+/** Lo que devuelven aprobar/rechazar: el DTO del listado (`TramiteResponse`), con la etiqueta de
+ * la explotación desde el mini-prompt tras A2 (m2 de la revisión de T3). */
 function respuestaLista(d: TramiteDetalle) {
   return {
     id: d.id,
     explotacionId: d.explotacionId,
+    explotacionCodigoRega: d.explotacionCodigoRega,
+    explotacionNombre: d.explotacionNombre,
     tipoTramite: d.tipoTramite,
     estado: d.estado,
     motivoError: d.motivoError,
     crotales: d.crotales,
     version: d.version,
-  }
+  } satisfies Tramite
 }
 
 function diferido() {
@@ -738,6 +742,34 @@ describe("useRevisionTramite: 200", () => {
     expect(get.llamadas()).toBe(3)
   })
 
+  it("m3 (T4): la etiqueta de la explotación sale de la respuesta del 200, no del detalle anterior", async () => {
+    detallesEnOrden(
+      () => HttpResponse.json(detalle({ version: 4 })),
+      () => HttpResponse.json({ status: 500 }, { status: 500 }),
+    )
+    server.use(
+      http.post(apiUrl("/tramites/7/aprobar"), () =>
+        HttpResponse.json(
+          respuestaLista(
+            detalle({
+              estado: "APROBADO",
+              version: 5,
+              explotacionId: 9,
+              explotacionCodigoRega: "ES999",
+              explotacionNombre: "Los Olivos",
+            }),
+          ),
+        ),
+      ),
+    )
+    const { result } = await montar()
+    await act(async () => {
+      await result.current.aprobar()
+    })
+    expect(result.current.recargaFallida).toBe(TEXTO_ERROR_SERVIDOR)
+    expect(result.current.explotacionAsignada).toEqual({ id: 9, codigoRega: "ES999", nombre: "Los Olivos" })
+  })
+
   it("si reintentar la recarga vuelve a fallar, el aviso de recarga vuelve y el detalle sigue", async () => {
     detallesEnOrden(
       () => HttpResponse.json(detalle()),
@@ -973,6 +1005,20 @@ describe("useRevisionTramite: 400, 403, 404, red y servidor", () => {
     expect(result.current.aviso).toEqual({ tipo: "prohibido", accion: "aprobar", mensaje: TEXTO_SUSCRIPCION })
     expect(alNoAutorizado).not.toHaveBeenCalled()
     expect(result.current.puedeAprobar).toBe(true)
+    expect(onCambiado).not.toHaveBeenCalled()
+  })
+
+  it("aprobar 403 con {motivo}: se enseña el motivo del backend tal cual, no el texto fijo", async () => {
+    const motivo = "Tu suscripción está suspendida: actualízala en Facturación para aprobar."
+    detallesEnOrden(() => HttpResponse.json(detalle()))
+    server.use(
+      http.post(apiUrl("/tramites/7/aprobar"), () => HttpResponse.json({ motivo }, { status: 403 })),
+    )
+    const { result, onCambiado } = await montar()
+    await act(async () => {
+      await result.current.aprobar()
+    })
+    expect(result.current.aviso).toEqual({ tipo: "prohibido", accion: "aprobar", mensaje: motivo })
     expect(onCambiado).not.toHaveBeenCalled()
   })
 

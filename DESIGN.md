@@ -84,7 +84,7 @@ components:
   nav-bar:
     backgroundColor: "{colors.paja-clara}"
     textColor: "{colors.tinta}"
-    padding: "16px 24px"
+    padding: "16px 24px" # from md; 12px 16px 4px below md
   nav-link:
     textColor: "{colors.gris-oliva}"
     rounded: "{rounded.lg}"
@@ -233,9 +233,10 @@ family styles this horizontal bar, and the brand pass deliberately kept it horiz
 - **Page rhythm:** content stacks vertically in a flex column with a 24px gap (`gap-6`). The page
   header is a row with the title block on the left and its controls (e.g. the estado filter
   `Select`, 224px wide) on the right.
-- **Nav bar:** 24px horizontal and 16px vertical padding. The brand mark, logotype and links sit
-  on the left with a 24px gap between them; the user's email and the "Salir" button sit on the
-  right.
+- **Nav bar:** from `md`, one row with 24px horizontal and 16px vertical padding. The brand mark,
+  logotype and links sit on the left with a 24px gap between them; the user's email (truncated) and
+  the "Salir" button sit on the right. Below `md`, two rows with 16px horizontal padding (see
+  Components → Navigation → Mobile).
 - **Detail pages** read top to bottom as a file: a back link, the record's title, a muted count,
   then stacked record sections with a 16px gap (see Components → Record sections).
 - **Cards:** internal spacing 16px (`--card-spacing`), or 12px for the `sm` size. The metric card
@@ -251,9 +252,8 @@ family styles this horizontal bar, and the brand pass deliberately kept it horiz
   (`wrap-anywhere`) so a long single-word name can't push numeric columns out. A long header may
   shorten below `sm` ("Expl."), with the full name kept for screen readers, and a column dropped on
   mobile is removed from the markup (`useDesdeSm`), not hidden with CSS, so `colSpan` stays exact.
-  The review dialog goes full screen below `md`. **The top bar isn't adapted for narrow screens
-  yet:** at 375px it still widens the page (a known defect, planned as a small task before the
-  pilot).
+  The review dialog goes full screen below `md`. The top bar switches to two rows below `md`, with
+  its links in a strip that scrolls inside itself, so it never widens the page.
 
 ## Elevation & Depth
 
@@ -311,7 +311,11 @@ The signature component, since state is the main thing the queue communicates.
   éxito for `APROBADO` and `EJECUTADO_OVZ`; peligro for `ERROR_OVZ` and `RECHAZADO`.
 - **Crotal resolution:** "En inventario" success; "Varios animales coinciden" and "Falta la
   explotación" warning; "No está en el inventario" `outline`, since it can still be approvable (the
-  backend decides).
+  backend decides). A `NO_ENCONTRADO` crotal whose written value is incomplete (`completo: false`
+  from the backend) reads "No está en el inventario · incompleto" in warning, because it can't be
+  approved. The frontend never classifies crotales itself: `presentacionCrotal` only reads
+  `completo`, and a missing `completo` stays `outline`. `BadgeResolucionCrotal` takes the whole
+  crotal.
 - **Contact role:** Titular `success`, Empleado `outline`. A role is information, not a problem, so
   it never uses warning or danger.
 - **Subscription state** (Facturación): ACTIVA and TRIAL success, IMPAGO_GRACIA warning,
@@ -340,9 +344,12 @@ The signature component, since state is the main thing the queue communicates.
   a raw enum value.
 - **Combobox** (base-ui `Combobox`, the explotación picker): the input matches `Input`, with a
   chevron trigger inside it; the popup is the Select popup. Options read "REGA · nombre" with the
-  ganadero as a muted second line. Filtering is case- and accent-insensitive and every typed word
-  must match. The list is capped at 100 options, with a "Hay más de 100 coincidencias: escribe para
-  acotar." line when there are more.
+  ganadero as a muted second line. The search runs in the backend (`GET /explotaciones?q=`), only
+  while the popup is open, 300ms after the last keystroke, cancelling the previous request. It shows
+  the first 20 results, with a "Hay N coincidencias; escribe para acotar." line when there are more.
+  Searching, error (with "Reintentar") and empty states live inside the popup, in one status region.
+  Known regression until the backend task before the pilot: the search isn't accent-insensitive and
+  matches the whole text, not word by word.
 
 ### Brand mark
 - The mark is `public/ganera-logo.svg`, always rendered through `LogoGanera`
@@ -364,7 +371,20 @@ in the UI. The favicon is `favicon-64.png`.
 - **Link style:** 14px/500, `rounded-lg`, 6px by 10px padding. Inactive links are Gris Oliva text
   and fill with Paja Hover plus ink text on hover. The active link is a solid Verde Monte pill with
   Crema Papel text. Transitions are color-only.
-- **Mobile:** no dedicated treatment yet; the bar overflows at 375px (see Layout → Responsive).
+- **Focus:** links show the standard 3px green ring at 50%; the active one has `aria-current="page"`.
+  There is a single `nav` ("Principal") in the DOM for every width, and links come before "Salir"
+  in tab order.
+- **Mobile (below `md`):** two rows in one Paja Clara bar, with no rule between them. The first row
+  holds the brand and "Salir"; the email is hidden. The second row is the link strip: full-bleed to
+  the screen edges with 16px inner padding, scrolling horizontally inside itself (hidden scrollbar,
+  `overscroll-x-contain`), never the page. The hint that there is more is the last link cut at the
+  edge: no fades, no arrows. Links are 36px tall. The active link is brought into view by setting
+  the strip's `scrollLeft` (on load, on navigation and when the strip resizes), and a link that
+  receives keyboard focus is brought into view the same way, never with
+  `scrollIntoView`, so the page never scrolls vertically.
+- **From `md`:** one row as described above. The email is truncated with an ellipsis and keeps the
+  full address in `title`; its max width (112px at `md`, 320px from `lg`) keeps a long email from
+  overflowing at 768px.
 
 ### Text links
 - **Recipe:** Verde Monte text that underlines on hover or keyboard focus, with a 40% green

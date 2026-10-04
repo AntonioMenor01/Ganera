@@ -9,7 +9,7 @@ import { listarAnimalesDeExplotacion } from "./api"
 import { AnimalesDeExplotacion } from "./AnimalesDeExplotacion"
 
 // La función real, envuelta solo para ver qué AbortSignal recibe cada petición: el signal de la
-// request de MSW no refleja el abort de XHR en jsdom (mismo patrón que useTodasLasExplotaciones).
+// request de MSW no refleja el abort de XHR en jsdom (mismo patrón que useBuscarExplotaciones).
 // La petición HTTP y el paso de la cancelación a ErrorApi{cancelado} siguen siendo los reales.
 vi.mock("./api", async (importOriginal) => {
   const real = await importOriginal<typeof import("./api")>()

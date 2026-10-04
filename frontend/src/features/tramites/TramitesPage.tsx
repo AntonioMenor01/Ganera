@@ -20,12 +20,10 @@ import { cn } from "@/lib/utils";
 import { CLASE_ENLACE } from "@/shared/ui/enlace";
 import { aErrorApi, mensajeDeError, type ErrorApi } from "@/shared/api/errores";
 import type { Pagina } from "@/shared/api/types";
-import { useTodasLasExplotaciones } from "@/features/explotaciones/useTodasLasExplotaciones";
 import { listarTramites } from "./api";
 import type { EstadoTramite, Tramite, TramiteCrotal } from "./types";
 import { ESTADOS_TRAMITE, etiquetaTipoTramite } from "./etiquetas";
 import { BadgeEstadoTramite, BadgeResolucionCrotal } from "./BadgesTramite";
-import { presentarExplotacion, type PresentacionExplotacion } from "./explotacionDeTramite";
 import { TramiteReviewDialog } from "./TramiteReviewDialog";
 
 const TAMANIO_PAGINA = 20;
@@ -70,9 +68,6 @@ export function TramitesPage() {
   const [totalPaginas, setTotalPaginas] = useState(0);
   const [version, setVersion] = useState(0);
   const [tramiteSeleccionado, setTramiteSeleccionado] = useState<number | null>(null);
-  // Lista completa para traducir explotacionId → código REGA; se carga una vez por visita.
-  const { carga: cargaExplotaciones, reintentar: reintentarExplotaciones } =
-    useTodasLasExplotaciones();
 
   const recargar = useCallback(() => setVersion((v) => v + 1), []);
 
@@ -162,26 +157,6 @@ export function TramitesPage() {
         </Alert>
       )}
 
-      {cargaExplotaciones.estado === "error" && (
-        <Alert variant="destructive">
-          <AlertTitle>No se han podido cargar los códigos REGA</AlertTitle>
-          <AlertDescription>
-            <p>
-              {mensajeDeError(cargaExplotaciones.error, "listar-explotaciones")} Hasta entonces, la
-              columna Explotación no puede mostrar a qué explotación va cada trámite.
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={reintentarExplotaciones}
-              className="mt-2"
-            >
-              Reintentar
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
-
       {/* La tabla hace scroll horizontal dentro de su contenedor, nunca la página (H12). */}
       <div className="min-w-0 rounded-xl border bg-card">
         {/* WCAG 4.1.3: estado siempre montado y fuera de aria-busy; solo cambia su texto, así el
@@ -252,9 +227,7 @@ export function TramitesPage() {
                   <BadgeEstadoTramite estado={tramite.estado} />
                 </TableCell>
                 <TableCell>
-                  <CeldaExplotacion
-                    presentacion={presentarExplotacion(tramite.explotacionId, cargaExplotaciones)}
-                  />
+                  <CeldaExplotacion tramite={tramite} />
                 </TableCell>
                 <TableCell>
                   <CeldaCrotales crotales={tramite.crotales} />
@@ -293,56 +266,37 @@ export function TramitesPage() {
         tramiteId={tramiteSeleccionado}
         onClose={() => setTramiteSeleccionado(null)}
         onCambiado={recargar}
-        explotaciones={cargaExplotaciones}
-        onReintentarExplotaciones={reintentarExplotaciones}
       />
     </div>
   );
 }
 
-function CeldaExplotacion({ presentacion }: { presentacion: PresentacionExplotacion }) {
-  switch (presentacion.tipo) {
-    case "encontrada":
-      return (
-        <>
-          <span className="tabular-nums" title={presentacion.nombre}>
-            {presentacion.codigoRega}
-          </span>
-          {/* M3: el nombre no puede vivir solo en title (ni teclado ni táctil lo muestran). */}
-          <span className="sr-only">, {presentacion.nombre}</span>
-        </>
-      );
-    case "sin-asignar":
-      return <span className="text-muted-foreground">Sin asignar</span>;
-    case "cargando":
-      return (
-        <span className="inline-flex align-middle">
-          <span aria-hidden className="h-3 w-28 rounded-sm bg-muted motion-safe:animate-pulse" />
-          <span className="sr-only">Cargando código REGA…</span>
+/** Columna Explotación (punto 4): el código REGA llega en cada fila de GET /tramites; nunca el id. */
+function CeldaExplotacion({ tramite }: { tramite: Tramite }) {
+  const { explotacionId, explotacionCodigoRega: codigoRega, explotacionNombre } = tramite;
+  if (codigoRega) {
+    const nombre = explotacionNombre?.trim() || undefined;
+    return (
+      <>
+        <span className="tabular-nums" title={nombre}>
+          {codigoRega}
         </span>
-      );
-    case "no-disponible":
-      return (
-        <span className="text-muted-foreground" title="No se ha podido cargar la lista de explotaciones.">
-          <span aria-hidden>—</span>
-          <span className="sr-only">Código REGA no disponible</span>
-        </span>
-      );
-    case "no-encontrada":
-      return (
-        // M4: la lista se carga una vez al abrir la página; una explotación importada después no
-        // está en ella aunque exista. El texto no afirma que no exista.
-        <span
-          className="text-muted-foreground"
-          title="No aparece en la lista de explotaciones cargada al abrir la página. Si se importó después, recarga la página."
-        >
-          <span aria-hidden>—</span>
-          <span className="sr-only">
-            Explotación no encontrada en la lista cargada. Si se importó después, recarga la página.
-          </span>
-        </span>
-      );
+        {/* M3: el nombre no puede vivir solo en title (ni teclado ni táctil lo muestran). */}
+        {nombre && <span className="sr-only">{`, ${nombre}`}</span>}
+      </>
+    );
   }
+  if (explotacionId === null || explotacionId === undefined) {
+    return <span className="text-muted-foreground">Sin asignar</span>;
+  }
+  // No debería pasar (el backend da el REGA siempre que hay explotación). "Sin asignar" sería falso:
+  // el trámite sí tiene explotación; se dice que el código no está disponible, sin enseñar el id.
+  return (
+    <span className="text-muted-foreground">
+      <span aria-hidden>—</span>
+      <span className="sr-only">Código REGA no disponible</span>
+    </span>
+  );
 }
 
 function ItemCrotal({ crotal }: { crotal: TramiteCrotal }) {
@@ -355,7 +309,7 @@ function ItemCrotal({ crotal }: { crotal: TramiteCrotal }) {
       </span>
       {/* M3: lo que el title dice a quien usa ratón, también para lector de pantalla. */}
       {indicado && <span className="sr-only">{`, ${indicado}`}</span>}
-      <BadgeResolucionCrotal resolucion={crotal.resolucion} />
+      <BadgeResolucionCrotal crotal={crotal} />
     </li>
   );
 }

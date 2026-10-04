@@ -24,17 +24,30 @@ describe("BadgeResolucionCrotal", () => {
     ["AMBIGUO", "Varios animales coinciden", "bg-warning"],
     ["SIN_EXPLOTACION", "Falta la explotación", "bg-warning"],
   ])("%s → %s", (resolucion, etiqueta, clase) => {
-    render(<BadgeResolucionCrotal resolucion={resolucion} />)
+    render(<BadgeResolucionCrotal crotal={{ resolucion, completo: false }} />)
     expect(screen.getByText(etiqueta)).toHaveClass(clase)
   })
 
-  it("NO_ENCONTRADO es neutro (outline), provisional hasta la decisión 21", () => {
-    render(<BadgeResolucionCrotal resolucion="NO_ENCONTRADO" />)
+  it("NO_ENCONTRADO completo es neutro (outline)", () => {
+    render(<BadgeResolucionCrotal crotal={{ resolucion: "NO_ENCONTRADO", completo: true }} />)
     expect(screen.getByText("No está en el inventario")).toHaveClass("border-border", "text-foreground")
   })
 
+  it("NO_ENCONTRADO sin completo (D5b) es neutro (outline)", () => {
+    render(<BadgeResolucionCrotal crotal={{ resolucion: "NO_ENCONTRADO" }} />)
+    expect(screen.getByText("No está en el inventario")).toHaveClass("border-border", "text-foreground")
+  })
+
+  it("NO_ENCONTRADO incompleto es ámbar y lo dice en el texto, no solo con color", () => {
+    render(<BadgeResolucionCrotal crotal={{ resolucion: "NO_ENCONTRADO", completo: false }} />)
+    expect(screen.getByText("No está en el inventario · incompleto")).toHaveClass(
+      "bg-warning",
+      "text-warning-foreground",
+    )
+  })
+
   it("una resolución desconocida sale tal cual en un badge neutro", () => {
-    render(<BadgeResolucionCrotal resolucion="DUPLICADO" />)
+    render(<BadgeResolucionCrotal crotal={{ resolucion: "DUPLICADO" }} />)
     expect(screen.getByText("DUPLICADO")).toHaveClass("border-border")
   })
 })

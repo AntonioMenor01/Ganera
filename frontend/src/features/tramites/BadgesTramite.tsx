@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import {
   presentacionEstado,
-  presentacionResolucion,
+  presentacionCrotal,
   presentacionRolContacto,
   type Presentacion,
 } from "./etiquetas";
@@ -15,8 +15,13 @@ export function BadgeEstadoTramite({ estado }: { estado: string }) {
   return <BadgePresentacion presentacion={presentacionEstado(estado)} />;
 }
 
-export function BadgeResolucionCrotal({ resolucion }: { resolucion: string }) {
-  return <BadgePresentacion presentacion={presentacionResolucion(resolucion)} />;
+/** Recibe el crotal (no solo la resolución) porque `completo` matiza `NO_ENCONTRADO`. */
+export function BadgeResolucionCrotal({
+  crotal,
+}: {
+  crotal: { resolucion: string; completo?: boolean };
+}) {
+  return <BadgePresentacion presentacion={presentacionCrotal(crotal)} />;
 }
 
 export function BadgeRolContacto({ rol }: { rol: string }) {

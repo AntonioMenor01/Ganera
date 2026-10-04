@@ -32,13 +32,14 @@ describe("httpClient: normalización de errores a ErrorApi", () => {
     })
   })
 
-  it("400 con cuerpo de texto plano (importador) → el texto es el motivo", async () => {
+  // Defensa: hoy ningún endpoint responde en texto plano (el importador ya manda `{motivo}`).
+  it("400 con cuerpo de texto plano → el texto es el motivo", async () => {
     server.use(
-      http.post(apiUrl("/explotaciones/importar"), () =>
+      http.post(apiUrl("/ruta-de-prueba"), () =>
         HttpResponse.text("Falta la hoja obligatoria \"Animales\"", { status: 400 }),
       ),
     )
-    const error = await capturarError(httpClient.post("/explotaciones/importar", {}))
+    const error = await capturarError(httpClient.post("/ruta-de-prueba", {}))
     expect(error).toMatchObject({
       tipo: "validacion",
       status: 400,
@@ -46,13 +47,13 @@ describe("httpClient: normalización de errores a ErrorApi", () => {
     })
   })
 
-  it("{mensaje} no se lee como motivo: el registro usa su texto uniforme propio", async () => {
+  it("{mensaje} no se lee como motivo: solo `{motivo}` es el formato del backend", async () => {
     server.use(
-      http.post(apiUrl("/gestorias/registro"), () =>
+      http.post(apiUrl("/ruta-de-prueba"), () =>
         HttpResponse.json({ mensaje: "El email ya existe" }, { status: 400 }),
       ),
     )
-    const error = await capturarError(httpClient.post("/gestorias/registro", {}))
+    const error = await capturarError(httpClient.post("/ruta-de-prueba", {}))
     expect(error).toMatchObject({ tipo: "validacion", status: 400 })
     expect((error as ErrorApi).motivo).toBeUndefined()
   })

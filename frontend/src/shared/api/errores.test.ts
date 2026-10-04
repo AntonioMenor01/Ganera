@@ -76,6 +76,13 @@ describe("mensajeDeError", () => {
     expect(mensajeDeError(error, "aprobar-tramite")).toBe(TEXTO_SUSCRIPCION)
   })
 
+  it("prohibido al aprobar con motivo → el motivo del backend tal cual, no el texto fijo", () => {
+    const motivo = "Tu suscripción está suspendida: actualízala en Facturación para aprobar."
+    const error = new ErrorApi({ tipo: "prohibido", status: 403, motivo })
+    expect(mensajeDeError(error, "aprobar-tramite")).toBe(motivo)
+    expect(mensajeDeError(error, "aprobar-tramite")).not.toBe(TEXTO_SUSCRIPCION)
+  })
+
   it("prohibido fuera de aprobar → un texto de permiso, no el de suscripción", () => {
     const error = new ErrorApi({ tipo: "prohibido", status: 403 })
     expect(mensajeDeError(error)).not.toBe(TEXTO_SUSCRIPCION)

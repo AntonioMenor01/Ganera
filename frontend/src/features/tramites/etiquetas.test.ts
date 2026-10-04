@@ -8,6 +8,7 @@ import {
   etiquetaRolContacto,
   etiquetaTipoTramite,
   presentacionEstado,
+  presentacionCrotal,
   presentacionResolucion,
   presentacionRolContacto,
 } from "./etiquetas"
@@ -101,6 +102,43 @@ describe("RESOLUCIONES_CROTAL", () => {
 
   it("una resolución desconocida se muestra tal cual con badge neutro", () => {
     expect(presentacionResolucion("DUPLICADO")).toEqual({ etiqueta: "DUPLICADO", variante: "outline" })
+  })
+})
+
+describe("presentacionCrotal (completo, mini-prompt tras A2; plan antes del piloto, punto 5)", () => {
+  it("NO_ENCONTRADO con completo:false → ámbar y lo dice en el texto", () => {
+    expect(presentacionCrotal({ resolucion: "NO_ENCONTRADO", completo: false })).toEqual({
+      etiqueta: "No está en el inventario · incompleto",
+      variante: "warning",
+    })
+  })
+
+  it("NO_ENCONTRADO con completo:true → neutro como antes", () => {
+    expect(presentacionCrotal({ resolucion: "NO_ENCONTRADO", completo: true })).toEqual({
+      etiqueta: "No está en el inventario",
+      variante: "outline",
+    })
+  })
+
+  it("D5b: NO_ENCONTRADO sin completo → neutro (el frontend no clasifica crotales)", () => {
+    expect(presentacionCrotal({ resolucion: "NO_ENCONTRADO" })).toEqual({
+      etiqueta: "No está en el inventario",
+      variante: "outline",
+    })
+  })
+
+  it.each(["EN_INVENTARIO", "AMBIGUO", "SIN_EXPLOTACION"] as const)(
+    "%s con completo:false no cambia: completo solo matiza NO_ENCONTRADO",
+    (resolucion) => {
+      expect(presentacionCrotal({ resolucion, completo: false })).toEqual(RESOLUCIONES_CROTAL[resolucion])
+    },
+  )
+
+  it("una resolución desconocida sigue saliendo tal cual en neutro, con o sin completo", () => {
+    expect(presentacionCrotal({ resolucion: "DUPLICADO", completo: false })).toEqual({
+      etiqueta: "DUPLICADO",
+      variante: "outline",
+    })
   })
 })
 

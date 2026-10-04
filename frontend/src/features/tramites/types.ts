@@ -13,6 +13,9 @@ export interface TramiteCrotal {
   animalId: number | null;
   enInventario: boolean;
   resolucion: ResolucionCrotal;
+  /** Si lo ESCRITO (`crotalIndicado`) es un crotal completo, no a qué se resolvió: `1234`
+   * `EN_INVENTARIO` es `false`. Opcional (D5b): si falta, el badge se queda neutro. */
+  completo?: boolean;
 }
 
 // tipoTramite es string (no TipoTramite): el backend puede traer tipos que el frontend aún no
@@ -20,6 +23,9 @@ export interface TramiteCrotal {
 export interface Tramite {
   id: number;
   explotacionId: number | null;
+  /** `TramiteResponse` (mini-prompt tras A2): null si el trámite no tiene explotación. */
+  explotacionCodigoRega: string | null;
+  explotacionNombre: string | null;
   tipoTramite: string | null;
   estado: EstadoTramite;
   motivoError: string | null;

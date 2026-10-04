@@ -32,7 +32,7 @@ describe("ImportarExcelSection: resumen (H10)", () => {
     expect(within(resumen).getByText("Explotaciones")).toBeInTheDocument()
     expect(within(resumen).getByText("Animales")).toBeInTheDocument()
     expect(within(resumen).getByText("Contactos")).toBeInTheDocument()
-    expect(within(resumen).getByText("3 filas · 2 creadas · 1 actualizadas")).toBeInTheDocument()
+    expect(within(resumen).getByText("3 filas · 2 creadas · 1 actualizada")).toBeInTheDocument()
   })
 
   it("sin hoja Contactos (0/0/0) la línea sigue ahí con ceros, igual que las otras hojas", async () => {
@@ -45,6 +45,19 @@ describe("ImportarExcelSection: resumen (H10)", () => {
 
     expect(within(resumen).getByText("Contactos")).toBeInTheDocument()
     expect(within(resumen).getAllByText("0 filas · 0 creadas · 0 actualizadas")).toHaveLength(2)
+  })
+
+  it("la tarjeta usa singular con 1 y plural con 0 y con 2 (fila, creada, actualizada)", async () => {
+    const resumen = await importar({
+      explotaciones: hoja(1, 1, 1),
+      animales: hoja(2, 2, 2),
+      contactos: hoja(0, 0, 0),
+      errores: [],
+    })
+
+    expect(within(resumen).getByText("1 fila · 1 creada · 1 actualizada")).toBeInTheDocument()
+    expect(within(resumen).getByText("2 filas · 2 creadas · 2 actualizadas")).toBeInTheDocument()
+    expect(within(resumen).getByText("0 filas · 0 creadas · 0 actualizadas")).toBeInTheDocument()
   })
 })
 

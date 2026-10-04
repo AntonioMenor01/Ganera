@@ -52,7 +52,7 @@ export function CrotalesSoloLectura({ crotales }: { crotales: readonly TramiteCr
         >
           <span className="font-medium tabular-nums wrap-anywhere">{crotal.crotalIndicado}</span>
           <CrotalResuelto crotal={crotal} />
-          <BadgeResolucionCrotal resolucion={crotal.resolucion} />
+          <BadgeResolucionCrotal crotal={crotal} />
         </li>
       ))}
     </ul>
@@ -134,7 +134,7 @@ export function ListaCrotalesEditable({
                   className="col-start-1 row-start-1 min-w-0 tabular-nums"
                 />
                 <span className="col-start-1 row-start-2 justify-self-start sm:col-start-2 sm:row-start-1">
-                  {guardado ? <BadgeResolucionCrotal resolucion={guardado.resolucion} /> : <BadgeSinGuardar />}
+                  {guardado ? <BadgeResolucionCrotal crotal={guardado} /> : <BadgeSinGuardar />}
                 </span>
                 <Button
                   type="button"

@@ -18,19 +18,16 @@ function paginaExplotaciones(lista = EXPLOTACIONES, totalElements = lista.length
     totalElements,
     totalPages: totalElements === 0 ? 0 : 1,
     number: 0,
-    size: 500,
+    size: 20,
   })
 }
-
-// La cola carga la lista completa de explotaciones para traducir id -> código REGA (decisión 22).
-beforeEach(() => {
-  server.use(http.get(apiUrl("/explotaciones"), () => paginaExplotaciones()))
-})
 
 function tramite(id: number, extra: Record<string, unknown> = {}) {
   return {
     id,
     explotacionId: null,
+    explotacionCodigoRega: null,
+    explotacionNombre: null,
     tipoTramite: "ALTA",
     estado: "PENDIENTE_REVISION",
     motivoError: null,
@@ -71,6 +68,8 @@ describe("TramitesPage: etiquetas legibles", () => {
             {
               id: 1,
               explotacionId: null,
+              explotacionCodigoRega: null,
+              explotacionNombre: null,
               tipoTramite: "MOVIMIENTO",
               estado: "PENDIENTE_REVISION",
               motivoError: null,
@@ -80,6 +79,8 @@ describe("TramitesPage: etiquetas legibles", () => {
             {
               id: 2,
               explotacionId: 3,
+              explotacionCodigoRega: "ES280790000123",
+              explotacionNombre: "Finca La Dehesa",
               tipoTramite: "ALTA",
               estado: "EJECUTADO_OVZ",
               motivoError: null,
@@ -117,6 +118,8 @@ describe("TramitesPage: etiquetas legibles", () => {
             {
               id: 9,
               explotacionId: null,
+              explotacionCodigoRega: null,
+              explotacionNombre: null,
               tipoTramite: "TRASLADO_FERIA",
               estado: "PAUSADO",
               motivoError: null,
@@ -171,6 +174,8 @@ describe("TramitesPage: errores visibles", () => {
             {
               id: 100 + page,
               explotacionId: null,
+              explotacionCodigoRega: null,
+              explotacionNombre: null,
               tipoTramite: null,
               estado: "PENDIENTE_REVISION",
               motivoError: null,
@@ -245,94 +250,80 @@ describe("TramitesPage: filas accesibles por teclado (P0 de la critique)", () =>
   })
 })
 
-describe("TramitesPage: código REGA en vez del id (H7 / decisión 22)", () => {
+describe("TramitesPage: código REGA desde el listado (punto 4)", () => {
   beforeEach(() => {
     server.use(
       http.get(apiUrl("/tramites"), () =>
         paginaTramites(
           [
-            tramite(1, { explotacionId: 3 }),
-            tramite(2, { explotacionId: null }),
-            tramite(4, { explotacionId: 77 }),
+            tramite(1, {
+              explotacionId: 3,
+              explotacionCodigoRega: "ES280790000123",
+              explotacionNombre: "Finca La Dehesa",
+            }),
+            tramite(2),
+            tramite(4, { explotacionId: 77, explotacionCodigoRega: "ES990000000777", explotacionNombre: "" }),
+            tramite(6, { explotacionId: 88, explotacionCodigoRega: null, explotacionNombre: null }),
           ],
-          3,
+          4,
           1,
         ),
       ),
     )
   })
 
-  it("traduce explotacionId al código REGA; null = Sin asignar; desconocido = — con tooltip, nunca el id", async () => {
+  it("pinta el REGA de cada trámite con el nombre en title y sr-only; null = Sin asignar; nunca el id", async () => {
     render(<TramitesPage />)
 
     const rega = await screen.findByText("ES280790000123")
     expect(rega).toHaveAttribute("title", "Finca La Dehesa")
+    expect(rega).toHaveClass("tabular-nums")
     // M3: el nombre también llega sin depender de title (lector de pantalla, teclado).
     const fila = rega.closest("tr") as HTMLElement
-    expect(within(fila).getByText(/Finca La Dehesa/)).toHaveClass("sr-only")
+    expect(within(fila).getByText(", Finca La Dehesa")).toHaveClass("sr-only")
     expect(screen.getByText("Sin asignar")).toBeInTheDocument()
-    // M4: la lista se carga al abrir la página; una explotación importada después no está en ella.
-    const desconocida = screen.getByTitle(
-      "No aparece en la lista de explotaciones cargada al abrir la página. Si se importó después, recarga la página.",
-    )
-    expect(desconocida).toHaveTextContent("—")
-    expect(desconocida).toHaveTextContent(
-      "Explotación no encontrada en la lista cargada. Si se importó después, recarga la página.",
-    )
     expect(screen.queryByText("#3")).not.toBeInTheDocument()
-    expect(screen.queryByText(/77/)).not.toBeInTheDocument()
   })
 
-  it("mientras carga la lista, la columna muestra un marcador discreto, no ids", async () => {
-    const { promesa, abrir } = puerta()
+  it("con el nombre vacío: solo el código, sin title ni coma para el lector de pantalla", async () => {
+    render(<TramitesPage />)
+
+    const rega = await screen.findByText("ES990000000777")
+    expect(rega).not.toHaveAttribute("title")
+    const celda = rega.closest("td") as HTMLElement
+    expect(celda).toHaveTextContent(/^ES990000000777$/)
+    expect(within(celda).queryByText(/^,/)).not.toBeInTheDocument()
+  })
+
+  it("con explotación pero sin código REGA (no debería pasar): «—» y «Código REGA no disponible», nunca «Sin asignar» ni el id", async () => {
+    render(<TramitesPage />)
+
+    const boton = await screen.findByRole("button", { name: "Revisar trámite #6" })
+    const celda = within(boton.closest("tr") as HTMLElement).getAllByRole("cell")[3]
+    expect(celda).toHaveTextContent("—")
+    expect(within(celda).getByText("Código REGA no disponible")).toHaveClass("sr-only")
+    expect(within(celda).queryByText("Sin asignar")).not.toBeInTheDocument()
+    expect(celda).not.toHaveTextContent("88")
+    // Solo el trámite #2 está sin asignar.
+    expect(screen.getAllByText("Sin asignar")).toHaveLength(1)
+  })
+
+  it("la cola no pide /explotaciones (T4): el REGA sale del listado", async () => {
+    let pedidas = 0
     server.use(
-      http.get(apiUrl("/explotaciones"), async () => {
-        await promesa
+      http.get(apiUrl("/explotaciones"), () => {
+        pedidas += 1
         return paginaExplotaciones()
       }),
     )
     render(<TramitesPage />)
 
-    await screen.findByRole("button", { name: "Revisar trámite #1" })
-    expect(screen.getAllByText("Cargando código REGA…").length).toBeGreaterThan(0)
-    expect(screen.queryByText("#3")).not.toBeInTheDocument()
-    expect(screen.queryByText(/77/)).not.toBeInTheDocument()
-
-    abrir()
     expect(await screen.findByText("ES280790000123")).toBeInTheDocument()
-    expect(screen.queryByText("Cargando código REGA…")).not.toBeInTheDocument()
-  })
-
-  it("si la carga falla, error visible con Reintentar; sin ids; el reintento la completa", async () => {
-    let llamadas = 0
-    server.use(
-      http.get(apiUrl("/explotaciones"), () => {
-        llamadas += 1
-        return llamadas === 1 ? new HttpResponse(null, { status: 500 }) : paginaExplotaciones()
-      }),
-    )
-    const user = userEvent.setup()
-    render(<TramitesPage />)
-
-    const alerta = (await screen.findByText("No se han podido cargar los códigos REGA")).closest(
-      "[role=alert]",
-    ) as HTMLElement
-    expect(alerta).not.toBeNull()
-    expect(screen.queryByText("#3")).not.toBeInTheDocument()
-    expect(screen.queryByText("ES280790000123")).not.toBeInTheDocument()
-
-    await user.click(within(alerta).getByRole("button", { name: "Reintentar" }))
-    expect(await screen.findByText("ES280790000123")).toBeInTheDocument()
+    // Margen para que una petición, si la hubiera, llegara.
+    await new Promise((r) => setTimeout(r, 50))
+    expect(pedidas).toBe(0)
     expect(screen.queryByText("No se han podido cargar los códigos REGA")).not.toBeInTheDocument()
-  })
-
-  it("una lista incompleta (el recuento no cuadra) es un error: no pinta ni las que sí llegaron", async () => {
-    server.use(http.get(apiUrl("/explotaciones"), () => paginaExplotaciones(EXPLOTACIONES, 3)))
-    render(<TramitesPage />)
-
-    expect(await screen.findByText("No se han podido cargar los códigos REGA")).toBeInTheDocument()
-    expect(screen.queryByText("ES280790000123")).not.toBeInTheDocument()
-    expect(screen.getByText("Sin asignar")).toBeInTheDocument()
+    expect(screen.queryByText("Cargando código REGA…")).not.toBeInTheDocument()
   })
 })
 
@@ -498,8 +489,8 @@ describe("TramitesPage: filtro y paginación", () => {
   })
 })
 
-describe("TramitesPage: el modal reutiliza la lista de explotaciones (9b)", () => {
-  it("el selector del modal usa la lista ya cargada por la cola: no se pide dos veces", async () => {
+describe("TramitesPage: el selector del modal busca en el backend (T4)", () => {
+  it("abrir el modal no pide explotaciones; abrir el desplegable pide la primera página", async () => {
     let pedidas = 0
     server.use(
       http.get(apiUrl("/explotaciones"), () => {
@@ -513,7 +504,9 @@ describe("TramitesPage: el modal reutiliza la lista de explotaciones (9b)", () =
     render(<TramitesPage />)
     await user.click(await screen.findByRole("button", { name: "Revisar trámite #1" }))
     const dialogo = await screen.findByRole("dialog")
-    await user.click(await within(dialogo).findByRole("combobox", { name: "Explotación" }))
+    const campo = await within(dialogo).findByRole("combobox", { name: "Explotación" })
+    expect(pedidas).toBe(0)
+    await user.click(campo)
     const opciones = await screen.findAllByRole("option")
     expect(opciones.map((o) => o.textContent)).toEqual([
       expect.stringContaining("ES280790000123"),
@@ -568,15 +561,62 @@ describe("TramitesPage: filtro inicial (decisión 28)", () => {
   })
 })
 
-function crotal(crotalIndicado: string, crotal: string, resolucion: string) {
+/** `completo` describe lo ESCRITO (`crotalIndicado`), como en la API real; por defecto, en estos
+ * datos de prueba, solo lo es el que empieza por "ES". */
+function crotal(
+  crotalIndicado: string,
+  crotal: string,
+  resolucion: string,
+  completo: boolean = crotalIndicado.startsWith("ES"),
+) {
   return {
     crotalIndicado,
     crotal,
+    completo,
     animalId: resolucion === "EN_INVENTARIO" ? 8 : null,
     enInventario: resolucion === "EN_INVENTARIO",
     resolucion,
   }
 }
+
+describe("TramitesPage: crotal no encontrado e incompleto (completo, punto 5)", () => {
+  beforeEach(() => {
+    server.use(
+      http.get(apiUrl("/tramites"), () =>
+        paginaTramites(
+          [
+            tramite(1, {
+              crotales: [
+                crotal("4321", "4321", "NO_ENCONTRADO", false),
+                crotal("ES000000000004", "ES000000000004", "NO_ENCONTRADO", true),
+                crotal("8765", "8765", "NO_ENCONTRADO", false),
+              ],
+            }),
+          ],
+          1,
+          1,
+        ),
+      ),
+    )
+  })
+
+  it("en la fila: ámbar con «· incompleto» si lo escrito no es completo; neutro si lo es", async () => {
+    render(<TramitesPage />)
+    const fila = (await screen.findByText("4321")).closest("li")!
+    expect(within(fila).getByText("No está en el inventario · incompleto")).toHaveClass("bg-warning")
+    const completoFila = screen.getByText("ES000000000004").closest("li")!
+    expect(within(completoFila).getByText("No está en el inventario")).toHaveClass("border-border")
+    expect(within(completoFila).queryByText(/incompleto/)).not.toBeInTheDocument()
+  })
+
+  it("en el desplegable «+N más» también", async () => {
+    const user = userEvent.setup()
+    render(<TramitesPage />)
+    await user.click(await screen.findByRole("button", { name: "+1 más" }))
+    const fila = screen.getByText("8765").closest("li")!
+    expect(within(fila).getByText("No está en el inventario · incompleto")).toHaveClass("bg-warning")
+  })
+})
 
 describe("TramitesPage: «+N más» despliega los crotales (Task 10)", () => {
   beforeEach(() => {

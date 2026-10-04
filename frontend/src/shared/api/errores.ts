@@ -97,10 +97,11 @@ export function aErrorApi(error: unknown): ErrorApi {
 }
 
 /**
- * `{motivo}` es el formato del backend (400/409). Un cuerpo de texto plano es el motivo (el 400 del
- * importador, decisión 23). Una página HTML (un proxy) no es un texto para el usuario. `{mensaje}`
- * (el 400 de POST /gestorias/registro) NO se lee: el registro enseña su propio texto uniforme, ver
- * el contexto "registro". Nunca lanza.
+ * `{motivo}` es el formato del backend en todos sus errores con texto (400/403/409), también el 400
+ * del importador y el de POST /gestorias/registro. Un cuerpo de texto plano se sigue tomando como
+ * motivo solo como defensa: hoy ningún endpoint lo usa. Una página HTML (un proxy) no es un texto
+ * para el usuario. El `{motivo}` del registro sí se extrae, pero esa pantalla no lo enseña
+ * (`ignorarMotivo`, ver el contexto "registro"). Nunca lanza.
  */
 function extraerMotivo(data: unknown, contentType: string | undefined): string | undefined {
   try {
@@ -205,8 +206,10 @@ const TEXTOS: Record<ContextoError, TextosContexto> = {
   },
   registro: {
     ignorarMotivo: true,
-    // Copia literal del texto uniforme del backend (MENSAJE_REGISTRO_INVALIDO), el mismo para
-    // cualquier causa: email duplicado, contraseña débil, email mal formado o campo vacío.
+    // Copia literal del texto uniforme del backend (RegistroGestoriaController.
+    // MOTIVO_REGISTRO_INVALIDO), el mismo para cualquier causa: email duplicado, contraseña débil,
+    // email mal formado o campo vacío. El backend lo manda como `{motivo}`, pero se ignora a
+    // propósito: el texto lo fija el frontend, sin oráculo de enumeración.
     generico:
       "No se ha podido completar el registro con esos datos. Revisa el email y la contraseña e inténtalo de nuevo.",
     porStatus: { 503: TEXTO_FACTURACION_NO_CONFIGURADA },
@@ -234,7 +237,9 @@ const TEXTOS: Record<ContextoError, TextosContexto> = {
   "aprobar-tramite": {
     generico: "No se ha podido aprobar el trámite. Inténtalo de nuevo.",
     noEncontrado: TEXTO_TRAMITE_NO_ENCONTRADO,
-    // H2: el 403 de aprobar llega sin cuerpo y hoy solo puede ser por la suscripción.
+    // El 403 de aprobar solo puede ser por la suscripción y llega con `{motivo}`
+    // (TramiteController.MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR, este mismo texto), que es lo que se
+    // enseña. Este texto fijo es solo la reserva si no llega motivo.
     prohibido:
       "Tu suscripción no permite aprobar trámites ahora mismo (trial expirado o suspendida). Actualiza tu suscripción en Facturación.",
   },

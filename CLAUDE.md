@@ -566,8 +566,9 @@ approval step before anything is written to OVZ.net.
     used `join fetch`.
   - The frontend was touched **only** so Rechazar keeps working (`rechazarTramite(id, version)` in
     `features/tramites/api.ts`, fed with `detalle?.version` from `useRevisionTramite`). It does
-    **not** consume the rest yet (`GET /explotaciones/{id}`, `?q=`, `explotacionCodigoRega`,
-    `completo`, the `403` `motivo`) — that's a later frontend task.
+    **not** consume the rest then; the frontend task before the pilot (2026-10-04) consumes `?q=`,
+    `explotacionCodigoRega`/`explotacionNombre`, `completo` and the `403` `motivo` (see the
+    frontend architecture notes). `GET /explotaciones/{id}` still has no caller.
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)
@@ -685,18 +686,28 @@ reference for every frontend decision below.
   into an `ErrorApi { tipo, status?, motivo? }` (`shared/api/errores.ts`), with `tipo` ∈
   `no-autorizado` (401: logout + notice, **except on `/auth/login`**, whose 401 is just the
   login's uniform error), `prohibido`, `validacion`, `no-encontrado`, `conflicto`, `servidor`,
-  `red`, `desconocido`. `motivo` comes from `{motivo}` or, if the body is plain text (the
-  importer's `400`), from the text itself. `mensajeDeError(error, contexto)` gives the text to
+  `red`, `desconocido`. `motivo` comes from `{motivo}` (every backend error body uses it now) or, as
+  a defence nobody uses today, from a plain-text body. `mensajeDeError(error, contexto)` gives the text to
   show (the backend `motivo` verbatim when there is one). **No screen uses `axios.isAxiosError`
   directly**, and no load is silent: every list/detail has loading, error-with-"Reintentar" and
   empty states.
-- **Complete explotaciones list (decisions 20/22):** `todasLasExplotaciones.ts` walks every page of
-  `GET /explotaciones` (size 500) and fails visibly if a page fails or the count doesn't match
-  `totalElements` — never a partial list. It feeds the review dialog's combobox (client-side
-  filter) and the queue's REGA column (the list DTO only has `explotacionId`). For gestorías with
-  thousands of explotaciones the backend's `GET /explotaciones?q=` (added in the mini-prompt after
-  A2) should replace it — not consumed by the frontend yet.
-- **`AppLayout.tsx`** has the navigation Trámites/Ganaderos/Explotaciones/Facturación and fetches
+- **Explotación search in the review dialog (frontend task before the pilot, D3a–D3f):**
+  `CampoExplotacion` + `features/tramites/useBuscarExplotaciones.ts` query `GET /explotaciones?q=`
+  only while the popup is open, 300 ms after the last keystroke, aborting the previous request and
+  ignoring stale responses (key = opening|attempt|q); first page of 20, "Hay N coincidencias;
+  escribe para acotar." from `totalElements`; if the input text is the chosen explotación's label it
+  counts as an empty query (`consultaDeBusqueda`); a `400` (over 100 chars) shows the `motivo`;
+  errors show "Reintentar" inside the popup. The old complete list (`todasLasExplotaciones.ts`,
+  `useTodasLasExplotaciones.ts`) and the client-side filter were **deleted**. **Accepted regression,
+  blocking before the pilot (backend):** the backend search is not accent-insensitive and matches
+  the whole text in a single field — see "Backend — bloqueante antes del piloto" in
+  `ganera-prompts.md`.
+- **`AppLayout.tsx`** has the navigation Trámites/Ganaderos/Explotaciones/Facturación (one
+  `nav aria-label="Principal"`; below `md` two rows with the links in a full-bleed strip that
+  scrolls inside itself, the active link brought into view by setting the strip's `scrollLeft` —
+  `shared/layout/tiraNavegacion.ts`, plus a `ResizeObserver`, and the same for a link that receives
+  keyboard focus — never `scrollIntoView`; from `md` one
+  row with the email truncated; see `DESIGN.md` → Navigation) and fetches
   subscription status once
   (`features/facturacion/useSuscripcionEstado.ts`) via `<Outlet context={{ suscripcion }}>` so
   `FacturacionPage` reuses the same fetch instead of refetching — read it with
@@ -710,10 +721,12 @@ reference for every frontend decision below.
   backend actually enforces.
 - **Trámites queue (`TramitesPage`)** opens filtered by "Pendiente de revisión" ("Todos" stays in
   the filter). Each row's first cell is a real button ("Revisar trámite #N"); the Explotación
-  column shows the código REGA from the complete list (an error is visible, never raw ids; the
-  list DTO now carries `explotacionCodigoRega`, not consumed yet); the
+  column shows `explotacionCodigoRega` from the `GET /tramites` row itself (name in `title` +
+  sr-only; "Sin asignar" without one; never raw ids; no request to `/explotaciones`); the
   crotales column shows two plus a "+N más" disclosure. Labels and badge variants for estado, tipo,
-  crotal resolution and contact role come from **one source**, `features/tramites/etiquetas.ts`
+  crotal resolution (`presentacionCrotal`: `NO_ENCONTRADO` + `completo: false` → amber "No está en
+  el inventario · incompleto", read from the backend, never computed) and contact role come from
+  **one source**, `features/tramites/etiquetas.ts`
   (`TIPOS_TRAMITE` is the single constant to change in Prompt B).
 - **Review dialog (`TramiteReviewDialog` + `useRevisionTramite`):** logic lives in the hook
   (`revisionTramite.ts` has the pure diff/state rules), layout in the dialog. Editable **only** in
@@ -725,8 +738,8 @@ reference for every frontend decision below.
   aprobar") — the backend approves what is saved, not what is on screen. **Any `409`** (PATCH,
   aprobar, rechazar) reloads the detail, discards the form and shows the backend's `motivo`
   verbatim, never retrying by itself; a `400` keeps the edits and shows the `motivo`; a `404`
-  says the trámite no longer exists or isn't yours; a `403` on aprobar shows the fixed
-  subscription text (the backend's `403` now carries the same text as `motivo`, not read yet).
+  says the trámite no longer exists or isn't yours; a `403` on aprobar shows the backend's `motivo` (the fixed subscription text is only the fallback
+  when no body arrives) plus a link to Facturación.
   Badges show **what is saved**: an
   edited field/row says "Sin guardar" until the backend answers. One request at a time.
 - **Ganaderos (`features/ganaderos`):** `/ganaderos` (paginated, sortable by nombre and NIF only)
@@ -742,7 +755,7 @@ reference for every frontend decision below.
   works); setup in `src/test/` (`setup.ts`, `server.ts`, `handlers.ts`) — any request without a
   handler fails the test (`onUnhandledRequest: "error"`), and session state is cleared after each
   test. `npm test` ran **475 tests in 36 files** at the end of A2 (476 after the mini-prompt's
-  Rechazar change). Layout can't be checked in
+  Rechazar change; **506 in 36 files** after the frontend task before the pilot). Layout can't be checked in
   jsdom: for visual changes, also drive the real app in a browser (Playwright from npm installed
   **outside the repo**, as in Prompts 4 and A2).
 
@@ -960,7 +973,7 @@ its `motivo` → a stale-version `409` reloads the fresh data and shows the `mot
 inline confirmation → read-only `APROBADO` → Facturación; Gestoría B (subscription `SUSPENDIDA`,
 375 px): banner, only its own trámite in the queue, aprobar `403` with the subscription text and no
 logout, `/ganaderos/{A's id}` → "Ganadero no encontrado", Salir clears the token. Known leftovers
-(none blocking): the nav bar overflows at 375 px (a small task before the pilot), the 622 kB
+(none blocking): the nav bar overflows at 375 px (fixed in the frontend task before the pilot), the 622 kB
 chunk, the import summary card says "1 filas"/"1 actualizadas" (the announced sentence already
 uses real plurals), and the minors m1–m4 of the Task 10 review.
 
@@ -979,6 +992,26 @@ before the N+1 fix, which is covered by its own test). Smoke
 tip: Git Bash's `curl -d '…'` garbles non-ASCII characters on Windows — send JSON bodies with
 `--data-binary @file`.
 
+**Frontend task before the pilot — complete** (2026-10-03 → 2026-10-04), following
+`docs/superpowers/plans/2026-10-03-tarea-frontend-antes-piloto.md` (decisions closed with Antonio)
+with the Superpowers flow (T1–T5, one implementer + one independent reviewer each, all **Approved**
+with minors; reports in `.superpowers/sdd/fp-*`, not committed) and Impeccable for the nav bar
+(shape approved by Antonio before the craft; brief in
+`.impeccable/surfaces/frontend-src-shared-layout-applayout-tsx.md`). **Frontend only.** Delivered:
+mobile nav bar (two rows below `md`, scrolling link strip, no page-level horizontal scroll), the
+importer card's singulars, the review combobox on `GET /explotaciones?q=` (complete list deleted),
+the queue's REGA from `explotacionCodigoRega`, the amber incomplete `NO_ENCONTRADO` from
+`completo`, the `403` `motivo` (already worked; now pinned by tests) and `errores.ts` comments.
+Verified with `npm test` **506/506**, `npm run build` and `npm run lint` clean (known warnings
+only), `./mvnw clean test` **472/472**, and a real-browser smoke with two Gestorías on a
+file-backed H2 at 1440/768/640/375 px (log in `.superpowers/sdd/fp-t6-smoke.md`): no page-level
+horizontal scroll anywhere, active link visible and `scrollY` stable at 375 px, no request to
+`/explotaciones` from the queue, combobox search/400/500/D3d, approve from 375 px, Gestoría B's
+`403` with the backend's `motivo`. The smoke's N1 (keyboard focus landing on a nav link clipped by
+the scrolled strip) was fixed before the commit and checked at 375 px in a real browser.
+Non-blocking leftovers: "Reintentar" inside the combobox isn't reachable by Tab, and the combobox
+list empties while searching (height jump).
+
 **Next pending step: Prompt 3a (sincronización inicial de OVZ.net, modo lectura) — blocked.** Per
 `ganera-prompts.md`, Prompts 3a, 3b, and 3c (OVZ.net read sync, Twilio webhook + AI extraction, and
 real Playwright write-mode automation) are all blocked on the same prerequisite: Antonio needs to
@@ -988,10 +1021,8 @@ not guessing at its structure from assumptions). Until that happens, `TramiteExt
 `OvzAutomationService` stay as unimplemented skeletons (see above) — don't write real prompt/scraping
 logic against assumptions about OVZ.net's structure. The OVZ-credentials onboarding screen and the
 rest of Prompt 4's originally-scoped items are deferred alongside it. Not blocked by OVZ.net
-(see `ganera-prompts.md`): the frontend task before the pilot — mobile nav bar, the importer
-summary's singulars, and consuming the mini-prompt's API (`?q=` in the review combobox,
-`explotacionCodigoRega` in the queue, `completo`, the `403` `motivo`, stale comments in
-`errores.ts`).
+(see `ganera-prompts.md`): the **backend task blocking the pilot** — accent-insensitive,
+word-by-word explotación search with a normalized column computed in Java (no `unaccent`).
 
 `ganera-prompts.md` at the repo root tracks the full sequence of prompts used to
 build this out, in order — check it for the detailed history/rationale behind any given step.

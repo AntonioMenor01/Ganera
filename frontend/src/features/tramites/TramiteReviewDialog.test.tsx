@@ -2,13 +2,11 @@ import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { MemoryRouter } from "react-router-dom"
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { apiUrl } from "@/test/apiBaseUrl"
 import { server } from "@/test/server"
-import { ErrorApi } from "@/shared/api/errores"
 import type { Explotacion } from "@/features/explotaciones/types"
-import type { CargaTodasLasExplotaciones } from "@/features/explotaciones/useTodasLasExplotaciones"
-import type { TramiteCrotal } from "./types"
+import type { EstadoTramite, Tramite, TramiteCrotal } from "./types"
 import { TramiteReviewDialog } from "./TramiteReviewDialog"
 
 const DETALLE = {
@@ -50,17 +48,20 @@ function detalle(parcial: Partial<Detalle> = {}): Detalle {
   return { ...DETALLE, ...parcial }
 }
 
-/** Lo que devuelven aprobar/rechazar (el DTO del listado). */
+/** Lo que devuelven aprobar/rechazar: el DTO del listado (`TramiteResponse`), con la etiqueta de
+ * la explotación (m2 de la revisión de T3). */
 function respuestaLista(d: Detalle) {
   return {
     id: d.id,
     explotacionId: d.explotacionId,
+    explotacionCodigoRega: d.explotacionCodigoRega,
+    explotacionNombre: d.explotacionNombre,
     tipoTramite: d.tipoTramite,
-    estado: d.estado,
+    estado: d.estado as EstadoTramite,
     motivoError: d.motivoError,
     crotales: d.crotales,
     version: d.version,
-  }
+  } satisfies Tramite
 }
 
 /** GET /tramites/7 que devuelve, en orden, las respuestas dadas (la última se repite). */
@@ -84,25 +85,50 @@ function puerta() {
   return { promesa, abrir }
 }
 
-function listo(lista = EXPLOTACIONES): CargaTodasLasExplotaciones {
-  return { estado: "listo", explotaciones: lista, porId: new Map(lista.map((e) => [e.id, e])) }
+/**
+ * GET /explotaciones?q= que se comporta como el backend (T4): `q` recortada, "contiene" sin
+ * distinguir mayúsculas sobre código REGA, nombre o ganadero como UNA sola cadena, primera página
+ * de `size`, `totalElements` real. Devuelve las URLs pedidas, en orden.
+ */
+function servidorExplotaciones(lista: Explotacion[] = EXPLOTACIONES) {
+  const pedidas: URL[] = []
+  server.use(
+    http.get(apiUrl("/explotaciones"), ({ request }) => {
+      const url = new URL(request.url)
+      pedidas.push(url)
+      const q = (url.searchParams.get("q") ?? "").trim().toLowerCase()
+      const coinciden = lista.filter(
+        (e) => !q || [e.codigoRega, e.nombre, e.nombreGanadero].some((campo) => campo.toLowerCase().includes(q)),
+      )
+      const size = Number(url.searchParams.get("size") ?? 20)
+      return HttpResponse.json({
+        content: coinciden.slice(0, size),
+        totalElements: coinciden.length,
+        totalPages: Math.ceil(coinciden.length / size),
+        number: 0,
+        size,
+      })
+    }),
+  )
+  return pedidas
 }
+
+// Cualquier test que abra el combobox tiene un backend de explotaciones por defecto.
+beforeEach(() => {
+  servidorExplotaciones()
+})
 
 interface Opciones {
   tramiteId?: number | null
-  explotaciones?: CargaTodasLasExplotaciones
   onClose?: () => void
   onCambiado?: () => void
-  onReintentarExplotaciones?: () => void
 }
 
 function renderDialog(opciones: Opciones = {}) {
   const props = {
     tramiteId: opciones.tramiteId === undefined ? 7 : opciones.tramiteId,
-    explotaciones: opciones.explotaciones ?? listo(),
     onClose: opciones.onClose ?? vi.fn(),
     onCambiado: opciones.onCambiado ?? vi.fn(),
-    onReintentarExplotaciones: opciones.onReintentarExplotaciones ?? vi.fn(),
   }
   const utils = render(
     <MemoryRouter>
@@ -361,32 +387,68 @@ describe("TramiteReviewDialog: solo lectura fuera de PENDIENTE_REVISION (decisi�
   })
 })
 
-describe("TramiteReviewDialog: explotación (combobox con búsqueda)", () => {
-  it("filtra por ganadero, elige y la edición queda sin guardar; no hay opción para vaciarla", async () => {
+describe("TramiteReviewDialog: explotación (combobox con búsqueda en el backend, T4)", () => {
+  const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+  it("abrir el modal no pide explotaciones (D3a): solo el desplegable abierto pide", async () => {
+    const pedidas = servidorExplotaciones()
+    server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(DETALLE)))
+    renderDialog()
+    const dialogo = await dialogoListo()
+    await esperar(400)
+    expect(pedidas).toHaveLength(0)
+    // La guardada se ve igualmente: sale del detalle, no de una lista.
+    expect(within(dialogo).getByRole("combobox", { name: "Explotación" })).toHaveValue("ES123 · La Dehesa")
+  })
+
+  it("al abrir pide la primera página de 20 sin q (la etiqueta de la elegida cuenta como vacía, D3c/D3d)", async () => {
+    const pedidas = servidorExplotaciones()
+    server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(DETALLE)))
+    const user = userEvent.setup()
+    renderDialog()
+    const dialogo = await dialogoListo()
+    await user.click(within(dialogo).getByRole("combobox", { name: "Explotación" }))
+    expect(await screen.findAllByRole("option")).toHaveLength(EXPLOTACIONES.length)
+    expect(pedidas).toHaveLength(1)
+    expect(pedidas[0].searchParams.has("q")).toBe(false)
+    expect(pedidas[0].searchParams.get("size")).toBe("20")
+    expect(pedidas[0].searchParams.get("page")).toBe("0")
+    expect(screen.getByRole("option", { name: /ES123 · La Dehesa, ganadero: Ana Martínez/ })).toBeInTheDocument()
+  })
+
+  it("teclear lanza UNA petición con lo escrito tras la espera; elegir cambia el campo y queda sin guardar; sin opción para vaciar", async () => {
+    const pedidas = servidorExplotaciones()
     server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(DETALLE)))
     const user = userEvent.setup()
     renderDialog()
     const dialogo = await dialogoListo()
     const campo = within(dialogo).getByRole("combobox", { name: "Explotación" })
-
     await user.click(campo)
-    // Todas las de la lista, ninguna "ninguna" (H5).
-    expect(screen.getAllByRole("option")).toHaveLength(EXPLOTACIONES.length)
-    expect(screen.getByRole("option", { name: /ES123 · La Dehesa, ganadero: Ana Martínez/ })).toBeInTheDocument()
+    await screen.findAllByRole("option")
 
     await user.clear(campo)
     await user.type(campo, "benito")
-    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
-      expect.stringContaining("ES555"),
-      expect.stringContaining("ES999"),
-    ])
-    await user.click(screen.getByRole("option", { name: /Los Olivos/ }))
+    await waitFor(() =>
+      expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+        expect.stringContaining("ES555"),
+        expect.stringContaining("ES999"),
+      ]),
+    )
+    // Ni "b", ni "be"…: solo la apertura y la consulta final.
+    expect(pedidas.map((u) => u.searchParams.get("q"))).toEqual([null, "benito"])
 
+    await user.click(screen.getByRole("option", { name: /Los Olivos/ }))
     expect(campo).toHaveValue("ES999 · Los Olivos")
     expect(within(dialogo).getByText("Guarda antes de aprobar")).toBeInTheDocument()
     expect(within(dialogo).getByText("Sin guardar")).toBeInTheDocument()
     expect(boton(dialogo, "Guardar")).toBeEnabled()
     expect(boton(dialogo, "Aprobar")).toBeDisabled()
+
+    // Reabrir con la recién elegida (sin guardar): su etiqueta cuenta como consulta vacía (D3d).
+    await user.click(campo)
+    await screen.findAllByRole("option")
+    await waitFor(() => expect(pedidas).toHaveLength(3))
+    expect(pedidas[2].searchParams.has("q")).toBe(false)
   })
 
   it("sin explotación guardada, el campo lo dice (sin predecir si se puede aprobar)", async () => {
@@ -402,16 +464,102 @@ describe("TramiteReviewDialog: explotación (combobox con búsqueda)", () => {
     expect(campo).toHaveAttribute("placeholder", "Sin asignar · busca por código REGA, nombre o ganadero")
   })
 
-  it("sin coincidencias lo dice", async () => {
+  it("mientras busca, un aviso anunciado; sin coincidencias lo dice", async () => {
     server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(DETALLE)))
     const user = userEvent.setup()
     renderDialog()
     const dialogo = await dialogoListo()
     const campo = within(dialogo).getByRole("combobox", { name: "Explotación" })
+    await user.click(campo)
+    await screen.findAllByRole("option")
     await user.clear(campo)
     await user.type(campo, "zzz")
+    const buscando = await screen.findByText("Buscando explotaciones…")
+    expect(buscando.closest("[role=status]")).not.toBeNull()
     expect(await screen.findByText("Ninguna explotación coincide con lo que has escrito.")).toBeInTheDocument()
     expect(screen.queryAllByRole("option")).toHaveLength(0)
+    expect(screen.queryByText("Buscando explotaciones…")).not.toBeInTheDocument()
+  })
+
+  it("error de búsqueda: dentro del desplegable, con Reintentar que vuelve a pedir; la guardada sigue a la vista (D3f)", async () => {
+    let fallar = true
+    let peticiones = 0
+    server.use(
+      http.get(apiUrl("/tramites/7"), () => HttpResponse.json(DETALLE)),
+      http.get(apiUrl("/explotaciones"), () => {
+        peticiones += 1
+        return fallar
+          ? HttpResponse.error()
+          : HttpResponse.json({ content: EXPLOTACIONES, totalElements: 3, totalPages: 1, number: 0, size: 20 })
+      }),
+    )
+    const user = userEvent.setup()
+    renderDialog()
+    const dialogo = await dialogoListo()
+    const campo = within(dialogo).getByRole("combobox", { name: "Explotación" })
+    await user.click(campo)
+    expect(await screen.findByText("No se ha podido conectar con Ganera", { exact: false })).toBeInTheDocument()
+    expect(screen.queryByText("Ninguna explotación coincide con lo que has escrito.")).not.toBeInTheDocument()
+    expect(campo).toHaveValue("ES123 · La Dehesa")
+
+    fallar = false
+    await user.click(screen.getByRole("button", { name: "Reintentar" }))
+    expect(await screen.findAllByRole("option")).toHaveLength(EXPLOTACIONES.length)
+    expect(peticiones).toBe(2)
+    expect(campo).toHaveValue("ES123 · La Dehesa")
+    expect(within(dialogo).queryByText("Sin guardar")).not.toBeInTheDocument()
+  })
+
+  it("más de 100 caracteres se envían y el 400 enseña su motivo (D3e)", async () => {
+    const largo = "x".repeat(101)
+    const pedidas: (string | null)[] = []
+    server.use(
+      http.get(apiUrl("/tramites/7"), () => HttpResponse.json(DETALLE)),
+      http.get(apiUrl("/explotaciones"), ({ request }) => {
+        const q = new URL(request.url).searchParams.get("q")
+        pedidas.push(q)
+        return q && q.length > 100
+          ? HttpResponse.json({ motivo: "La búsqueda no puede tener más de 100 caracteres." }, { status: 400 })
+          : HttpResponse.json({ content: EXPLOTACIONES, totalElements: 3, totalPages: 1, number: 0, size: 20 })
+      }),
+    )
+    const user = userEvent.setup()
+    renderDialog()
+    const dialogo = await dialogoListo()
+    const campo = within(dialogo).getByRole("combobox", { name: "Explotación" })
+    expect(campo).not.toHaveAttribute("maxlength")
+    await user.click(campo)
+    await screen.findAllByRole("option")
+    await user.clear(campo)
+    // Pegar (no teclear): llega de una vez.
+    await user.paste(largo)
+    expect(await screen.findByText("La búsqueda no puede tener más de 100 caracteres.")).toBeInTheDocument()
+    expect(pedidas.at(-1)).toBe(largo)
+  })
+
+  it("con más coincidencias que las mostradas, «Hay N coincidencias; escribe para acotar.» en una región status (D3c)", async () => {
+    const muchas: Explotacion[] = Array.from({ length: 137 }, (_, i) => ({
+      id: 1000 + i,
+      codigoRega: `ES${String(i).padStart(12, "0")}`,
+      nombre: `Finca ${i}`,
+      ganaderoId: 1,
+      nombreGanadero: "Ana",
+    }))
+    servidorExplotaciones(muchas)
+    server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(DETALLE)))
+    const user = userEvent.setup()
+    renderDialog()
+    const dialogo = await dialogoListo()
+    const campo = within(dialogo).getByRole("combobox", { name: "Explotación" })
+    await user.click(campo)
+    const aviso = await screen.findByText("Hay 137 coincidencias; escribe para acotar.")
+    expect(aviso.closest("[role=status]")).not.toBeNull()
+    expect(screen.getAllByRole("option")).toHaveLength(20)
+
+    await user.clear(campo)
+    await user.type(campo, "Finca 136")
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1))
+    expect(screen.queryByText(/coincidencias; escribe para acotar/)).not.toBeInTheDocument()
   })
 
   it("borrar el texto no vacía la explotación guardada (H5)", async () => {
@@ -427,6 +575,25 @@ describe("TramiteReviewDialog: explotación (combobox con búsqueda)", () => {
     expect(boton(dialogo, "Aprobar")).toBeEnabled()
   })
 
+  it("Esc tras escribir devuelve la etiqueta de la elegida, y reabrir pide la primera página sin q (D3d)", async () => {
+    const pedidas = servidorExplotaciones()
+    server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(DETALLE)))
+    const user = userEvent.setup()
+    renderDialog()
+    const dialogo = await dialogoListo()
+    const campo = within(dialogo).getByRole("combobox", { name: "Explotación" })
+    await user.click(campo)
+    await screen.findAllByRole("option")
+    await user.clear(campo)
+    await user.type(campo, "zzz")
+    await screen.findByText("Ninguna explotación coincide con lo que has escrito.")
+    await user.keyboard("{Escape}")
+    expect(campo).toHaveValue("ES123 · La Dehesa")
+    await user.click(campo)
+    await screen.findAllByRole("option")
+    expect(pedidas.map((u) => u.searchParams.get("q"))).toEqual([null, "zzz", null])
+  })
+
   it("Esc con la lista abierta cierra solo la lista, no el modal", async () => {
     server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(DETALLE)))
     const onClose = vi.fn()
@@ -434,37 +601,11 @@ describe("TramiteReviewDialog: explotación (combobox con búsqueda)", () => {
     renderDialog({ onClose })
     const dialogo = await dialogoListo()
     await user.click(within(dialogo).getByRole("combobox", { name: "Explotación" }))
-    expect(screen.getAllByRole("option").length).toBeGreaterThan(0)
+    expect((await screen.findAllByRole("option")).length).toBeGreaterThan(0)
     await user.keyboard("{Escape}")
     await waitFor(() => expect(screen.queryAllByRole("option")).toHaveLength(0))
     expect(onClose).not.toHaveBeenCalled()
     expect(screen.getByRole("dialog")).toBeInTheDocument()
-  })
-
-  it("mientras se carga la lista, un marcador anunciado y la asignada de referencia", async () => {
-    server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(DETALLE)))
-    renderDialog({ explotaciones: { estado: "cargando" } })
-    const dialogo = await dialogoListo()
-    expect(within(dialogo).getByText("Cargando explotaciones…")).toHaveAttribute("role", "status")
-    expect(within(dialogo).getByText("ES123 · La Dehesa")).toBeInTheDocument()
-    expect(within(dialogo).queryByRole("combobox", { name: "Explotación" })).not.toBeInTheDocument()
-  })
-
-  it("si la lista no se pudo cargar: error con Reintentar, nunca una lista parcial", async () => {
-    server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(DETALLE)))
-    const onReintentarExplotaciones = vi.fn()
-    const user = userEvent.setup()
-    renderDialog({
-      explotaciones: { estado: "error", error: new ErrorApi({ tipo: "red" }) },
-      onReintentarExplotaciones,
-    })
-    const dialogo = await dialogoListo()
-    const alerta = within(dialogo).getByText("No se ha podido cargar la lista de explotaciones").closest("[role=alert]")!
-    expect(alerta).toHaveTextContent("No se ha podido conectar con Ganera")
-    expect(within(dialogo).queryByRole("combobox", { name: "Explotación" })).not.toBeInTheDocument()
-    expect(within(dialogo).getByText("ES123 · La Dehesa")).toBeInTheDocument()
-    await user.click(within(alerta as HTMLElement).getByRole("button", { name: "Reintentar" }))
-    expect(onReintentarExplotaciones).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -482,6 +623,37 @@ describe("TramiteReviewDialog: tipo de trámite", () => {
     expect(selector).toHaveTextContent("Censo")
     expect(selector).not.toHaveTextContent("CENSO")
     expect(within(dialogo).getByText("Sin guardar")).toBeInTheDocument()
+  })
+})
+
+describe("TramiteReviewDialog: crotal no encontrado e incompleto (completo, punto 5)", () => {
+  const crotales = [
+    crotal("4321", { completo: false }),
+    crotal("ES010000009999", { completo: true }),
+    crotal("1234", { crotal: "ES010000001234", resolucion: "EN_INVENTARIO", enInventario: true, animalId: 1, completo: false }),
+  ]
+
+  it("editable: la fila guardada incompleta sale en ámbar con «· incompleto»; las demás, como siempre", async () => {
+    server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(detalle({ crotales }))))
+    renderDialog()
+    const dialogo = await dialogoListo()
+    const filas = filasCrotales(dialogo)
+    expect(within(filas[0]).getByText("No está en el inventario · incompleto")).toHaveClass("bg-warning")
+    expect(within(filas[1]).getByText("No está en el inventario")).toHaveClass("border-border")
+    expect(within(filas[2]).getByText("En inventario")).toHaveClass("bg-success")
+    expect(within(filas[2]).queryByText(/incompleto/)).not.toBeInTheDocument()
+  })
+
+  it("solo lectura: igual", async () => {
+    server.use(
+      http.get(apiUrl("/tramites/7"), () => HttpResponse.json(detalle({ estado: "APROBADO", crotales }))),
+    )
+    renderDialog()
+    const dialogo = await dialogoListo()
+    const filas = filasCrotales(dialogo)
+    expect(within(filas[0]).getByText("No está en el inventario · incompleto")).toHaveClass("bg-warning")
+    expect(within(filas[1]).getByText("No está en el inventario")).toHaveClass("border-border")
+    expect(within(filas[2]).getByText("En inventario")).toHaveClass("bg-success")
   })
 })
 
@@ -585,7 +757,7 @@ describe("TramiteReviewDialog: Guardar", () => {
     const dialogo = await dialogoListo()
     const campo = within(dialogo).getByRole("combobox", { name: "Explotación" })
     await user.click(campo)
-    await user.click(screen.getByRole("option", { name: /Los Olivos/ }))
+    await user.click(await screen.findByRole("option", { name: /Los Olivos/ }))
     await user.click(within(dialogo).getByRole("combobox", { name: "Tipo de trámite" }))
     await user.click(await screen.findByRole("option", { name: "Censo" }))
     await user.click(boton(dialogo, "Guardar"))
@@ -597,6 +769,9 @@ describe("TramiteReviewDialog: Guardar", () => {
     expect(await within(dialogo).findByRole("button", { name: "Guardar" })).toBeDisabled()
     expect(patches).toEqual([{ version: 2, explotacionId: 9, tipoTramite: "CENSO" }])
     expect(boton(dialogo, "Aprobar")).toBeEnabled()
+    // Tras guardar, el campo enseña la guardada (la del detalle nuevo), sin «Sin guardar».
+    expect(campo).toHaveValue("ES999 · Los Olivos")
+    expect(within(dialogo).queryByText("Sin guardar")).not.toBeInTheDocument()
   })
 })
 
@@ -815,6 +990,24 @@ describe("TramiteReviewDialog: avisos", () => {
       "href",
       "/facturacion",
     )
+  })
+
+  it("403 con {motivo}: ese texto tal cual y el enlace a Facturación", async () => {
+    const motivo = "Tu suscripción está suspendida: actualízala en Facturación para aprobar."
+    server.use(
+      http.get(apiUrl("/tramites/7"), () => HttpResponse.json(DETALLE)),
+      http.post(apiUrl("/tramites/7/aprobar"), () => HttpResponse.json({ motivo }, { status: 403 })),
+    )
+    const user = userEvent.setup()
+    renderDialog()
+    const dialogo = await dialogoListo()
+    await user.click(boton(dialogo, "Aprobar"))
+    const alerta = (await within(dialogo).findByText(motivo)).closest("[role=alert]")!
+    expect(within(alerta as HTMLElement).getByRole("link", { name: "Ir a Facturación" })).toHaveAttribute(
+      "href",
+      "/facturacion",
+    )
+    expect(within(dialogo).queryByText(TEXTO_SUSCRIPCION)).not.toBeInTheDocument()
   })
 
   it("400 al guardar: el motivo, y la edición se conserva para corregirla", async () => {
@@ -1061,39 +1254,6 @@ describe("TramiteReviewDialog: correcciones tras la revisión de 9b", () => {
     expect(posts).toBe(0)
   })
 
-  it("m1: el aviso de «más de 100» depende de las coincidencias y se anuncia (región status)", async () => {
-    const muchas: Explotacion[] = Array.from({ length: 150 }, (_, i) => ({
-      id: 1000 + i,
-      codigoRega: `ES${String(i).padStart(12, "0")}`,
-      nombre: `Finca ${i}`,
-      ganaderoId: 1,
-      nombreGanadero: "Ana",
-    }))
-    server.use(
-      http.get(apiUrl("/tramites/7"), () =>
-        HttpResponse.json(
-          detalle({
-            explotacionId: null as unknown as number,
-            explotacionCodigoRega: null as unknown as string,
-            explotacionNombre: null as unknown as string,
-          }),
-        ),
-      ),
-    )
-    const user = userEvent.setup()
-    renderDialog({ explotaciones: listo(muchas) })
-    const dialogo = await dialogoListo()
-    const campo = within(dialogo).getByRole("combobox", { name: "Explotación" })
-    await user.click(campo)
-    const aviso = await screen.findByText("Hay más de 100 coincidencias: escribe para acotar.")
-    expect(aviso.closest("[role=status]")).not.toBeNull()
-    expect(screen.getAllByRole("option").length).toBeLessThanOrEqual(101)
-
-    await user.type(campo, "Finca 149")
-    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1))
-    expect(screen.queryByText("Hay más de 100 coincidencias: escribe para acotar.")).not.toBeInTheDocument()
-  })
-
   it("m2: cambiar la explotación marca «Sin guardar» en todas las filas; volver a la guardada devuelve los badges", async () => {
     server.use(
       http.get(apiUrl("/tramites/7"), () =>
@@ -1112,7 +1272,7 @@ describe("TramiteReviewDialog: correcciones tras la revisión de 9b", () => {
     const dialogo = await dialogoListo()
     const campo = within(dialogo).getByRole("combobox", { name: "Explotación" })
     await user.click(campo)
-    await user.click(screen.getByRole("option", { name: /Los Olivos/ }))
+    await user.click(await screen.findByRole("option", { name: /Los Olivos/ }))
 
     for (const fila of filasCrotales(dialogo)) {
       expect(within(fila).getByText("Sin guardar")).toBeInTheDocument()
@@ -1122,7 +1282,7 @@ describe("TramiteReviewDialog: correcciones tras la revisión de 9b", () => {
     expect(within(dialogo).queryByText("ES010000001234")).not.toBeInTheDocument()
 
     await user.click(campo)
-    await user.click(screen.getByRole("option", { name: /La Dehesa/ }))
+    await user.click(await screen.findByRole("option", { name: /La Dehesa/ }))
     const filas = filasCrotales(dialogo)
     expect(within(filas[0]).getByText("En inventario")).toBeInTheDocument()
     expect(within(filas[0]).getByText("ES010000001234")).toBeInTheDocument()

@@ -143,8 +143,11 @@ function ResumenHoja({ titulo, resumen }: { titulo: string; resumen: ImportHojaR
     <div>
       <p className="font-medium">{titulo}</p>
       <p className="text-muted-foreground">
-        {resumen.filasProcesadas} filas · {resumen.creadas} creadas · {resumen.actualizadas}{" "}
-        actualizadas
+        {[
+          plural(resumen.filasProcesadas, "fila", "filas"),
+          plural(resumen.creadas, "creada", "creadas"),
+          plural(resumen.actualizadas, "actualizada", "actualizadas"),
+        ].join(" · ")}
       </p>
     </div>
   );

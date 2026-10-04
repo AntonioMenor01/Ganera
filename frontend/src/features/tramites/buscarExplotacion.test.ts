@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { Explotacion } from "@/features/explotaciones/types"
-import { coincideExplotacion, etiquetaExplotacion } from "./buscarExplotacion"
+import { consultaDeBusqueda, etiquetaExplotacion } from "./buscarExplotacion"
 
 const DEHESA: Explotacion = {
   id: 3,
@@ -10,43 +10,6 @@ const DEHESA: Explotacion = {
   nombreGanadero: "Ana Martínez",
 }
 
-describe("coincideExplotacion (filtro de lo que se muestra, no una regla de negocio)", () => {
-  it("una consulta vacía o en blanco muestra todas", () => {
-    expect(coincideExplotacion(DEHESA, "")).toBe(true)
-    expect(coincideExplotacion(DEHESA, "   ")).toBe(true)
-  })
-
-  it("busca por código REGA, también por un trozo del medio", () => {
-    expect(coincideExplotacion(DEHESA, "ES2807")).toBe(true)
-    expect(coincideExplotacion(DEHESA, "0123")).toBe(true)
-    expect(coincideExplotacion(DEHESA, "es2807")).toBe(true)
-    expect(coincideExplotacion(DEHESA, "9999")).toBe(false)
-  })
-
-  it("busca por nombre y por ganadero, sin distinguir mayúsculas ni tildes", () => {
-    expect(coincideExplotacion(DEHESA, "dehesa")).toBe(true)
-    expect(coincideExplotacion(DEHESA, "martinez")).toBe(true)
-    expect(coincideExplotacion(DEHESA, "MARTÍNEZ")).toBe(true)
-    expect(coincideExplotacion(DEHESA, "encinar")).toBe(false)
-  })
-
-  it("con varias palabras, todas deben aparecer (en cualquier campo y orden)", () => {
-    expect(coincideExplotacion(DEHESA, "ana dehesa")).toBe(true)
-    expect(coincideExplotacion(DEHESA, "dehesa 0123")).toBe(true)
-    expect(coincideExplotacion(DEHESA, "ana encinar")).toBe(false)
-  })
-
-  it("la etiqueta que se ve en el campo (REGA · nombre) también coincide consigo misma", () => {
-    expect(coincideExplotacion(DEHESA, etiquetaExplotacion(DEHESA))).toBe(true)
-  })
-
-  it("nunca rompe con datos incompletos", () => {
-    const rara = { ...DEHESA, nombre: null, nombreGanadero: undefined } as unknown as Explotacion
-    expect(coincideExplotacion(rara, "ES28")).toBe(true)
-    expect(coincideExplotacion(rara, "dehesa")).toBe(false)
-  })
-})
-
 describe("etiquetaExplotacion", () => {
   it("es «REGA · nombre»", () => {
     expect(etiquetaExplotacion(DEHESA)).toBe("ES280790000123 · Finca La Dehesa")
@@ -54,5 +17,30 @@ describe("etiquetaExplotacion", () => {
 
   it("sin nombre, solo el código", () => {
     expect(etiquetaExplotacion({ ...DEHESA, nombre: "" })).toBe("ES280790000123")
+    expect(etiquetaExplotacion({ codigoRega: "ES1", nombre: null })).toBe("ES1")
+  })
+
+  it("sin código REGA (no debería pasar), el número de la explotación", () => {
+    expect(etiquetaExplotacion({ id: 3, codigoRega: null, nombre: null })).toBe("Explotación #3")
+  })
+})
+
+describe("consultaDeBusqueda (D3b, D3d)", () => {
+  it("recorta y por lo demás deja el texto tal cual: ni palabras sueltas ni tildes (D3b)", () => {
+    expect(consultaDeBusqueda("  ES12 Pérez ", null)).toBe("ES12 Pérez")
+    expect(consultaDeBusqueda("   ", null)).toBe("")
+  })
+
+  it("el texto es la etiqueta de la elegida → consulta vacía (D3d)", () => {
+    expect(consultaDeBusqueda("ES280790000123 · Finca La Dehesa", DEHESA)).toBe("")
+  })
+
+  it("una etiqueta con espacios en los extremos (nombre guardado así) también cuenta como vacía", () => {
+    expect(consultaDeBusqueda("ES280790000123 · Finca La Dehesa ", { ...DEHESA, nombre: "Finca La Dehesa " })).toBe("")
+  })
+
+  it("un texto distinto de la etiqueta de la elegida se busca", () => {
+    expect(consultaDeBusqueda("ES280790000123 · Finca La Dehes", DEHESA)).toBe("ES280790000123 · Finca La Dehes")
+    expect(consultaDeBusqueda("Dehesa", DEHESA)).toBe("Dehesa")
   })
 })

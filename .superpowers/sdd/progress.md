@@ -570,3 +570,47 @@ tarea; informes en `.superpowers/sdd/mp-*`.
   arreglo). `./mvnw clean test` **472/472**. El smoke de la T5 fue anterior a este arreglo. La
   siguiente tarea de frontend queda completa en `ganera-prompts.md` (7 puntos).
 - Commit con el visto bueno de Antonio (2026-10-02), sin push.
+
+## 2026-10-03 → 2026-10-04 — Tarea de frontend antes del piloto (solo frontend)
+
+Plan con las decisiones cerradas con Antonio: `docs/superpowers/plans/2026-10-03-tarea-frontend-antes-piloto.md`
+(navbar (a) en dos filas < `md`, email oculto < `md` y truncado desde `md`; regresión de tildes y
+palabras del `?q=` aceptada con la condición de anotarla como bloqueante de backend antes del piloto
+en `ganera-prompts.md`; 400 de `q` con su `motivo`, sin `maxLength`; resto como se recomendaba). Un
+implementador + un revisor independiente por tarea; informes en `.superpowers/sdd/fp-*`.
+
+- **T1** (plurales del importador, test del `403` con `motivo`, comentarios de `errores.ts`): 476 →
+  **480**. Approved with minors; m1/m2 (rutas de `httpClient.test.ts`) arreglados en la sesión
+  principal.
+- **T2** (`completo` → "No está en el inventario · incompleto" en ámbar, `presentacionCrotal`):
+  **493**. Approved with minors (DESIGN.md y el posible recorte del badge, comprobado en el smoke: no
+  se recorta).
+- **T3** (columna REGA de la cola desde `explotacionCodigoRega`; `explotacionDeTramite.ts` borrado):
+  **490**. Approved with minors (m2/m3 pasados a la T4).
+- **T4** (combobox con `GET /explotaciones?q=`, `useBuscarExplotaciones`; lista completa borrada;
+  etiqueta de la explotación tomada de la respuesta de aprobar/rechazar): **486**. Approved with
+  minors; m3 (etiqueta con espacios en D3d) arreglado con TDD en la sesión principal (**487**).
+- **T5** (navbar móvil; Impeccable shape aprobado por Antonio, que además pidió `scrollLeft` en vez de
+  `scrollIntoView` y comprobar `scrollY`): **501**. Approved with minors; minors 1–3
+  (`ResizeObserver`, aserciones de clases, restauración del espía) resueltos por el implementador:
+  **505**.
+- **T6 (cierre):** `npm test` **505/505** (36 ficheros); `npm run build` en verde (aviso del chunk);
+  `npm run lint` con los 3 avisos de siempre; `./mvnw clean test` **472/472**. Smoke en navegador real
+  (Playwright en el scratchpad, H2 en fichero, dos gestorías, B `SUSPENDIDA`), A–F OK
+  (`fp-t6-smoke.md`). Hallazgos no bloqueantes: N1, el foco de Tab puede caer en un enlace de la tira
+  cortado por el borde a 375 px; "Reintentar" del combobox no se alcanza con Tab (m1 de T4); la lista
+  del combobox se vacía mientras busca (m5 de T4). Procesos parados por PID; H2 y Excel borrados.
+  `DESIGN.md` (navbar, resolución de crotal, combobox), `CLAUDE.md`, `ganera-prompts.md` y este
+  fichero al día.
+- **Antes del commit (visto bueno de Antonio a las 42 rutas):** arreglado N1 con TDD. La tira aplica
+  el mismo ajuste de `scrollLeft` (`mostrarEnTira`, compartido con el del enlace activo) al enlace
+  que recibe el foco (`onFocus` del `nav`). El test nuevo falló primero (64 en vez de 0) y pasa tras
+  el arreglo. Navegador real a 375 px (Vite + API simulada con `page.route`): con la tira desplazada
+  (`scrollLeft` 46), el primer Tab entra en "Trámites" entero, a 16 px del borde, y `scrollY` no
+  cambia con la tira a la vista (20 → 20). Con la página bajada 200 px la barra queda fuera de
+  pantalla y el navegador sube a 0 al enfocar. Ocurre igual a 1440 px, donde el ajuste no hace nada:
+  es el comportamiento nativo del foco, no el arreglo. `npm test` **506/506**; build y lint en verde
+  (avisos de siempre). Vite parado por PID. "Reintentar" con Tab y el salto de altura del combobox
+  quedan anotados.
+- **Sin commit**: pendiente de la aprobación de Antonio.
+

@@ -5,16 +5,23 @@ import type { Animal, Explotacion, ImportResumen } from "./types";
 export interface OpcionesListarExplotaciones {
   /** `campo,asc|desc`; campos permitidos por el backend: codigoRega, nombre, id. */
   sort?: string;
+  /**
+   * Búsqueda (`GET /explotaciones?q=`): contiene, sin distinguir mayúsculas, sobre código REGA,
+   * nombre o ganadero, como una sola cadena y sin quitar tildes. Vacía o en blanco = no se envía
+   * (el backend la trataría igual: listado normal).
+   */
+  q?: string;
   signal?: AbortSignal;
 }
 
 export async function listarExplotaciones(
   page: number,
   size: number,
-  { sort, signal }: OpcionesListarExplotaciones = {},
+  { sort, q, signal }: OpcionesListarExplotaciones = {},
 ): Promise<Pagina<Explotacion>> {
+  const consulta = q?.trim() ? q : undefined;
   const { data } = await httpClient.get<Pagina<Explotacion>>("/explotaciones", {
-    params: { page, size, sort },
+    params: { page, size, sort, q: consulta },
     signal,
   });
   return data;
