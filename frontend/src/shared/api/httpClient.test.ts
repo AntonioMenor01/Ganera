@@ -72,15 +72,19 @@ describe("httpClient: normalización de errores a ErrorApi", () => {
 
   it("503 de un gateway con texto plano → no pisa el texto del contexto (M1)", async () => {
     server.use(
-      http.post(apiUrl("/facturacion/checkout"), () =>
+      http.post(apiUrl("/gestorias/registro"), () =>
         HttpResponse.text("no healthy upstream", { status: 503 }),
       ),
     )
-    const error = await capturarError(httpClient.post("/facturacion/checkout"))
+    const error = await capturarError(httpClient.post("/gestorias/registro"))
     expect((error as ErrorApi).motivo).toBeUndefined()
-    expect(mensajeDeError(error, "checkout")).toBe(
+    expect(mensajeDeError(error, "registro")).toBe(
       "La facturación todavía no está configurada. Vuelve a intentarlo más tarde.",
     )
+    // "registro" ignora el motivo, así que la línea anterior pasaría aunque el interceptor leyera
+    // el texto plano. Con un contexto que sí enseña el motivo, ese texto acabaría en pantalla.
+    expect(mensajeDeError(error, "suscripcion")).toBe(TEXTO_ERROR_SERVIDOR)
+    expect(mensajeDeError(error, "suscripcion")).not.toContain("no healthy upstream")
   })
 
   it("5xx con {motivo} JSON → tampoco se lee (solo 4xx traen motivo para el usuario) (M1)", async () => {
@@ -148,8 +152,8 @@ describe("httpClient: normalización de errores a ErrorApi", () => {
   })
 
   it("503 sin cuerpo → servidor con status 503", async () => {
-    server.use(http.post(apiUrl("/facturacion/checkout"), () => new HttpResponse(null, { status: 503 })))
-    const error = await capturarError(httpClient.post("/facturacion/checkout"))
+    server.use(http.post(apiUrl("/gestorias/registro"), () => new HttpResponse(null, { status: 503 })))
+    const error = await capturarError(httpClient.post("/gestorias/registro"))
     expect(error).toMatchObject({ tipo: "servidor", status: 503 })
   })
 

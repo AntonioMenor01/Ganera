@@ -8,23 +8,17 @@ import { SuscripcionBanner } from "@/features/facturacion/SuscripcionBanner";
 import { useSuscripcionEstado } from "@/features/facturacion/useSuscripcionEstado";
 import { scrollLeftParaMostrar } from "./tiraNavegacion";
 
-// Orden de trabajo: la cola (lo diario), a quién pertenece (Ganaderos → sus explotaciones) y, al
-// final, la cuenta. /ganaderos/:id también marca "Ganaderos" (NavLink sin `end`).
+// Orden de trabajo: la cola (lo diario) y a quién pertenece (Ganaderos → sus explotaciones). El
+// pago ya no se gestiona en la app (se cobra desde la landing): no hay enlace de Facturación.
+// /ganaderos/:id también marca "Ganaderos" (NavLink sin `end`).
 const ENLACES = [
   { to: "/tramites", label: "Trámites" },
   { to: "/ganaderos", label: "Ganaderos" },
   { to: "/explotaciones", label: "Explotaciones" },
-  { to: "/facturacion", label: "Facturación" },
 ];
 
 /** Margen interior de la tira de enlaces en móvil (`px-4`): el activo se trae a la vista con él. */
 const MARGEN_TIRA_PX = 16;
-
-/** Contexto compartido via <Outlet> para que las paginas hijas (p.ej. Facturacion) reutilicen
- * el mismo fetch de estado de suscripcion en vez de repetirlo. */
-export interface AppLayoutContext {
-  suscripcion: ReturnType<typeof useSuscripcionEstado>;
-}
 
 /**
  * Barra superior. Un solo <nav> en el DOM, en orden marca → enlaces → usuario/Salir (el orden de
@@ -128,7 +122,7 @@ export function AppLayout() {
       </header>
       <SuscripcionBanner suscripcion={suscripcion} />
       <main className="flex-1 p-6">
-        <Outlet context={{ suscripcion } satisfies AppLayoutContext} />
+        <Outlet />
       </main>
     </div>
   );

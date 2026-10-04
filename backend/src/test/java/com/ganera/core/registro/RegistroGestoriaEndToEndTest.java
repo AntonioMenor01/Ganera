@@ -22,8 +22,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * confirmar que de verdad es publico -- si SecurityConfig no tuviera el permitAll nuevo, esto
  * fallaria con 401 antes de llegar al controller). stripe.price-id-explotacion esta en blanco en
  * application.yml de test, asi que el camino de exito real observable aqui es 503 (Stripe no
- * configurado) con Gestoria+Usuario ya persistidos -- misma limitacion ya aceptada que
- * POST /facturacion/checkout (ver CLAUDE.md, Prompt 2.7).
+ * configurado) con Gestoria+Usuario ya persistidos -- limitacion ya aceptada mientras el Price
+ * de Stripe siga sin crearse (ver CLAUDE.md, Prompt 2.7).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class RegistroGestoriaEndToEndTest {

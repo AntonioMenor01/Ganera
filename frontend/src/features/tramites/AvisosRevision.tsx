@@ -1,9 +1,7 @@
-import { Link } from "react-router-dom";
 import { CircleCheckIcon, XIcon } from "lucide-react";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { CLASE_ENLACE } from "@/shared/ui/enlace";
 import type { AccionRevision, AvisoRevision } from "./useRevisionTramite";
 
 /**
@@ -54,15 +52,9 @@ export function AvisosRevision({
             {error.tipo === "estado-cambiado" ? "El trámite ha cambiado de estado" : TITULO_ERROR[error.accion]}
           </AlertTitle>
           <AlertDescription>
-            {/* 409/400: el motivo del backend, tal cual (decisión 10). */}
+            {/* 409/400/403: el motivo del backend, tal cual (decisión 10). El 403 de aprobar ya no
+                lleva enlace: no hay página de pago en la app, el motivo pide contactar con Ganera. */}
             <p>{error.mensaje}</p>
-            {error.tipo === "prohibido" && (
-              <p>
-                <Link to="/facturacion" className={CLASE_ENLACE}>
-                  Ir a Facturación
-                </Link>
-              </p>
-            )}
           </AlertDescription>
           <BotonCerrarAviso onClick={onDescartarAviso} />
         </Alert>

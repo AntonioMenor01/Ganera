@@ -44,7 +44,6 @@ describe("navegación: Ganaderos", () => {
       "Trámites",
       "Ganaderos",
       "Explotaciones",
-      "Facturación",
     ])
     const ganaderos = within(barra).getByRole("link", { name: "Ganaderos" })
     expect(ganaderos).toHaveAttribute("href", "/ganaderos")

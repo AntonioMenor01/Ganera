@@ -658,7 +658,9 @@ class TramiteRevisionEndToEndTest {
 
         ResponseEntity<String> suspendida = aprobar(aprobable, tokenA);
         assertThat(suspendida.getStatusCode().value()).isEqualTo(403);
-        assertThat(motivo(suspendida)).isEqualTo(TramiteController.MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR);
+        assertThat(motivo(suspendida)).isEqualTo(TramiteController.MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR)
+                .isEqualTo("Tu suscripción no permite aprobar trámites ahora mismo (prueba terminada o suscripción "
+                        + "suspendida). Ponte en contacto con Ganera para regularizarla.");
         assertThat(estadoEnBd(aprobable)).isEqualTo("PENDIENTE_REVISION");
 
         Gestoria gestoriaC = gestoriaRepository.save(new Gestoria("Gestoria revision E2E C sin suscripcion"));

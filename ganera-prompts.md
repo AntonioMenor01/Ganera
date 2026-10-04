@@ -639,7 +639,23 @@ Plan con las decisiones cerradas: `docs/superpowers/plans/2026-10-03-tarea-front
 
 ---
 
+## Orden de trabajo desde el 2026-10-04 (cambio de rumbo: el cobro pasa a la landing)
+
+1. **Quitar el pago de la app** (hecho el 2026-10-04; backend 534/534, frontend 508/508, smoke en navegador con dos gestorías; plan `docs/superpowers/plans/2026-10-04-quitar-pago-de-la-app.md`).
+   Salen la página de Facturación, su enlace en la navbar y `POST /facturacion/checkout`. Se quedan los
+   webhooks de Stripe, los estados de suscripción, el `SuscripcionBanner` y el 403 al aprobar. Los textos que
+   mandaban a Facturación pasan a pedir que se contacte con Ganera. El Registro no se toca hasta el C.
+2. **Colores y tipografía** de la marca nueva. Con Impeccable, revisando el shape antes del craft, y con
+   `DESIGN.md` actualizado (nueva paleta y contrastes).
+3. **Prompt B** (WhatsApp + IA, sin OVZ), al que se añade el **alta por nacimiento con crotal de la madre,
+   sexo y fecha de nacimiento**: extracción y campos en el modal de revisión.
+4. **Prompt C**, después la app de escritorio, el MVP a la gestoría piloto y, tras el piloto, OVZ 3a/3c.
+
 ## Prompt B — notas acumuladas (pendiente)
+
+- **Alta por nacimiento (2026-10-04):** tipo de trámite con el crotal de la madre, el sexo y la fecha de
+  nacimiento del ternero. La IA los extrae y el modal de revisión tiene campos para verlos y corregirlos.
+  Venta con comprador, censo y demoras quedan para más adelante.
 
 Además del catálogo real de tipos de trámite (ver los pendientes heredados en el Prompt 3b):
 - **Medir el uso de IA por gestoría:** número de mensajes procesados y tokens consumidos (entrada y salida) por Gestoría, para conocer el coste real por cliente.
@@ -652,6 +668,16 @@ Además del catálogo real de tipos de trámite (ver los pendientes heredados en
 ---
 
 ## Prompt C — notas acumuladas (pendiente)
+
+- **Stripe: bugs conocidos, pendientes (detectados el 2026-09-25; siguen fuera de "quitar el pago de la app"):**
+  1. `invoice.payment_failed` sobre una suscripción que ya está en `TRIAL_EXPIRADO_SIN_PAGO` la pasa a
+     `IMPAGO_GRACIA`, lo que vuelve a permitir aprobar. Arreglarlo empezando por el test.
+  2. Una prueba cuyo Checkout se abandona se queda en `TRIAL`, con derecho a aprobar, para siempre. Desde que
+     se quitó el pago de la app, solo puede ocurrir por el Registro. Antes de arreglarlo hay que decidir el
+     diseño; encaja con el alta desde la landing (prueba de 15 días sin cobro automático).
+- **`SuscripcionSyncScheduler`:** cada noche pasa a Stripe la cantidad de explotaciones de las suscripciones
+  `ACTIVA`/`IMPAGO_GRACIA`. Hay que revisarlo cuando el cobro pase a planes por número de ganaderos
+  (25/75/200). Tampoco corrige nunca una suscripción en `TRIAL`.
 
 - **Índice de búsqueda de explotaciones, si va lenta (2026-10-04):** en PostgreSQL, un `pg_trgm` GIN sobre
   `explotacion.busqueda` y `ganadero.nombre_busqueda`. Esas columnas ya están normalizadas, así que no hace

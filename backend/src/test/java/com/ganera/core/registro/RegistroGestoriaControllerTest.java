@@ -35,7 +35,7 @@ class RegistroGestoriaControllerTest {
     private RegistroGestoriaController nuevoController() {
         RegistroGestoriaService servicio = new RegistroGestoriaService(gestoriaRepository, usuarioRepository, passwordEncoder);
         StripeCheckoutService stripeCheckoutServiceSinConfigurar = new StripeCheckoutService(
-                null, null, null, "", "", "", "");
+                null, null, "", "", "", "");
         return new RegistroGestoriaController(servicio, stripeCheckoutServiceSinConfigurar);
     }
 

@@ -37,12 +37,14 @@ public class TramiteController {
     static final String MOTIVO_TIPO_INVALIDO = "Tipo de trámite no válido.";
     static final String MOTIVO_FALTA_VERSION =
             "Falta la versión del trámite (campo version). Vuelve a cargarlo e inténtalo de nuevo.";
-    /** Mini-prompt tras A2 (punto 2): motivo del 403 de aprobar. Un unico texto, identico al que
-     * ya mostraba el frontend (no distingue trial expirado / suspendida / sin Suscripcion: el banner
-     * de Facturacion ya lo dice) y que no depende del Tramite, asi que no revela nada de el. */
+    /** Motivo del 403 de aprobar (mini-prompt tras A2; texto cambiado en el plan 2026-10-04, D2,
+     * al quitar el pago de la app). Un unico texto, identico al de reserva del frontend: no
+     * distingue prueba terminada / suspendida / sin Suscripcion (el banner de suscripcion del
+     * layout ya lo dice), pide contactar con Ganera en vez de remitir a una pagina de pago, y no
+     * depende del Tramite, asi que no revela nada de el. */
     static final String MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR =
-            "Tu suscripción no permite aprobar trámites ahora mismo (trial expirado o suspendida). "
-                    + "Actualiza tu suscripción en Facturación.";
+            "Tu suscripción no permite aprobar trámites ahora mismo (prueba terminada o suscripción "
+                    + "suspendida). Ponte en contacto con Ganera para regularizarla.";
     static final String MOTIVO_CONCURRENCIA =
             "El trámite se estaba modificando a la vez desde otra sesión. Vuelve a cargarlo e inténtalo de nuevo.";
 

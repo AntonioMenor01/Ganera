@@ -22,7 +22,7 @@ beforeEach(() => {
 })
 
 const TEXTO_SUSCRIPCION =
-  "Tu suscripción no permite aprobar trámites ahora mismo (trial expirado o suspendida). Actualiza tu suscripción en Facturación."
+  "Tu suscripción no permite aprobar trámites ahora mismo (prueba terminada o suscripción suspendida). Ponte en contacto con Ganera para regularizarla."
 const TEXTO_NO_EXISTE = "Este trámite ya no existe o no es de tu gestoría."
 
 function crotal(crotalIndicado: string, parcial: Partial<TramiteCrotal> = {}): TramiteCrotal {
@@ -1008,8 +1008,10 @@ describe("useRevisionTramite: 400, 403, 404, red y servidor", () => {
     expect(onCambiado).not.toHaveBeenCalled()
   })
 
-  it("aprobar 403 con {motivo}: se enseña el motivo del backend tal cual, no el texto fijo", async () => {
-    const motivo = "Tu suscripción está suspendida: actualízala en Facturación para aprobar."
+  it("aprobar 403 con {motivo}: se enseña el motivo del backend tal cual, no el texto fijo, y no cierra sesión", async () => {
+    const alNoAutorizado = vi.fn()
+    setUnauthorizedHandler(alNoAutorizado)
+    const motivo = "Tu suscripción está suspendida: habla con Ganera para poder aprobar."
     detallesEnOrden(() => HttpResponse.json(detalle()))
     server.use(
       http.post(apiUrl("/tramites/7/aprobar"), () => HttpResponse.json({ motivo }, { status: 403 })),
@@ -1019,6 +1021,7 @@ describe("useRevisionTramite: 400, 403, 404, red y servidor", () => {
       await result.current.aprobar()
     })
     expect(result.current.aviso).toEqual({ tipo: "prohibido", accion: "aprobar", mensaje: motivo })
+    expect(alNoAutorizado).not.toHaveBeenCalled()
     expect(onCambiado).not.toHaveBeenCalled()
   })
 

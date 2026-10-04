@@ -12,7 +12,7 @@ import {
 } from "@/shared/api/errores"
 
 const TEXTO_SUSCRIPCION =
-  "Tu suscripción no permite aprobar trámites ahora mismo (trial expirado o suspendida). Actualiza tu suscripción en Facturación."
+  "Tu suscripción no permite aprobar trámites ahora mismo (prueba terminada o suscripción suspendida). Ponte en contacto con Ganera para regularizarla."
 
 describe("ErrorApi", () => {
   it("es un Error de verdad, con tipo, status y motivo", () => {
@@ -77,7 +77,7 @@ describe("mensajeDeError", () => {
   })
 
   it("prohibido al aprobar con motivo → el motivo del backend tal cual, no el texto fijo", () => {
-    const motivo = "Tu suscripción está suspendida: actualízala en Facturación para aprobar."
+    const motivo = "Tu suscripción está suspendida: habla con Ganera para poder aprobar."
     const error = new ErrorApi({ tipo: "prohibido", status: 403, motivo })
     expect(mensajeDeError(error, "aprobar-tramite")).toBe(motivo)
     expect(mensajeDeError(error, "aprobar-tramite")).not.toBe(TEXTO_SUSCRIPCION)
@@ -127,10 +127,9 @@ describe("mensajeDeError", () => {
     )
   })
 
-  it("503 en checkout y registro → facturación no configurada (comportamiento previo)", () => {
+  it("503 en registro → facturación no configurada (comportamiento previo)", () => {
     const error = new ErrorApi({ tipo: "servidor", status: 503 })
     const esperado = "La facturación todavía no está configurada. Vuelve a intentarlo más tarde."
-    expect(mensajeDeError(error, "checkout")).toBe(esperado)
     expect(mensajeDeError(error, "registro")).toBe(esperado)
     // Fuera de esos contextos, un 503 es un fallo de servidor más.
     expect(mensajeDeError(error, "listar-tramites")).toBe(TEXTO_ERROR_SERVIDOR)
@@ -204,7 +203,6 @@ describe("mensajeDeError", () => {
       undefined,
       "login",
       "registro",
-      "checkout",
       "suscripcion",
       "importar-excel",
       "listar-explotaciones",

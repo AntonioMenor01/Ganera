@@ -54,11 +54,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * POST /explotaciones/importar.
  *
  * NO cubiertos aqui a proposito, con la razon documentada in situ:
- * GET /facturacion/suscripcion y POST /facturacion/checkout -- ninguno de los dos usa el filtro
- * ambiente; ambos resuelven la Suscripcion via SuscripcionRepository.findByGestoriaId(gestoriaId)
- * / ExplotacionRepository.countByGestoriaId(gestoriaId), queries con el gestoriaId como parametro
- * EXPLICITO de la query derivada, inmunes a este tipo de bug por construccion (fallarian igual con
- * o sin el interceptor activo).
+ * GET /facturacion/suscripcion -- no usa el filtro ambiente; resuelve la Suscripcion via
+ * SuscripcionRepository.findByGestoriaId(gestoriaId), query con el gestoriaId como parametro
+ * EXPLICITO de la query derivada, inmune a este tipo de bug por construccion (fallaria igual con
+ * o sin el interceptor activo). El antiguo checkout de la app ya no existe (plan 2026-10-04).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class TenantIsolationEndToEndTest {

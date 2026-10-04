@@ -31,7 +31,7 @@ public class ExplotacionImportController {
      * tiene su propio motivo) o le falta una hoja obligatoria -- {@link
      * FicheroImportacionInvalidoException} de ExplotacionImportService.importar, con el motivo ya
      * en espanol. Solo esa excepcion: cualquier otro fallo inesperado del procesado se deja subir
-     * sin capturar (500), igual que StripeException en FacturacionController (D6.3). */
+     * sin capturar (500), igual que la StripeException en RegistroGestoriaController (D6.3). */
     @PostMapping(value = "/explotaciones/importar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> importar(
             @AuthenticationPrincipal GaneraUserPrincipal principal,

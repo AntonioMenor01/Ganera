@@ -22,10 +22,8 @@ class FacturacionControllerTest {
     private SuscripcionRepository suscripcionRepository;
 
     private FacturacionController nuevoController() {
-        StripeCheckoutService stripeCheckoutServiceNoUsado = new StripeCheckoutService(
-                null, null, null, "", "", "", "");
         SuscripcionService suscripcionService = new SuscripcionService(suscripcionRepository, gestoriaRepository);
-        return new FacturacionController(stripeCheckoutServiceNoUsado, suscripcionRepository, suscripcionService);
+        return new FacturacionController(suscripcionRepository, suscripcionService);
     }
 
     @Test

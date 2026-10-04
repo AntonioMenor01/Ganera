@@ -14,11 +14,3 @@ export async function obtenerEstadoSuscripcion(): Promise<SuscripcionEstado | nu
     throw error;
   }
 }
-
-/** Misma sesion de checkout tanto para empezar el trial de 15 dias (si nunca tuvo Suscripcion)
- * como para poner al dia el pago (si esta en un estado bloqueante) -- el backend ya resuelve
- * cual de los dos casos es via obtenerOCrearSuscripcion. */
-export async function crearSesionCheckout(): Promise<string> {
-  const { data } = await httpClient.post<{ url: string }>("/facturacion/checkout");
-  return data.url;
-}

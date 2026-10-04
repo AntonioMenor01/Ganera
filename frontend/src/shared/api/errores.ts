@@ -163,7 +163,6 @@ export type ContextoError =
   | "login"
   | "comprobar-sesion"
   | "registro"
-  | "checkout"
   | "suscripcion"
   | "importar-excel"
   | "listar-explotaciones"
@@ -214,10 +213,6 @@ const TEXTOS: Record<ContextoError, TextosContexto> = {
       "No se ha podido completar el registro con esos datos. Revisa el email y la contraseña e inténtalo de nuevo.",
     porStatus: { 503: TEXTO_FACTURACION_NO_CONFIGURADA },
   },
-  checkout: {
-    generico: "No se ha podido iniciar el pago. Inténtalo de nuevo.",
-    porStatus: { 503: TEXTO_FACTURACION_NO_CONFIGURADA },
-  },
   suscripcion: {
     generico: "No se ha podido cargar el estado de la suscripción. Inténtalo de nuevo.",
   },
@@ -238,10 +233,11 @@ const TEXTOS: Record<ContextoError, TextosContexto> = {
     generico: "No se ha podido aprobar el trámite. Inténtalo de nuevo.",
     noEncontrado: TEXTO_TRAMITE_NO_ENCONTRADO,
     // El 403 de aprobar solo puede ser por la suscripción y llega con `{motivo}`
-    // (TramiteController.MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR, este mismo texto), que es lo que se
-    // enseña. Este texto fijo es solo la reserva si no llega motivo.
+    // (TramiteController.MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR), que es lo que se enseña. Este
+    // texto fijo, copia literal de ese motivo, es solo la reserva si no llega. La app ya no tiene
+    // página de pago: el texto pide contactar con Ganera, sin remitir a ninguna pantalla.
     prohibido:
-      "Tu suscripción no permite aprobar trámites ahora mismo (trial expirado o suspendida). Actualiza tu suscripción en Facturación.",
+      "Tu suscripción no permite aprobar trámites ahora mismo (prueba terminada o suscripción suspendida). Ponte en contacto con Ganera para regularizarla.",
   },
   "rechazar-tramite": {
     generico: "No se ha podido rechazar el trámite. Inténtalo de nuevo.",

@@ -1,6 +1,5 @@
 package com.ganera.core.facturacion;
 
-import com.ganera.core.explotacion.ExplotacionRepository;
 import com.stripe.exception.StripeException;
 import com.stripe.model.checkout.Session;
 import com.stripe.param.checkout.SessionCreateParams;
@@ -10,9 +9,10 @@ import org.springframework.stereotype.Service;
 import java.util.Optional;
 
 /**
- * Crea Stripe Checkout Sessions (mode SUBSCRIPTION) para que una Gestoria real
- * (no piloto) contrate el plan, con 15 dias de trial y quantity = numero de
- * Explotaciones activas de esa Gestoria.
+ * Crea Stripe Checkout Sessions (mode SUBSCRIPTION, 15 dias de trial) para el alta publica de
+ * una Gestoria real (no piloto) via POST /gestorias/registro, con quantity = una estimacion de
+ * Explotaciones derivada del rango de clientes. Es el unico checkout que queda: la app ya no
+ * inicia pagos para una Gestoria ya dada de alta (plan 2026-10-04; el cobro pasa a la landing).
  */
 @Service
 public class StripeCheckoutService {
@@ -21,7 +21,6 @@ public class StripeCheckoutService {
 
     private final SuscripcionService suscripcionService;
     private final SuscripcionRepository suscripcionRepository;
-    private final ExplotacionRepository explotacionRepository;
     private final String apiKey;
     private final String priceIdExplotacion;
     private final String successUrl;
@@ -29,14 +28,12 @@ public class StripeCheckoutService {
 
     public StripeCheckoutService(SuscripcionService suscripcionService,
                                   SuscripcionRepository suscripcionRepository,
-                                  ExplotacionRepository explotacionRepository,
                                   @Value("${stripe.api-key:}") String apiKey,
                                   @Value("${stripe.price-id-explotacion:}") String priceIdExplotacion,
                                   @Value("${stripe.checkout.success-url}") String successUrl,
                                   @Value("${stripe.checkout.cancel-url}") String cancelUrl) {
         this.suscripcionService = suscripcionService;
         this.suscripcionRepository = suscripcionRepository;
-        this.explotacionRepository = explotacionRepository;
         this.apiKey = apiKey;
         this.priceIdExplotacion = priceIdExplotacion;
         this.successUrl = successUrl;
@@ -44,31 +41,18 @@ public class StripeCheckoutService {
     }
 
     /**
-     * Crea la Checkout Session para la Gestoria y devuelve su URL, o
-     * Optional.empty() si Stripe no esta configurado todavia (clave o price id
-     * en blanco) -- el caller (FacturacionController) lo traduce a 503.
-     *
-     * Deliberadamente sin @Transactional: obtenerOCrearSuscripcion recupera de
-     * una carrera de creacion via saveAndFlush + catch de
-     * DataIntegrityViolationException dentro de su propia transaccion; envolver
-     * esta llamada en una transaccion nueva podria marcarla rollback-only en ese
-     * flush interno y convertir una recuperacion limpia en un
-     * UnexpectedRollbackException.
-     */
-    public Optional<String> crearSesionCheckout(Long gestoriaId) throws StripeException {
-        if (!configuracionCompleta()) {
-            return Optional.empty();
-        }
-        long cantidad = cantidadAContratar(explotacionRepository.countByGestoriaId(gestoriaId));
-        return crearSesionConCantidad(gestoriaId, cantidad);
-    }
-
-    /**
-     * Variante para el alta publica (POST /gestorias/registro): en ese momento la Gestoria todavia
-     * no tiene ninguna Explotacion real (se registra antes de importar su inventario), asi que la
+     * Alta publica (POST /gestorias/registro): crea la Checkout Session y devuelve su URL, o
+     * Optional.empty() si Stripe no esta configurado todavia (clave o price id en blanco) -- el
+     * caller (RegistroGestoriaController) lo traduce a 503. En ese momento la Gestoria todavia no
+     * tiene ninguna Explotacion real (se registra antes de importar su inventario), asi que la
      * quantity es una ESTIMACION derivada del rango de clientes elegido (ver RangoClientes), no un
      * conteo real. Esta estimacion no se autocorrige hasta que la suscripcion llegue a
      * ACTIVA/IMPAGO_GRACIA -- ver la limitacion conocida de SuscripcionSyncScheduler en CLAUDE.md.
+     *
+     * Deliberadamente sin @Transactional: obtenerOCrearSuscripcion recupera de una carrera de
+     * creacion via saveAndFlush + catch de DataIntegrityViolationException dentro de su propia
+     * transaccion; envolver esta llamada en una transaccion nueva podria marcarla rollback-only en
+     * ese flush interno y convertir una recuperacion limpia en un UnexpectedRollbackException.
      */
     public Optional<String> crearSesionCheckoutConCantidadEstimada(Long gestoriaId, long cantidadEstimada)
             throws StripeException {
@@ -92,10 +76,6 @@ public class StripeCheckoutService {
 
     boolean configuracionCompleta() {
         return !apiKey.isBlank() && !priceIdExplotacion.isBlank();
-    }
-
-    static long cantidadAContratar(long explotacionesActivas) {
-        return Math.max(1L, explotacionesActivas);
     }
 
     SessionCreateParams construirParametros(Long gestoriaId, long cantidad) {

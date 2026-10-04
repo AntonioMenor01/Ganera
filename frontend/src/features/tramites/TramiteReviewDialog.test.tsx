@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { setUnauthorizedHandler } from "@/shared/api/authSession"
 import { apiUrl } from "@/test/apiBaseUrl"
 import { server } from "@/test/server"
 import type { Explotacion } from "@/features/explotaciones/types"
@@ -31,7 +32,7 @@ const EXPLOTACIONES: Explotacion[] = [
 ]
 
 const TEXTO_SUSCRIPCION =
-  "Tu suscripción no permite aprobar trámites ahora mismo (trial expirado o suspendida). Actualiza tu suscripción en Facturación."
+  "Tu suscripción no permite aprobar trámites ahora mismo (prueba terminada o suscripción suspendida). Ponte en contacto con Ganera para regularizarla."
 
 function crotal(crotalIndicado: string, parcial: Partial<TramiteCrotal> = {}): TramiteCrotal {
   return {
@@ -976,7 +977,9 @@ describe("TramiteReviewDialog: avisos", () => {
     expect(within(dialogo).queryByText("En inventario")).not.toBeInTheDocument()
   })
 
-  it("403: el texto de la suscripción y un enlace a Facturación", async () => {
+  it("403 sin motivo: el texto de reserva de la suscripción, sin enlaces, y la sesión sigue abierta", async () => {
+    const alNoAutorizado = vi.fn()
+    setUnauthorizedHandler(alNoAutorizado)
     server.use(
       http.get(apiUrl("/tramites/7"), () => HttpResponse.json(DETALLE)),
       http.post(apiUrl("/tramites/7/aprobar"), () => new HttpResponse(null, { status: 403 })),
@@ -986,14 +989,16 @@ describe("TramiteReviewDialog: avisos", () => {
     const dialogo = await dialogoListo()
     await user.click(boton(dialogo, "Aprobar"))
     const alerta = (await within(dialogo).findByText(TEXTO_SUSCRIPCION)).closest("[role=alert]")!
-    expect(within(alerta as HTMLElement).getByRole("link", { name: "Ir a Facturación" })).toHaveAttribute(
-      "href",
-      "/facturacion",
-    )
+    // Ya no hay página de Facturación: el aviso no remite a ningún sitio.
+    expect(within(alerta as HTMLElement).queryByRole("link")).not.toBeInTheDocument()
+    expect(within(dialogo).queryByRole("link", { name: /facturaci/i })).not.toBeInTheDocument()
+    expect(alNoAutorizado).not.toHaveBeenCalled()
   })
 
-  it("403 con {motivo}: ese texto tal cual y el enlace a Facturación", async () => {
-    const motivo = "Tu suscripción está suspendida: actualízala en Facturación para aprobar."
+  it("403 con {motivo}: ese texto tal cual, sin enlaces, y la sesión sigue abierta", async () => {
+    const alNoAutorizado = vi.fn()
+    setUnauthorizedHandler(alNoAutorizado)
+    const motivo = "Tu suscripción está suspendida: habla con Ganera para poder aprobar."
     server.use(
       http.get(apiUrl("/tramites/7"), () => HttpResponse.json(DETALLE)),
       http.post(apiUrl("/tramites/7/aprobar"), () => HttpResponse.json({ motivo }, { status: 403 })),
@@ -1003,11 +1008,9 @@ describe("TramiteReviewDialog: avisos", () => {
     const dialogo = await dialogoListo()
     await user.click(boton(dialogo, "Aprobar"))
     const alerta = (await within(dialogo).findByText(motivo)).closest("[role=alert]")!
-    expect(within(alerta as HTMLElement).getByRole("link", { name: "Ir a Facturación" })).toHaveAttribute(
-      "href",
-      "/facturacion",
-    )
+    expect(within(alerta as HTMLElement).queryByRole("link")).not.toBeInTheDocument()
     expect(within(dialogo).queryByText(TEXTO_SUSCRIPCION)).not.toBeInTheDocument()
+    expect(alNoAutorizado).not.toHaveBeenCalled()
   })
 
   it("400 al guardar: el motivo, y la edición se conserva para corregirla", async () => {

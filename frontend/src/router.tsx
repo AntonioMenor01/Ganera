@@ -5,7 +5,6 @@ import { LoginPage } from "@/features/auth/LoginPage";
 import { RegistroPage } from "@/features/auth/RegistroPage";
 import { ExplotacionesPage } from "@/features/explotaciones/ExplotacionesPage";
 import { TramitesPage } from "@/features/tramites/TramitesPage";
-import { FacturacionPage } from "@/features/facturacion/FacturacionPage";
 import { GanaderosPage } from "@/features/ganaderos/GanaderosPage";
 import { GanaderoDetallePage } from "@/features/ganaderos/GanaderoDetallePage";
 
@@ -25,7 +24,9 @@ export const routes: RouteObject[] = [
           { path: "ganaderos", element: <GanaderosPage /> },
           { path: "ganaderos/:id", element: <GanaderoDetallePage /> },
           { path: "explotaciones", element: <ExplotacionesPage /> },
-          { path: "facturacion", element: <FacturacionPage /> },
+          // Comodín (D5): /facturacion (ya no existe) y cualquier ruta desconocida con sesión van a
+          // la cola. Sin sesión, RequireAuth manda antes a /login.
+          { path: "*", element: <Navigate to="/tramites" replace /> },
         ],
       },
     ],

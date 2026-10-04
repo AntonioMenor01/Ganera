@@ -579,12 +579,13 @@ class TramiteControllerTest {
         assertThat(respuesta.getBody()).isEqualTo(new MotivoErrorResponse(TramiteController.MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR));
     }
 
-    /** Mini-prompt tras A2 (punto 2): el texto del 403 es el mismo que ya enseña el frontend. */
+    /** Plan 2026-10-04 (quitar el pago de la app, D2): el texto del 403 ya no remite a Facturacion
+     * (la pagina desaparece) sino a contactar con Ganera; el frontend usa el mismo texto de reserva. */
     @Test
-    void elMotivoDel403EsElTextoQueYaMuestraElFrontend() {
+    void elMotivoDel403PideContactarConGaneraYNoRemiteAFacturacion() {
         assertThat(TramiteController.MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR).isEqualTo(
-                "Tu suscripción no permite aprobar trámites ahora mismo (trial expirado o suspendida). "
-                        + "Actualiza tu suscripción en Facturación.");
+                "Tu suscripción no permite aprobar trámites ahora mismo (prueba terminada o suscripción "
+                        + "suspendida). Ponte en contacto con Ganera para regularizarla.");
     }
 
     /** Mini-prompt tras A2 (punto 4): rechazar sin version (sin cuerpo o version null) -> 400 con

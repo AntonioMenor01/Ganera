@@ -7,7 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Solo prueba la parte pura de StripeCheckoutService (configuracionCompleta,
- * construirParametros, cantidadAContratar), segun la convencion
+ * construirParametros), segun la convencion
  * test-sin-mocks-externos: nada de red, nada de mocks del SDK de Stripe.
  * El unico metodo que toca la red (crearSesionEnStripe) queda sin cobertura
  * unitaria directa; se valida en el smoke test manual con clave de test.
@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class StripeCheckoutServiceTest {
 
     private StripeCheckoutService construirServicio(String apiKey, String priceIdExplotacion) {
-        return new StripeCheckoutService(null, null, null, apiKey, priceIdExplotacion,
+        return new StripeCheckoutService(null, null, apiKey, priceIdExplotacion,
                 "https://ganera.test/facturacion/exito", "https://ganera.test/facturacion/cancelado");
     }
 
@@ -47,13 +47,6 @@ class StripeCheckoutServiceTest {
         assertThat(params.getLineItems().get(0).getQuantity()).isEqualTo(3L);
         assertThat(params.getSubscriptionData()).isNotNull();
         assertThat(params.getSubscriptionData().getTrialPeriodDays()).isEqualTo(15L);
-    }
-
-    @Test
-    void cantidadAContratarNuncaBajaDeUno() {
-        assertThat(StripeCheckoutService.cantidadAContratar(0)).isEqualTo(1);
-        assertThat(StripeCheckoutService.cantidadAContratar(1)).isEqualTo(1);
-        assertThat(StripeCheckoutService.cantidadAContratar(5)).isEqualTo(5);
     }
 
     @Test

@@ -206,7 +206,7 @@ and weight (400/500/600), which suits a data-dense review tool.
 
 ### Hierarchy
 - **Headline** (600, 20px, `text-xl`): one page title per screen ("Cola de trámites",
-  "Explotaciones", "Facturación"), followed by a muted 14px subtitle or count.
+  "Ganaderos", "Explotaciones"), followed by a muted 14px subtitle or count.
 - **Metric** (600, 30px, `text-3xl`): the single large number in a metric card (the Explotaciones
   count).
 - **Title** (500, 16px): card titles.
@@ -318,8 +318,9 @@ The signature component, since state is the main thing the queue communicates.
   crotal.
 - **Contact role:** Titular `success`, Empleado `outline`. A role is information, not a problem, so
   it never uses warning or danger.
-- **Subscription state** (Facturación): ACTIVA and TRIAL success, IMPAGO_GRACIA warning,
-  TRIAL_EXPIRADO_SIN_PAGO, SUSPENDIDA and CANCELADA danger, anything else `outline`.
+- **Subscription state:** there is no subscription badge any more. Payment is no longer handled in
+  the app (it moved to the Ganera landing page), so the Facturación page that showed it is gone; the
+  state reaches the user only through the subscription banner (see Alerts / Subscription banner).
 - **"Sin guardar":** an `outline` badge with a dashed, 25%-ink border. It marks an edited field or
   crotal row until the backend answers, replacing the saved badge, so badges never predict what the
   backend will say.
@@ -365,8 +366,9 @@ in the UI. The favicon is `favicon-64.png`.
 - **Style:** the horizontal top bar in Paja Clara with a Borde Lino bottom border. The brand mark
   (20px, Verde Monte, decorative) is followed by the "GANERA" logotype in 600 weight,
   `tracking-wide`, in green.
-- **Links, in working order:** Trámites, Ganaderos, Explotaciones, Facturación. That is, the daily
-  queue, then who it belongs to (a Ganadero, then their explotaciones), then the account. A section
+- **Links, in working order:** Trámites, Ganaderos, Explotaciones. That is, the daily queue, then
+  who it belongs to (a Ganadero, then their explotaciones). There is no Facturación link: payment
+  is not handled in the app, and `/facturacion` or any unknown route redirects to Trámites. A section
   stays active on its sub-routes (`/ganaderos/:id` marks Ganaderos).
 - **Link style:** 14px/500, `rounded-lg`, 6px by 10px padding. Inactive links are Gris Oliva text
   and fill with Paja Hover plus ink text on hover. The active link is a solid Verde Monte pill with
@@ -402,8 +404,14 @@ in the UI. The favicon is `favicon-64.png`.
   turns text deep red, with no red fill.
 - **Banner use:** `SuscripcionBanner` renders the alert full-bleed under the nav bar, with no
   radius and only a bottom border. It uses the destructive variant for states that block approvals
-  (`TRIAL_EXPIRADO_SIN_PAGO`, `SUSPENDIDA`, no Suscripción) and the default variant for
-  `IMPAGO_GRACIA`. It informs and never blocks navigation.
+  (`TRIAL_EXPIRADO_SIN_PAGO`, `SUSPENDIDA`, no Suscripción; title "No puedes aprobar trámites ahora
+  mismo") and the default variant for `IMPAGO_GRACIA` (title "Aviso de pago"). It informs and never
+  blocks navigation. **It has no action:** no button, link or `mailto:` — the app no longer takes
+  payments, so each description closes by asking the user to contact Ganera ("Ponte en contacto
+  con Ganera para regularizar la suscripción", "…para regularizarla", "…para regularizarlo cuanto
+  antes", "…para activarla"), without repeating the verb earlier in the message. The only banner with an action is the
+  load-error one, with its "Reintentar". The approval `403` in the review dialog follows the same
+  rule: the backend's `motivo` verbatim, with no link.
 - **Load errors:** a failed load shows a destructive Alert with a title, the message (from
   `mensajeDeError`, or the backend's `motivo` verbatim) and an `outline sm` "Reintentar". Stale data
   is cleared rather than left looking current, and pagination stays visible so the user can move

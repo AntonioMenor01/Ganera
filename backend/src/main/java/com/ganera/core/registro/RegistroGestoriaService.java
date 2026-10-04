@@ -30,7 +30,8 @@ public class RegistroGestoriaService {
      * para que Spring marque esta transaccion como rollback-only y deshaga tambien el Gestoria ya
      * insertado; si se capturara aqui, ese Gestoria quedaria huerfano (sin Usuario). El caller
      * (RegistroGestoriaController), fuera de esta transaccion, es quien atrapa la excepcion para
-     * dar forma a la respuesta HTTP -- mismo patron que FacturacionController con StripeException.
+     * dar forma a la respuesta HTTP. (Ese mismo controller, en cambio, deja subir sin capturar la
+     * StripeException del checkout, que Spring traduce en un 500 generico.)
      */
     @Transactional
     public Long crearGestoriaYUsuario(RegistroGestoriaRequest request) {

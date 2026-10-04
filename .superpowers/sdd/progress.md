@@ -653,3 +653,39 @@ En cada tarea hubo un implementador y un revisor independiente; los informes est
     nuevo aplica la V18 y todos los casos pasan (`bt-t4-smoke.md`).
   - Procesos parados por PID y temporales borrados. `CLAUDE.md`, `ganera-prompts.md` y este fichero al día.
 - **Sin commit**: pendiente de la aprobación de Antonio.
+
+## 2026-10-04 — Quitar el pago de la app (backend y frontend en el mismo commit)
+
+Plan: `docs/superpowers/plans/2026-10-04-quitar-pago-de-la-app.md`. Antonio aprobó el inventario "se quita /
+se queda" y las decisiones D1–D5:
+- textos de contacto con Ganera, sin enlace ni `mailto:`;
+- comodín `*` hacia `/tramites`;
+- `features/facturacion` conserva su nombre;
+- E2E del checkout eliminado.
+
+Los dos bugs de Stripe y `SuscripcionSyncScheduler` quedan anotados en las notas del Prompt C. Cada tarea tuvo un
+implementador y un revisor independiente; los informes están en `.superpowers/sdd/qp-*`.
+
+- **T1 (backend):** fuera `POST /facturacion/checkout`, `CheckoutResponse` y `crearSesionCheckout(gestoriaId)`.
+  El Registro conserva su checkout con cantidad estimada. Motivo nuevo del 403. E2E `CheckoutEliminadoEndToEndTest`
+  (404 con JWT, 401 sin él, sin crear `Suscripcion`). 533 → **534**.
+  - Revisión: Approved with minors. Los tres eran comentarios y quedaron corregidos.
+  - Nota: con Stripe sin configurar, el checkout antiguo tampoco creaba la `Suscripcion`, así que esa aserción es
+    una guarda hacia delante.
+- **T2 (frontend):** fuera `FacturacionPage`, la ruta, el enlace de la navbar, `AppLayoutContext`,
+  `crearSesionCheckout`, el contexto `checkout` y el enlace del 403. Comodín `*`. Banner con textos de contacto
+  y sin acción. `DESIGN.md` al día. 506 → **508**.
+  - Revisión: Approved with minors. Se corrigieron m1 (el verbo se repetía en los textos del banner: "terminando
+    en" quería decir sustituir el final; Antonio dio los textos) y m3 (una aserción de `httpClient.test.ts` ya no
+    probaba nada).
+  - Queda m2 para Antonio: el título del banner sin `Suscripcion` pasa a "No puedes aprobar trámites ahora mismo".
+  - Incidencias, resueltas en el momento: el implementador hizo un `git rm --cached` y lo deshizo; el revisor
+    restauró `AppLayout.tsx` con `git checkout` y lo recuperó desde su copia (mismo blob `fd4b36d`, comprobado
+    después).
+- **T3 (cierre):**
+  - `./mvnw clean test` **534/534**; `npm test` **508/508**; build en verde (aviso del chunk); lint con los 3 avisos
+    de siempre.
+  - Smoke en navegador real con A `ACTIVA` y B `SUSPENDIDA` a 1440 y 375 px, todo PASS (`qp-t3-smoke.md`).
+  - Procesos parados por PID y temporales borrados. `CLAUDE.md`, `ganera-prompts.md` (orden nuevo) y este fichero
+    al día.
+- **Sin commit**: pendiente de la aprobación de Antonio.

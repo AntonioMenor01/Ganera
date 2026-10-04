@@ -15,7 +15,8 @@ export interface RegistroGestoriaRequest {
 }
 
 /** Publico, sin JWT -- POST /gestorias/registro. Devuelve la URL de la Stripe Checkout Session a
- * la que el frontend debe redirigir (mismo patron que crearSesionCheckout en facturacion/api.ts). */
+ * la que el frontend debe redirigir. Es el unico sitio de la app que todavia lleva a Stripe (hasta
+ * que el alta pase a la landing, Prompt C). */
 export async function registrarGestoria(request: RegistroGestoriaRequest): Promise<string> {
   const { data } = await httpClient.post<{ url: string }>("/gestorias/registro", request);
   return data.url;

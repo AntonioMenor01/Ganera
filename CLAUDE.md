@@ -193,10 +193,10 @@ approval step before anything is written to OVZ.net.
   `GET /tramites`, `GET /tramites/{id}`, `POST /tramites/{id}/aprobar`,
   `POST /tramites/{id}/rechazar`, `GET /auth/me`, `POST /explotaciones/importar`) now has its own
   two-tenant `@SpringBootTest` case in `TenantIsolationEndToEndTest`; `GET /facturacion/suscripcion`
-  and `POST /facturacion/checkout` were confirmed exempt by design (both resolve the Gestoría via
-  `SuscripcionRepository.findByGestoriaId(gestoriaId)`/`ExplotacionRepository.countByGestoriaId(gestoriaId)`
-  — real query parameters, immune to both bug classes above regardless of filter/interceptor
-  state).
+  was confirmed exempt by design (it resolves the Gestoría via
+  `SuscripcionRepository.findByGestoriaId(gestoriaId)` — a real query parameter, immune to both bug
+  classes above regardless of filter/interceptor state). (`POST /facturacion/checkout`, exempt for
+  the same reason, was removed on 2026-10-04 — see "Billing moved out of the app".)
 - **AI provider**: Claude Haiku 4.5 via Spring AI, pinned to the dated snapshot
   `claude-haiku-4-5-20251001` (not the floating alias) so it can't change under us silently.
   Abstracted behind `TramiteExtractionService` so the provider is swappable. Structured Outputs
@@ -212,12 +212,15 @@ approval step before anything is written to OVZ.net.
   and importing, stays available (A1 decision 30).
 - **Stripe integration** (`facturacion` package): a single `Price` (`STRIPE_PRICE_ID_EXPLOTACION`,
   placeholder until one is created in the Stripe dashboard) with quantity = active Explotaciones
-  count, 15-day trial baked into the Checkout Session. `POST /facturacion/checkout`
-  (`StripeCheckoutService`) sets `client_reference_id` = `gestoriaId` on the Checkout Session — this
-  is how the `checkout.session.completed` webhook maps back to a Gestoría, not the Stripe customer
-  ID. Pilot Gestorías (created via `/internal/onboarding/gestoria`) never touch this flow; a real
-  paying Gestoría's Usuario hits checkout, and if no `Suscripcion` row exists yet for their Gestoría,
-  `SuscripcionService.obtenerOCrearSuscripcion` creates one in `TRIAL` on the spot (idempotent via
+  count, 15-day trial baked into the Checkout Session. `StripeCheckoutService` sets
+  `client_reference_id` = `gestoriaId` on the Checkout Session — this is how the
+  `checkout.session.completed` webhook maps back to a Gestoría, not the Stripe customer ID. Since
+  2026-10-04 the **only** caller is the public self-registration (`POST /gestorias/registro`,
+  `crearSesionCheckoutConCantidadEstimada`): the app's own `POST /facturacion/checkout` was removed
+  (billing moves to Ganera's landing, see "Billing moved out of the app"). Pilot Gestorías (created
+  via `/internal/onboarding/gestoria`) never touch this flow; when the checkout runs and no
+  `Suscripcion` row exists yet for the Gestoría, `SuscripcionService.obtenerOCrearSuscripcion`
+  creates one in `TRIAL` on the spot (idempotent via
   `saveAndFlush` + catching the `UNIQUE(gestoria_id)` violation, for the double-click case).
   `StripeWebhookService` dispatches the rest of the state machine — the one non-obvious mapping:
   on `customer.subscription.updated` with `status=past_due`, whether that means
@@ -256,8 +259,9 @@ approval step before anything is written to OVZ.net.
      subscription to `IMPAGO_GRACIA` — which **re-enables** `puedeAprobarTramites`. No test covers
      that transition today. Fix test-first.
   2. *Abandoned trial never expires.* `SuscripcionService.obtenerOCrearSuscripcion` creates the
-     `Suscripcion` row in `TRIAL` **before** the Checkout Session is completed (both from
-     `POST /facturacion/checkout` and from `POST /gestorias/registro`). If the Gestoría abandons
+     `Suscripcion` row in `TRIAL` **before** the Checkout Session is completed (from
+     `POST /gestorias/registro`; until 2026-10-04 also from the app's `POST /facturacion/checkout`).
+     If the Gestoría abandons
      Stripe Checkout, no webhook ever arrives and nothing local expires the row, so it stays in
      `TRIAL` — with full approval rights — indefinitely. Needs a design decision (e.g. don't grant
      `TRIAL` until `checkout.session.completed`, or a local trial-expiry check) before fixing.
@@ -279,9 +283,9 @@ approval step before anything is written to OVZ.net.
   never over-charges before the real inventory is known — see the `SuscripcionSyncScheduler`/`TRIAL`
   limitation just above, which is exactly why this estimate won't self-correct until the
   subscription leaves `TRIAL`. `StripeCheckoutService` gained
-  `crearSesionCheckoutConCantidadEstimada(gestoriaId, cantidadEstimada)`, a sibling of the existing
-  `crearSesionCheckout(gestoriaId)` that skips the real Explotación count and shares the same
-  private helper and `configuracionCompleta()` guard. Validation
+  `crearSesionCheckoutConCantidadEstimada(gestoriaId, cantidadEstimada)`, which skips the real
+  Explotación count and uses the private helper and `configuracionCompleta()` guard (its sibling
+  `crearSesionCheckout(gestoriaId)`, used only by the app's checkout, was removed on 2026-10-04). Validation
   (`RegistroGestoriaValidacion`, package-private, pure static methods — deliberately not
   `spring-boot-starter-validation`'s `@Valid`/`@Email`, which is on the classpath but unused
   anywhere in this codebase, to avoid introducing a first `@ControllerAdvice` just for this one
@@ -295,8 +299,8 @@ approval step before anything is written to OVZ.net.
   `DataIntegrityViolationException` itself — it must propagate out of the `@Transactional` method
   so Spring rolls back the `Gestoria` insert together with the failed `Usuario` insert; catching it
   inside would leave an orphan `Gestoria` row. `RegistroGestoriaController`, outside that
-  transaction, is the one that catches it to shape the `400` response — same pattern as
-  `FacturacionController` catching `StripeException` one level above where it's thrown.
+  transaction, is the one that catches it to shape the `400` response (and lets the checkout's
+  `StripeException` propagate as a generic `500`).
 - **Excel inventory importer** (`explotacion` package, Prompt 3d): manual fallback for loading
   Explotaciones/Animales when the OVZ.net read sync (Prompt 3a, still blocked) isn't available.
   `POST /explotaciones/importar` (multipart `.xlsx`, Apache POI) parses two fixed-position sheets —
@@ -388,11 +392,12 @@ approval step before anything is written to OVZ.net.
   Gestoría or that doesn't exist returns `404` (an expected, common case, not a "should never
   happen" one).
 - **Frontend, Prompt 4 (partial — everything not blocked by OVZ.net):** login, Explotaciones
-  dashboard + Excel import, Trámites queue + review modal, Facturación status page. Two backend
-  additions this required, both driven directly by the frontend's stated needs, not speculative:
-  `GET /facturacion/suscripcion` (`FacturacionController`, `404` if the Gestoría never had a
-  `Suscripcion` — fail-closed, a `GET` must never create one as a side effect, that's what
-  `POST /facturacion/checkout` → `obtenerOCrearSuscripcion` is for) and `GET /tramites/{id}`
+  dashboard + Excel import, Trámites queue + review modal, Facturación status page (removed on
+  2026-10-04, see "Billing moved out of the app"). Two backend additions this required, both driven
+  directly by the frontend's stated needs, not speculative: `GET /facturacion/suscripcion`
+  (`FacturacionController`, still used by the banner; `404` if the Gestoría never had a
+  `Suscripcion` — fail-closed, a `GET` must never create one as a side effect; only the
+  registration's checkout → `obtenerOCrearSuscripcion` does) and `GET /tramites/{id}`
   (`TramiteDetalleResponse`, adds the raw WhatsApp message body via
   `MensajeCampoRepository.findFirstByTramiteIdOrderByCreatedAtDesc` plus the resolved Explotación's
   `codigoRega`/`nombre` — kept out of the paginated `GET /tramites` list to avoid N+1 there).
@@ -607,6 +612,23 @@ approval step before anything is written to OVZ.net.
   - **No index:** `like '%p%'` doesn't use a B-tree and the query is bounded by `gestoria_id`. If it
     ever gets slow, a PostgreSQL `pg_trgm` GIN index on the normalized columns (no `unaccent`
     needed) — noted for Prompt C.
+- **Billing moved out of the app** (2026-10-04; plan
+  `docs/superpowers/plans/2026-10-04-quitar-pago-de-la-app.md`). Ganera charges from its **landing,
+  with Stripe**, not from the app. **Removed:** `POST /facturacion/checkout`, `CheckoutResponse`,
+  `StripeCheckoutService.crearSesionCheckout(gestoriaId)`, the frontend `FacturacionPage`, its route
+  and nav link, `crearSesionCheckout`, the `checkout` error context and the 403's "Ir a
+  Facturación" link. `POST /facturacion/checkout` now answers Boot's `404` (`NoResourceFoundException`,
+  no handler) with a JWT and `401` without one, and creates nothing (`CheckoutEliminadoEndToEndTest`).
+  **Kept:** Stripe webhooks and their state machine, `Suscripcion`/`EstadoSuscripcion`,
+  `puedeAprobarTramites` and the approval `403`, `GET /facturacion/suscripcion` (same path and body,
+  read by the banner), `SuscripcionSyncScheduler`, `StripeConfig`/`stripe-java`/`STRIPE_*`, the pilot
+  onboarding, and the public registration with its Stripe Checkout redirect (untouched until
+  Prompt C replaces it with the sign-up from the landing). Texts that sent users to Facturación now
+  say to contact Ganera, **with no link or `mailto:`** — the 403 `motivo`
+  (`TramiteController.MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR`, identical to the frontend fallback):
+  "Tu suscripción no permite aprobar trámites ahora mismo (prueba terminada o suscripción
+  suspendida). Ponte en contacto con Ganera para regularizarla." The two known Stripe bugs and the
+  scheduler's review for per-ganadero plans are noted for Prompt C in `ganera-prompts.md`.
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)
@@ -741,18 +763,21 @@ reference for every frontend decision below.
   caused (no accent-insensitive or word-by-word search) was closed in the backend on 2026-10-04 (see
   "Explotación search without accents" under Technical decisions); a retouched label of a long
   explotación name can now exceed 8 words and get that `400` `motivo`.
-- **`AppLayout.tsx`** has the navigation Trámites/Ganaderos/Explotaciones/Facturación (one
+- **`AppLayout.tsx`** has the navigation Trámites/Ganaderos/Explotaciones (one
   `nav aria-label="Principal"`; below `md` two rows with the links in a full-bleed strip that
   scrolls inside itself, the active link brought into view by setting the strip's `scrollLeft` —
   `shared/layout/tiraNavegacion.ts`, plus a `ResizeObserver`, and the same for a link that receives
   keyboard focus — never `scrollIntoView`; from `md` one
   row with the email truncated; see `DESIGN.md` → Navigation) and fetches
-  subscription status once
-  (`features/facturacion/useSuscripcionEstado.ts`) via `<Outlet context={{ suscripcion }}>` so
-  `FacturacionPage` reuses the same fetch instead of refetching — read it with
-  `useOutletContext<AppLayoutContext>()`. `SuscripcionBanner.tsx` shows a persistent warning for
-  `TRIAL_EXPIRADO_SIN_PAGO`/`SUSPENDIDA`/no-`Suscripcion`-at-all (all three block approving, all
-  three get an "actualiza tu suscripción" banner) and a milder one for `IMPAGO_GRACIA` — it never
+  subscription status once (`features/facturacion/useSuscripcionEstado.ts`, passed to the banner by
+  props; the `<Outlet context>`/`AppLayoutContext` that let `FacturacionPage` reuse it was removed
+  with that page on 2026-10-04 — the `features/facturacion` folder keeps its name). A catch-all
+  `*` route inside the authenticated layout redirects any unknown path (including the old
+  `/facturacion`) to `/tramites`. `SuscripcionBanner.tsx` shows a persistent warning, titled "No
+  puedes aprobar trámites ahora mismo", for `TRIAL_EXPIRADO_SIN_PAGO`/`SUSPENDIDA`/no-`Suscripcion`-at-all
+  (all three block approving) and a milder "Aviso de pago" for `IMPAGO_GRACIA`; every description ends
+  asking to contact Ganera, with **no button, link or `mailto:`** (only the load-error state keeps
+  "Reintentar") — it never
   hides the rest of the app (Explotaciones/Trámites stay browsable), only `POST /tramites/{id}/aprobar`
   itself is blocked (`403` from `puedeAprobarTramites`), matching the backend's existing
   no-approvals vs. full-access semantics from Prompt 2 (editing, rejecting and importing stay
@@ -778,7 +803,7 @@ reference for every frontend decision below.
   aprobar, rechazar) reloads the detail, discards the form and shows the backend's `motivo`
   verbatim, never retrying by itself; a `400` keeps the edits and shows the `motivo`; a `404`
   says the trámite no longer exists or isn't yours; a `403` on aprobar shows the backend's `motivo` (the fixed subscription text is only the fallback
-  when no body arrives) plus a link to Facturación.
+  when no body arrives), with no link (the Facturación page no longer exists).
   Badges show **what is saved**: an
   edited field/row says "Sin guardar" until the backend answers. One request at a time.
 - **Ganaderos (`features/ganaderos`):** `/ganaderos` (paginated, sortable by nombre and NIF only)
@@ -794,9 +819,20 @@ reference for every frontend decision below.
   works); setup in `src/test/` (`setup.ts`, `server.ts`, `handlers.ts`) — any request without a
   handler fails the test (`onUnhandledRequest: "error"`), and session state is cleared after each
   test. `npm test` ran **475 tests in 36 files** at the end of A2 (476 after the mini-prompt's
-  Rechazar change; **506 in 36 files** after the frontend task before the pilot). Layout can't be checked in
+  Rechazar change; **506 in 36 files** after the frontend task before the pilot; **508 in 36** after billing left the app). Layout can't be checked in
   jsdom: for visual changes, also drive the real app in a browser (Playwright from npm installed
   **outside the repo**, as in Prompts 4 and A2).
+
+## Working rules for subagents (implementers and reviewers)
+
+- **Subagents never run commands that touch the git index or restore files:** no `git add`,
+  `git rm`, `git checkout`, `git restore`, `git reset`, `git stash` (nor `git commit`/`git push`).
+  If they need one — to undo a change, recover a file, or stage something — they **stop and tell
+  the main session**, which decides. Temporary changes to prove a test catches a regression are
+  undone by copying the file back from a backup made beforehand (`cp`, then `cmp`), never through
+  git. Antonio set this on 2026-10-04, after an implementer ran `git rm --cached` by mistake and a
+  reviewer wiped a task's changes in a file with `git checkout` (both recovered). Staging and
+  commits stay with the main session, path by path, only with Antonio's approval.
 
 ## Commands
 
@@ -805,7 +841,7 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw clean test` — runs the test suite (533 tests after the explotación search task); **always with `clean`**
+- `./mvnw clean test` — runs the test suite (534 tests after billing was moved out of the app); **always with `clean`**
   (see the VS Code/ECJ note under Architecture notes). A single test:
   `./mvnw clean test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
@@ -1062,6 +1098,18 @@ the data at V17, then the new backend applied V18 to that same database and the 
 against the backfilled rows (log in `.superpowers/sdd/bt-t4-smoke.md`). The only frontend change,
 by Antonio's explicit exception, is the JSDoc of `frontend/src/features/explotaciones/api.ts` (a
 comment, no code); `npm test` 506/506 and `npm run lint` (known warnings only) after it.
+
+**Billing moved out of the app — complete** (2026-10-04), following
+`docs/superpowers/plans/2026-10-04-quitar-pago-de-la-app.md` (inventory "se quita / se queda" and
+decisions closed with Antonio) with the Superpowers flow (T1 backend, T2 frontend, one implementer +
+one independent reviewer each, both **Approved with minors**, minors fixed; reports in
+`.superpowers/sdd/qp-*`, not committed). **Backend and frontend in the same commit** (a contract
+changes). See "Billing moved out of the app" under Technical decisions. Verified with
+`./mvnw clean test` **534/534**, `npm test` **508/508**, `npm run build` and `npm run lint` (known
+warnings only), and a real-browser smoke with two Gestorías (A `ACTIVA`, B `SUSPENDIDA` by SQL) at
+1440 and 375 px (log in `.superpowers/sdd/qp-t3-smoke.md`). **New order of work** (in
+`ganera-prompts.md`): brand colours and typography → Prompt B (with the birth registration: mother's
+crotal, sex and date of birth) → Prompt C.
 
 **Next pending step: Prompt 3a (sincronización inicial de OVZ.net, modo lectura) — blocked.** Per
 `ganera-prompts.md`, Prompts 3a, 3b, and 3c (OVZ.net read sync, Twilio webhook + AI extraction, and

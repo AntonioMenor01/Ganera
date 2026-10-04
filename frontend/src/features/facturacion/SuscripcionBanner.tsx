@@ -1,5 +1,4 @@
 import { TriangleAlertIcon } from "lucide-react";
-import { Link } from "react-router-dom";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { mensajeDeError } from "@/shared/api/errores";
@@ -7,19 +6,25 @@ import type { SuscripcionEstadoHook } from "./useSuscripcionEstado";
 
 const MENSAJES_BLOQUEANTES: Record<string, string> = {
   TRIAL_EXPIRADO_SIN_PAGO:
-    "El periodo de prueba ha terminado y no hay ningún pago activo. No se pueden aprobar trámites hasta regularizar la suscripción.",
+    "El periodo de prueba ha terminado y no hay ningún pago activo, así que no se pueden aprobar trámites. Ponte en contacto con Ganera para regularizar la suscripción.",
   SUSPENDIDA:
-    "La suscripción está suspendida. No se pueden aprobar trámites hasta regularizarla.",
+    "La suscripción está suspendida y no se pueden aprobar trámites. Ponte en contacto con Ganera para regularizarla.",
 };
 
 const MENSAJES_AVISO: Record<string, string> = {
   IMPAGO_GRACIA:
-    "El último pago ha fallado. Sigues teniendo acceso completo durante el periodo de gracia, pero conviene regularizarlo cuanto antes.",
+    "El último pago ha fallado. Sigues teniendo acceso completo durante el periodo de gracia; ponte en contacto con Ganera para regularizarlo cuanto antes.",
 };
 
+const MENSAJE_SIN_SUSCRIPCION =
+  "Todavía no tienes una suscripción activa. Ponte en contacto con Ganera para activarla.";
+
+const TITULO_BLOQUEANTE = "No puedes aprobar trámites ahora mismo";
+
 /** Persistente en el layout: null en estado significa "nunca tuvo Suscripcion" (mismo tratamiento
- * que un estado bloqueante -- ver Facturacion). Un fallo al cargar el estado se avisa con
- * "Reintentar". Ni bloqueante ni con aviso -> no se muestra nada. */
+ * que un estado bloqueante: el backend tampoco deja aprobar). El pago ya no se hace desde la app,
+ * así que ningún banner lleva botón ni enlace: el texto pide contactar con Ganera. La única acción
+ * es "Reintentar" cuando falla la carga del estado. Ni bloqueante ni con aviso -> no se muestra. */
 export function SuscripcionBanner({ suscripcion }: { suscripcion: SuscripcionEstadoHook }) {
   const { estado, cargando, error, recargar } = suscripcion;
 
@@ -47,15 +52,8 @@ export function SuscripcionBanner({ suscripcion }: { suscripcion: SuscripcionEst
     return (
       <Alert variant="destructive" className="rounded-none border-x-0 border-t-0">
         <TriangleAlertIcon />
-        <AlertTitle>Todavía no tienes una suscripción</AlertTitle>
-        <AlertDescription>
-          Empieza tu prueba gratuita de 15 días para poder aprobar trámites.
-        </AlertDescription>
-        <AlertAction>
-          <Button size="sm" nativeButton={false} render={<Link to="/facturacion" />}>
-            Ir a facturación
-          </Button>
-        </AlertAction>
+        <AlertTitle>{TITULO_BLOQUEANTE}</AlertTitle>
+        <AlertDescription>{MENSAJE_SIN_SUSCRIPCION}</AlertDescription>
       </Alert>
     );
   }
@@ -65,13 +63,8 @@ export function SuscripcionBanner({ suscripcion }: { suscripcion: SuscripcionEst
     return (
       <Alert variant="destructive" className="rounded-none border-x-0 border-t-0">
         <TriangleAlertIcon />
-        <AlertTitle>No puedes aprobar trámites ahora mismo</AlertTitle>
+        <AlertTitle>{TITULO_BLOQUEANTE}</AlertTitle>
         <AlertDescription>{mensajeBloqueante}</AlertDescription>
-        <AlertAction>
-          <Button size="sm" nativeButton={false} render={<Link to="/facturacion" />}>
-            Ir a facturación
-          </Button>
-        </AlertAction>
       </Alert>
     );
   }
@@ -81,13 +74,8 @@ export function SuscripcionBanner({ suscripcion }: { suscripcion: SuscripcionEst
     return (
       <Alert className="rounded-none border-x-0 border-t-0">
         <TriangleAlertIcon />
-        <AlertTitle>Aviso de facturación</AlertTitle>
+        <AlertTitle>Aviso de pago</AlertTitle>
         <AlertDescription>{mensajeAviso}</AlertDescription>
-        <AlertAction>
-          <Button size="sm" variant="outline" nativeButton={false} render={<Link to="/facturacion" />}>
-            Ir a facturación
-          </Button>
-        </AlertAction>
       </Alert>
     );
   }
