@@ -6,9 +6,10 @@ export interface OpcionesListarExplotaciones {
   /** `campo,asc|desc`; campos permitidos por el backend: codigoRega, nombre, id. */
   sort?: string;
   /**
-   * Búsqueda (`GET /explotaciones?q=`): contiene, sin distinguir mayúsculas, sobre código REGA,
-   * nombre o ganadero, como una sola cadena y sin quitar tildes. Vacía o en blanco = no se envía
-   * (el backend la trataría igual: listado normal).
+   * Búsqueda (`GET /explotaciones?q=`): por palabras en AND, sin distinguir mayúsculas ni tildes;
+   * cada palabra debe aparecer (contiene) en el código REGA, el nombre o el ganadero. Más de 8
+   * palabras → 400 con `motivo`. Vacía o en blanco = no se envía (el backend la trataría igual:
+   * listado normal).
    */
   q?: string;
   signal?: AbortSignal;

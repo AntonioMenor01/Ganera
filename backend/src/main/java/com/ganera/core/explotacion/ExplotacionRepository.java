@@ -2,8 +2,10 @@ package com.ganera.core.explotacion;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -11,7 +13,14 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
-public interface ExplotacionRepository extends JpaRepository<Explotacion, Long> {
+/**
+ * JpaSpecificationExecutor: toda Specification sobre Explotacion debe llevar el gestoria.id del JWT
+ * como predicado explicito (como ExplotacionBusquedaSpecification.porPalabras), porque los
+ * findAll/count/findOne/findBy heredados no filtran por Gestoria por si mismos ni llevan EntityGraph
+ * (salvo el findAll(Specification, Pageable) redeclarado abajo).
+ */
+public interface ExplotacionRepository
+        extends JpaRepository<Explotacion, Long>, JpaSpecificationExecutor<Explotacion> {
     long countByGestoriaId(Long gestoriaId);
 
     /**
@@ -23,27 +32,17 @@ public interface ExplotacionRepository extends JpaRepository<Explotacion, Long> 
     Page<Explotacion> findByGestoriaId(Long gestoriaId, Pageable pageable);
 
     /**
-     * Busqueda de GET /explotaciones?q=: "contiene", sin distinguir mayusculas, sobre el codigo REGA
-     * y el nombre de la Explotacion y el nombre de su Ganadero, con gestoriaId explicito (no depende
-     * del filtro ambiente). {@code patron} ya llega con los comodines de LIKE ({@code %}, {@code _})
-     * y el caracter de escape ({@code !}) del usuario escapados con {@code !} y envuelto en
-     * {@code %...%} (ver ExplotacionController.patronContiene). Se usa {@code !} y no {@code \} como
-     * caracter de escape para no depender de como tratan la barra invertida el lexer de HQL y los
-     * literales de cada base de datos. El Ganadero se trae en la misma consulta (join fetch, ManyToOne:
-     * sin problema con la paginacion), asi ExplotacionResponse no dispara una consulta por Ganadero.
-     * El countQuery repite el filtro sin fetch. El Sort del Pageable se aplica sobre el alias raiz
-     * {@code e} (codigoRega/nombre/id de la Explotacion, nunca del Ganadero).
+     * Busqueda de GET /explotaciones?q= con ExplotacionBusquedaSpecification.porPalabras (el
+     * gestoriaId va explicito dentro de la spec). El Ganadero (LAZY) se trae en la consulta de la
+     * pagina con este EntityGraph, que Spring Data aplica solo a la consulta de datos, nunca al
+     * count. Por eso la Specification no hace fetch: Spring Data usa la misma spec para el count, y
+     * un fetch ahi ("select count(e) ... join fetch") falla porque el propietario del fetch no esta
+     * en la seleccion. La spec llega al Ganadero por path y Hibernate reutiliza para el predicado el
+     * join del EntityGraph: una sola union con ganadero en cada consulta. El Sort se aplica a la raiz.
      */
-    @Query(value = "select e from Explotacion e join fetch e.ganadero g where e.gestoria.id = :gestoriaId and ("
-            + "lower(e.codigoRega) like lower(:patron) escape '!' "
-            + "or lower(e.nombre) like lower(:patron) escape '!' "
-            + "or lower(g.nombre) like lower(:patron) escape '!')",
-            countQuery = "select count(e) from Explotacion e join e.ganadero g where e.gestoria.id = :gestoriaId and ("
-                    + "lower(e.codigoRega) like lower(:patron) escape '!' "
-                    + "or lower(e.nombre) like lower(:patron) escape '!' "
-                    + "or lower(g.nombre) like lower(:patron) escape '!')")
-    Page<Explotacion> buscarPorTexto(
-            @Param("gestoriaId") Long gestoriaId, @Param("patron") String patron, Pageable pageable);
+    @Override
+    @EntityGraph(attributePaths = "ganadero")
+    Page<Explotacion> findAll(Specification<Explotacion> spec, Pageable pageable);
 
     /** Busqueda por id con gestoriaId explicito: NUNCA findById(id) a secas desde un endpoint --
      * Hibernate no aplica gestoriaFilter a una carga por clave primaria (ver CLAUDE.md). */

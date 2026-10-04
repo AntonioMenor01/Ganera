@@ -613,7 +613,7 @@ Plan con las decisiones cerradas: `docs/superpowers/plans/2026-10-03-tarea-front
 
 ---
 
-## Backend — bloqueante antes del piloto (pendiente)
+## Backend — bloqueante antes del piloto (hecho, 2026-10-04)
 
 1. **Búsqueda de explotaciones sin tildes y por palabras.** Al pasar el combobox del modal de revisión a `GET /explotaciones?q=` (punto 3 de la tarea de frontend), se perdió lo que hacía el filtro en cliente: hoy "martinez" no encuentra "Martínez", y "ES12 Pérez" no encuentra nada porque `q` se busca como una sola cadena dentro de un único campo. Antonio aceptó la regresión solo hasta el piloto. Propuesta:
    - una columna de búsqueda normalizada en `explotacion`, calculada en Java al guardar (minúsculas, sin tildes, con el código REGA, el nombre de la explotación y el nombre del ganadero), y recalculada cuando cambie cualquiera de los tres, incluido el nombre del ganadero (que vive en otra tabla);
@@ -622,6 +622,20 @@ Plan con las decisiones cerradas: `docs/superpowers/plans/2026-10-03-tarea-front
    - migración que rellene la columna de las filas existentes.
 
    Sustituye a la nota de `unaccent` de las notas del Prompt C.
+
+   **Hecho (2026-10-04)**, con el plan `docs/superpowers/plans/2026-10-04-busqueda-explotaciones-sin-tildes.md`.
+   Al final no hay una columna desnormalizada, sino **una por entidad**: `explotacion.busqueda` (REGA +
+   nombre) y `ganadero.nombre_busqueda`. Cada una se recalcula en los setters de su propia entidad,
+   así que renombrar un ganadero no deja nada desfasado. La regla está en `shared/texto/NormalizadorBusqueda`:
+   - quita los acentos sueltos antes de NFKD; quita tildes y diéresis; pliega ñ→n y ç→c; pasa a minúsculas;
+   - elimina sin dejar hueco guiones, signos y comodines;
+   - no pliega `ß`, `ł`, `ø` ni `æ`, a sabiendas.
+
+   La búsqueda va por palabras en AND, con un máximo de 8 (más → `400` con motivo); si todas las palabras
+   quedan vacías, devuelve una página vacía. La migración Java `V18` rellena las filas existentes por JDBC.
+   Tests: 533/533. Smoke en dos fases: datos importados con `main` en la V17 y después la V18 aplicada sobre
+   esa misma base. En el frontend solo se ha cambiado el JSDoc de `frontend/src/features/explotaciones/api.ts`
+   (un comentario, sin código), como excepción explícita de Antonio.
 
 ---
 
@@ -639,6 +653,10 @@ Además del catálogo real de tipos de trámite (ver los pendientes heredados en
 
 ## Prompt C — notas acumuladas (pendiente)
 
+- **Índice de búsqueda de explotaciones, si va lenta (2026-10-04):** en PostgreSQL, un `pg_trgm` GIN sobre
+  `explotacion.busqueda` y `ganadero.nombre_busqueda`. Esas columnas ya están normalizadas, así que no hace
+  falta `unaccent`. H2 no lo tiene: tendría que ser una migración solo para Postgres. Hoy no hay índice:
+  `like '%p%'` no usa B-tree, y la consulta va acotada por `gestoria_id`.
 - **Superada (2026-10-03):** pasa a "Backend — bloqueante antes del piloto", con otra solución (columna normalizada en Java, sin `unaccent`). Se conserva como contexto. **Búsqueda sin acentos en `GET /explotaciones?q=`:** hoy "Maria" no encuentra "María". En PostgreSQL, con la extensión `unaccent` (p. ej. `lower(unaccent(...)) like lower(unaccent(:patron))`, con una función `IMMUTABLE` envoltorio si se indexa) y, si la búsqueda se vuelve lenta con miles de explotaciones, un índice `pg_trgm` (GIN) sobre esa expresión. H2 no tiene `unaccent`: los tests necesitarán un alias de función en H2 o una normalización equivalente en Java para el patrón.
 
 ---

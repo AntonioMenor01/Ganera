@@ -157,31 +157,137 @@ class ExplotacionControllerTest {
     }
 
     @Test
-    void qNoQuitaAcentos() {
+    void qQuitaAcentosYMayusculasEnLaConsulta() {
         Gestoria gestoria = gestoriaConExplotacionesDeBusqueda();
 
-        assertThat(codigos(gestoria, "Lucía")).isEmpty();
+        // El Ganadero se llama "Pastora Lucia" (sin tilde): con tilde en q tambien lo encuentra.
+        assertThat(codigos(gestoria, "Lucía")).containsExactly("ES050000000003");
+        assertThat(codigos(gestoria, "LUCÍA")).containsExactly("ES050000000003");
         assertThat(codigos(gestoria, "Lucia")).containsExactly("ES050000000003");
     }
 
     @Test
-    void qTrataPorcentajeGuionBajoYCaracterDeEscapeComoLiterales() {
+    void qQuitaAcentosDeLosDatosGuardados() {
+        Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria tildes"));
+        nuevaExplotacion(gestoria, nuevoGanadero(gestoria, "José Martínez"), "ES070000000001", "Finca La Peña");
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(codigos(gestoria, "martinez")).containsExactly("ES070000000001");
+        assertThat(codigos(gestoria, "jose pena")).containsExactly("ES070000000001");
+    }
+
+    /** Todas las palabras deben aparecer (AND), cada una en el REGA/nombre de la Explotacion o en
+     * el nombre del Ganadero (OR). */
+    @Test
+    void qConVariasPalabrasExigeTodasEnCualquieraDeLosCampos() {
+        Gestoria gestoria = gestoriaConExplotacionesDeBusqueda();
+
+        assertThat(codigos(gestoria, "perez roble")).containsExactly("ES050000000001");
+        assertThat(codigos(gestoria, "0002 juan")).containsExactly("ES050000000002");
+        assertThat(codigos(gestoria, "lucia roble")).isEmpty();
+    }
+
+    /** D3: %, _ y ! se eliminan al normalizar, igual que en las columnas. Ya no se buscan como
+     * literales: "100%" equivale a "100", y un q que solo tiene comodines no encuentra nada. */
+    @Test
+    void qEliminaComodinesComoElRestoDeLaPuntuacion() {
         Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria comodines"));
         Ganadero ganadero = nuevoGanadero(gestoria, "Ganadero Comodines");
         nuevaExplotacion(gestoria, ganadero, "ES060000000001", "Finca 100% Bio");
         nuevaExplotacion(gestoria, ganadero, "ES060000000002", "Finca_Norte");
         nuevaExplotacion(gestoria, ganadero, "ES060000000003", "Finca Ole!");
-        nuevaExplotacion(gestoria, ganadero, "ES060000000004", "Finca C:\\Sur");
         nuevaExplotacion(gestoria, ganadero, "ES060000000005", "Finca Normal");
         entityManager.flush();
         entityManager.clear();
 
-        assertThat(codigos(gestoria, "%")).containsExactly("ES060000000001");
-        assertThat(codigos(gestoria, "_")).containsExactly("ES060000000002");
-        assertThat(codigos(gestoria, "!")).containsExactly("ES060000000003");
-        assertThat(codigos(gestoria, "\\")).containsExactly("ES060000000004");
-        assertThat(codigos(gestoria, "!%")).isEmpty();
-        assertThat(codigos(gestoria, "100_")).isEmpty(); // con "_" comodin coincidiria con "100%"
+        assertThat(codigos(gestoria, "100%")).containsExactly("ES060000000001");
+        assertThat(codigos(gestoria, "100_")).containsExactly("ES060000000001");
+        assertThat(codigos(gestoria, "finca_norte")).containsExactly("ES060000000002");
+        assertThat(codigos(gestoria, "ole!")).containsExactly("ES060000000003");
+        for (String soloComodines : List.of("%", "_", "!", "\\", "!%", "%% --")) {
+            assertThat(codigos(gestoria, soloComodines)).as(soloComodines).isEmpty();
+        }
+    }
+
+    /** q no en blanco cuyas palabras quedan todas vacias: pagina vacia (no el listado completo),
+     * que respeta el pageable pedido. */
+    @Test
+    void qSinPalabrasTrasNormalizarDevuelvePaginaVaciaConElPageable() {
+        Gestoria gestoria = gestoriaConExplotacionesDeBusqueda();
+
+        Page<ExplotacionResponse> vacia = pagina(controlador().listar(principal(gestoria), "%%",
+                PageRequest.of(2, 7, Sort.by("nombre"))));
+
+        assertThat(vacia.getContent()).isEmpty();
+        assertThat(vacia.getTotalElements()).isZero();
+        assertThat(vacia.getNumber()).isEqualTo(2);
+        assertThat(vacia.getSize()).isEqualTo(7);
+        assertThat(vacia.getSort()).isEqualTo(Sort.by("nombre"));
+    }
+
+    @Test
+    void qConOchoPalabrasEsValida() {
+        Gestoria gestoria = gestoriaConExplotacionesDeBusqueda();
+
+        ResponseEntity<?> respuesta = controlador().listar(principal(gestoria),
+                "es05 finca roble juan perez 0001 fin rob", PageRequest.of(0, 10));
+
+        assertThat(pagina(respuesta).getContent()).extracting(ExplotacionResponse::codigoRega)
+                .containsExactly("ES050000000001");
+    }
+
+    @Test
+    void qConNuevePalabrasDevuelve400ConMotivo() {
+        Gestoria gestoria = gestoriaConExplotacionesDeBusqueda();
+
+        ResponseEntity<?> respuesta = controlador().listar(principal(gestoria),
+                "a b c d e f g h i", PageRequest.of(0, 10));
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(400);
+        assertThat(respuesta.getBody())
+                .isEqualTo(new MotivoErrorResponse(ExplotacionController.MOTIVO_DEMASIADAS_PALABRAS));
+        assertThat(ExplotacionController.MOTIVO_DEMASIADAS_PALABRAS)
+                .isEqualTo("La búsqueda admite como máximo 8 palabras.");
+    }
+
+    /** Se cuentan las palabras distintas tras normalizar: repetidas (con o sin tilde/mayusculas)
+     * y trozos que quedan vacios ("-", "%") no cuentan. */
+    @Test
+    void elLimiteDePalabrasCuentaLasDistintasTrasNormalizar() {
+        Gestoria gestoria = gestoriaConExplotacionesDeBusqueda();
+
+        ResponseEntity<?> conRepetidas = controlador().listar(principal(gestoria),
+                "Pérez PEREZ perez finca - % roble juan es05 0001 fin rob", PageRequest.of(0, 10)); // 8 distintas
+        ResponseEntity<?> nueveDistintas = controlador().listar(principal(gestoria),
+                "Pérez PEREZ perez finca - % roble juan es05 0001 fin rob ble", PageRequest.of(0, 10));
+
+        assertThat(pagina(conRepetidas).getContent()).extracting(ExplotacionResponse::codigoRega)
+                .containsExactly("ES050000000001");
+        assertThat(nueveDistintas.getStatusCode().value()).isEqualTo(400);
+        assertThat(nueveDistintas.getBody())
+                .isEqualTo(new MotivoErrorResponse(ExplotacionController.MOTIVO_DEMASIADAS_PALABRAS));
+    }
+
+    /** Orden de comprobaciones: sort, despues los 100 caracteres, despues las 8 palabras. */
+    @Test
+    void ordenDeComprobacionesSortLongitudYPalabras() {
+        Gestoria gestoria = gestoriaConExplotacionesDeBusqueda();
+        String largaConPocasPalabras = "ab ".repeat(40) + "z".repeat(10); // 130 caracteres, 2 palabras distintas
+        String largaConMuchasPalabrasDistintas = "a b c d e f g h i " + "x".repeat(90);
+
+        ResponseEntity<?> sortYPalabras = controlador().listar(principal(gestoria), "a b c d e f g h i",
+                PageRequest.of(0, 10, Sort.by("ganadero.nombre")));
+        ResponseEntity<?> longitudYPalabras = controlador().listar(principal(gestoria),
+                largaConMuchasPalabrasDistintas, PageRequest.of(0, 10));
+        ResponseEntity<?> soloLongitud = controlador().listar(principal(gestoria),
+                largaConPocasPalabras, PageRequest.of(0, 10));
+
+        assertThat(sortYPalabras.getBody()).isEqualTo(new MotivoErrorResponse(OrdenacionPermitida.MOTIVO));
+        assertThat(longitudYPalabras.getBody())
+                .isEqualTo(new MotivoErrorResponse(ExplotacionController.MOTIVO_BUSQUEDA_DEMASIADO_LARGA));
+        assertThat(soloLongitud.getBody())
+                .isEqualTo(new MotivoErrorResponse(ExplotacionController.MOTIVO_BUSQUEDA_DEMASIADO_LARGA));
     }
 
     @Test
@@ -241,6 +347,28 @@ class ExplotacionControllerTest {
         assertThat(codigos(gestoria, "otra")).isEmpty();
     }
 
+    /** Protege el predicado explicito gestoria.id de ExplotacionBusquedaSpecification: aqui no hay
+     * gestoriaFilter (nadie lo activa en @DataJpaTest) y las dos palabras, juntas en AND, se cumplen
+     * tambien en la otra Gestoria. Sin el predicado, cada Gestoria veria (y contaria) las dos. */
+    @Test
+    void qDeVariasPalabrasSoloDevuelveYCuentaLasDeLaGestoriaSinDependerDelFiltroAmbiente() {
+        Gestoria gestoriaA = gestoriaRepository.save(new Gestoria("Gestoria palabras A"));
+        Gestoria gestoriaB = gestoriaRepository.save(new Gestoria("Gestoria palabras B"));
+        nuevaExplotacion(gestoriaA, nuevoGanadero(gestoriaA, "Ana García"), "ES080000000001", "Finca Los Olivos");
+        nuevaExplotacion(gestoriaA, nuevoGanadero(gestoriaA, "Luis Ruiz"), "ES080000000002", "Finca El Cerro");
+        nuevaExplotacion(gestoriaB, nuevoGanadero(gestoriaB, "Marta Garcia"), "ES080000000101", "Olivos del Sur");
+        entityManager.flush();
+        entityManager.clear();
+
+        Page<ExplotacionResponse> deA = pagina(controlador().listar(principal(gestoriaA), "olivos garcía", PageRequest.of(0, 10)));
+        Page<ExplotacionResponse> deB = pagina(controlador().listar(principal(gestoriaB), "OLIVOS garcia", PageRequest.of(0, 10)));
+
+        assertThat(deA.getContent()).extracting(ExplotacionResponse::codigoRega).containsExactly("ES080000000001");
+        assertThat(deA.getTotalElements()).isEqualTo(1);
+        assertThat(deB.getContent()).extracting(ExplotacionResponse::codigoRega).containsExactly("ES080000000101");
+        assertThat(deB.getTotalElements()).isEqualTo(1);
+    }
+
     @Test
     void qConOrdenacionPermitidaOrdenaPorElCampoDeLaExplotacion() {
         Gestoria gestoria = gestoriaConExplotacionesDeBusqueda();
@@ -277,8 +405,8 @@ class ExplotacionControllerTest {
 
     @Test
     void patronContieneEscapaComodinesYCaracterDeEscape() {
-        assertThat(ExplotacionController.patronContiene("a%b_c!d")).isEqualTo("%a!%b!_c!!d%");
-        assertThat(ExplotacionController.patronContiene("roble")).isEqualTo("%roble%");
+        assertThat(ExplotacionBusquedaSpecification.patronContiene("a%b_c!d")).isEqualTo("%a!%b!_c!!d%");
+        assertThat(ExplotacionBusquedaSpecification.patronContiene("roble")).isEqualTo("%roble%");
     }
 
     /** Explotaciones 1 "Finca Roble" y 2 "Finca Llana" (Ganadero Juan Perez) y 3 "Finca Nueva"

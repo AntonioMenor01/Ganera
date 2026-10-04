@@ -32,13 +32,16 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -230,17 +233,24 @@ class ExplotacionEndToEndTest {
         assertThat(pagina.get("totalElements").asLong()).isEqualTo(3);
     }
 
-    /** La busqueda trae el Ganadero en la misma consulta (join fetch): pagina + count como mucho,
-     * sin una consulta extra por Ganadero distinto de la pagina. */
+    /** La busqueda trae el Ganadero en la consulta de la pagina (@EntityGraph sobre
+     * findAll(Specification, Pageable)): con la pagina llena (size=2 de 3, asi corre tambien el
+     * count) son exactamente pagina + count y ningun Ganadero cargado por separado. */
     @Test
-    void qNoHaceNMasUnoSobreElGanadero() {
+    void qNoHaceNMasUnoSobreElGanadero() throws IOException {
         Statistics estadisticas = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
 
         estadisticas.clear();
-        assertThat(get("/explotaciones?q=es9500", tokenA).getStatusCode().value()).isEqualTo(200);
+        ResponseEntity<String> respuesta = get("/explotaciones?q=es9500&size=2&sort=codigoRega,desc", tokenA);
         long consultas = estadisticas.getPrepareStatementCount();
+        long cargasSueltas = estadisticas.getEntityFetchCount();
 
-        assertThat(consultas).as("consultas de la busqueda").isLessThanOrEqualTo(2);
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
+        JsonNode pagina = objectMapper.readTree(respuesta.getBody());
+        assertThat(pagina.get("totalElements").asLong()).isEqualTo(3);
+        assertThat(nombresGanaderos(pagina)).containsExactly("Ganadero Comun A Dos", "Ganadero Comun A");
+        assertThat(cargasSueltas).as("Ganaderos cargados uno a uno").isZero();
+        assertThat(consultas).as("pagina + count").isEqualTo(2);
     }
 
     /** El listado sin q tambien trae el Ganadero en la consulta de la pagina (@EntityGraph): la
@@ -265,7 +275,206 @@ class ExplotacionEndToEndTest {
         assertThat(consultas).as("pagina + count").isEqualTo(2);
     }
 
+    // --- GET /explotaciones?q= por palabras y sin tildes (plan 2026-10-04, T3) ---
+
+    @Test
+    void sinTildesMartinezEncuentraMartinezConCualquierGrafia() throws IOException {
+        importarDatosDeBusqueda();
+
+        for (String q : List.of("martinez", "MARTÍNEZ", "martínez", "Martínez")) {
+            JsonNode pagina = buscar(tokenA, q);
+            assertThat(codigos(pagina)).as(q).containsExactly("ES130000000003");
+            assertThat(pagina.get("content").get(0).get("nombreGanadero").asText()).isEqualTo("José Martínez");
+        }
+    }
+
+    @Test
+    void regaYGanaderoJuntosSoloEncuentranLaQueCumpleAmbas() throws IOException {
+        importarDatosDeBusqueda();
+
+        JsonNode pagina = buscar(tokenA, "ES12 perez");
+
+        // No sale ES120000000002 (ES12 de Ana García) ni ES130000000001 (de Pérez con otro REGA).
+        assertThat(codigos(pagina)).containsExactly("ES120000000001");
+        assertThat(pagina.get("totalElements").asLong()).isEqualTo(1);
+    }
+
+    @Test
+    void palabraDelGanaderoMasPalabraDelRegaEnLaPropiaGestoria() throws IOException {
+        importarDatosDeBusqueda();
+
+        assertThat(codigos(buscar(tokenA, "pedro es1300"))).containsExactly("ES130000000001");
+        assertThat(codigos(buscar(tokenA, "es1300 PEDRO"))).containsExactly("ES130000000001");
+    }
+
+    @Test
+    void palabraQueSoloExisteEnLaOtraGestoriaNoEncuentraNiCuenta() throws IOException {
+        importarDatosDeBusqueda();
+
+        JsonNode deA = buscar(tokenA, "zarzalejo");
+        JsonNode deB = buscar(tokenB, "zarzalejo");
+
+        assertThat(deA.get("content")).isEmpty();
+        assertThat(deA.get("totalElements").asLong()).isZero();
+        assertThat(codigos(deB)).containsExactly("ES140000000101");
+    }
+
+    /** "olivos" (ES120000000001) y "garcia" (Ana García, ES120000000002) existen en A, pero en
+     * explotaciones distintas; las dos juntas solo se cumplen en ES140000000102, de B. */
+    @Test
+    void dosPalabrasQueJuntasSoloSeCumplenEnLaOtraGestoriaNoEncuentranNada() throws IOException {
+        importarDatosDeBusqueda();
+
+        assertThat(codigos(buscar(tokenA, "olivos"))).containsExactly("ES120000000001");
+        assertThat(codigos(buscar(tokenA, "garcia"))).containsExactly("ES120000000002", "ES130000000004");
+
+        JsonNode deA = buscar(tokenA, "olivos garcia");
+        assertThat(deA.get("content")).isEmpty();
+        assertThat(deA.get("totalElements").asLong()).isZero();
+        assertThat(codigos(buscar(tokenB, "olivos garcia"))).containsExactly("ES140000000102");
+    }
+
+    @Test
+    void enieYNSeEncuentranMutuamente() throws IOException {
+        importarDatosDeBusqueda();
+
+        // ES130000000003 "Finca La Peña" y ES130000000004 "Corral Pena".
+        assertThat(codigos(buscar(tokenA, "peña"))).containsExactly("ES130000000003", "ES130000000004");
+        assertThat(codigos(buscar(tokenA, "pena"))).containsExactly("ES130000000003", "ES130000000004");
+        assertThat(codigos(buscar(tokenA, "PEÑA"))).containsExactly("ES130000000003", "ES130000000004");
+    }
+
+    @Test
+    void guionesSeEliminanYLaPalabraVaciaSeDescarta() throws IOException {
+        importarDatosDeBusqueda();
+
+        for (String q : List.of("martin-perez", "martinperez", "martin - perez", "Martín-Pérez")) {
+            assertThat(codigos(buscar(tokenA, q))).as(q).containsExactly("ES130000000005");
+        }
+    }
+
+    @Test
+    void qSoloConComodinesDevuelvePaginaVaciaConLaFormaDeSiempre() throws IOException {
+        importarDatosDeBusqueda();
+
+        URI uri = uriBusqueda("%%", Map.of("size", "5", "page", "1"));
+        assertThat(uri.getRawQuery()).contains("q=%25%25");
+        ResponseEntity<String> respuesta = get(uri, tokenA);
+        JsonNode normal = objectMapper.readTree(get("/explotaciones?q=finca&size=5&page=1", tokenA).getBody());
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
+        JsonNode vacia = objectMapper.readTree(respuesta.getBody());
+        assertThat(vacia.get("content")).isEmpty();
+        assertThat(vacia.get("totalElements").asLong()).isZero();
+        assertThat(vacia.get("size").asInt()).isEqualTo(5);
+        assertThat(vacia.get("number").asInt()).isEqualTo(1);
+        assertThat(campos(vacia)).containsExactlyInAnyOrderElementsOf(campos(normal));
+        assertThat(campos(vacia.get("pageable"))).containsExactlyInAnyOrderElementsOf(campos(normal.get("pageable")));
+    }
+
+    @Test
+    void nuevePalabrasDevuelven400ConMotivo() throws IOException {
+        ResponseEntity<String> respuesta = get(
+                uriBusqueda("uno dos tres cuatro cinco seis siete ocho nueve", Map.of()), tokenA);
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(400);
+        assertThat(objectMapper.readTree(respuesta.getBody()).get("motivo").asText())
+                .isEqualTo("La búsqueda admite como máximo 8 palabras.");
+    }
+
+    /** q de varias palabras con la pagina llena: exactamente pagina + count y ningun Ganadero
+     * cargado por separado (ajuste A3: sin fetch en la Specification, el EntityGraph solo en la
+     * consulta de datos). */
+    @Test
+    void qDeVariasPalabrasHacePaginaMasCountSinCargasSueltas() throws IOException {
+        importarDatosDeBusqueda();
+        Statistics estadisticas = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+
+        estadisticas.clear();
+        ResponseEntity<String> respuesta = get(uriBusqueda("finca es1", Map.of("size", "2")), tokenA);
+        long consultas = estadisticas.getPrepareStatementCount();
+        long cargasSueltas = estadisticas.getEntityFetchCount();
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
+        JsonNode pagina = objectMapper.readTree(respuesta.getBody());
+        assertThat(pagina.get("totalElements").asLong()).isEqualTo(5);
+        assertThat(nombresGanaderos(pagina)).containsExactly("Pedro Pérez", "Ana García");
+        assertThat(cargasSueltas).as("Ganaderos cargados uno a uno").isZero();
+        assertThat(consultas).as("pagina + count").isEqualTo(2);
+    }
+
+    @Test
+    void qPaginaRespetaSizeYPageYCuentaBien() throws IOException {
+        importarDatosDeBusqueda();
+
+        JsonNode segunda = buscar(tokenA, "finca es1", Map.of("size", "2", "page", "1"));
+        JsonNode tercera = buscar(tokenA, "finca es1", Map.of("size", "2", "page", "2"));
+
+        assertThat(segunda.get("totalElements").asLong()).isEqualTo(5);
+        assertThat(segunda.get("totalPages").asInt()).isEqualTo(3);
+        assertThat(segunda.get("size").asInt()).isEqualTo(2);
+        assertThat(segunda.get("number").asInt()).isEqualTo(1);
+        assertThat(codigos(segunda)).containsExactly("ES130000000001", "ES130000000003");
+        assertThat(tercera.get("totalElements").asLong()).isEqualTo(5);
+        assertThat(codigos(tercera)).containsExactly("ES130000000005");
+    }
+
+    @Test
+    void laUriDeLaBusquedaCodificaLosNoAsciiUnaSolaVez() {
+        URI uri = uriBusqueda("MARTÍNEZ peña", Map.of());
+
+        assertThat(uri.getRawQuery()).isEqualTo("q=MART%C3%8DNEZ%20pe%C3%B1a");
+    }
+
     // --- utilidades ---
+
+    /** Datos extra de la busqueda por palabras (REGAs ES12/ES13/ES14, que no chocan con los ES95
+     * de preparar(), asi los tests de arriba no cambian). A: Pedro Pérez (ES120000000001 Los Olivos,
+     * ES130000000001 La Vega), Ana García (ES120000000002 El Cerro, ES130000000004 Corral Pena),
+     * José Martínez (ES130000000003 La Peña), Luis Ruiz (ES130000000005 Martín-Pérez).
+     * B: Rosa Gil (ES140000000101 Finca Zarzalejo) y Marta García (ES140000000102 Finca Olivos). */
+    private void importarDatosDeBusqueda() throws IOException {
+        importar(tokenA, List.<String[]>of(
+                new String[]{"ES120000000001", "Finca Los Olivos", "72000001A", "Pedro Pérez"},
+                new String[]{"ES120000000002", "Finca El Cerro", "72000002B", "Ana García"},
+                new String[]{"ES130000000001", "Finca La Vega", "72000001A", "Pedro Pérez"},
+                new String[]{"ES130000000003", "Finca La Peña", "72000003C", "José Martínez"},
+                new String[]{"ES130000000004", "Corral Pena", "72000002B", "Ana García"},
+                new String[]{"ES130000000005", "Finca Martín-Pérez", "72000004D", "Luis Ruiz"}));
+        importar(tokenB, List.<String[]>of(
+                new String[]{"ES140000000101", "Finca Zarzalejo", "72000101E", "Rosa Gil"},
+                new String[]{"ES140000000102", "Finca Olivos", "72000102F", "Marta García"}));
+    }
+
+    /** URI de GET /explotaciones con q y otros parametros, codificada UNA vez (UTF-8, % -> %25).
+     * Se pasa como URI a TestRestTemplate para que no la vuelva a codificar. */
+    private static URI uriBusqueda(String q, Map<String, String> otros) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromPath("/explotaciones").queryParam("q", q);
+        new TreeMap<>(otros).forEach(builder::queryParam);
+        return builder.build().encode().toUri();
+    }
+
+    private JsonNode buscar(String token, String q) throws IOException {
+        return buscar(token, q, Map.of());
+    }
+
+    private JsonNode buscar(String token, String q, Map<String, String> otros) throws IOException {
+        ResponseEntity<String> respuesta = get(uriBusqueda(q, otros), token);
+        assertThat(respuesta.getStatusCode().value()).as(q).isEqualTo(200);
+        return objectMapper.readTree(respuesta.getBody());
+    }
+
+    private static List<String> campos(JsonNode nodo) {
+        List<String> campos = new ArrayList<>();
+        nodo.fieldNames().forEachRemaining(campos::add);
+        return campos;
+    }
+
+    private static List<String> nombresGanaderos(JsonNode pagina) {
+        List<String> nombres = new ArrayList<>();
+        pagina.get("content").forEach(e -> nombres.add(e.get("nombreGanadero").asText()));
+        return nombres;
+    }
 
     private static List<String> codigos(JsonNode pagina) {
         List<String> codigos = new ArrayList<>();
@@ -294,6 +503,12 @@ class ExplotacionEndToEndTest {
         objectMapper.readTree(get("/explotaciones", token).getBody()).get("content")
                 .forEach(e -> ids.put(e.get("codigoRega").asText(), e.get("id").asLong()));
         return ids;
+    }
+
+    private ResponseEntity<String> get(URI uri, String token) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        return restTemplate.exchange(uri, HttpMethod.GET, new HttpEntity<>(headers), String.class);
     }
 
     private ResponseEntity<String> get(String path, String token) {

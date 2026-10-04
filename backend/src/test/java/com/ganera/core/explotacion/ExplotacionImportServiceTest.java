@@ -19,6 +19,7 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.transaction.TestTransaction;
@@ -76,6 +77,8 @@ class ExplotacionImportServiceTest {
     private com.ganera.core.tramite.TramiteRepository tramiteRepository;
     @Autowired
     private com.ganera.core.tramite.TramiteCrotalService tramiteCrotalService;
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @AfterEach
     void limpiarDatosComprometidosPorLasTransaccionesRequiresNew() {
@@ -254,6 +257,45 @@ class ExplotacionImportServiceTest {
 
         Explotacion explotacion = explotacionRepository.findByCodigoRegaAndGestoriaId("ES600000000001", gestoria.getId()).orElseThrow();
         assertThat(explotacion.getNombre()).isEqualTo("Finca version 2");
+    }
+
+    // --- Columnas de busqueda normalizadas (busqueda sin tildes, T2) ---
+
+    /**
+     * Las columnas se leen de la BD con JDBC (no del objeto en memoria): lo que importa es lo que
+     * el importador deja persistido. Reimportar la misma explotacion con otro nombre la recalcula.
+     * El Ganadero solo se crea (un NIF existente no cambia de nombre), asi que su columna se queda.
+     */
+    @Test
+    void importarGuardaLasColumnasDeBusquedaYReimportarConOtroNombreLasRecalcula() throws IOException {
+        Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria busqueda normalizada"));
+        comprometerSetup();
+        String[] cabeceraExplotaciones = {"codigo_rega", "nombre", "nif_ganadero", "nombre_ganadero"};
+        String[] cabeceraAnimales = {"crotal", "especie", "codigo_rega_explotacion"};
+
+        explotacionImportService.importar(construirExcel(cabeceraExplotaciones,
+                List.<String[]>of(new String[]{"ES700000000001", "Finca La Peña", "30000001A", "José Martínez"}),
+                cabeceraAnimales, List.of()), gestoria);
+
+        assertThat(busquedaDeExplotacion("ES700000000001")).isEqualTo("es700000000001 finca la pena");
+        assertThat(nombreBusquedaDeGanadero("30000001A")).isEqualTo("jose martinez");
+
+        explotacionImportService.importar(construirExcel(cabeceraExplotaciones,
+                List.<String[]>of(new String[]{"ES700000000001", "Cortijo Ñandú-Sur", "30000001A", "José Martínez"}),
+                cabeceraAnimales, List.of()), gestoria);
+
+        assertThat(busquedaDeExplotacion("ES700000000001")).isEqualTo("es700000000001 cortijo nandusur");
+        assertThat(nombreBusquedaDeGanadero("30000001A")).isEqualTo("jose martinez");
+    }
+
+    private String busquedaDeExplotacion(String codigoRega) {
+        return jdbcTemplate.queryForObject(
+                "select busqueda from explotacion where codigo_rega = ?", String.class, codigoRega);
+    }
+
+    private String nombreBusquedaDeGanadero(String nif) {
+        return jdbcTemplate.queryForObject(
+                "select nombre_busqueda from ganadero where nif = ?", String.class, nif);
     }
 
     // --- Decision 17 (I-pre1): identificadores de OTRA Gestoria -> error de fila neutro ---

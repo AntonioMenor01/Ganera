@@ -614,3 +614,42 @@ implementador + un revisor independiente por tarea; informes en `.superpowers/sd
   quedan anotados.
 - **Sin commit**: pendiente de la aprobación de Antonio.
 
+## 2026-10-04 — Backend bloqueante antes del piloto: búsqueda sin tildes y por palabras (solo backend)
+
+Plan: `docs/superpowers/plans/2026-10-04-busqueda-explotaciones-sin-tildes.md`. Las recomendaciones D1–D5
+se aprobaron con tres ajustes de Antonio:
+- **A1:** la V18 solo con JDBC.
+- **A2:** las palabras que quedan vacías se descartan.
+- **A3:** nada de `fetch` en la Specification; `@EntityGraph` en `findAll(spec, pageable)`.
+
+Tras la revisión de T1, Antonio decidió además quitar los acentos sueltos (`\p{Sk}`) sin dejar hueco.
+En cada tarea hubo un implementador y un revisor independiente; los informes están en `.superpowers/sdd/bt-*`.
+
+- **T1** (`NormalizadorBusqueda`, puro): 472 → **498**. Revisión: Approved with minors.
+  - m2 (el acento suelto partía la palabra) lo decidió Antonio. m1 y m3 (tests del trozo que se parte y del
+    espacio Unicode) se corrigieron. m4 (`ß`, `ł`, `ø`, `æ` no se pliegan) queda anotado en el Javadoc.
+  - Resultado: **502**.
+- **T2** (columnas por entidad, setters explícitos, V18 en Java con JDBC): **512**. Revisión: Approved with minors.
+  - Se corrigieron m1 (ciclo de paquetes; el normalizador pasa a `shared/texto`), m3 (test de más de 500
+    filas) y m5 (el test de la migración sale del paquete `db.migration`).
+  - m2 (paso 0 en el plan) se documentó. m4 (`fetchSize`) y m6 (la siembra por SQL debe rellenar las
+    columnas) quedan en `CLAUDE.md`.
+  - Resultado: **513**.
+- **T3** (Specification + EntityGraph, límite de 8 palabras, página vacía): **532**. Revisión: Approved with minors.
+  - Se corrigieron m1 (`@DataJpaTest` de dos gestorías sin filtro que protege el predicado `gestoria.id`;
+    sin él, los E2E no lo detectan) y m2 (Javadoc: toda spec debe llevar `gestoria.id`).
+  - Resultado: **533**.
+  - m3 (el JSDoc de `frontend/src/features/explotaciones/api.ts` describía la búsqueda vieja): corregido
+    antes del commit, como única excepción a "solo backend" que autorizó Antonio (un comentario, sin código).
+    `npm test` 506/506 y `npm run lint` con los 3 avisos de siempre.
+  - m4 (una etiqueta retocada de un nombre largo puede pasar de 8 palabras; visto en el smoke): se queda
+    así, por decisión de Antonio.
+  - m5 (el informe atribuía al EntityGraph que `ganadero` se uniera una sola vez también en el count; allí
+    lo hace el join implícito del path): solo afecta al informe y no hay nada que cambiar en el código.
+- **T4 (cierre):**
+  - `./mvnw clean test` **533/533**; `npm test` **506/506**.
+  - Smoke con `curl` contra dos gestorías, en dos fases sobre la misma H2 en fichero. Primero, el backend
+    de `main` (`git archive`) importa en la V17 y reproduce el fallo (`martinez` → 0). Después, el backend
+    nuevo aplica la V18 y todos los casos pasan (`bt-t4-smoke.md`).
+  - Procesos parados por PID y temporales borrados. `CLAUDE.md`, `ganera-prompts.md` y este fichero al día.
+- **Sin commit**: pendiente de la aprobación de Antonio.

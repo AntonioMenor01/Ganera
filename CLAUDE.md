@@ -543,14 +543,12 @@ approval step before anything is written to OVZ.net.
   - `GET /explotaciones/{id}` → `ExplotacionResponse` (same DTO as the list), with
     `findByIdAndGestoriaId`; `404` with no body for another Gestoría's or a nonexistent one.
     Side effect: `GET /explotaciones/importar` is now a `400` (non-numeric id) instead of `405`.
-  - `GET /explotaciones?q=` — case-insensitive "contains" over the Explotación's `codigoRega` and
-    `nombre` **and the Ganadero's `nombre`**, **without** stripping accents (`unaccent` doesn't exist
-    in H2 and needs a Postgres extension — noted for Prompt C in `ganera-prompts.md`). `q` is
-    trimmed; absent/blank = the usual listing; more than 100 characters (UTF-16 units) →
-    `400 {motivo}`, checked **after** the `sort` whitelist. `%`, `_` and `!` are matched literally
-    (`like … escape '!'`). `ExplotacionRepository.buscarPorTexto`: JPQL with `join fetch e.ganadero`
-    and its own `countQuery`, `gestoriaId` as a real parameter in both; the `sort` applies to the
-    Explotación. No indexes (a `pg_trgm` index if it ever gets slow).
+  - `GET /explotaciones?q=` — over the Explotación's `codigoRega` and `nombre` **and the
+    Ganadero's `nombre`**; `q` trimmed; absent/blank = the usual listing; more than 100 characters
+    (UTF-16 units) → `400 {motivo}`, checked **after** the `sort` whitelist. (Its first version
+    matched `q` as one string, case-insensitive but not accent-insensitive; replaced on 2026-10-04 by
+    the accent-insensitive, word-by-word search — see the "Explotación search without accents"
+    bullet below.)
   - `TramiteResponse` (list, aprobar, rechazar) gained `explotacionCodigoRega` and
     `explotacionNombre` (null without Explotación), loaded in the page query with
     `@EntityGraph(attributePaths = "explotacion")` on `TramiteRepository.findByGestoriaId`/
@@ -569,6 +567,46 @@ approval step before anything is written to OVZ.net.
     **not** consume the rest then; the frontend task before the pilot (2026-10-04) consumes `?q=`,
     `explotacionCodigoRega`/`explotacionNombre`, `completo` and the `403` `motivo` (see the
     frontend architecture notes). `GET /explotaciones/{id}` still has no caller.
+- **Explotación search without accents, word by word** (the backend task blocking the pilot,
+  2026-10-04; plan `docs/superpowers/plans/2026-10-04-busqueda-explotaciones-sin-tildes.md`, with
+  Antonio's adjustments A1–A3 at the top). Same `GET /explotaciones?q=` contract, frontend untouched.
+  - **Normalized columns, one per entity:** `explotacion.busqueda` (`codigoRega` + `" "` + `nombre`,
+    `NormalizadorBusqueda.textoExplotacion`) and `ganadero.nombre_busqueda`. Each depends only on
+    its own row, so it's recalculated in the entity's **explicit setters** (`Explotacion.setCodigoRega/
+    setNombre`, `Ganadero.setNombre`; the column has no public setter) — never `@PrePersist/@PreUpdate`.
+    No denormalized Ganadero name in `explotacion` (renaming a Ganadero would leave it stale).
+    `VARCHAR` without length (NFKD can lengthen text), `NOT NULL`. **Any SQL that inserts into
+    `ganadero`/`explotacion` by hand (smoke seeding) must fill these columns**, or it fails.
+  - **`shared/texto/NormalizadorBusqueda`** (pure, no Spring), in order: remove `\p{Sk}` (loose
+    accents such as `´ ¨ ¸ ^`) **before** NFKD (`Mart´in` → `martin`, not `mart in`); NFKD and strip
+    `\p{M}` (`á→a`, `ü→u`, **`ñ→n`**, **`ç→c`**, `º→o`); lowercase (`Locale.ROOT`); delete everything
+    that isn't a letter, digit or whitespace **without leaving a gap** (`Martín-Pérez` → `martinperez`,
+    `S.L.` → `sl`; `%`, `_`, `!` disappear, so they never reach the `LIKE` — the `escape '!'` stays
+    as a defence); collapse Unicode whitespace. Deliberately **not folded**: `ß`, `ł`, `ø`, `æ`, `œ`,
+    `đ`. `palabras(q)`: split `q` on whitespace, normalize each piece, drop empty ones and repeats
+    (`martin - perez` → `[martin, perez]`). All pieces empty (`q=%%`) → **empty page**; only a
+    blank `q` is the full listing. **More than 8 distinct words → `400 {motivo}` "La búsqueda admite
+    como máximo 8 palabras."** (checked after the 100 characters).
+  - **Query:** `ExplotacionBusquedaSpecification.porPalabras(gestoriaId, palabras)` — explicit
+    `gestoria.id` predicate plus, per word, `(busqueda like %p% or ganadero.nombreBusqueda like
+    %p%)`, ANDed; no `lower()` (columns are already lowercase); **no `fetch` in the Specification**
+    (it breaks the count). The Ganadero comes from `@EntityGraph(attributePaths = "ganadero")` on
+    `ExplotacionRepository.findAll(Specification, Pageable)` (data query only; `ganadero` is joined
+    once). `buscarPorTexto` was removed. **Every `Specification` on `Explotacion` must carry the
+    JWT's `gestoria.id`**: the inherited `JpaSpecificationExecutor` methods don't filter by Gestoría
+    by themselves. The predicate is guarded by a `@DataJpaTest` without `gestoriaFilter`
+    (`ExplotacionControllerTest`) — the two-Gestoría E2E tests can't catch its removal, because the
+    ambient filter masks it.
+  - **Backfill: Flyway Java migration `db.migration.V18__busqueda_normalizada`** (JDBC only, no
+    entities): add the columns, fill them in batches with the same `NormalizadorBusqueda`, `SET NOT
+    NULL`. **If the normalization rule ever changes, add a new migration that recalculates both
+    columns** (V18 won't run again). It reads the whole table into memory on PostgreSQL (fine at
+    pilot volume; use `setFetchSize` if the pattern is reused on big tables). Tested with a
+    programmatic Flyway on its own H2 (`target 17` → data → migrate, including 1203 rows across
+    batch cuts).
+  - **No index:** `like '%p%'` doesn't use a B-tree and the query is bounded by `gestoria_id`. If it
+    ever gets slow, a PostgreSQL `pg_trgm` GIN index on the normalized columns (no `unaccent`
+    needed) — noted for Prompt C.
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)
@@ -576,7 +614,8 @@ approval step before anything is written to OVZ.net.
 Package layout under `backend/src/main/java/com/ganera/core/`: `gestoria`, `ganadero`,
 `explotacion`, `contacto`, `tramite`, `facturacion`, `whatsapp`, `ovz`, `auth`, `onboarding`, and
 `shared` (`shared/tenant`, `shared/security`, `shared/crypto`, `shared/web` — `MotivoErrorResponse`,
-`OrdenacionPermitida`).
+`OrdenacionPermitida` — and `shared/texto` — `NormalizadorBusqueda`). Java Flyway migrations live in
+`backend/src/main/java/db/migration/` (V18 is the first one).
 
 - `Tramite.estado` (`EstadoTramite`) has exactly 7 values:
   `PENDIENTE_EXTRACCION, PENDIENTE_REVISION, APROBADO, EN_PROCESO, EJECUTADO_OVZ, ERROR_OVZ,
@@ -698,10 +737,10 @@ reference for every frontend decision below.
   escribe para acotar." from `totalElements`; if the input text is the chosen explotación's label it
   counts as an empty query (`consultaDeBusqueda`); a `400` (over 100 chars) shows the `motivo`;
   errors show "Reintentar" inside the popup. The old complete list (`todasLasExplotaciones.ts`,
-  `useTodasLasExplotaciones.ts`) and the client-side filter were **deleted**. **Accepted regression,
-  blocking before the pilot (backend):** the backend search is not accent-insensitive and matches
-  the whole text in a single field — see "Backend — bloqueante antes del piloto" in
-  `ganera-prompts.md`.
+  `useTodasLasExplotaciones.ts`) and the client-side filter were **deleted**. The regression this
+  caused (no accent-insensitive or word-by-word search) was closed in the backend on 2026-10-04 (see
+  "Explotación search without accents" under Technical decisions); a retouched label of a long
+  explotación name can now exceed 8 words and get that `400` `motivo`.
 - **`AppLayout.tsx`** has the navigation Trámites/Ganaderos/Explotaciones/Facturación (one
   `nav aria-label="Principal"`; below `md` two rows with the links in a full-bleed strip that
   scrolls inside itself, the active link brought into view by setting the strip's `scrollLeft` —
@@ -766,7 +805,7 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw clean test` — runs the test suite (472 tests after the mini-prompt after A2); **always with `clean`**
+- `./mvnw clean test` — runs the test suite (533 tests after the explotación search task); **always with `clean`**
   (see the VS Code/ECJ note under Architecture notes). A single test:
   `./mvnw clean test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
@@ -1012,6 +1051,18 @@ the scrolled strip) was fixed before the commit and checked at 375 px in a real 
 Non-blocking leftovers: "Reintentar" inside the combobox isn't reachable by Tab, and the combobox
 list empties while searching (height jump).
 
+**Backend task blocking the pilot — explotación search without accents, word by word — complete**
+(2026-10-04), following `docs/superpowers/plans/2026-10-04-busqueda-explotaciones-sin-tildes.md`
+with the Superpowers flow (T1–T3, one implementer + one independent reviewer each, all **Approved
+with minors**, minors fixed; reports in `.superpowers/sdd/bt-*`, not committed). **Backend only.**
+See the "Explotación search without accents" bullet under Technical decisions. Migration `V18`
+(Java). Verified with `./mvnw clean test` **533/533**, `npm test` **506/506** (frontend untouched),
+and a `curl` smoke with two Gestorías on a file-backed H2 in two phases — `main`'s backend imported
+the data at V17, then the new backend applied V18 to that same database and the searches ran
+against the backfilled rows (log in `.superpowers/sdd/bt-t4-smoke.md`). The only frontend change,
+by Antonio's explicit exception, is the JSDoc of `frontend/src/features/explotaciones/api.ts` (a
+comment, no code); `npm test` 506/506 and `npm run lint` (known warnings only) after it.
+
 **Next pending step: Prompt 3a (sincronización inicial de OVZ.net, modo lectura) — blocked.** Per
 `ganera-prompts.md`, Prompts 3a, 3b, and 3c (OVZ.net read sync, Twilio webhook + AI extraction, and
 real Playwright write-mode automation) are all blocked on the same prerequisite: Antonio needs to
@@ -1021,8 +1072,7 @@ not guessing at its structure from assumptions). Until that happens, `TramiteExt
 `OvzAutomationService` stay as unimplemented skeletons (see above) — don't write real prompt/scraping
 logic against assumptions about OVZ.net's structure. The OVZ-credentials onboarding screen and the
 rest of Prompt 4's originally-scoped items are deferred alongside it. Not blocked by OVZ.net
-(see `ganera-prompts.md`): the **backend task blocking the pilot** — accent-insensitive,
-word-by-word explotación search with a normalized column computed in Java (no `unaccent`).
+(see `ganera-prompts.md`): Prompt B (WhatsApp + AI, without OVZ).
 
 `ganera-prompts.md` at the repo root tracks the full sequence of prompts used to
 build this out, in order — check it for the detailed history/rationale behind any given step.

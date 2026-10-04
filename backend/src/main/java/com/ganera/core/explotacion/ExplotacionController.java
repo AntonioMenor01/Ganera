@@ -1,8 +1,10 @@
 package com.ganera.core.explotacion;
 
 import com.ganera.core.shared.security.GaneraUserPrincipal;
+import com.ganera.core.shared.texto.NormalizadorBusqueda;
 import com.ganera.core.shared.web.MotivoErrorResponse;
 import com.ganera.core.shared.web.OrdenacionPermitida;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Set;
 
 @RestController
@@ -35,16 +38,23 @@ public class ExplotacionController {
     static final String MOTIVO_BUSQUEDA_DEMASIADO_LARGA =
             "La búsqueda no puede tener más de " + LONGITUD_MAXIMA_BUSQUEDA + " caracteres.";
 
-    /** Caracter de escape del LIKE de ExplotacionRepository.buscarPorTexto (debe coincidir con su ESCAPE). */
-    private static final char ESCAPE_LIKE = '!';
+    /** Maximo de palabras distintas de ?q= tras normalizar (D4): cada una es un AND con dos LIKE. */
+    static final int MAXIMO_PALABRAS_BUSQUEDA = 8;
+
+    static final String MOTIVO_DEMASIADAS_PALABRAS =
+            "La búsqueda admite como máximo " + MAXIMO_PALABRAS_BUSQUEDA + " palabras.";
 
     /** Explotaciones de la Gestoria autenticada, con el gestoriaId del JWT como parametro real de
      * la query (no solo el gestoriaFilter ambiente). Orden por defecto {codigoRega, id}: estable
      * (codigo_rega es UNIQUE). 400 con motivo si ?sort= pide un campo fuera de la lista blanca.
-     * ?q= (opcional) filtra por "contiene", sin distinguir mayusculas ni quitar acentos, en el
-     * codigo REGA, el nombre de la Explotacion y el nombre del Ganadero; se recorta, y ausente,
-     * vacio o en blanco = sin filtro. Orden de comprobaciones: primero la lista blanca de sort
-     * (igual que sin q), despues la longitud de q (400 con motivo si pasa de 100 caracteres). */
+     * ?q= (opcional) busca por palabras, sin distinguir mayusculas ni tildes (plan de la busqueda
+     * sin tildes): q se recorta y se parte en palabras normalizadas (NormalizadorBusqueda.palabras:
+     * sin tildes, enie -> n, sin puntuacion ni comodines, sin repetidas); cada palabra debe
+     * aparecer ("contiene") en el codigo REGA o el nombre de la Explotacion o en el nombre del
+     * Ganadero. Orden de comprobaciones: 1) lista blanca de sort (igual que sin q); 2) longitud de
+     * q recortado (400 si pasa de 100 caracteres); 3) numero de palabras distintas (400 si pasa
+     * de 8). q ausente, vacio o en blanco = sin filtro; q no en blanco cuyas palabras quedan todas
+     * vacias (p. ej. "%%" o "---") = pagina vacia con el pageable pedido, no el listado completo. */
     @GetMapping("/explotaciones")
     public ResponseEntity<?> listar(
             @AuthenticationPrincipal GaneraUserPrincipal principal,
@@ -57,26 +67,21 @@ public class ExplotacionController {
         if (texto.length() > LONGITUD_MAXIMA_BUSQUEDA) {
             return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_BUSQUEDA_DEMASIADO_LARGA));
         }
+        List<String> palabras = NormalizadorBusqueda.palabras(texto);
+        if (palabras.size() > MAXIMO_PALABRAS_BUSQUEDA) {
+            return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_DEMASIADAS_PALABRAS));
+        }
         Long gestoriaId = principal.gestoriaId();
         if (texto.isEmpty()) {
             return ResponseEntity.ok(
                     explotacionRepository.findByGestoriaId(gestoriaId, pageable).map(ExplotacionResponse::from));
         }
-        return ResponseEntity.ok(explotacionRepository
-                .buscarPorTexto(gestoriaId, patronContiene(texto), pageable).map(ExplotacionResponse::from));
-    }
-
-    /** Patron LIKE "contiene" para un texto del usuario: escapa el caracter de escape, {@code %} y
-     * {@code _} con {@link #ESCAPE_LIKE} (para que coincidan literalmente) y lo envuelve en %...%. */
-    static String patronContiene(String texto) {
-        StringBuilder patron = new StringBuilder(texto.length() + 2).append('%');
-        for (char c : texto.toCharArray()) {
-            if (c == ESCAPE_LIKE || c == '%' || c == '_') {
-                patron.append(ESCAPE_LIKE);
-            }
-            patron.append(c);
+        if (palabras.isEmpty()) {
+            return ResponseEntity.ok(Page.<ExplotacionResponse>empty(pageable));
         }
-        return patron.append('%').toString();
+        return ResponseEntity.ok(explotacionRepository
+                .findAll(ExplotacionBusquedaSpecification.porPalabras(gestoriaId, palabras), pageable)
+                .map(ExplotacionResponse::from));
     }
 
     /** Detalle de una Explotacion (mismo DTO que el listado). 404 sin cuerpo si no existe o es de
