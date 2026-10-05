@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { CircleAlertIcon } from "lucide-react";
+import { CircleAlertIcon, MessageCircleIcon, TriangleAlertIcon } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -23,7 +23,7 @@ import { aErrorApi, mensajeDeError, type ErrorApi } from "@/shared/api/errores";
 import type { Pagina } from "@/shared/api/types";
 import { listarTramites } from "./api";
 import type { EstadoTramite, Tramite, TramiteCrotal } from "./types";
-import { ESTADOS_TRAMITE, etiquetaTipoTramite } from "./etiquetas";
+import { ESTADOS_TRAMITE, avisosExtraccion, etiquetaOrigen, etiquetaTipoTramite } from "./etiquetas";
 import { BadgeEstadoTramite, BadgeResolucionCrotal } from "./BadgesTramite";
 import { TramiteReviewDialog } from "./TramiteReviewDialog";
 
@@ -217,6 +217,8 @@ export function TramitesPage() {
                   >
                     #{tramite.id}
                   </button>
+                  {/* Fuera del botón: su nombre accesible sigue siendo "Revisar trámite #N". */}
+                  <IndicadorOrigen origen={tramite.origen} />
                 </TableCell>
                 <TableCell>
                   {tramite.tipoTramite ? (
@@ -227,12 +229,14 @@ export function TramitesPage() {
                 </TableCell>
                 <TableCell>
                   <BadgeEstadoTramite estado={tramite.estado} />
+                  <LineaExtraccion tramite={tramite} />
                 </TableCell>
                 <TableCell>
                   <CeldaExplotacion tramite={tramite} />
                 </TableCell>
                 <TableCell>
                   <CeldaCrotales crotales={tramite.crotales} />
+                  <LineaDescartados tramite={tramite} />
                 </TableCell>
               </TableRow>
             ))}
@@ -347,4 +351,48 @@ function CeldaCrotales({ crotales }: { crotales: TramiteCrotal[] | undefined }) 
       )}
     </ul>
   );
+}
+
+/** B1 (D7): de dónde vino el trámite. Un icono en Gris Texto, no un badge (los badges son estados).
+ * El `title` (tooltip para el ratón) va en la parte visual, oculta al lector de pantalla con el
+ * icono; el texto `sr-only` es un hermano aparte. Así se anuncia una sola vez (n2 de la revisión de
+ * T4: un `title` sobre el mismo elemento que el texto oculto puede leerse como descripción extra). */
+function IndicadorOrigen({ origen }: { origen: string | null | undefined }) {
+  const etiqueta = etiquetaOrigen(origen);
+  if (!etiqueta) return null;
+  return (
+    <span className="ml-1.5 inline-flex align-middle text-muted-foreground">
+      <span aria-hidden title={etiqueta} className="inline-flex">
+        <MessageCircleIcon className="size-3.5" />
+      </span>
+      <span className="sr-only">{etiqueta}</span>
+    </span>
+  );
+}
+
+const CLASE_LINEA_AVISO = "mt-1 flex items-center gap-1 text-xs";
+
+/** Línea de 12px bajo un dato de la fila. `aviso`: ámbar del par de aviso con icono decorativo;
+ * `neutro`: Gris Texto sin icono. */
+function LineaAviso({ texto, tono }: { texto: string; tono: "aviso" | "neutro" }) {
+  if (tono === "neutro") return <p className={cn(CLASE_LINEA_AVISO, "text-muted-foreground")}>{texto}</p>;
+  return (
+    <p className={cn(CLASE_LINEA_AVISO, "text-warning-foreground")}>
+      <TriangleAlertIcon aria-hidden className="size-3.5 shrink-0" />
+      {texto}
+    </p>
+  );
+}
+
+/** B1 (A3, brief de T4): estado de la extracción bajo el badge de Estado, solo si el trámite sigue
+ * pendiente (la regla vive en `avisosExtraccion`). Sin refresco automático: cambia al recargar. */
+function LineaExtraccion({ tramite }: { tramite: Tramite }) {
+  const { extraccion } = avisosExtraccion(tramite);
+  return extraccion ? <LineaAviso texto={extraccion.cola} tono={extraccion.tono} /> : null;
+}
+
+/** B1 (D5): identificadores que la IA devolvió y no parecían crotales, en la celda de Crotales. */
+function LineaDescartados({ tramite }: { tramite: Tramite }) {
+  const { descartados } = avisosExtraccion(tramite);
+  return descartados ? <LineaAviso texto={descartados.cola} tono="aviso" /> : null;
 }

@@ -15,12 +15,13 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
-  ai:
-    anthropic:
-      api-key: ${ANTHROPIC_API_KEY:}
-      chat:
-        options:
-          model: claude-haiku-4-5-20251001
+  task:
+    scheduling:
+      pool:
+        # Por defecto Spring Boot usa UN hilo para todos los @Scheduled. La extraccion por IA puede
+        # tardar minutos (timeouts y reintentos del SDK) y no debe retrasar SuscripcionSyncScheduler
+        # ni RetencionMensajesScheduler (B1, revision m2 de T2).
+        size: 3
 
 ganera:
   jwt:
@@ -32,6 +33,31 @@ ganera:
     secret: ${ONBOARDING_SECRET:}
   frontend:
     origen: ${FRONTEND_ORIGEN:http://localhost:5173}
+  twilio:
+    # URL publica exacta que Twilio llama (la del sandbox/numero); la firma se valida contra ella.
+    # Vacia -> el webhook responde 503 y no guarda nada (fail-closed).
+    webhook-url: ${TWILIO_WEBHOOK_URL:}
+  anthropic:
+    # Vacia -> la app arranca igual; cada extraccion falla con ExtraccionFallidaException.
+    api-key: ${ANTHROPIC_API_KEY:}
+  extraccion:
+    # Planificador de la extraccion por IA en segundo plano (B1, T2).
+    planificador:
+      activo: true
+    intervalo: PT5S
+    lote: 10
+    # Plazo tras el 1.er, 2.o y 3.er fallo; tras el 4.o fallo no hay mas intentos (D4).
+    reintentos: PT1M,PT5M,PT30M
+  retencion:
+    # Job nocturno de retencion de mensajes de WhatsApp (B1, T3, D6), despues del de Stripe (03:00).
+    activo: true
+    cron: "0 30 3 * * *"
+    # Plazos pendientes de confirmar por el abogado de Ganera (D6), junto con los DPA de Anthropic
+    # y Twilio (notas del Prompt C).
+    # Mensajes sin tramite (numero desconocido, contacto inactivo, error de recepcion): se borran.
+    mensajes-sin-tramite: P30D
+    # Mensajes con tramite: se vacia el texto ("[texto eliminado por antigüedad]"); el tramite se queda.
+    texto-con-tramite: P12M
 
 twilio:
   account-sid: ${TWILIO_ACCOUNT_SID:}

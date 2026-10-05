@@ -498,6 +498,15 @@ in the UI. The favicon is `favicon-64.png`.
 - **Overflowing cell content:** the queue shows two crotales and a "+N más" button
   (`aria-expanded`) that expands the rest inside the row; it never opens a tooltip, which doesn't
   work on touch.
+- **Origin marker (WhatsApp, B1):** a 14px speech-bubble icon in Gris Texto next to the `#N` button,
+  outside it (the button keeps its own `aria-label`), with a `title` for the mouse and "Recibido por
+  WhatsApp" announced once, as hidden text. It is not a badge: badges are states.
+- **Extraction line (B1):** a 12px line under the state badge, only while the trámite is pending
+  (`PENDIENTE_EXTRACCION` or `PENDIENTE_REVISION`): "Extracción en curso" in Gris Texto with no icon
+  (work in progress, not a problem); "No se ha podido extraer" and "Mensaje sin texto" with a
+  decorative warning icon in the warning text color (`text-warning-foreground`). In the Crotales cell,
+  "N descartados" uses the same treatment. Amber, never red: a failed extraction is pending work, not
+  an error. No new column; labels live in `etiquetas.ts`.
 
 ### Record sections
 - A detail page has one white section per child record (12px radius, 10% ink ring, no nested
@@ -557,6 +566,14 @@ in the UI. The favicon is `favicon-64.png`.
   line with a "Reintentar" link. After an uncertain approve/reject (network error or 5xx) whose
   reload shows another closed state, a neutral (non-destructive) Alert says "El trámite ha cambiado
   de estado".
+- **Extraction notices (B1):** facts about the data, not results of an action, so they sit after the
+  action notices, carry no close button and no live `role` (they are read in order after the focused
+  title; an `alert` would interrupt it and repeat on every reload). Failed extraction, a message
+  without text and discarded identifiers use the exact warning pair (`bg-warning` /
+  `text-warning-foreground`) with a decorative warning icon; "Extracción en curso" is neutral. They show
+  only while the trámite is pending, and a failed-extraction notice **stays after the reviewer fixes
+  and saves** the trámite: it records that the AI didn't extract it, which is still true. Don't
+  "fix" that by hiding it on save.
 
 ## Do's and Don'ts
 

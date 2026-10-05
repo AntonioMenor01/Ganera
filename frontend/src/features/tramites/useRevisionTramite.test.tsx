@@ -48,6 +48,9 @@ function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
     mensajeOriginal: "alta del 1234",
     crotales: [crotal("1234")],
     version: 4,
+    origen: null,
+    estadoExtraccion: null,
+    crotalesDescartados: 0,
     ...parcial,
   }
 }
@@ -65,6 +68,9 @@ function respuestaLista(d: TramiteDetalle) {
     motivoError: d.motivoError,
     crotales: d.crotales,
     version: d.version,
+    origen: d.origen,
+    estadoExtraccion: d.estadoExtraccion,
+    crotalesDescartados: d.crotalesDescartados,
   } satisfies Tramite
 }
 
@@ -1483,4 +1489,39 @@ describe("useRevisionTramite: sesión ligada al trámite (M3, R2)", () => {
     expect(result.current.formulario.tipoTramite).toBe("ALTA")
     expect(result.current.recargaFallida).toBeNull()
   })
+})
+
+describe("useRevisionTramite: campos de B1 en la respuesta de aprobar/rechazar (n1 de la revisión de T4)", () => {
+  it.each(["aprobar", "rechazar"] as const)(
+    "tras %s, el detalle lleva origen, estadoExtraccion y crotalesDescartados de la respuesta, no los anteriores",
+    async (accion) => {
+      const estado = accion === "aprobar" ? "APROBADO" : "RECHAZADO"
+      // La recarga falla: el detalle que queda es el de la respuesta fusionada (respuesta-accion).
+      detallesEnOrden(
+        () => HttpResponse.json(detalle({ origen: null, estadoExtraccion: "FALLIDA", crotalesDescartados: 2 })),
+        () => new HttpResponse(null, { status: 500 }),
+      )
+      server.use(
+        http.post(apiUrl(`/tramites/7/${accion}`), () =>
+          HttpResponse.json(
+            respuestaLista(
+              detalle({ estado, version: 5, origen: "WHATSAPP", estadoExtraccion: "COMPLETADA", crotalesDescartados: 0 }),
+            ),
+          ),
+        ),
+      )
+      const { result } = await montar()
+      await act(async () => {
+        await result.current[accion]()
+      })
+      expect(result.current.recargaFallida).toBe(TEXTO_ERROR_SERVIDOR)
+      expect(result.current.detalle).toMatchObject({
+        estado,
+        version: 5,
+        origen: "WHATSAPP",
+        estadoExtraccion: "COMPLETADA",
+        crotalesDescartados: 0,
+      })
+    },
+  )
 })

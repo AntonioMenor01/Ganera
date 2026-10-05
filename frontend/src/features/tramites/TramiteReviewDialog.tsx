@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { etiquetaTipoTramite, TIPOS_TRAMITE, type TipoTramite } from "./etiquetas";
+import { avisosExtraccion, etiquetaTipoTramite, TIPOS_TRAMITE, type TipoTramite } from "./etiquetas";
 import { BadgeEstadoTramite } from "./BadgesTramite";
 import { AvisosRevision } from "./AvisosRevision";
 import { CampoExplotacion, TextoExplotacion } from "./CampoExplotacion";
@@ -192,6 +192,7 @@ export function TramiteReviewDialog({
           <div className="p-4">
             <AvisosRevision
               aviso={revision.aviso}
+              extraccion={detalle && carga.estado === "listo" ? avisosExtraccion(detalle) : null}
               onDescartarAviso={revision.descartarAviso}
               recargaFallida={revision.recargaFallida}
               onReintentarRecarga={revision.reintentarRecarga}

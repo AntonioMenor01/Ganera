@@ -7,6 +7,12 @@ import java.util.List;
  * (mini-prompt tras A2, punto 5; mismos nombres que en TramiteDetalleResponse) son null si el
  * Tramite no tiene Explotacion. En el listado la Explotacion llega ya cargada en la consulta de la
  * pagina (EntityGraph en TramiteRepository), nunca una consulta por fila.
+ *
+ * <p>origen, estadoExtraccion y crotalesDescartados (B1, T3) son columnas del propio Tramite, sin
+ * consultas extra: origen es "WHATSAPP" o null (Tramites anteriores a B1); estadoExtraccion es
+ * "PENDIENTE", "COMPLETADA", "FALLIDA", "SIN_TEXTO" o null (anteriores a B1); crotalesDescartados
+ * cuenta los identificadores que la IA devolvio y no parecian crotales (0 si no hubo). El motivo
+ * tecnico de un fallo de la IA nunca se expone: solo va a los logs, sin datos del mensaje.
  */
 public record TramiteResponse(
         Long id,
@@ -17,7 +23,10 @@ public record TramiteResponse(
         String estado,
         String motivoError,
         List<TramiteCrotalResponse> crotales,
-        Long version) {
+        Long version,
+        String origen,
+        String estadoExtraccion,
+        int crotalesDescartados) {
 
     public static TramiteResponse from(Tramite tramite, List<TramiteCrotalResponse> crotales) {
         boolean tieneExplotacion = tramite.getExplotacion() != null;
@@ -30,6 +39,9 @@ public record TramiteResponse(
                 tramite.getEstado().name(),
                 tramite.getMotivoError(),
                 crotales != null ? crotales : List.of(),
-                tramite.getVersion());
+                tramite.getVersion(),
+                tramite.getOrigen() != null ? tramite.getOrigen().name() : null,
+                tramite.getEstadoExtraccion() != null ? tramite.getEstadoExtraccion().name() : null,
+                tramite.getCrotalesDescartados());
     }
 }

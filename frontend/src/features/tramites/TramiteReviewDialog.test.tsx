@@ -18,9 +18,12 @@ const DETALLE = {
   explotacionId: 3,
   explotacionCodigoRega: "ES123",
   explotacionNombre: "La Dehesa",
-  mensajeOriginal: "alta del 1234",
+  mensajeOriginal: "alta del 1234" as string | null,
   crotales: [] as TramiteCrotal[],
   version: 0,
+  origen: null as string | null,
+  estadoExtraccion: null as string | null,
+  crotalesDescartados: 0,
 }
 
 type Detalle = typeof DETALLE
@@ -62,6 +65,9 @@ function respuestaLista(d: Detalle) {
     motivoError: d.motivoError,
     crotales: d.crotales,
     version: d.version,
+    origen: d.origen,
+    estadoExtraccion: d.estadoExtraccion,
+    crotalesDescartados: d.crotalesDescartados,
   } satisfies Tramite
 }
 
@@ -1361,5 +1367,121 @@ describe("TramiteReviewDialog: correcciones tras la revisión de 9b", () => {
     await user.click(boton(dialogo, "Añadir crotal"))
     expect(within(filasCrotales(dialogo)[1]).getByText("Sin guardar")).toHaveClass("border-dashed")
     expect(within(filasCrotales(dialogo)[0]).getByText("No está en el inventario")).not.toHaveClass("border-dashed")
+  })
+})
+
+describe("TramiteReviewDialog: avisos de extracción (B1, D8 y brief de T4)", () => {
+  const TEXTO_FALLIDA = "No se ha podido extraer automáticamente. Revisa el mensaje original."
+  const TEXTO_SIN_TEXTO =
+    "El mensaje no tiene texto; puede traer una foto o un audio, que todavía no se procesan."
+
+  function zonaAvisos(dialogo: HTMLElement): HTMLElement | null {
+    return dialogo.querySelector("[data-avisos-extraccion]")
+  }
+
+  function abrirCon(d: Detalle) {
+    server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(d)))
+    renderDialog()
+    return dialogoListo()
+  }
+
+  it("FALLIDA: aviso fijo en ámbar con icono decorativo, sin botón de cerrar ni región viva", async () => {
+    const dialogo = await abrirCon(detalle({ origen: "WHATSAPP", estadoExtraccion: "FALLIDA" }))
+    const texto = within(dialogo).getByText(TEXTO_FALLIDA)
+    const aviso = texto.closest("[data-aviso-extraccion]") as HTMLElement
+    expect(aviso).toHaveClass("bg-warning", "text-warning-foreground")
+    expect(aviso).not.toHaveClass("bg-destructive", "text-destructive")
+    expect(aviso.querySelector("svg")).toHaveAttribute("aria-hidden", "true")
+    const zona = zonaAvisos(dialogo) as HTMLElement
+    expect(within(zona).queryByRole("button")).not.toBeInTheDocument()
+    // Son hechos de los datos: ni alert ni status (no interrumpen ni roban el foco).
+    expect(zona.closest("[role=alert],[role=status]")).toBeNull()
+    expect(zona.querySelector("[role=alert],[role=status]")).toBeNull()
+    // El foco inicial sigue en el título.
+    expect(within(dialogo).getByRole("heading", { name: "Trámite #7" })).toHaveFocus()
+    // m2: con solo avisos de extracción, la zona de avisos deja su margen con el cuerpo.
+    expect(zona.parentElement).toHaveClass("mb-4")
+  })
+
+  it("SIN_TEXTO: su texto exacto, en ámbar", async () => {
+    const dialogo = await abrirCon(detalle({ mensajeOriginal: null, estadoExtraccion: "SIN_TEXTO" }))
+    const aviso = within(dialogo).getByText(TEXTO_SIN_TEXTO).closest("[data-aviso-extraccion]")
+    expect(aviso).toHaveClass("bg-warning", "text-warning-foreground")
+  })
+
+  it("descartados: plural y singular exactos, en ámbar", async () => {
+    const dialogo = await abrirCon(detalle({ estadoExtraccion: "COMPLETADA", crotalesDescartados: 3 }))
+    const aviso = within(dialogo)
+      .getByText("Hay 3 identificadores que no parecen crotales; revisa el mensaje.")
+      .closest("[data-aviso-extraccion]")
+    expect(aviso).toHaveClass("bg-warning", "text-warning-foreground")
+  })
+
+  it("descartados: «Hay 1 identificador que no parece un crotal; revisa el mensaje.»", async () => {
+    const dialogo = await abrirCon(detalle({ crotalesDescartados: 1 }))
+    expect(
+      within(dialogo).getByText("Hay 1 identificador que no parece un crotal; revisa el mensaje."),
+    ).toBeInTheDocument()
+  })
+
+  it("PENDIENTE (en extracción): «Extracción en curso», neutro y sin icono", async () => {
+    const dialogo = await abrirCon(
+      detalle({ estado: "PENDIENTE_EXTRACCION", estadoExtraccion: "PENDIENTE" }),
+    )
+    const aviso = within(dialogo).getByText("Extracción en curso").closest("[data-aviso-extraccion]") as HTMLElement
+    expect(aviso).toHaveClass("text-muted-foreground")
+    expect(aviso).not.toHaveClass("bg-warning", "text-warning-foreground")
+    expect(aviso.querySelector("svg")).toBeNull()
+    // Pase visual de B1: con borde y del alto de un campo se leía como un input vacío con placeholder.
+    expect(aviso).not.toHaveClass("border")
+  })
+
+  it("FALLIDA y descartados conviven: dos avisos", async () => {
+    const dialogo = await abrirCon(detalle({ estadoExtraccion: "FALLIDA", crotalesDescartados: 2 }))
+    const zona = zonaAvisos(dialogo) as HTMLElement
+    expect(zona.querySelectorAll("[data-aviso-extraccion]")).toHaveLength(2)
+    expect(within(zona).getByText(TEXTO_FALLIDA)).toBeInTheDocument()
+    expect(within(zona).getByText("Hay 2 identificadores que no parecen crotales; revisa el mensaje.")).toBeInTheDocument()
+  })
+
+  it.each(["APROBADO", "RECHAZADO"] as const)("en un trámite %s no aparece ningún aviso de extracción", async (estado) => {
+    const dialogo = await abrirCon(detalle({ estado, estadoExtraccion: "FALLIDA", crotalesDescartados: 2 }))
+    expect(zonaAvisos(dialogo)).toBeNull()
+    expect(within(dialogo).queryByText(TEXTO_FALLIDA)).not.toBeInTheDocument()
+    expect(within(dialogo).queryByText(/identificadores/)).not.toBeInTheDocument()
+  })
+
+  it("sin datos de extracción (anterior a B1) o COMPLETADA, no hay zona de avisos", async () => {
+    const dialogo = await abrirCon(detalle({ estadoExtraccion: "COMPLETADA" }))
+    expect(zonaAvisos(dialogo)).toBeNull()
+    // Sin ningún aviso, la zona no deja margen (m2).
+    expect(dialogo.querySelector("[data-cuerpo-revision] > div > div:first-child")).not.toHaveClass("mb-4")
+  })
+
+  it("conviven con un aviso de acción (409 al aprobar), que no se mueve: primero el de acción", async () => {
+    detallesEnOrden(
+      () => HttpResponse.json(detalle({ estadoExtraccion: "FALLIDA" })),
+      () => HttpResponse.json(detalle({ version: 1, estadoExtraccion: "FALLIDA" })),
+    )
+    server.use(
+      http.post(apiUrl("/tramites/7/aprobar"), () =>
+        HttpResponse.json({ motivo: "Falta asignar la explotación." }, { status: 409 }),
+      ),
+    )
+    const user = userEvent.setup()
+    renderDialog()
+    const dialogo = await dialogoListo()
+    await user.click(boton(dialogo, "Aprobar"))
+    const motivo = await within(dialogo).findByText("Falta asignar la explotación.")
+    const alerta = motivo.closest("[role=alert]") as HTMLElement
+    const avisoExtraccion = await within(dialogo).findByText(TEXTO_FALLIDA)
+    // Ambos a la vista; el de acción va antes en el documento (y en pantalla).
+    expect(
+      alerta.compareDocumentPosition(avisoExtraccion) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    // Cerrar el aviso de acción no quita el de extracción.
+    await user.click(within(alerta).getByRole("button", { name: "Cerrar aviso" }))
+    expect(within(dialogo).queryByText("Falta asignar la explotación.")).not.toBeInTheDocument()
+    expect(within(dialogo).getByText(TEXTO_FALLIDA)).toBeInTheDocument()
   })
 })

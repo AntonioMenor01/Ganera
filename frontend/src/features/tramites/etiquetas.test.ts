@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest"
 import {
   ESTADOS_TRAMITE,
+  ORIGENES_TRAMITE,
   RESOLUCIONES_CROTAL,
+  TEXTOS_EXTRACCION,
+  avisosExtraccion,
+  etiquetaOrigen,
   ROLES_CONTACTO,
   TIPOS_TRAMITE,
   badgeVarianteDeEstado,
@@ -162,5 +166,124 @@ describe("presentacionRolContacto", () => {
 
   it("un rol desconocido sale tal cual con badge neutro", () => {
     expect(presentacionRolContacto("VETERINARIO")).toEqual({ etiqueta: "VETERINARIO", variante: "outline" })
+  })
+})
+
+describe("ORIGENES_TRAMITE / etiquetaOrigen (B1, D7)", () => {
+  it("WhatsApp se anuncia como «Recibido por WhatsApp»", () => {
+    expect(ORIGENES_TRAMITE).toEqual({ WHATSAPP: "Recibido por WhatsApp" })
+    expect(etiquetaOrigen("WHATSAPP")).toBe("Recibido por WhatsApp")
+  })
+
+  it("sin origen (trámite anterior a B1) o con uno desconocido no hay indicador", () => {
+    expect(etiquetaOrigen(null)).toBeNull()
+    expect(etiquetaOrigen(undefined)).toBeNull()
+    expect(etiquetaOrigen("EMAIL")).toBeNull()
+    expect(etiquetaOrigen("toString")).toBeNull()
+  })
+})
+
+describe("TEXTOS_EXTRACCION (B1, D7 y brief de T4)", () => {
+  it("tiene los textos exactos de la cola y del modal, con su tono", () => {
+    expect(TEXTOS_EXTRACCION).toEqual({
+      PENDIENTE: { cola: "Extracción en curso", modal: "Extracción en curso", tono: "neutro" },
+      FALLIDA: {
+        cola: "No se ha podido extraer",
+        modal: "No se ha podido extraer automáticamente. Revisa el mensaje original.",
+        tono: "aviso",
+      },
+      SIN_TEXTO: {
+        cola: "Mensaje sin texto",
+        modal: "El mensaje no tiene texto; puede traer una foto o un audio, que todavía no se procesan.",
+        tono: "aviso",
+      },
+    })
+  })
+})
+
+describe("avisosExtraccion (B1: regla de visibilidad, plurales)", () => {
+  const PENDIENTES = ["PENDIENTE_EXTRACCION", "PENDIENTE_REVISION"] as const
+  const NO_PENDIENTES = ["APROBADO", "EN_PROCESO", "EJECUTADO_OVZ", "ERROR_OVZ", "RECHAZADO"] as const
+  const CONOCIDOS = ["PENDIENTE", "FALLIDA", "SIN_TEXTO"] as const
+
+  for (const estado of PENDIENTES) {
+    it.each(CONOCIDOS)(`con estado ${estado} y extracción %s, devuelve su aviso`, (estadoExtraccion) => {
+      expect(avisosExtraccion({ estado, estadoExtraccion, crotalesDescartados: 0 })).toEqual({
+        extraccion: TEXTOS_EXTRACCION[estadoExtraccion],
+        descartados: null,
+      })
+    })
+
+    it(`con estado ${estado}: COMPLETADA, null, desconocido o vacío no dan aviso de extracción`, () => {
+      for (const estadoExtraccion of ["COMPLETADA", null, undefined, "OTRA_COSA", "", "toString"]) {
+        expect(avisosExtraccion({ estado, estadoExtraccion, crotalesDescartados: 0 })).toEqual({
+          extraccion: null,
+          descartados: null,
+        })
+      }
+    })
+  }
+
+  for (const estado of NO_PENDIENTES) {
+    it(`con estado ${estado} no hay ningún aviso, aunque la extracción fallara o hubiera descartados`, () => {
+      for (const estadoExtraccion of [...CONOCIDOS, "COMPLETADA", null]) {
+        expect(avisosExtraccion({ estado, estadoExtraccion, crotalesDescartados: 3 })).toEqual({
+          extraccion: null,
+          descartados: null,
+        })
+      }
+    })
+  }
+
+  it("un estado de trámite desconocido tampoco muestra avisos", () => {
+    expect(
+      avisosExtraccion({ estado: "ARCHIVADO", estadoExtraccion: "FALLIDA", crotalesDescartados: 2 }),
+    ).toEqual({ extraccion: null, descartados: null })
+  })
+
+  it("descartados: singular con 1", () => {
+    expect(
+      avisosExtraccion({ estado: "PENDIENTE_REVISION", estadoExtraccion: "COMPLETADA", crotalesDescartados: 1 }),
+    ).toEqual({
+      extraccion: null,
+      descartados: {
+        cola: "1 descartado",
+        modal: "Hay 1 identificador que no parece un crotal; revisa el mensaje.",
+      },
+    })
+  })
+
+  it.each([2, 7, 51])("descartados: plural con %i", (n) => {
+    expect(
+      avisosExtraccion({ estado: "PENDIENTE_REVISION", estadoExtraccion: null, crotalesDescartados: n }),
+    ).toEqual({
+      extraccion: null,
+      descartados: {
+        cola: `${n} descartados`,
+        modal: `Hay ${n} identificadores que no parecen crotales; revisa el mensaje.`,
+      },
+    })
+  })
+
+  it("0, ausente, negativo o no entero no muestran aviso de descartados", () => {
+    for (const crotalesDescartados of [0, undefined, null, -1, 1.5, Number.NaN]) {
+      expect(
+        avisosExtraccion({
+          estado: "PENDIENTE_REVISION",
+          estadoExtraccion: "COMPLETADA",
+          crotalesDescartados: crotalesDescartados as number,
+        }).descartados,
+      ).toBeNull()
+    }
+  })
+
+  it("el aviso de extracción y el de descartados conviven", () => {
+    const avisos = avisosExtraccion({
+      estado: "PENDIENTE_REVISION",
+      estadoExtraccion: "FALLIDA",
+      crotalesDescartados: 2,
+    })
+    expect(avisos.extraccion).toEqual(TEXTOS_EXTRACCION.FALLIDA)
+    expect(avisos.descartados?.cola).toBe("2 descartados")
   })
 })

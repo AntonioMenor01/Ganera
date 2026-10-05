@@ -31,6 +31,13 @@ export interface Tramite {
   motivoError: string | null;
   crotales: TramiteCrotal[];
   version: number;
+  /** B1: `"WHATSAPP"`, o null en trámites anteriores a B1. Se etiqueta con `etiquetaOrigen`. */
+  origen: string | null;
+  /** B1: `PENDIENTE`, `COMPLETADA`, `FALLIDA`, `SIN_TEXTO`, o null en trámites anteriores a B1.
+   * Es string: un valor que el frontend no conozca no muestra aviso (`avisosExtraccion`). */
+  estadoExtraccion: string | null;
+  /** B1: identificadores que la IA devolvió y no parecían crotales; 0 si no hubo. */
+  crotalesDescartados: number;
 }
 
 export interface TramiteDetalle {
@@ -44,4 +51,11 @@ export interface TramiteDetalle {
   mensajeOriginal: string | null;
   crotales: TramiteCrotal[];
   version: number;
+  /** B1: `"WHATSAPP"`, o null en trámites anteriores a B1. Se etiqueta con `etiquetaOrigen`. */
+  origen: string | null;
+  /** B1: `PENDIENTE`, `COMPLETADA`, `FALLIDA`, `SIN_TEXTO`, o null en trámites anteriores a B1.
+   * Es string: un valor que el frontend no conozca no muestra aviso (`avisosExtraccion`). */
+  estadoExtraccion: string | null;
+  /** B1: identificadores que la IA devolvió y no parecían crotales; 0 si no hubo. */
+  crotalesDescartados: number;
 }

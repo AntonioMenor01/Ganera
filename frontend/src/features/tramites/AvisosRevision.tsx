@@ -1,7 +1,8 @@
-import { CircleAlertIcon, CircleCheckIcon, XIcon } from "lucide-react";
+import { CircleAlertIcon, CircleCheckIcon, TriangleAlertIcon, XIcon } from "lucide-react";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import type { AvisosExtraccion as AvisosExtraccionDatos } from "./etiquetas";
 import type { AccionRevision, AvisoRevision } from "./useRevisionTramite";
 
 /**
@@ -9,6 +10,13 @@ import type { AccionRevision, AvisoRevision } from "./useRevisionTramite";
  * (se anuncian al aparecer); el éxito va en una región `status` que existe siempre, para que el
  * lector de pantalla lo anuncie también (una región viva insertada ya con texto puede no leerse).
  * Todos persisten hasta la siguiente acción o hasta que se cierran: un 409 nunca desaparece solo.
+ *
+ * Debajo, los avisos de extracción (B1, D8): fijos, sin botón de cerrar, porque describen los datos
+ * del trámite y no el resultado de una acción. Son texto estático, sin `alert` ni `status`: están ya
+ * al abrir el modal (una región viva insertada llena puede no leerse, y un `alert` interrumpiría la
+ * lectura del título, que es donde está el foco); como van justo tras el título en el orden de
+ * lectura, el lector de pantalla los lee al recorrer el modal. Tampoco `role="note"`: los lectores
+ * apenas lo anuncian y no aportaría nada al texto, que ya dice qué pasa.
  */
 
 const TITULO_ERROR: Record<AccionRevision, string> = {
@@ -29,6 +37,8 @@ function BotonCerrarAviso({ onClick }: { onClick: () => void }) {
 
 interface AvisosRevisionProps {
   aviso: AvisoRevision | null;
+  /** Avisos de extracción del trámite cargado (`avisosExtraccion`), o null si no hay detalle. */
+  extraccion?: AvisosExtraccionDatos | null;
   onDescartarAviso: () => void;
   recargaFallida: string | null;
   onReintentarRecarga: () => void;
@@ -36,15 +46,17 @@ interface AvisosRevisionProps {
 
 export function AvisosRevision({
   aviso,
+  extraccion = null,
   onDescartarAviso,
   recargaFallida,
   onReintentarRecarga,
 }: AvisosRevisionProps) {
   const exito = aviso?.tipo === "exito" ? aviso : null;
   const error = aviso && aviso.tipo !== "exito" ? aviso : null;
+  const hayExtraccion = Boolean(extraccion?.extraccion || extraccion?.descartados);
 
   return (
-    <div className={cn("flex flex-col gap-2", (aviso || recargaFallida) && "mb-4")}>
+    <div className={cn("flex flex-col gap-2", (aviso || recargaFallida || hayExtraccion) && "mb-4")}>
       {error && (
         <Alert variant={error.tipo === "estado-cambiado" ? "default" : "destructive"} data-aviso={error.tipo}>
           {/* Solo el error lleva icono; el aviso neutro de cambio de estado, no. */}
@@ -90,6 +102,37 @@ export function AvisosRevision({
           </Button>
         </p>
       )}
+
+      {hayExtraccion && extraccion && (
+        <div data-avisos-extraccion className="flex flex-col gap-2">
+          {extraccion.extraccion && (
+            <AvisoExtraccion texto={extraccion.extraccion.modal} tono={extraccion.extraccion.tono} />
+          )}
+          {extraccion.descartados && <AvisoExtraccion texto={extraccion.descartados.modal} tono="aviso" />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** `aviso`: el par ámbar de aviso (trabajo pendiente, no un error del usuario: nunca rojo), con
+ * icono decorativo, como el bloque de éxito de arriba. `neutro`: una línea en Gris Texto, sin
+ * recuadro ni icono (con borde y del alto de un campo se leía como un input vacío). */
+function AvisoExtraccion({ texto, tono }: { texto: string; tono: "aviso" | "neutro" }) {
+  if (tono === "neutro") {
+    return (
+      <p data-aviso-extraccion className="text-sm text-muted-foreground">
+        {texto}
+      </p>
+    );
+  }
+  return (
+    <div
+      data-aviso-extraccion
+      className="flex items-start gap-2 rounded-lg bg-warning px-2.5 py-2 text-sm text-warning-foreground"
+    >
+      <TriangleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0" />
+      <p>{texto}</p>
     </div>
   );
 }

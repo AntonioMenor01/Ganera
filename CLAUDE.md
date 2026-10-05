@@ -46,8 +46,8 @@ approval step before anything is written to OVZ.net.
   `POST /contactos/{id}/reactivar` sets it back). This keeps the history of trámites and mensajes.
   Inactive Contactos never show in listings (unless `?incluirInactivos=true`), never appear in a
   Ganadero's detail, and can't be linked to Explotaciones (`409` via the API, a row error in the
-  importer). **When 3b wires the Twilio webhook, it must ignore messages from an inactive Contacto**
-  (no Tramite created).
+  importer). **The Twilio webhook (Prompt B1) ignores messages from an inactive Contacto:** no
+  Tramite is created, the message is kept as `CONTACTO_INACTIVO` and gets an empty TwiML answer.
 
 ## Operational flow
 
@@ -66,18 +66,19 @@ approval step before anything is written to OVZ.net.
    two Gestorías, and that rejection lets a Gestoría deduce the number exists in another one.
    **Future path:** one WhatsApp number per Gestoría, identifying the Gestoría by the message's
    *destination* number — which would allow `UNIQUE(gestoria_id, telefono)` instead.
-   When the webhook is wired (3b), it must ignore messages from an inactive Contacto.
+   Since Prompt B1 the webhook is wired; see the "Prompt B1" bullet under Technical decisions.
 3. If the Contacto has more than one Explotación and the message doesn't disambiguate, the Tramite
    is created with `explotacion = null` and `estado = PENDIENTE_REVISION` — an employee assigns the
    Explotación by hand in the UI. There is no automatic WhatsApp round-trip asking the Ganadero to
    clarify (that's a future phase).
-4. Claude Haiku 4.5 (via Spring AI, `TramiteExtractionService`) extracts `{tipoTramite,
-   últimosDigitosCrotales}` as Structured Output from the raw message text.
+4. Claude Haiku 4.5 (official `anthropic-java` SDK, `TramiteExtractionService`) extracts
+   `{tipoTramite, crotales}` as native structured output from the raw message text only, in the
+   background, after the message and the Tramite are already saved (Prompt B1).
 5. Crotales are resolved by matching last digits within the resolved Explotación. No match, or more
    than one match, → `PENDIENTE_REVISION`. It is never auto-approved. (Since Prompt A1 each
    mentioned crotal is stored in `tramite_crotal` with its resolution — see the "Prompt A1"
-   bullet under Technical decisions. 3b must deduplicate crotales that resolve to the same Animal
-   before creating the Tramite.)
+   bullet under Technical decisions. The B1 extraction keeps only the first of several crotales
+   that resolve to the same Animal.)
 6. An employee reviews the Tramite, corrects it if needed (`PATCH /tramites/{id}`: Explotación,
    tipo, crotales), and clicks "Aprobar" → `APROBADO`, subject to the approval rule in the
    "Prompt A1" bullet.
@@ -197,10 +198,13 @@ approval step before anything is written to OVZ.net.
   `SuscripcionRepository.findByGestoriaId(gestoriaId)` — a real query parameter, immune to both bug
   classes above regardless of filter/interceptor state). (`POST /facturacion/checkout`, exempt for
   the same reason, was removed on 2026-10-04 — see "Billing moved out of the app".)
-- **AI provider**: Claude Haiku 4.5 via Spring AI, pinned to the dated snapshot
+- **AI provider**: Claude Haiku 4.5 via the official SDK `com.anthropic:anthropic-java` (2.68.0;
+  Spring AI was removed in Prompt B1 because its 1.0.3 Anthropic client never sends
+  `output_config`, so `.entity(...)` was only prompt instructions), pinned to the dated snapshot
   `claude-haiku-4-5-20251001` (not the floating alias) so it can't change under us silently.
-  Abstracted behind `TramiteExtractionService` so the provider is swappable. Structured Outputs
-  (`.entity(...)`) enforce the JSON shape — never relying on prompt instructions alone.
+  Abstracted behind `TramiteExtractionService` so the provider is swappable. Native structured output
+  (`output_config.format`, JSON Schema with `additionalProperties: false`) enforces the JSON shape,
+  and the server validates it again. See the "Prompt B1" bullet for the rest.
 - **WhatsApp**: Twilio, one shared number across all Gestorías (see Operational flow above).
 - **Automation**: Playwright (Java) for OVZ.net, both read-only sync and write-mode execution.
 - **Billing**: Stripe, priced by number of contracted active Explotaciones, 15-day trial.
@@ -629,6 +633,71 @@ approval step before anything is written to OVZ.net.
   "Tu suscripción no permite aprobar trámites ahora mismo (prueba terminada o suscripción
   suspendida). Ponte en contacto con Ganera para regularizarla." The two known Stripe bugs and the
   scheduler's review for per-ganadero plans are noted for Prompt C in `ganera-prompts.md`.
+- **Prompt B1 — WhatsApp + AI, the minimum that works** (2026-10-05; plan
+  `docs/superpowers/plans/2026-10-05-promptB1-whatsapp-ia.md`, with Antonio's decisions D1–D8 and
+  additions A1–A5). B2 (unknown-number replies, several trámites per message, attachments, AI usage
+  metering, the real OVZ trámite types, birth registration and the event date) is separate.
+  - **Webhook** `POST /webhooks/twilio/whatsapp` (`TwilioWebhookController`): the signature is
+    validated with **every** form parameter and the configured public URL
+    (`ganera.twilio.webhook-url` / `TWILIO_WEBHOOK_URL`, no query string), never
+    `getRequestURL()` (behind a tunnel or proxy it is `http://localhost…`). **Fail-closed:** blank
+    token or URL → `503`; missing or bad signature → `403`; then `400` for missing
+    `MessageSid`/`From`. Nothing is stored in any of those cases. At startup it logs only the
+    host it validates against. `RequestValidator` is still built per request (Twilio footgun).
+  - **Reception** (`MensajeEntranteService`, one short transaction, message saved first):
+    `From` normalized with `TelefonoNormalizador` (one that won't normalize is kept truncated to 30
+    and treated as unknown); `findByTelefono` (its only caller); unknown number →
+    `NUMERO_DESCONOCIDO`, no Gestoría; inactive Contacto → `CONTACTO_INACTIVO`, no Tramite; active
+    → Tramite in **the Contacto's** Gestoría, `origen = WHATSAPP`, the Explotación only if the
+    Contacto has exactly one link in its Gestoría (D2), `PENDIENTE_EXTRACCION` + extraction
+    `PENDIENTE` (or straight to `PENDIENTE_REVISION` + `SIN_TEXTO` without text). Answer: TwiML with
+    "Recibido, tu gestoría lo revisará." only when a Tramite was created; `<Response/>` for
+    unknown, inactive and duplicates. **Idempotency:** cheap `existsByMessageSid` + the
+    `UNIQUE(message_sid)` violation propagating out of the transaction, confirmed with
+    `existsByMessageSid` in the controller. **A message is never lost:** if creating the Tramite
+    fails, `MensajeRescateService` (`REQUIRES_NEW`) stores it as `ERROR_RECEPCION` (no Gestoría) and
+    answers `<Response/>`; only if that also fails → `500`, with the `MessageSid` in the log
+    (Twilio does not retry a 5xx by default). Nobody sees `ERROR_RECEPCION` yet; an alert is noted
+    for Prompt C. Stored: `MessageSid`, normalized phone, text, `NumMedia`, result, links; **not**
+    `ProfileName`, `WaId`, `AccountSid`, media URLs. Logs: never the text; phones masked
+    (`EnmascaradorTelefono`).
+  - **Extraction in the background** (`ExtraccionTramiteScheduler` every 5 s +
+    `ExtraccionTramiteService`): a DB queue (`estado_extraccion`, `proximo_intento_extraccion`,
+    compared with an `Instant` from the `Clock` bean in `shared/tiempo/RelojConfig`, never SQL
+    `now()`). The AI is called **outside any transaction and without the row lock**; the result is
+    applied under `findConBloqueoByIdAndGestoriaId` + `refresh`, re-checking that it still applies.
+    The AI only gets the message text, never the inventory; `ExtraccionValidador` normalizes with
+    `CrotalNormalizador`, discards and counts invalid ones (`crotales_descartados`), caps at 50, and
+    the Tramite keeps only the first crotal per Animal. `NO_IDENTIFICADO` → tipo `null`. **On the
+    first failure** the Tramite goes to `PENDIENTE_REVISION` with extraction `FALLIDA`; retries at
+    1, 5 and 30 min (4 attempts, `ganera.extraccion.reintentos`). A successful retry is applied only
+    if nobody touched the Tramite (`version == version_tras_fallo`); otherwise it is discarded. Retry
+    bookkeeping uses JPQL updates that **don't** bump `version` (so nobody with the dialog open gets
+    a false `409`). A non-AI error also counts as a failed attempt (otherwise it would block the head
+    of the queue). Cross-tenant job like `SuscripcionSyncScheduler`, but every per-Tramite query
+    carries its `gestoriaId`. No row claiming: one instance only. `spring.task.scheduling.pool.size:
+    3` so a slow AI doesn't delay the Stripe and retention jobs. Disabled in tests
+    (`ganera.extraccion.planificador.activo: false`).
+  - **AI client** (`AnthropicTramiteExtractionService`): created lazily (the app starts without
+    `ANTHROPIC_API_KEY`), `logLevel(OFF)` (`ANTHROPIC_LOG=debug` would dump the message text),
+    `max_tokens` 1024, no tools, no thinking. Any `stop_reason` other than `end_turn`, an HTTP or
+    network error or invalid JSON → `ExtraccionFallidaException`, which never chains the SDK cause
+    (it carries the model's answer). The system prompt describes the types as Antonio decided: sale
+    and slaughterhouse are `MOVIMIENTO`; `BAJA` is death or slaughter on the farm. **Jackson:** the
+    SDK declares 2.19.4 and Boot pins 2.18.2; it works today (the SDK checks it when building the
+    client), but a future SDK could require pinning `jackson-bom.version` and would fail on the first
+    call, not at startup.
+  - **Responses:** `TramiteResponse`/`TramiteDetalleResponse` gained `origen` (`"WHATSAPP"`/null),
+    `estadoExtraccion` (`PENDIENTE`/`COMPLETADA`/`FALLIDA`/`SIN_TEXTO`/null) and
+    `crotalesDescartados`. The AI's technical failure reason is never exposed.
+  - **Retention** (`RetencionMensajesScheduler`, 03:30 Madrid): deletes messages **without** a
+    Tramite after `P30D` and empties the text of those **with** one after `P12M` (not an empty
+    `SIN_TEXTO` text). Both periods are configurable and **pending confirmation by Ganera's lawyer**,
+    together with the Anthropic and Twilio DPAs (Prompt C notes).
+  - **Migration `V19`** (SQL): the `tramite` and `mensaje_campo` columns above; `mensaje_campo.cuerpo`
+    lost its `@Lob` (`TEXT`).
+  - **For production (Prompt C):** add `logServerErrorDetail=false` to the PostgreSQL URL, so a
+    constraint violation can't log `Failing row contains (…)` with message data.
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)
@@ -801,7 +870,12 @@ reference for every frontend decision below.
   crotal resolution (`presentacionCrotal`: `NO_ENCONTRADO` + `completo: false` → amber "No está en
   el inventario · incompleto", read from the backend, never computed) and contact role come from
   **one source**, `features/tramites/etiquetas.ts`
-  (`TIPOS_TRAMITE` is the single constant to change in Prompt B).
+  (`TIPOS_TRAMITE` is the single constant to change in Prompt B). Since Prompt B1 the first cell
+  adds a WhatsApp marker (outside the button, announced once), and while the trámite is pending a
+  12px line under the state shows the extraction (`avisosExtraccion()` in `etiquetas.ts`:
+  "Extracción en curso" neutral, "No se ha podido extraer" / "Mensaje sin texto" / "N descartados"
+  amber, never red); the review dialog shows the same facts as fixed notices with no `role` (see
+  `DESIGN.md`). No automatic refresh.
 - **Review dialog (`TramiteReviewDialog` + `useRevisionTramite`):** logic lives in the hook
   (`revisionTramite.ts` has the pure diff/state rules), layout in the dialog. Editable **only** in
   `PENDIENTE_REVISION`; any other estado is read-only with no action buttons. "Guardar" sends
@@ -830,7 +904,7 @@ reference for every frontend decision below.
   handler fails the test (`onUnhandledRequest: "error"`), and session state is cleared after each
   test. `npm test` ran **475 tests in 36 files** at the end of A2 (476 after the mini-prompt's
   Rechazar change; **506 in 36 files** after the frontend task before the pilot; **508 in 36** after billing left the app;
-  **513 in 37** after the brand colours and typography). Layout can't be checked in
+  **513 in 37** after the brand colours and typography; **558 in 37** after Prompt B1). Layout can't be checked in
   jsdom: for visual changes, also drive the real app in a browser (Playwright from npm installed
   **outside the repo**, as in Prompts 4 and A2).
 
@@ -852,7 +926,7 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw clean test` — runs the test suite (534 tests after billing was moved out of the app); **always with `clean`**
+- `./mvnw clean test` — runs the test suite (676 tests after Prompt B1); **always with `clean`**
   (see the VS Code/ECJ note under Architecture notes). A single test:
   `./mvnw clean test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
@@ -924,11 +998,10 @@ wires up with no bean errors. Backend and frontend compile/build cleanly, backen
 compiling). **`STRIPE_PRICE_ID_EXPLOTACION` is still an empty placeholder** — creating the real
 `Price` in the Stripe dashboard (test mode first) is Antonio's manual action, not something any
 agent does, so a real end-to-end Checkout Session against Stripe test-mode is still pending that
-step. No AI/WhatsApp business logic is wired end-to-end yet for trámites — Twilio's webhook
-validates signatures and persists raw data, but doesn't yet trigger AI extraction or trámite
-creation; `TramiteExtractionService`'s system prompt and `OvzAutomationService`'s Playwright logic
-are still unimplemented skeletons; portfolio filtering by `modoCartera` isn't implemented; there is
-still no admin panel (public self-registration was added later, see below).
+step. (At that point no AI/WhatsApp business logic was wired; Prompt B1 wired it on 2026-10-05,
+see below.) `OvzAutomationService`'s Playwright logic is still an unimplemented skeleton;
+portfolio filtering by `modoCartera` isn't implemented; there is still no admin panel (public
+self-registration was added later, see below).
 
 Prompt 3d — Excel inventory importer + basic REST controllers — is also complete, implemented and
 verified end-to-end on 2026-07-14 (no separate written plan; the prompt itself, refined through a
@@ -1134,16 +1207,33 @@ Verified with `npm test` **513/513**, `npm run build` and `npm run lint` (known 
 1440 and 375 px with two Gestorías (log in `.superpowers/sdd/ct-t4-smoke.md`; screenshots outside the
 repo in `C:\Users\Antonio\Desktop\capturas-ganera-marca\`). Next in the order of work: Prompt B.
 
-**Next pending step: Prompt 3a (sincronización inicial de OVZ.net, modo lectura) — blocked.** Per
-`ganera-prompts.md`, Prompts 3a, 3b, and 3c (OVZ.net read sync, Twilio webhook + AI extraction, and
-real Playwright write-mode automation) are all blocked on the same prerequisite: Antonio needs to
-provide real OVZ.net credentials so the actual site structure and trámite catalog can be explored
-live (the Playwright MCP is set up for exactly this — driving the real site with Antonio steering,
-not guessing at its structure from assumptions). Until that happens, `TramiteExtractionService` and
-`OvzAutomationService` stay as unimplemented skeletons (see above) — don't write real prompt/scraping
-logic against assumptions about OVZ.net's structure. The OVZ-credentials onboarding screen and the
-rest of Prompt 4's originally-scoped items are deferred alongside it. Not blocked by OVZ.net
-(see `ganera-prompts.md`): Prompt B (WhatsApp + AI, without OVZ).
+**Prompt B1 — WhatsApp + AI, the minimum that works — complete** (2026-10-05), following
+`docs/superpowers/plans/2026-10-05-promptB1-whatsapp-ia.md` with the Superpowers flow (T0 the three
+defects first — signature, fail-closed, native structured output — then T1 reception, T2 background
+extraction, T3 responses and retention, T4 the minimal frontend; one implementer + one independent
+reviewer each, all **Approved with minors**, minors fixed; reports in `.superpowers/sdd/b1-*`, not
+committed) and Impeccable for T4 (shape approved by Antonio; real-browser pass from the main
+session). **Backend and the minimal frontend in the same commit** (Antonio's explicit exception).
+See the "Prompt B1" bullet under Technical decisions. Migration `V19`. Verified with
+`./mvnw clean test` **676/676**, `npm test` **558/558** (37 files), `npm run build` and
+`npm run lint` (known warnings only), and a **real smoke with the Twilio WhatsApp sandbox from
+Antonio's phone** (Cloudflare quick tunnel, file-backed H2, invented data, two Gestorías; log in
+`.superpowers/sdd/b1-t5-smoke.md`): valid message → acknowledgement on the phone + Tramite only in
+A, extracted by the real Haiku (BAJA, crotal resolved to A's animal and not to B's with the same last
+digits); duplicate `MessageSid` → `<Response/>`, nothing new; AI failure (invalid key in that
+process only) → acknowledgement + `FALLIDA` with the notice, then the 5-minute retry with the real
+key completed it; unknown number → no reply, stored as `NUMERO_DESCONOCIDO`. The smoke also caught
+a misconfigured `TWILIO_AUTH_TOKEN` (an Anthropic key in it): the webhook failed closed with `403`,
+as designed. Tunnel closed and checked (Cloudflare 530/1033), H2 and every smoke file deleted. Next:
+B2 (see `ganera-prompts.md`).
+
+**Still blocked: Prompts 3a and 3c (OVZ.net read sync and write-mode automation).** They need real
+OVZ.net credentials so the actual site structure and trámite catalog can be explored live (the
+Playwright MCP is set up for exactly this — driving the real site with Antonio steering, not
+guessing at its structure from assumptions). Until then `OvzAutomationService` stays an
+unimplemented skeleton — don't write scraping logic against assumptions about OVZ.net's structure.
+The OVZ-credentials onboarding screen and the rest of Prompt 4's originally-scoped items are
+deferred alongside it. (3b's webhook + AI part was done without OVZ.net as Prompt B1.)
 
 `ganera-prompts.md` at the repo root tracks the full sequence of prompts used to
 build this out, in order — check it for the detailed history/rationale behind any given step.

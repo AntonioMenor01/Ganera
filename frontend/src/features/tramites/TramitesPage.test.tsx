@@ -33,6 +33,9 @@ function tramite(id: number, extra: Record<string, unknown> = {}) {
     motivoError: null,
     crotales: [],
     version: 0,
+    origen: null,
+    estadoExtraccion: null,
+    crotalesDescartados: 0,
     ...extra,
   }
 }
@@ -75,6 +78,9 @@ describe("TramitesPage: etiquetas legibles", () => {
               motivoError: null,
               crotales: [],
               version: 0,
+              origen: null,
+              estadoExtraccion: null,
+              crotalesDescartados: 0,
             },
             {
               id: 2,
@@ -86,6 +92,9 @@ describe("TramitesPage: etiquetas legibles", () => {
               motivoError: null,
               crotales: [],
               version: 4,
+              origen: null,
+              estadoExtraccion: null,
+              crotalesDescartados: 0,
             },
           ],
           totalElements: 2,
@@ -125,6 +134,9 @@ describe("TramitesPage: etiquetas legibles", () => {
               motivoError: null,
               crotales: [],
               version: 0,
+              origen: null,
+              estadoExtraccion: null,
+              crotalesDescartados: 0,
             },
           ],
           totalElements: 1,
@@ -716,5 +728,147 @@ describe("TramitesPage: estado de carga y esqueleto (Task 10)", () => {
     expect(await screen.findByText("#1")).toBeInTheDocument()
     expect(screen.getByRole("status")).toBe(estado)
     expect(estado).toBeEmptyDOMElement()
+  })
+})
+
+describe("TramitesPage: origen y avisos de extracción (B1, T4)", () => {
+  function filas(...tramites: ReturnType<typeof tramite>[]) {
+    server.use(http.get(apiUrl("/tramites"), () => paginaTramites(tramites, tramites.length, 1)))
+  }
+
+  function fila(id: number): HTMLElement {
+    const boton = screen.getByRole("button", { name: `Revisar trámite #${id}` })
+    return boton.closest("tr") as HTMLElement
+  }
+
+  function celdas(id: number): HTMLElement[] {
+    return within(fila(id)).getAllByRole("cell")
+  }
+
+  it("una fila de WhatsApp lleva el icono de bocadillo con texto oculto y title, fuera del botón", async () => {
+    filas(tramite(1, { origen: "WHATSAPP" }), tramite(2))
+    render(<TramitesPage />)
+    const boton = await screen.findByRole("button", { name: "Revisar trámite #1" })
+    // El botón conserva su nombre accesible y no contiene el indicador.
+    expect(boton).toHaveAccessibleName("Revisar trámite #1")
+    expect(boton).toHaveTextContent(/^#1$/)
+
+    const [primera] = celdas(1)
+    const oculto = within(primera).getByText("Recibido por WhatsApp")
+    expect(oculto).toHaveClass("sr-only")
+    expect(boton).not.toContainElement(oculto)
+    const indicador = oculto.parentElement as HTMLElement
+    expect(indicador).toHaveClass("text-muted-foreground")
+    // n2: se anuncia una sola vez. El tooltip (title) va en la parte visual, oculta al lector de
+    // pantalla junto con el icono; el texto sr-only es un hermano aparte, sin title.
+    expect(indicador).not.toHaveAttribute("title")
+    expect(oculto).not.toHaveAttribute("title")
+    const conTooltip = indicador.querySelector("[title]") as HTMLElement
+    expect(conTooltip).toHaveAttribute("title", "Recibido por WhatsApp")
+    expect(conTooltip).toHaveAttribute("aria-hidden", "true")
+    expect(conTooltip).not.toContainElement(oculto)
+    const icono = conTooltip.querySelector("svg")
+    expect(icono).toHaveClass("size-3.5")
+    expect(indicador.querySelectorAll("[title]")).toHaveLength(1)
+
+    // Sin origen (anterior a B1): nada.
+    expect(within(celdas(2)[0]).queryByText("Recibido por WhatsApp")).not.toBeInTheDocument()
+    expect(celdas(2)[0].querySelector("svg")).toBeNull()
+  })
+
+  it("un origen desconocido no pinta indicador", async () => {
+    filas(tramite(1, { origen: "EMAIL" }))
+    render(<TramitesPage />)
+    await screen.findByRole("button", { name: "Revisar trámite #1" })
+    expect(celdas(1)[0].querySelector("svg")).toBeNull()
+  })
+
+  it("PENDIENTE: «Extracción en curso» bajo el badge de Estado, en Gris Texto y sin icono", async () => {
+    filas(tramite(1, { estado: "PENDIENTE_EXTRACCION", estadoExtraccion: "PENDIENTE", tipoTramite: null }))
+    render(<TramitesPage />)
+    await screen.findByRole("button", { name: "Revisar trámite #1" })
+    const estado = celdas(1)[2]
+    const linea = within(estado).getByText("Extracción en curso")
+    expect(linea).toHaveClass("text-xs", "text-muted-foreground")
+    expect(linea).not.toHaveClass("text-warning-foreground")
+    expect(linea.querySelector("svg")).toBeNull()
+    // Va debajo del badge, en la misma celda.
+    expect(within(estado).getByText("Pendiente de extracción")).toBeInTheDocument()
+  })
+
+  it("FALLIDA: icono de aviso + «No se ha podido extraer», en el ámbar del par de aviso", async () => {
+    filas(tramite(1, { estadoExtraccion: "FALLIDA" }))
+    render(<TramitesPage />)
+    await screen.findByRole("button", { name: "Revisar trámite #1" })
+    const linea = within(celdas(1)[2]).getByText("No se ha podido extraer")
+    expect(linea).toHaveClass("text-xs", "text-warning-foreground")
+    expect(linea.querySelector("svg")).toHaveAttribute("aria-hidden", "true")
+  })
+
+  it("SIN_TEXTO: icono de aviso + «Mensaje sin texto», en ámbar", async () => {
+    filas(tramite(1, { estadoExtraccion: "SIN_TEXTO" }))
+    render(<TramitesPage />)
+    await screen.findByRole("button", { name: "Revisar trámite #1" })
+    const linea = within(celdas(1)[2]).getByText("Mensaje sin texto")
+    expect(linea).toHaveClass("text-xs", "text-warning-foreground")
+    expect(linea.querySelector("svg")).toHaveAttribute("aria-hidden", "true")
+  })
+
+  it("COMPLETADA o null no añaden línea en Estado", async () => {
+    filas(tramite(1, { estadoExtraccion: "COMPLETADA" }), tramite(2))
+    render(<TramitesPage />)
+    await screen.findByRole("button", { name: "Revisar trámite #1" })
+    for (const id of [1, 2]) expect(celdas(id)[2].querySelector("svg")).toBeNull()
+    expect(celdas(1)[2]).toHaveTextContent(/^Pendiente de revisión$/)
+  })
+
+  it("descartados en la celda de Crotales: «N descartados» y «1 descartado», en ámbar con icono", async () => {
+    filas(
+      tramite(1, { crotalesDescartados: 3 }),
+      tramite(2, {
+        crotalesDescartados: 1,
+        crotales: [
+          { crotalIndicado: "1234", crotal: "1234", animalId: null, enInventario: false, resolucion: "AMBIGUO" },
+        ],
+      }),
+      tramite(3),
+    )
+    render(<TramitesPage />)
+    await screen.findByRole("button", { name: "Revisar trámite #1" })
+    const plural = within(celdas(1)[4]).getByText("3 descartados")
+    expect(plural).toHaveClass("text-xs", "text-warning-foreground")
+    expect(plural.querySelector("svg")).toHaveAttribute("aria-hidden", "true")
+    // Convive con «Sin crotales» y con la lista.
+    expect(within(celdas(1)[4]).getByText("Sin crotales")).toBeInTheDocument()
+    expect(within(celdas(2)[4]).getByText("1 descartado")).toBeInTheDocument()
+    expect(within(celdas(2)[4]).getByText("1234")).toBeInTheDocument()
+    expect(within(celdas(3)[4]).queryByText(/descartado/)).not.toBeInTheDocument()
+  })
+
+  it("en un trámite APROBADO con FALLIDA y descartados no aparece ningún aviso (solo el origen)", async () => {
+    filas(tramite(1, { estado: "APROBADO", estadoExtraccion: "FALLIDA", crotalesDescartados: 2, origen: "WHATSAPP" }))
+    render(<TramitesPage />)
+    await screen.findByRole("button", { name: "Revisar trámite #1" })
+    expect(screen.queryByText("No se ha podido extraer")).not.toBeInTheDocument()
+    expect(screen.queryByText(/descartado/)).not.toBeInTheDocument()
+    expect(celdas(1)[2].querySelector("svg")).toBeNull()
+    expect(within(celdas(1)[0]).getByText("Recibido por WhatsApp")).toBeInTheDocument()
+  })
+
+  it("las líneas nuevas no añaden columnas ni cambian el esqueleto", async () => {
+    filas(tramite(1, { origen: "WHATSAPP", estadoExtraccion: "FALLIDA", crotalesDescartados: 2 }))
+    render(<TramitesPage />)
+    await screen.findByRole("button", { name: "Revisar trámite #1" })
+    expect(screen.getAllByRole("columnheader")).toHaveLength(5)
+    expect(celdas(1)).toHaveLength(5)
+  })
+
+  it("clicar en el indicador o en un aviso sigue abriendo la revisión (la fila entera abre)", async () => {
+    filas(tramite(1, { origen: "WHATSAPP", estadoExtraccion: "FALLIDA" }))
+    server.use(http.get(apiUrl("/tramites/:id"), ({ params }) => HttpResponse.json(detalle(Number(params.id)))))
+    const user = userEvent.setup()
+    render(<TramitesPage />)
+    await user.click(await screen.findByText("No se ha podido extraer"))
+    expect(await screen.findByRole("dialog")).toHaveAccessibleName("Trámite #1")
   })
 })

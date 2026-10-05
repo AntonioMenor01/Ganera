@@ -133,3 +133,91 @@ export function presentacionRolContacto(rol: string): Presentacion {
     variante: buscar<VarianteBadge>(VARIANTES_ROL_CONTACTO, rol) ?? VARIANTE_DESCONOCIDA,
   };
 }
+
+// ---------------------------------------------------------------------------------------------
+// Origen del trámite (B1, D7). Solo WhatsApp por ahora; null (anterior a B1) o desconocido = sin
+// indicador. No es un badge: los badges son estados.
+
+export const ORIGENES_TRAMITE = {
+  WHATSAPP: "Recibido por WhatsApp",
+} as const satisfies Record<string, string>;
+
+/** Texto del indicador de origen (oculto y `title`), o null si no hay indicador que pintar. */
+export function etiquetaOrigen(origen: string | null | undefined): string | null {
+  return origen ? (buscar<string>(ORIGENES_TRAMITE, origen) ?? null) : null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Extracción por IA de un trámite de WhatsApp (B1: D7, D8, A3 y brief de T4). Son hechos de los
+// datos, no estados del trámite: van como línea de texto bajo el badge (cola) y como aviso fijo en
+// el modal, nunca como badge. `COMPLETADA` no da aviso.
+
+/** `aviso` = el par ámbar de aviso (trabajo pendiente, nunca rojo); `neutro` = Gris Texto. */
+export type TonoAvisoExtraccion = "aviso" | "neutro";
+
+export interface TextoExtraccion {
+  /** Línea corta de la cola, bajo el badge de Estado. */
+  cola: string;
+  /** Aviso del modal de revisión. */
+  modal: string;
+  tono: TonoAvisoExtraccion;
+}
+
+export const TEXTOS_EXTRACCION = {
+  PENDIENTE: { cola: "Extracción en curso", modal: "Extracción en curso", tono: "neutro" },
+  FALLIDA: {
+    cola: "No se ha podido extraer",
+    modal: "No se ha podido extraer automáticamente. Revisa el mensaje original.",
+    tono: "aviso",
+  },
+  SIN_TEXTO: {
+    cola: "Mensaje sin texto",
+    modal: "El mensaje no tiene texto; puede traer una foto o un audio, que todavía no se procesan.",
+    tono: "aviso",
+  },
+} as const satisfies Record<string, TextoExtraccion>;
+
+export interface AvisoDescartados {
+  cola: string;
+  modal: string;
+}
+
+export interface AvisosExtraccion {
+  extraccion: TextoExtraccion | null;
+  descartados: AvisoDescartados | null;
+}
+
+/** Los avisos solo se ven mientras el trámite está pendiente: aprobado o rechazado, desaparecen
+ * (aunque `FALLIDA` siga guardado). */
+const ESTADOS_CON_AVISOS_EXTRACCION: ReadonlySet<string> = new Set<EstadoTramite>([
+  "PENDIENTE_EXTRACCION",
+  "PENDIENTE_REVISION",
+]);
+
+function avisoDescartados(n: number): AvisoDescartados {
+  return n === 1
+    ? { cola: "1 descartado", modal: "Hay 1 identificador que no parece un crotal; revisa el mensaje." }
+    : {
+        cola: `${n} descartados`,
+        modal: `Hay ${n} identificadores que no parecen crotales; revisa el mensaje.`,
+      };
+}
+
+/** Qué avisos de extracción tocan para un trámite. Un `estadoExtraccion` desconocido no da aviso;
+ * un `crotalesDescartados` ausente, no entero o ≤ 0, tampoco. Nunca lanza. */
+export function avisosExtraccion(tramite: {
+  estado: string;
+  estadoExtraccion?: string | null;
+  crotalesDescartados?: number | null;
+}): AvisosExtraccion {
+  if (!ESTADOS_CON_AVISOS_EXTRACCION.has(tramite.estado)) return { extraccion: null, descartados: null };
+  const { estadoExtraccion, crotalesDescartados } = tramite;
+  const extraccion = estadoExtraccion
+    ? (buscar<TextoExtraccion>(TEXTOS_EXTRACCION, estadoExtraccion) ?? null)
+    : null;
+  const descartados =
+    typeof crotalesDescartados === "number" && Number.isInteger(crotalesDescartados) && crotalesDescartados > 0
+      ? avisoDescartados(crotalesDescartados)
+      : null;
+  return { extraccion, descartados };
+}

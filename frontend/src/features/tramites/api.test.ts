@@ -16,6 +16,9 @@ const DETALLE = {
   mensajeOriginal: "alta del 1234",
   crotales: [],
   version: 4,
+  origen: null,
+  estadoExtraccion: null,
+  crotalesDescartados: 0,
 }
 
 const RESPUESTA_LISTA = {
@@ -26,6 +29,9 @@ const RESPUESTA_LISTA = {
   motivoError: null,
   crotales: [],
   version: 5,
+  origen: null,
+  estadoExtraccion: null,
+  crotalesDescartados: 0,
 }
 
 describe("actualizarTramite (PATCH /tramites/{id})", () => {

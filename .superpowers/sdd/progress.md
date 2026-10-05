@@ -736,3 +736,82 @@ compita con las cabeceras.
   prueba: reposo rgb(32, 30, 29); hover y foco rgb(174, 24, 0) con subrayado y anillo de 3 px.
   `npm test` 513/513, build y lint con los avisos de siempre.
 - **Sin commit**: pendiente de la aprobación de Antonio.
+
+## 2026-10-05 — Prompt B1: WhatsApp + IA, lo mínimo (backend y ajuste mínimo de frontend)
+
+Plan: `docs/superpowers/plans/2026-10-05-promptB1-whatsapp-ia.md`. Antonio aprobó R1–R4 y D1–D8 con los
+añadidos A1–A5 (defectos primero; la fecha del hecho pasa a B2 porque `Tramite` no tiene campo de fecha;
+"Extracción en curso" en la cola; número desconocido → `<Response/>` vacío; orden de cierre del smoke).
+Informes en `.superpowers/sdd/b1-*`.
+
+- **T0 (los tres defectos):** firma de Twilio con todos los parámetros y `TWILIO_WEBHOOK_URL`; fail-closed
+  (`503` sin token o URL, `403` con firma mala, nada guardado); Spring AI sustituido por
+  `com.anthropic:anthropic-java` 2.68.0 con salida estructurada nativa (`output_config.format`), modelo
+  `claude-haiku-4-5-20251001`, cliente perezoso. Tests sin mocks del SDK (HMAC-SHA1 propio; `HttpServer`
+  del JDK como API). Arranque real con H2 sin credenciales: arranca y el webhook da `503`. 534 → **563**.
+  El primer intento del implementador se cortó por un 529 de la API sin haber tocado nada; se reanudó.
+  - Revisión: Approved with minors. Corregidos m1 (orden 403 antes que 400, con tests), m2 (la excepción
+    no encadena la causa del SDK, que lleva la respuesta del modelo), m3 (`logLevel(OFF)`: `ANTHROPIC_LOG`
+    volcaría el texto), m4 (test que compara `TipoExtraido` con `TipoTramite`), n1, n2 (`@PreDestroy`),
+    n4 (log de arranque con solo el host). **572**.
+  - n3: Antonio decidió las descripciones de los tipos (venta y matadero = MOVIMIENTO; BAJA = muerte o
+    sacrificio en la explotación; CENSO y DEMORA descritos). Aplicado en el prompt de sistema desde la
+    sesión principal; `./mvnw clean test` **572/572**.
+  - n5 (`CLAUDE.md` aún dice Spring AI) y el riesgo de Jackson 2.18.2 frente a 2.19.4 del SDK: al cierre.
+- **T1 (recepción, enrutado, idempotencia y acuse):** V19 (todas las columnas de D3), `MensajeEntranteService`,
+  trámite en la gestoría del Contacto con la explotación de D2, `SIN_TEXTO` sin IA, TwiML con el acuse de D7 o
+  `<Response/>` vacío (desconocido, inactivo, duplicado), violación de `UNIQUE(message_sid)` propagada y confirmada
+  con `existsByMessageSid`, teléfono enmascarado en logs, `@Lob` fuera. E2E con dos gestorías y carrera real de
+  duplicados. 572 → **603**.
+  - Revisión: Approved with minors. Corregidos m1 (un fallo al crear el trámite ya no pierde el mensaje: se
+    rescata en `REQUIRES_NEW` con `ERROR_RECEPCION` y `<Response/>`; si el rescate falla, 500 y log con el
+    `MessageSid`), m2 (`From` de más de 30 caracteres truncado → desconocido), n2 (`toString` sin datos), n4
+    (`createdAt` del `Clock`). **611**. Pendientes: n1 (`logServerErrorDetail=false` en la URL de Postgres de
+    producción) al cierre; n3 (comparar con un `Instant` del `Clock`) en el brief de T2.
+- **T2 (extracción en segundo plano):** `ExtraccionValidador` (puro), `ExtraccionTramiteService` +
+  `ExtraccionTramiteScheduler` (cola en BD, `Instant` del `Clock`, IA fuera de toda transacción, aplicación bajo
+  `findConBloqueoByIdAndGestoriaId` + `refresh` con nueva comprobación, dedupe por Animal, reintentos 1/5/30 min y
+  4 intentos, contabilidad de reintentos por JPQL sin tocar `version`). Un error que no viene de la IA también
+  cuenta como fallo (si no, bloquearía la cabeza de la cola; documentado). 611 → **645**.
+  - Revisión: Approved with minors. Corregidos I1 (test de PATCH durante el reintento: gana el empleado), m1 (la
+    acción del empleado en otro hilo con timeout: prueba de verdad que no hay bloqueo durante la IA), m2
+    (`spring.task.scheduling.pool.size: 3`, para que la IA no retrase el job de Stripe ni el de retención), m3
+    (documentado), m4 (test de los `UPDATE` con otra gestoría → 0 filas), n1 (`clearAutomatically`), n2, n3.
+    **650**. n4 (`TramiteRevisionService.actualizar` lee el mensaje sin `gestoriaId`; anterior a B1, el trámite
+    ya viene resuelto con su gestoría) queda anotado.
+- **T3 (respuestas y retención):** `origen`, `estadoExtraccion` y `crotalesDescartados` en `TramiteResponse` y
+  `TramiteDetalleResponse`; `RetencionMensajesService` + `RetencionMensajesScheduler` (03:30 Madrid; borra a los
+  30 días los mensajes sin trámite, vacía a los 12 meses el texto de los que tienen trámite; plazos `Period`
+  configurables, pendientes del abogado). 650 → **673**. El implementador se cortó por el límite de uso durante el
+  arranque real (su cron de prueba con guiones bajos no era válido y la app no llegó a arrancar). La sesión principal
+  comprobó que no quedaba proceso ni mutación aplicada (las 4 copias de `t3mut` idénticas con `cmp`), limpió el
+  scratchpad, repitió el arranque (cron por variable de entorno: dos pasadas sin errores en hilos distintos del pool;
+  parado por PID) y escribió el informe con el contrato JSON.
+  - Revisión: Approved with minors. Corregidos m1 (test de límite con cambio de hora), m2 (no vaciar un `SIN_TEXTO`),
+    m3 (E2E de PATCH/aprobar/rechazar con los tres campos), n3 (ruta robusta). **676**. n1 (datos que la retención no
+    cubre) y n2 (lotes) anotados en las notas del Prompt C; n4 (TIMESTAMP sin zona en Postgres real) sin probar: no
+    hay Postgres aquí. Alerta de `ERROR_RECEPCION` anotada en el Prompt C a petición de Antonio.
+- **T4 (frontend mínimo, excepción explícita):** shape de Impeccable desde la sesión principal, confirmado por
+  Antonio (en el plan). Tipos, `ORIGENES_TRAMITE`/`TEXTOS_EXTRACCION`/`avisosExtraccion()` en `etiquetas.ts`, icono
+  de WhatsApp junto al `#id` (fuera del botón), línea de extracción bajo el estado, "N descartados" en Crotales,
+  avisos fijos ámbar en el modal (texto estático sin `role`, tras el título enfocado), solo con el trámite pendiente.
+  513 → **556**.
+  - Revisión: Approved with minors. Corregidos m2 (test del `mb-4`), n1 (test de los tres campos tras aprobar o
+    rechazar) y n2 ("Recibido por WhatsApp" se anuncia una vez; `title` en un span `aria-hidden`). **558**. m1 y n3:
+    sesión principal (`DESIGN.md` con el indicador, la línea de extracción y los avisos, y la nota de que el aviso de
+    `FALLIDA` sigue tras guardar a propósito).
+  - Pase visual en navegador real (Vite + API simulada con `page.route`, datos inventados, Playwright 1.58 en el
+    scratchpad, headless shell 1243) a 1440 y 375 px: sin scroll horizontal de página, la tabla hace scroll en su
+    contenedor, un "Recibido por WhatsApp" por fila, foco en el título al abrir el modal, ámbar sin rojo, el #105
+    aprobado sin aviso. Un hallazgo corregido con TDD desde la sesión principal: "Extracción en curso" en el modal,
+    con borde y del alto de un campo, se leía como un input vacío; pasa a una línea en Gris Texto sin recuadro.
+    `npm test` **558/558**, lint con los 3 avisos de siempre. Vite parado por PID.
+- **T5 (cierre):** `./mvnw clean test` **676/676**; `npm test` **558/558**; build (aviso del chunk) y lint (3 avisos)
+  en verde. Smoke real con el sandbox de Twilio desde el móvil de Antonio, con Cloudflare Quick Tunnel y H2 en
+  fichero, sobre dos gestorías: los cuatro escenarios PASS (`b1-t5-smoke.md`). Incidencia de configuración:
+  `TWILIO_AUTH_TOKEN` tenía una clave de Anthropic; el webhook falló cerrado (`403`), Antonio lo corrigió y el
+  backend se reinició sin cortar el túnel. Cierre en el orden de A5: URL del sandbox vaciada por Antonio, túnel
+  parado y comprobado (530/1033), procesos parados por PID y scratchpad entero borrado (H2 con su número
+  incluida). `CLAUDE.md` (bullet de B1, proveedor de IA, flujo, estado y conteos), `DESIGN.md`, el surface brief
+  del modal, `ganera-prompts.md` y este fichero al día.
+- **Sin commit**: pendiente de la aprobación de Antonio.

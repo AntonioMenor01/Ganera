@@ -16,6 +16,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.Instant;
+
 @Getter
 @Setter
 @NoArgsConstructor
@@ -53,4 +55,33 @@ public class Tramite extends GestoriaScopedEntity {
     @Version
     @Column(nullable = false)
     private Long version;
+
+    /** De donde viene (B1, D3). Null en los Tramites anteriores a V19. */
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private OrigenTramite origen;
+
+    /** Estado de la extraccion por IA (B1, D3). Null en los Tramites anteriores a V19. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "estado_extraccion", length = 20)
+    private EstadoExtraccion estadoExtraccion;
+
+    /** Fallos de extraccion ya contados para este Tramite (los cuenta el planificador de T2; un
+     * acierto no suma). Con el ultimo de ganera.extraccion.reintentos se deja de reintentar. */
+    @Column(name = "intentos_extraccion", nullable = false)
+    private int intentosExtraccion = 0;
+
+    /** Cuando puede el planificador volver a intentar la extraccion; null si no hay nada pendiente. */
+    @Column(name = "proximo_intento_extraccion")
+    private Instant proximoIntentoExtraccion;
+
+    /** Version que dejo el primer fallo de la IA: si cambia, alguien toco el Tramite y un reintento
+     * que acierte no se aplica (no se pisa una correccion humana). */
+    @Column(name = "version_tras_fallo")
+    private Long versionTrasFallo;
+
+    /** Identificadores que devolvio la IA y no parecen crotales (o pasan del maximo): se descartan y
+     * se cuentan para avisar en la cola (D5). */
+    @Column(name = "crotales_descartados", nullable = false)
+    private int crotalesDescartados = 0;
 }

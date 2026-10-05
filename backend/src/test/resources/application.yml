@@ -11,12 +11,6 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
-  ai:
-    anthropic:
-      api-key: test-key-nunca-usada-de-verdad
-      chat:
-        options:
-          model: claude-haiku-4-5-20251001
 
 ganera:
   jwt:
@@ -28,6 +22,17 @@ ganera:
     secret: test-onboarding-secret
   frontend:
     origen: http://localhost:5173
+  twilio:
+    webhook-url: ""
+  anthropic:
+    api-key: ""
+  extraccion:
+    # Los tests deciden cuando se procesa la cola (llaman al servicio); nada de pasadas solas.
+    planificador:
+      activo: false
+  retencion:
+    # Los tests llaman a RetencionMensajesService cuando quieren; el job nocturno no corre.
+    activo: false
 
 twilio:
   account-sid: ""

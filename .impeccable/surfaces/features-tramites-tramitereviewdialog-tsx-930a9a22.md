@@ -15,7 +15,8 @@ y crotales, guardan y aprueban o rechazan. Es el momento que el producto existe 
 humano aprueba siempre, y nunca se aprueba otra cosa que lo que se ve.
 
 Content: detalle `{id, estado, tipoTramite, explotación (código REGA + nombre), mensajeOriginal
-(hoy casi siempre null: 3b no existe), motivoError, crotales:[{crotalIndicado, crotal, resolucion}],
+(el texto de WhatsApp desde B1; null solo en trámites anteriores), origen, estadoExtraccion y
+crotalesDescartados (avisos fijos en ámbar mientras está pendiente, sin cerrar; ver DESIGN.md), motivoError, crotales:[{crotalIndicado, crotal, resolucion}],
 version}`. Edición solo en `PENDIENTE_REVISION`. Lógica y estados en `useRevisionTramite`
 (Task 9a): guardar/aprobar/rechazar de uno en uno, 409 → datos frescos + motivo literal, 400
 conserva la edición, "Guarda antes de aprobar" con cambios sin guardar.

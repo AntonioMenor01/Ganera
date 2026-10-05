@@ -32,6 +32,9 @@ function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
     mensajeOriginal: null,
     crotales: [crotal("1234"), crotal("ES010000005678")],
     version: 4,
+    origen: null,
+    estadoExtraccion: null,
+    crotalesDescartados: 0,
     ...parcial,
   }
 }

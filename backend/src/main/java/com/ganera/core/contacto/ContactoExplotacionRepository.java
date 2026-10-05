@@ -10,6 +10,15 @@ import java.util.Optional;
 /** Todos los finders llevan gestoriaId explicito: no dependen del gestoriaFilter ambiente. */
 public interface ContactoExplotacionRepository extends JpaRepository<ContactoExplotacion, Long> {
 
+    /**
+     * Explotaciones enlazadas a un Contacto, para elegir la de un mensaje de WhatsApp (B1, D2). Pasar
+     * la Gestoria del Contacto dos veces: el enlace Y la Explotacion tienen que ser de esa Gestoria
+     * (defensa en profundidad frente a un enlace inconsistente que se saltara la decision 15).
+     */
+    @EntityGraph(attributePaths = "explotacion")
+    List<ContactoExplotacion> findByContactoIdAndGestoriaIdAndExplotacionGestoriaId(
+            Long contactoId, Long gestoriaId, Long explotacionGestoriaId);
+
     Optional<ContactoExplotacion> findByContactoIdAndExplotacionIdAndGestoriaId(
             Long contactoId, Long explotacionId, Long gestoriaId);
 

@@ -301,6 +301,11 @@ function reducer(estado: Estado, evento: Evento): Estado {
         motivoError: tramite.motivoError,
         crotales: tramite.crotales,
         version: tramite.version,
+        // B1: también en `TramiteResponse`; los avisos de extracción se ocultan solos al cerrar el
+        // trámite (avisosExtraccion), pero el dato es el de la respuesta, no el anterior.
+        origen: tramite.origen ?? null,
+        estadoExtraccion: tramite.estadoExtraccion ?? null,
+        crotalesDescartados: tramite.crotalesDescartados ?? 0,
       };
       return { ...estado, detalle, formulario: formularioDesdeDetalle(detalle), aviso: evento.aviso };
     }

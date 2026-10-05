@@ -311,6 +311,8 @@ Stripe test-mode no se puede probar todavía; ninguna tarea de este prompt lo ha
 
 **Bloqueado por:** mismo catálogo que 3a. Incluirá el prompt de sistema real para `TramiteExtractionService` con ejemplos de mensajes reales de ganaderos.
 
+**Actualización (2026-10-05):** el webhook y la extracción con IA se hicieron sin OVZ.net en el **Prompt B1**. Ahí quedaron resueltos los pendientes heredados de abajo: contactos inactivos ignorados, `findByTelefono` solo en el webhook, el finder con `gestoriaId` y la deduplicación por Animal. El catálogo real de tipos sigue pendiente para B2.
+
 **Pendientes heredados del Prompt A1 (tenerlos en cuenta al implementar 3b):**
 - **Contactos inactivos (decisión 2):** el webhook debe ignorar los mensajes de un `Contacto` con `activo=false` (borrado lógico): no se crea ningún Trámite.
 - **`findByTelefono` (decisión 11):** `ContactoRepository.findByTelefono` (sin scope de Gestoría) es exclusivo de este webhook; nada más lo usa. Normalizar el `From` de Twilio con `TelefonoNormalizador` antes de buscar.
@@ -651,7 +653,13 @@ Plan con las decisiones cerradas: `docs/superpowers/plans/2026-10-03-tarea-front
    Archivo autoalojada, iconos en las alertas de error, favicon y logos en rojo. `DESIGN.md` y `PRODUCT.md`
    al día. **Pendiente:** los radios (la landing usa esquinas rectas), a decidir con el socio.
 3. **Prompt B** (WhatsApp + IA, sin OVZ), al que se añade el **alta por nacimiento con crotal de la madre,
-   sexo y fecha de nacimiento**: extracción y campos en el modal de revisión.
+   sexo y fecha de nacimiento**: extracción y campos en el modal de revisión. Partido en dos:
+   - **B1** (hecho el 2026-10-05; backend 676/676, frontend 558/558, smoke real con el sandbox de Twilio
+     desde el móvil de Antonio; plan `docs/superpowers/plans/2026-10-05-promptB1-whatsapp-ia.md`).
+     Incluye el webhook con firma completa y fail-closed, la recepción idempotente que nunca pierde un
+     mensaje y la extracción con Haiku en segundo plano (SDK oficial, salida estructurada nativa,
+     reintentos). También el acuse por TwiML, la retención y el aviso en la cola y en el modal.
+   - **B2** (pendiente): lo de las notas de abajo que B1 dejó fuera.
 4. **Prompt C**, después la app de escritorio, el MVP a la gestoría piloto y, tras el piloto, OVZ 3a/3c.
 
 ## Prompt B — notas acumuladas (pendiente)
@@ -659,6 +667,11 @@ Plan con las decisiones cerradas: `docs/superpowers/plans/2026-10-03-tarea-front
 - **Alta por nacimiento (2026-10-04):** tipo de trámite con el crotal de la madre, el sexo y la fecha de
   nacimiento del ternero. La IA los extrae y el modal de revisión tiene campos para verlos y corregirlos.
   Venta con comprador, censo y demoras quedan para más adelante.
+- **B1 / B2 (2026-10-05):** el Prompt B se parte. **B1** (plan
+  `docs/superpowers/plans/2026-10-05-promptB1-whatsapp-ia.md`) es el mínimo de WhatsApp + IA. Quedan
+  para **B2**: respuesta a números desconocidos, varios trámites por mensaje, adjuntos, medición de uso,
+  tipos OVZ y alta por nacimiento, y la **fecha del hecho** en el esquema de la IA (`Tramite` no tiene
+  campo de fecha en B1).
 - **Requisito: la IA solo extrae del mensaje (2026-10-05):** tipo, crotales o últimos dígitos, fechas… Nunca
   recibe el inventario de animales; el cruce con el inventario lo hace el servidor. Así se evitan coste y
   envío de datos de más.
@@ -684,6 +697,18 @@ Además del catálogo real de tipos de trámite (ver los pendientes heredados en
 - **`SuscripcionSyncScheduler`:** cada noche pasa a Stripe la cantidad de explotaciones de las suscripciones
   `ACTIVA`/`IMPAGO_GRACIA`. Hay que revisarlo cuando el cobro pase a planes por número de ganaderos
   (25/75/200). Tampoco corrige nunca una suscripción en `TRIAL`.
+- **RGPD, para el abogado de Ganera (2026-10-05, B1 D6):** confirmar los plazos de retención de
+  `mensaje_campo` (30 días para números desconocidos y contactos inactivos; texto vaciado a los 12 meses
+  en los mensajes con trámite; ambos configurables) y los DPA de Anthropic y Twilio como subencargados.
+  Datos que la retención de B1 **no** cubre, para que el abogado diga si hace falta plazo: el teléfono y el
+  contacto de los mensajes con trámite (se quedan tras vaciar el texto), `tramite_crotal.crotal_indicado`,
+  las copias de seguridad de la BD y la retención propia de Twilio (logs de mensajes) y de Anthropic.
+- **Retención por lotes (2026-10-05, B1 revisión T3 n2):** el `DELETE`/`UPDATE` de `RetencionMensajesService`
+  van en bloque, en una transacción cada uno; con mucho volumen, trocearlos por lotes.
+- **Alerta de mensajes `ERROR_RECEPCION` (2026-10-05, B1):** si falla la creación del trámite, el mensaje
+  de WhatsApp se rescata en `mensaje_campo` con `resultado = ERROR_RECEPCION`, sin gestoría ni trámite.
+  Ninguna gestoría lo ve y el job de retención lo borra a los 30 días. Hace falta una alerta (correo,
+  panel interno o similar) para que alguien de Ganera los revise y los reasigne antes de que se borren.
 - **Prueba de volumen antes del piloto (2026-10-05):** con datos inventados realistas (unos 75 ganaderos y
   200 animales por explotación), midiendo importación, listados, cola y modal.
 
