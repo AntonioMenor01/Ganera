@@ -40,10 +40,14 @@ describe("marca: el símbolo de Ganera aparece donde debe", () => {
     const cabecera = await screen.findByRole("banner")
     const logos = logosDe(cabecera)
     expect(logos).toHaveLength(1)
-    expect(logos[0]).toHaveClass("logo-ganera", "text-primary")
+    expect(logos[0]).toHaveClass("logo-ganera", "text-marca")
     expect(logos[0]).toHaveAttribute("aria-hidden", "true")
     // El texto sigue siendo el nombre visible (y accesible) de la marca, y el punto ya no está.
-    expect(within(cabecera).getByText("GANERA")).toBeInTheDocument()
+    const logotipo = within(cabecera).getByText("GANERA")
+    expect(logotipo).toBeInTheDocument()
+    // Logotipo en Tinta y 800; el rojo de marca es solo del símbolo.
+    expect(logotipo).toHaveClass("font-extrabold", "text-foreground")
+    expect(logotipo).not.toHaveClass("text-primary")
     expect(cabecera.querySelector(".rounded-full")).toBeNull()
   })
 
@@ -57,10 +61,24 @@ describe("marca: el símbolo de Ganera aparece donde debe", () => {
     const logos = logosDe(container)
     expect(logos).toHaveLength(1)
     const [logo] = logos
-    expect(logo).toHaveClass("logo-ganera", "text-primary")
+    expect(logo).toHaveClass("logo-ganera", "text-marca")
     // Decorativo: el título visible "Ganera" ya da el nombre; no se lee dos veces.
     expect(logo).toHaveAttribute("aria-hidden", "true")
     const titulo = screen.getByText("Ganera")
     expect(logo.nextElementSibling).toBe(titulo)
+  })
+})
+
+describe("marca: enlace de texto", () => {
+  it("el enlace de texto usa Rojo 700 (--enlace) y el anillo de foco sólido", async () => {
+    montarApp("/login")
+
+    const enlace = await screen.findByRole("link", { name: "Regístrate" })
+    expect(enlace).toHaveClass("text-enlace", "decoration-enlace/40", "focus-visible:ring-ring")
+    expect(enlace).not.toHaveClass("text-primary")
+    expect(enlace).not.toHaveClass("focus-visible:ring-ring/50")
+    // La variante de tabla (Tinta en reposo) no se usa fuera de las tablas.
+    expect(enlace).not.toHaveClass("text-foreground")
+    expect(enlace).not.toHaveClass("hover:text-enlace")
   })
 })

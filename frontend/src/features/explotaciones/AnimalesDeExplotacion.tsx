@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { CircleAlertIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -85,6 +86,7 @@ export function AnimalesDeExplotacion({ explotacionId }: { explotacionId: number
             <p className="text-sm text-muted-foreground">{mensajeDeError(error, CONTEXTO_ERROR)}</p>
           ) : (
             <Alert variant="destructive">
+              <CircleAlertIcon />
               <AlertTitle>No se han podido cargar los animales</AlertTitle>
               <AlertDescription>
                 <p>{mensajeDeError(error, CONTEXTO_ERROR)}</p>

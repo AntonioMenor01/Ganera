@@ -149,7 +149,8 @@ describe("AppLayout: barra de navegación", () => {
     montarLayout("/tramites")
     const nav = await screen.findByRole("navigation", { name: "Principal" })
     for (const enlace of within(nav).getAllByRole("link")) {
-      expect(enlace).toHaveClass("outline-none", "focus-visible:ring-3", "focus-visible:ring-ring/50")
+      expect(enlace).toHaveClass("outline-none", "focus-visible:ring-3", "focus-visible:ring-ring")
+      expect(enlace).not.toHaveClass("focus-visible:ring-ring/50")
     }
   })
 

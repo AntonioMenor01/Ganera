@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { CircleAlertIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,9 +64,9 @@ export function RegistroPage() {
     <main className="flex min-h-screen items-center justify-center bg-background p-6">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <LogoGanera decorativo className="mb-3 size-10 text-primary" />
+          <LogoGanera decorativo className="mb-3 size-10 text-marca" />
           {/* Mismo aspecto que CardTitle, pero como h1: es el título de la pantalla. */}
-          <h1 data-slot="card-title" className="font-heading text-base leading-snug font-medium">
+          <h1 data-slot="card-title" className="font-heading text-base leading-snug font-extrabold">
             Ganera
           </h1>
           <CardDescription>Registra tu gestoría y empieza tu prueba de 15 días.</CardDescription>
@@ -134,6 +135,7 @@ export function RegistroPage() {
             </div>
             {error && (
               <Alert variant="destructive">
+                <CircleAlertIcon />
                 <AlertTitle>No se ha podido completar el registro</AlertTitle>
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
@@ -144,7 +146,7 @@ export function RegistroPage() {
           </form>
           <p className="mt-4 text-center text-sm text-muted-foreground">
             ¿Ya tienes cuenta?{" "}
-            <Link to="/login" className={cn("font-medium", CLASE_ENLACE)}>
+            <Link to="/login" className={cn("font-semibold", CLASE_ENLACE)}>
               Inicia sesión
             </Link>
           </p>

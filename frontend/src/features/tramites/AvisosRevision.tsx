@@ -1,4 +1,4 @@
-import { CircleCheckIcon, XIcon } from "lucide-react";
+import { CircleAlertIcon, CircleCheckIcon, XIcon } from "lucide-react";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -47,6 +47,8 @@ export function AvisosRevision({
     <div className={cn("flex flex-col gap-2", (aviso || recargaFallida) && "mb-4")}>
       {error && (
         <Alert variant={error.tipo === "estado-cambiado" ? "default" : "destructive"} data-aviso={error.tipo}>
+          {/* Solo el error lleva icono; el aviso neutro de cambio de estado, no. */}
+          {error.tipo !== "estado-cambiado" && <CircleAlertIcon />}
           {/* m4: si consta otro estado, el título no afirma que la acción fallara: solo que cambió. */}
           <AlertTitle>
             {error.tipo === "estado-cambiado" ? "El trámite ha cambiado de estado" : TITULO_ERROR[error.accion]}

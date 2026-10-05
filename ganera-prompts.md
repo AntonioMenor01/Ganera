@@ -645,8 +645,11 @@ Plan con las decisiones cerradas: `docs/superpowers/plans/2026-10-03-tarea-front
    Salen la página de Facturación, su enlace en la navbar y `POST /facturacion/checkout`. Se quedan los
    webhooks de Stripe, los estados de suscripción, el `SuscripcionBanner` y el 403 al aprobar. Los textos que
    mandaban a Facturación pasan a pedir que se contacte con Ganera. El Registro no se toca hasta el C.
-2. **Colores y tipografía** de la marca nueva. Con Impeccable, revisando el shape antes del craft, y con
-   `DESIGN.md` actualizado (nueva paleta y contrastes).
+2. **Colores y tipografía** de la marca nueva (hecho el 2026-10-05; frontend 512/512, backend 534/534,
+   smoke en navegador a 1440 y 375 px; plan `docs/superpowers/plans/2026-10-04-colores-y-tipografia.md`).
+   Paleta roja y gris de la landing con la regla "el rojo sólido actúa, el rojo oscuro teñido avisa",
+   Archivo autoalojada, iconos en las alertas de error, favicon y logos en rojo. `DESIGN.md` y `PRODUCT.md`
+   al día. **Pendiente:** los radios (la landing usa esquinas rectas), a decidir con el socio.
 3. **Prompt B** (WhatsApp + IA, sin OVZ), al que se añade el **alta por nacimiento con crotal de la madre,
    sexo y fecha de nacimiento**: extracción y campos en el modal de revisión.
 4. **Prompt C**, después la app de escritorio, el MVP a la gestoría piloto y, tras el piloto, OVZ 3a/3c.
@@ -656,6 +659,9 @@ Plan con las decisiones cerradas: `docs/superpowers/plans/2026-10-03-tarea-front
 - **Alta por nacimiento (2026-10-04):** tipo de trámite con el crotal de la madre, el sexo y la fecha de
   nacimiento del ternero. La IA los extrae y el modal de revisión tiene campos para verlos y corregirlos.
   Venta con comprador, censo y demoras quedan para más adelante.
+- **Requisito: la IA solo extrae del mensaje (2026-10-05):** tipo, crotales o últimos dígitos, fechas… Nunca
+  recibe el inventario de animales; el cruce con el inventario lo hace el servidor. Así se evitan coste y
+  envío de datos de más.
 
 Además del catálogo real de tipos de trámite (ver los pendientes heredados en el Prompt 3b):
 - **Medir el uso de IA por gestoría:** número de mensajes procesados y tokens consumidos (entrada y salida) por Gestoría, para conocer el coste real por cliente.
@@ -678,6 +684,8 @@ Además del catálogo real de tipos de trámite (ver los pendientes heredados en
 - **`SuscripcionSyncScheduler`:** cada noche pasa a Stripe la cantidad de explotaciones de las suscripciones
   `ACTIVA`/`IMPAGO_GRACIA`. Hay que revisarlo cuando el cobro pase a planes por número de ganaderos
   (25/75/200). Tampoco corrige nunca una suscripción en `TRIAL`.
+- **Prueba de volumen antes del piloto (2026-10-05):** con datos inventados realistas (unos 75 ganaderos y
+  200 animales por explotación), midiendo importación, listados, cola y modal.
 
 - **Índice de búsqueda de explotaciones, si va lenta (2026-10-04):** en PostgreSQL, un `pg_trgm` GIN sobre
   `explotacion.busqueda` y `ganadero.nombre_busqueda`. Esas columnas ya están normalizadas, así que no hace

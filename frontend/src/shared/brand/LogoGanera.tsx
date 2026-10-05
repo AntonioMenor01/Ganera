@@ -13,7 +13,7 @@ type LogoGaneraProps = Omit<ComponentProps<"span">, "children" | "role"> & {
 /**
  * Símbolo de Ganera (`public/ganera-logo.svg`) pintado como máscara CSS sobre `currentColor`
  * (utilidad `logo-ganera` de `index.css`). El color sale del token de texto que se le pase
- * (`text-primary`) y el tamaño de `className` (`size-5`, `size-10`...). No usa `<img>` porque el
+ * (`text-marca`) y el tamaño de `className` (`size-5`, `size-10`...). No usa `<img>` porque el
  * `fill="currentColor"` del SVG no hereda color dentro de una imagen.
  */
 export function LogoGanera({ decorativo = false, className, ...props }: LogoGaneraProps) {

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
-import { XIcon } from "lucide-react";
+import { CircleAlertIcon, XIcon } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -272,6 +272,7 @@ function Cuerpo({ revision, ids }: { revision: RevisionTramite; ids: IdsRevision
     case "error":
       return (
         <Alert variant="destructive">
+          <CircleAlertIcon />
           <AlertTitle>No se ha podido cargar el trámite</AlertTitle>
           <AlertDescription>
             <p>{carga.mensaje}</p>
@@ -300,7 +301,7 @@ function Cuerpo({ revision, ids }: { revision: RevisionTramite; ids: IdsRevision
           {/* Izquierda (arriba en móvil): lo que escribió el ganadero. En escritorio se queda a la
               vista mientras se recorren los crotales, para cotejar. */}
           <section aria-labelledby={ids.mensaje} className="flex min-w-0 flex-col gap-2 md:sticky md:top-0 md:self-start">
-            <h3 id={ids.mensaje} className="text-sm font-medium text-muted-foreground">
+            <h3 id={ids.mensaje} className="text-sm font-semibold text-muted-foreground">
               Mensaje de WhatsApp
             </h3>
             {detalle.mensajeOriginal ? (
@@ -316,6 +317,7 @@ function Cuerpo({ revision, ids }: { revision: RevisionTramite; ids: IdsRevision
           <section aria-label="Datos del trámite" className="flex min-w-0 flex-col gap-5">
             {detalle.motivoError && (
               <Alert variant="destructive">
+                <CircleAlertIcon />
                 <AlertTitle>Motivo del error</AlertTitle>
                 <AlertDescription>{detalle.motivoError}</AlertDescription>
               </Alert>
@@ -331,7 +333,7 @@ function Cuerpo({ revision, ids }: { revision: RevisionTramite; ids: IdsRevision
   }
 }
 
-const CLASE_ETIQUETA = "text-sm font-medium text-muted-foreground";
+const CLASE_ETIQUETA = "text-sm font-semibold text-muted-foreground";
 
 function Campo({
   etiqueta,
@@ -564,7 +566,7 @@ function BarraConfirmacion({
 }) {
   return (
     <div role="group" aria-labelledby={idPregunta} className="flex flex-wrap items-center gap-2">
-      <p id={idPregunta} className="mr-auto text-sm font-medium">
+      <p id={idPregunta} className="mr-auto text-sm font-semibold">
         {pregunta}
       </p>
       <div className="flex flex-wrap items-center gap-2">{children}</div>

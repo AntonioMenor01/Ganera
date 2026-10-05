@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import { ArrowLeft, ChevronDown, Phone } from "lucide-react";
+import { ArrowLeft, ChevronDown, CircleAlertIcon, Phone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -98,7 +98,7 @@ export function GanaderoDetallePage() {
 
       {vista.estado === "no-encontrado" && (
         <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold">Ganadero no encontrado</h1>
+          <h1 className="text-xl font-extrabold">Ganadero no encontrado</h1>
           <p className="text-sm text-muted-foreground">{TEXTO_GANADERO_NO_ENCONTRADO}</p>
           <Link to="/ganaderos" className={cn("mt-2 w-fit", CLASE_ENLACE)}>
             Volver a Ganaderos
@@ -108,6 +108,7 @@ export function GanaderoDetallePage() {
 
       {vista.estado === "error" && (
         <Alert variant="destructive">
+          <CircleAlertIcon />
           <AlertTitle>No se ha podido cargar el ganadero</AlertTitle>
           <AlertDescription>
             <p>{mensajeDeError(vista.error, "detalle-ganadero")}</p>
@@ -154,7 +155,7 @@ function Ficha({ ganadero }: { ganadero: GanaderoDetalle }) {
     <>
       <div className="min-w-0">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-          <h1 className="min-w-0 text-xl font-semibold break-words">{ganadero.nombre}</h1>
+          <h1 className="min-w-0 text-xl font-extrabold break-words">{ganadero.nombre}</h1>
           {ganadero.nif ? (
             <span className="text-muted-foreground tabular-nums">
               <span className="sr-only">NIF </span>
@@ -242,7 +243,7 @@ function SeccionExplotacion({ explotacion }: { explotacion: ExplotacionDeGanader
         <h2
           id={idTitulo}
           tabIndex={-1}
-          className="rounded-sm text-base font-medium break-words outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="rounded-sm text-base font-semibold break-words outline-none focus-visible:ring-3 focus-visible:ring-ring"
         >
           <span className="tabular-nums">{explotacion.codigoRega}</span>
           <span className="font-normal"> · {explotacion.nombre}</span>
@@ -250,7 +251,7 @@ function SeccionExplotacion({ explotacion }: { explotacion: ExplotacionDeGanader
       </header>
 
       <div className="px-4 py-3">
-        <h3 id={idContactos} className="text-sm font-medium text-muted-foreground">
+        <h3 id={idContactos} className="text-sm font-semibold text-muted-foreground">
           Contactos
         </h3>
         {explotacion.contactos.length === 0 ? (

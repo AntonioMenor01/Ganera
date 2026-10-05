@@ -30,6 +30,8 @@ describe("LoginPage: error uniforme (I1)", () => {
 
     expect(await screen.findByText("Email o contraseña incorrectos.")).toBeInTheDocument()
     expect(screen.queryByText("Usuario inactivo")).not.toBeInTheDocument()
+    // El error lleva su icono decorativo, no solo el color.
+    expect(screen.getByRole("alert").firstElementChild?.matches('svg[aria-hidden="true"]')).toBe(true)
   })
 })
 

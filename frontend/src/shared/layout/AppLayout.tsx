@@ -73,8 +73,8 @@ export function AppLayout() {
       <header className="border-b border-sidebar-border bg-sidebar px-4 pt-3 pb-1 text-sidebar-foreground md:px-6 md:py-4">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-y-2 md:flex md:gap-6">
           <div className="col-start-1 row-start-1 flex items-center gap-2 md:shrink-0">
-            <LogoGanera decorativo className="size-5 text-primary" />
-            <span className="font-semibold tracking-wide text-primary">GANERA</span>
+            <LogoGanera decorativo className="size-5 text-marca" />
+            <span className="font-extrabold tracking-wide text-foreground">GANERA</span>
           </div>
           {/* Móvil: a sangre (-mx-4) con el margen interior de 16 px dentro (px-4) y 4 px arriba y
               abajo (py-1) para que el anillo de foco de 3 px no lo recorte el overflow. */}
@@ -94,7 +94,7 @@ export function AppLayout() {
                 to={enlace.to}
                 className={({ isActive }) =>
                   cn(
-                    "shrink-0 rounded-lg px-2.5 py-2 text-sm font-medium whitespace-nowrap outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 md:py-1.5",
+                    "shrink-0 rounded-lg px-2.5 py-2 text-sm font-semibold whitespace-nowrap outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring md:py-1.5",
                     isActive
                       ? "bg-sidebar-primary text-sidebar-primary-foreground"
                       : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground",

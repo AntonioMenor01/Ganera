@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, CircleAlertIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Table,
@@ -20,7 +20,7 @@ import type { Explotacion } from "./types";
 import { ImportarExcelSection } from "./ImportarExcelSection";
 import { AnimalesDeExplotacion } from "./AnimalesDeExplotacion";
 import { useDesdeSm } from "./useDesdeSm";
-import { CLASE_ENLACE } from "@/shared/ui/enlace";
+import { CLASE_ENLACE_TABLA } from "@/shared/ui/enlace";
 
 const TAMANIO_PAGINA = 20;
 
@@ -97,15 +97,15 @@ export function ExplotacionesPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold">Explotaciones</h1>
+        <h1 className="text-xl font-extrabold">Explotaciones</h1>
       </div>
 
       <Card className="w-fit min-w-48">
         <CardContent className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
             Explotaciones totales
           </span>
-          <span className="text-3xl font-semibold">
+          <span className="text-3xl font-extrabold">
             {pagina ? pagina.totalElements : "—"}
           </span>
         </CardContent>
@@ -121,6 +121,7 @@ export function ExplotacionesPage() {
 
       {errorCarga && (
         <Alert variant="destructive">
+          <CircleAlertIcon />
           <AlertTitle>No se han podido cargar las explotaciones</AlertTitle>
           <AlertDescription>
             <p>{mensajeDeError(errorCarga, "listar-explotaciones")}</p>
@@ -172,7 +173,7 @@ export function ExplotacionesPage() {
                     )}
                     <TableCell className="whitespace-normal wrap-anywhere">
                       {/* Decisión 14: el ganadero enlaza con su ficha. */}
-                      <Link to={`/ganaderos/${explotacion.ganaderoId}`} className={CLASE_ENLACE}>
+                      <Link to={`/ganaderos/${explotacion.ganaderoId}`} className={CLASE_ENLACE_TABLA}>
                         {explotacion.nombreGanadero}
                       </Link>
                     </TableCell>

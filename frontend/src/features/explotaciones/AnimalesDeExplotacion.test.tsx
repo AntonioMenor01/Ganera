@@ -226,6 +226,7 @@ describe("AnimalesDeExplotacion: estados sin contenido", () => {
 
     const alerta = await screen.findByRole("alert")
     expect(alerta).toHaveTextContent("No se han podido cargar los animales")
+    expect(alerta.firstElementChild?.matches('svg[aria-hidden="true"]')).toBe(true)
     expect(alerta).toHaveTextContent(
       "Ha fallado algo en el servidor. Inténtalo de nuevo; si se repite, avísanos.",
     )

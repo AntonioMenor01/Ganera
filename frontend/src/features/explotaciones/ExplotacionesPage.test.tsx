@@ -56,6 +56,7 @@ describe("ExplotacionesPage: errores visibles", () => {
     montar()
 
     expect(await screen.findByText("No se han podido cargar las explotaciones")).toBeInTheDocument()
+    expect(screen.getByText("No se han podido cargar las explotaciones").closest("[role=alert]")!.firstElementChild?.matches('svg[aria-hidden="true"]')).toBe(true)
     expect(
       screen.getByText("Ha fallado algo en el servidor. Inténtalo de nuevo; si se repite, avísanos."),
     ).toBeInTheDocument()
@@ -111,6 +112,9 @@ describe("ExplotacionesPage: enlace al ganadero (decisión 14)", () => {
 
     const enlace = await screen.findByRole("link", { name: "Pedro Sanz" })
     expect(enlace).toHaveAttribute("href", "/ganaderos/42")
+    // Enlace en columna de tabla: Tinta en reposo; Rojo 700 solo al apuntar o con foco.
+    expect(enlace).toHaveClass("text-foreground", "hover:text-enlace", "focus-visible:text-enlace", "focus-visible:ring-ring")
+    expect(enlace).not.toHaveClass("text-enlace")
     await user.click(enlace)
     expect(await screen.findByText("Ficha del ganadero 42")).toBeInTheDocument()
   })

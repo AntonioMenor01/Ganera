@@ -15,8 +15,8 @@ administrativos en escritorio. Tienen que llegar a Trámites (y a cualquier secc
 la página nunca se desplaza en horizontal.
 
 Decided with Antonio (2026-10-03/04, plan `docs/superpowers/plans/2026-10-03-tarea-frontend-antes-piloto.md`):
-- Por debajo de `md` (768 px), dos filas en una sola barra Paja Clara (sin línea entre filas, borde
-  Lino abajo como hoy): fila 1 marca + "GANERA" a la izquierda, "Salir" (`outline sm`) a la
+- Por debajo de `md` (768 px), dos filas en una sola barra Superficie (sin línea entre filas, borde
+  Gris Borde abajo como hoy): fila 1 marca + "GANERA" a la izquierda, "Salir" (`outline sm`) a la
   derecha, sin email; fila 2 los 4 enlaces en orden de trabajo.
 - La tira de enlaces va a sangre hasta los bordes de la pantalla (margen interior de 16 px), con
   scroll horizontal solo interno (scrollbar oculta, `overscroll-x-contain`). La pista de "hay más"
@@ -28,7 +28,7 @@ Decided with Antonio (2026-10-03/04, plan `docs/superpowers/plans/2026-10-03-tar
   email completo en `title`, con un ancho máximo que garantiza que no desborda a 768 px con un
   email largo.
 - Un solo `<nav aria-label="Principal">` en el DOM (recolocado por CSS), mismo orden de tabulación
-  en móvil y escritorio; foco visible en los enlaces con el anillo estándar (3 px verde al 50 %);
+  en móvil y escritorio; foco visible en los enlaces con el anillo estándar (3 px Rojo Enlace al 100 %);
   `aria-current="page"` en el activo.
 
 ## Direction contract
@@ -36,8 +36,9 @@ Decided with Antonio (2026-10-03/04, plan `docs/superpowers/plans/2026-10-03-tar
 THESIS: la barra de una herramienta de trabajo que cabe en la mano: todas las secciones a la vista
 y a un toque, sin menú que abrir. Rechaza la hamburguesa, la barra inferior y los iconos decorativos.
 
-OWN-WORLD: Paja Clara, borde Lino, pill Verde Monte con texto Crema Papel para el activo, Gris
-Oliva para los inactivos con Paja Hover al pasar; Geist 14/500; transiciones solo de color.
+OWN-WORLD (marca nueva, 2026-10-05): Superficie, borde Gris Borde, pill Rojo Acción con texto blanco
+para el activo, Gris Texto para los inactivos con Gris Borde al pasar; símbolo en Rojo Ganera y
+"GANERA" en Tinta 800; Archivo 14/600; transiciones solo de color.
 
 ANTI-GOALS: degradados o sombras para indicar overflow; sticky; cambios de paleta, tipografía,
 textos u orden; duplicar el menú en el DOM; cualquier desplazamiento horizontal de la página.

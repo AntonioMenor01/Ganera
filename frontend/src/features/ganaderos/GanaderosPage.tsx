@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, CircleAlertIcon } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -23,7 +23,7 @@ import {
   type CampoOrdenGanadero,
   type OrdenGanaderos,
 } from "./ordenGanaderos";
-import { CLASE_ENLACE } from "@/shared/ui/enlace";
+import { CLASE_ENLACE, CLASE_ENLACE_TABLA } from "@/shared/ui/enlace";
 
 const TAMANIO_PAGINA = 20;
 const COLUMNAS = 3;
@@ -97,12 +97,13 @@ export function GanaderosPage() {
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <div className="min-w-0">
-        <h1 className="text-xl font-semibold">Ganaderos</h1>
+        <h1 className="text-xl font-extrabold">Ganaderos</h1>
         <p className="text-sm text-muted-foreground tabular-nums">{subtitulo}</p>
       </div>
 
       {errorCarga && (
         <Alert variant="destructive">
+          <CircleAlertIcon />
           <AlertTitle>No se han podido cargar los ganaderos</AlertTitle>
           <AlertDescription>
             <p>{mensajeDeError(errorCarga, "listar-ganaderos")}</p>
@@ -181,7 +182,7 @@ export function GanaderosPage() {
                     to={`/ganaderos/${ganadero.id}`}
                     // El enlace ya navega: que la fila no lo repita (un solo paso en el historial).
                     onClick={(evento) => evento.stopPropagation()}
-                    className={`font-medium ${CLASE_ENLACE}`}
+                    className={`font-medium ${CLASE_ENLACE_TABLA}`}
                   >
                     {ganadero.nombre}
                   </Link>
@@ -250,7 +251,7 @@ function CabeceraOrdenable({
       <button
         type="button"
         onClick={() => onOrdenar(campo)}
-        className="-mx-1 inline-flex items-center gap-1 rounded-md px-1 py-0.5 font-medium outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="-mx-1 inline-flex items-center gap-1 rounded-md px-1 py-0.5 font-semibold outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring"
       >
         {children}
         <Icono

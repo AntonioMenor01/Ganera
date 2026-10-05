@@ -36,8 +36,9 @@ entendió, alineado para comprobarlo de un vistazo antes de firmar. Rechaza el f
 genérico y el modal estrecho con los datos apilados bajo el mensaje.
 
 OWN-WORLD: el ledger de Ganera: panel blanco con anillo al 10 % sobre velo ligero; columna del
-mensaje en Lino como papel citado; campos de 32 px con borde Borde Lino; badges en pares exactos;
-Verde Monte solo en "Aprobar", enlaces y foco; cifras tabulares en crotales y REGA.
+mensaje en Superficie como papel citado; campos de 32 px con borde Gris Input; badges en pares exactos;
+Rojo Acción sólido solo en "Aprobar" (y "Guardar"), Rojo Enlace en enlaces y foco, Rojo Problema
+teñido en "Sí, rechazar" y en los avisos con icono (marca nueva, 2026-10-05); cifras tabulares en crotales y REGA.
 
 STORY: el empleado lee el mensaje, ve qué explotación, tipo y crotales se dedujeron y cómo se
 resolvió cada crotal, corrige lo que falte, guarda, ve las resoluciones nuevas y aprueba; si el

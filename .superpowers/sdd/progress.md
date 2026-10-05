@@ -689,3 +689,50 @@ implementador y un revisor independiente; los informes están en `.superpowers/s
   - Procesos parados por PID y temporales borrados. `CLAUDE.md`, `ganera-prompts.md` (orden nuevo) y este fichero
     al día.
 - **Sin commit**: pendiente de la aprobación de Antonio.
+
+## 2026-10-05 — Colores y tipografía de la marca nueva (frontend y documentación)
+
+Plan: `docs/superpowers/plans/2026-10-04-colores-y-tipografia.md`. Antonio aprobó el shape de Impeccable el
+2026-10-04 con D1a (tarjetas blancas) y sus seis puntos: logotipo en Tinta con el símbolo rojo, iconos en
+todas las alertas de error, favicon y PNG en rojo con `ganera-logo-rojo.svg`, PRODUCT.md al día, radios sin
+tocar, y `--input` en Gris 600 `#7D7979` (medido: el más claro que llega a 3:1). El craft se hizo desde la
+sesión principal y los subagentes solo implementaron y revisaron. Informes en `.superpowers/sdd/ct-*`.
+
+Decisión de craft de la sesión principal: 800 en titulares, 600 en elementos de interfaz y 500 solo para el
+énfasis de datos en tablas (dígitos del crotal, crotal indicado, `#id`, nombre del ganadero), para que no
+compita con las cabeceras.
+
+- **T1** (tokens de `index.css`, `--marca`/`--enlace`/`--primary-hover`, foco base al 100 %, Archivo por
+  `@fontsource-variable/archivo` sin Geist, logo con `text-marca` con TDD): 508/508. Approved with minors.
+  Los dos minors eran estados intermedios que cerraba T2.
+- **T2** (pesos, foco sólido `ring-ring` en todos los controles, foco de "Sí, rechazar" sin el override al 20 %,
+  `bg-primary-hover`, `CLASE_ENLACE` en `text-enlace`, "GANERA" en Tinta 800, `CircleAlertIcon` en las
+  alertas de error con TDD): **510**. Approved with minors. Se corrigieron m1 (el test exige el icono como
+  primer hijo), m2 (test del foco de "Sí, rechazar") y el nit 4 (`badge` `destructive` sin `ring-destructive/20`).
+  Se aceptaron tres desviaciones: icono también en "Motivo del error", `badge` `link` en `text-enlace` y
+  (luego corregida) el anillo del `badge` `destructive`.
+- **T3** (`ganera-logo-rojo.svg` en lugar del verde; `favicon-64.png` y `ganera-logo-512.png` en `#EC3013`
+  con el mismo encuadre, generados con Chromium headless fuera del repo; test de recursos): **512** (37
+  ficheros). Approved.
+- **T4 (cierre):**
+  - `npm test` **512/512**; build en verde (aviso del chunk); lint con los 3 avisos de siempre;
+    `./mvnw clean test` **534/534**; `impeccable detect` sin hallazgos.
+  - Smoke en navegador real con A `ACTIVA` y B `SUSPENDIDA` a 1440 y 375 px, todo PASS (`ct-t4-smoke.md`).
+    32 capturas con datos inventados en `C:\Users\Antonio\Desktop\capturas-ganera-marca\`. La sesión
+    principal revisó las capturas: no hubo nada que corregir.
+  - `DESIGN.md` reescrito (paleta, regla de los dos rojos, contrastes medidos, pesos); `PRODUCT.md`
+    (identidad, facturación fuera de la app, Archivo); los tres surface briefs de `.impeccable/surfaces`;
+    `CLAUDE.md`, `ganera-prompts.md` y este fichero al día.
+  - Observaciones para Antonio: las columnas de enlaces (el `#id` de la cola y los ganaderos de
+    Explotaciones) quedan en rojo 700; y el anillo de foco sobre la píldora activa de la navbar se lee como
+    un borde más oscuro (cumple 5,91:1).
+- **Decisiones de Antonio sobre las observaciones (2026-10-05):** las columnas de enlaces en tablas van en
+  Tinta, con Rojo 700 y subrayado solo en hover y foco; el foco sobre la píldora activa se queda así; los
+  radios siguen pendientes con su socio.
+- **T5** (`CLASE_ENLACE_TABLA` en `shared/ui/enlace.ts`, aplicada solo al `#id` de la cola, al nombre de la
+  tabla de Ganaderos y al ganadero de la tabla de Explotaciones; tests primero; `DESIGN.md` y `CLAUDE.md`):
+  **513**. Approved with minors; corregidos m1 (dos frases de `DESIGN.md`) y m2 (`not.toHaveClass` partido
+  por clase). Capturas 05 y 15 repetidas, más 05b (hover) y 15b (foco), con los datos nuevos de la app de
+  prueba: reposo rgb(32, 30, 29); hover y foco rgb(174, 24, 0) con subrayado y anillo de 3 px.
+  `npm test` 513/513, build y lint con los avisos de siempre.
+- **Sin commit**: pendiente de la aprobación de Antonio.

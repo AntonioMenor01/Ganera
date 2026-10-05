@@ -259,6 +259,7 @@ describe("GanaderoDetallePage: errores", () => {
 
     const alerta = await screen.findByRole("alert")
     expect(within(alerta).getByText("No se ha podido cargar el ganadero")).toBeInTheDocument()
+    expect(alerta.firstElementChild?.matches('svg[aria-hidden="true"]')).toBe(true)
     expect(
       within(alerta).getByText("No se ha podido conectar con Ganera. Inténtalo de nuevo en unos segundos."),
     ).toBeInTheDocument()

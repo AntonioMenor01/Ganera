@@ -189,6 +189,7 @@ describe("TramiteReviewDialog: errores visibles", () => {
     const user = userEvent.setup()
     renderDialog()
     expect(await screen.findByText("No se ha podido cargar el trámite")).toBeInTheDocument()
+    expect(screen.getByText("No se ha podido cargar el trámite").closest("[role=alert]")!.firstElementChild?.matches('svg[aria-hidden="true"]')).toBe(true)
     expect(
       screen.getByText("Ha fallado algo en el servidor. Inténtalo de nuevo; si se repite, avísanos."),
     ).toBeInTheDocument()
@@ -910,6 +911,10 @@ describe("TramiteReviewDialog: Rechazar se confirma en línea", () => {
     renderDialog({ onCambiado, onClose })
     const dialogo = await dialogoListo()
     await user.click(boton(dialogo, "Rechazar"))
+    // Mismo foco sólido (Rojo 700) que el resto de botones, no el rojo destructivo al 20 %.
+    const confirmar = boton(dialogo, "Sí, rechazar")
+    expect(confirmar).toHaveClass("focus-visible:ring-ring")
+    expect(confirmar).not.toHaveClass("focus-visible:ring-destructive/20")
     await user.click(boton(dialogo, "Sí, rechazar"))
 
     expect(await within(dialogo).findByText("Trámite rechazado.")).toBeInTheDocument()
@@ -941,6 +946,7 @@ describe("TramiteReviewDialog: avisos", () => {
 
     const alerta = (await within(dialogo).findByText("Dos crotales apuntan al mismo animal.")).closest("[role=alert]")!
     expect(alerta).toHaveTextContent("No se han guardado los cambios")
+    expect(alerta.firstElementChild?.matches('svg[aria-hidden="true"]')).toBe(true)
     // Datos frescos, edición descartada.
     await waitFor(() =>
       expect(within(dialogo).getByRole("combobox", { name: "Tipo de trámite" })).toHaveTextContent("Baja"),
@@ -973,6 +979,7 @@ describe("TramiteReviewDialog: avisos", () => {
       await within(dialogo).findByText("La resolución de los crotales ha cambiado. Revisa el trámite antes de aprobarlo."),
     ).toBeInTheDocument()
     expect(within(dialogo).getByText("No se ha aprobado el trámite")).toBeInTheDocument()
+    expect(within(dialogo).getByText("No se ha aprobado el trámite").closest("[role=alert]")!.firstElementChild?.matches('svg[aria-hidden="true"]')).toBe(true)
     await within(dialogo).findByText("Varios animales coinciden")
     expect(within(dialogo).queryByText("En inventario")).not.toBeInTheDocument()
   })
@@ -1309,6 +1316,8 @@ describe("TramiteReviewDialog: correcciones tras la revisión de 9b", () => {
     expect(alerta).not.toBeNull()
     expect(within(alerta).getByText("El trámite ha cambiado de estado")).toBeInTheDocument()
     expect(dialogo).not.toHaveTextContent("No se ha aprobado el trámite")
+    // El aviso neutro no lleva el icono de error.
+    expect(alerta.querySelector(':scope > svg')).toBeNull()
   })
 
   it("n1 (re-revisión 9b): el aviso «estado-cambiado» es el neutro, no el destructivo", async () => {
@@ -1341,6 +1350,7 @@ describe("TramiteReviewDialog: correcciones tras la revisión de 9b", () => {
     const datos = within(dialogo).getByRole("region", { name: "Datos del trámite" })
     const alerta = within(datos).getByText("Credenciales rechazadas.").closest("[role=alert]") as HTMLElement
     expect(within(alerta).getByText("Motivo del error")).toBeInTheDocument()
+    expect(alerta.firstElementChild?.matches('svg[aria-hidden="true"]')).toBe(true)
   })
 
   it("finish #5: «Sin guardar» se distingue de un resultado guardado (borde discontinuo)", async () => {

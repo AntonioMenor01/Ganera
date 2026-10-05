@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { CircleAlertIcon } from "lucide-react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,7 @@ export function RequireAuth() {
       <div className="flex min-h-screen items-center justify-center bg-background p-6">
         <div className="flex w-full max-w-sm flex-col gap-4">
           <Alert variant="destructive">
+            <CircleAlertIcon />
             <AlertTitle>No se ha podido comprobar tu sesión</AlertTitle>
             <AlertDescription>
               {mensajeDeError(errorComprobacion, "comprobar-sesion")}

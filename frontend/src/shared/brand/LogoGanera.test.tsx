@@ -30,9 +30,9 @@ describe("LogoGanera", () => {
   })
 
   it("aplica la máscara y deja el tamaño y el color de token a className", () => {
-    render(<LogoGanera className="size-10 text-primary" />)
+    render(<LogoGanera className="size-10 text-marca" />)
     const logo = screen.getByRole("img", { name: "Ganera" })
-    expect(logo).toHaveClass("logo-ganera", "size-10", "text-primary")
+    expect(logo).toHaveClass("logo-ganera", "size-10", "text-marca")
     // tailwind-merge sustituye el tamaño por defecto en vez de acumular los dos.
     expect(logo).not.toHaveClass("size-6")
   })

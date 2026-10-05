@@ -48,15 +48,17 @@ gestoría always reviews and approves: nothing reaches the Administración witho
   `EJECUTADO_OVZ`, `ERROR_OVZ`, `RECHAZADO`. Errors are always visible and never fail silently.
 - **Inventory loading:** today the only way to create Ganaderos, Explotaciones and Animales is the
   Excel importer (`.xlsx`). A read-only sync from OVZ.net is planned but blocked.
-- **Billing:** Stripe, priced by number of active Explotaciones, with a 15-day trial. Customers sign
-  up by client-count range. Some subscription states make the account read-only: browsing still
-  works, but approving is blocked.
+- **Billing:** Stripe, priced by number of active Explotaciones, with a 15-day trial. Payment is
+  handled from the Ganera landing page, not inside the app: the app has no billing page, and its
+  only trace of the subscription is a banner. Customers sign up by client-count range. Some
+  subscription states make the account read-only: browsing still works, but approving is blocked,
+  and the app asks the user to contact Ganera (no payment link).
 
 ## Capabilities and Constraints
 
 - **Built:** login; public gestoría self-registration; Explotaciones dashboard plus Excel import;
-  Trámites queue with state filter, review modal and Aprobar/Rechazar; Facturación status page
-  with a subscription banner.
+  Trámites queue with state filter, editable review modal and Aprobar/Rechazar; Ganaderos list
+  and detail with contactos and animales; a subscription banner.
 - **Not built, deliberately:** a manual Ganadero/Explotación creation form (Excel is the only
   creation path) and an OVZ-credentials onboarding screen (deferred).
 - **Hard rule:** no trámite runs against OVZ.net until an employee explicitly clicks "Aprobar",
@@ -68,7 +70,7 @@ gestoría always reviews and approves: nothing reaches the Administración witho
 - **Login and registration errors are uniform:** they never reveal why a login or a sign-up was
   rejected.
 - **Stack in place:** Vite + React 19 + TypeScript + Tailwind v4 + shadcn/ui (base-nova style,
-  `@base-ui/react`), `lucide-react` icons, Geist Variable font. Session authentication in
+  `@base-ui/react`), `lucide-react` icons, Archivo Variable font (self-hosted). Session authentication in
   `sessionStorage`: it survives a reload and ends when the tab is closed.
 - **Terminology** stays in the domain's Spanish: Gestoría, Ganadero, Explotación, Animal, Crotal,
   Contacto, Trámite, código REGA, OVZ.net.
@@ -80,12 +82,16 @@ gestoría always reviews and approves: nothing reaches the Administración witho
 - **Name:** Ganera. The app shows the brand mark next to the text logotype "GANERA" in the
   navigation bar, and above the "Ganera" title on the login and registration screens.
 - **Official logo:** `frontend/public/ganera-logo.svg` (`fill="currentColor"`, so it takes its
-  color from a token). Variants: `ganera-logo-verde.svg` (fixed green, for contexts without CSS),
+  color from a token). Variants: `ganera-logo-rojo.svg` (fixed Rojo Ganera `#EC3013`, for contexts without CSS),
   `ganera-logo-512.png` and `favicon-64.png` (the favicon).
 - **Voice:** Spanish, addressing the user with tú ("tu suscripción").
-- **Fixed visual identity (only change it when Antonio asks):** primary green `#1F3D2B`, cream
-  background `#F7F6F1`, sidebar `#F1F0E8`, white cards with a thin border, and colored badges per
-  trámite state. Colors are always defined as Tailwind tokens or CSS variables, never hard-coded
+- **Fixed visual identity (only change it when Antonio asks):** the Ganera landing's palette and
+  typeface (since 2026-10-05). Rojo Ganera `#EC3013` for the brand mark; action red `#DD2B0F` for
+  primary buttons and the active nav item; `#AE1800` for links, hover and focus; dark red
+  `#7C1405` only for problems, always tinted and with text; ink `#201E1D`; background `#F3F2F2`;
+  nav bar `#EAE9E9`; white cards with a thin border; colored badges per trámite state; Archivo
+  (800 headlines, 600 interface, 400 body). The "GANERA" logotype is ink, the mark is red. Corner
+  radii are pending a decision with Antonio's partner (the landing uses square corners). Colors are always defined as Tailwind tokens or CSS variables, never hard-coded
   in individual components. Don't propose a different palette or typeface unless asked.
 - `logo.jpg` (at the repo root) is **not** the logo and is not committed.
 

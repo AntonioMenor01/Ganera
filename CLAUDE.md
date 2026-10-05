@@ -730,6 +730,16 @@ needs a `children` render-function (`{(value) => label}`), unlike Radix). Path a
 `features/explotaciones`, `features/facturacion`) plus `shared/` (`api`, `auth`, `layout`,
 `brand` — `LogoGanera`, the CSS-mask brand mark — and `ui` — `CLASE_ENLACE`, the one text-link
 recipe). Visual rules live in `DESIGN.md`; design work goes through the Impeccable skill only.
+**Brand (2026-10-05):** the Ganera landing's red/grey palette and **Archivo** (self-hosted with
+`@fontsource-variable/archivo`, never a Google/CDN request; Geist is gone). Tokens in `index.css`:
+`--primary` = action red 600, `--primary-hover`/`--enlace`/`--ring` = red 700, `--marca` = Rojo Ganera
+(the mark only, `text-marca`), `--destructive`/`--danger-foreground` = red 800. Rule: **solid red acts,
+dark tinted red warns**; focus is a solid `ring-ring` (never `/50`), the primary hover is
+`bg-primary-hover` (never `/80`), links use `CLASE_ENLACE` (`text-enlace`), except link columns inside
+tables, which use `CLASE_ENLACE_TABLA` (Tinta at rest, red 700 on hover/focus), every destructive error
+`Alert` starts with a `CircleAlertIcon`. Weights: 800 headlines, 600 interface (`font-semibold`), 500
+only for data emphasis in tables. Radii unchanged, pending a decision with Antonio's partner. The
+CSS-free logo variant is `public/ganera-logo-rojo.svg`.
 Prompt A2 (plan `docs/superpowers/plans/2026-09-28-promptA2-frontend-revision.md`) is the
 reference for every frontend decision below.
 
@@ -819,7 +829,8 @@ reference for every frontend decision below.
   works); setup in `src/test/` (`setup.ts`, `server.ts`, `handlers.ts`) — any request without a
   handler fails the test (`onUnhandledRequest: "error"`), and session state is cleared after each
   test. `npm test` ran **475 tests in 36 files** at the end of A2 (476 after the mini-prompt's
-  Rechazar change; **506 in 36 files** after the frontend task before the pilot; **508 in 36** after billing left the app). Layout can't be checked in
+  Rechazar change; **506 in 36 files** after the frontend task before the pilot; **508 in 36** after billing left the app;
+  **513 in 37** after the brand colours and typography). Layout can't be checked in
   jsdom: for visual changes, also drive the real app in a browser (Playwright from npm installed
   **outside the repo**, as in Prompts 4 and A2).
 
@@ -1110,6 +1121,18 @@ warnings only), and a real-browser smoke with two Gestorías (A `ACTIVA`, B `SUS
 1440 and 375 px (log in `.superpowers/sdd/qp-t3-smoke.md`). **New order of work** (in
 `ganera-prompts.md`): brand colours and typography → Prompt B (with the birth registration: mother's
 crotal, sex and date of birth) → Prompt C.
+
+**Brand colours and typography — complete** (2026-10-05), following
+`docs/superpowers/plans/2026-10-04-colores-y-tipografia.md` (Impeccable shape approved by Antonio on
+2026-10-04, craft from the main session; Superpowers flow T1 tokens + font, T2 classes, T3 logo
+assets, each with an implementer and an independent reviewer: T1 and T2 **Approved with minors**,
+minors fixed; T3 **Approved**; then T5, Antonio's table-link decision (`CLASE_ENLACE_TABLA`), **Approved with
+minors**, minors fixed; reports in `.superpowers/sdd/ct-*`, not committed). **Frontend,
+`DESIGN.md`, `PRODUCT.md` (by Antonio's explicit exception) and the Impeccable surface briefs.**
+Verified with `npm test` **513/513**, `npm run build` and `npm run lint` (known warnings only),
+`./mvnw clean test` **534/534**, `impeccable detect` with no findings, and a real-browser smoke at
+1440 and 375 px with two Gestorías (log in `.superpowers/sdd/ct-t4-smoke.md`; screenshots outside the
+repo in `C:\Users\Antonio\Desktop\capturas-ganera-marca\`). Next in the order of work: Prompt B.
 
 **Next pending step: Prompt 3a (sincronización inicial de OVZ.net, modo lectura) — blocked.** Per
 `ganera-prompts.md`, Prompts 3a, 3b, and 3c (OVZ.net read sync, Twilio webhook + AI extraction, and

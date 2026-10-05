@@ -74,6 +74,15 @@ describe("GanaderosPage: listado", () => {
     expect(screen.getByRole("link", { name: "Hermanos Gil SC" })).toHaveAttribute("href", "/ganaderos/9")
   })
 
+  it("el nombre de la tabla espera en Tinta y pasa a Rojo 700 solo al apuntar o con foco", async () => {
+    registrarPeticiones()
+    montar()
+
+    const enlace = await screen.findByRole("link", { name: "Ana Ruiz" })
+    expect(enlace).toHaveClass("text-foreground", "hover:text-enlace", "focus-visible:text-enlace", "focus-visible:ring-ring", "font-medium")
+    expect(enlace).not.toHaveClass("text-enlace")
+  })
+
   it("un nombre largo puede partirse en su celda (móvil: el recuento sigue a la vista)", async () => {
     registrarPeticiones()
     montar()
@@ -301,6 +310,7 @@ describe("GanaderosPage: estados", () => {
 
     const alerta = await screen.findByRole("alert")
     expect(within(alerta).getByText("No se han podido cargar los ganaderos")).toBeInTheDocument()
+    expect(alerta.firstElementChild?.matches('svg[aria-hidden="true"]')).toBe(true)
     expect(
       within(alerta).getByText("Ha fallado algo en el servidor. Inténtalo de nuevo; si se repite, avísanos."),
     ).toBeInTheDocument()

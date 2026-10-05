@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
+@import "@fontsource-variable/archivo";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -12,31 +12,44 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  /* Identidad de marca Ganera. Fondo crema calido (no blanco puro), verde
-     marca #1F3D2B para acciones primarias y navegacion activa, tarjetas
-     blancas con borde muy fino. */
-  --background: #f7f6f1;
-  --foreground: #1c1b17;
+  /* Identidad de marca Ganera (rampas de la landing). Fondo gris claro #F3F2F2
+     (no blanco puro), tarjetas, tablas, modal y menus en blanco, Superficie
+     #EAE9E9 para los bloques secundarios (navbar, pie, hover). Rojo 600
+     #DD2B0F para las acciones (boton principal, enlace activo de la navbar);
+     el Rojo Ganera #EC3013 solo para el simbolo del logo (--marca). Regla: el
+     rojo solido actua; el rojo oscuro tenido (800 sobre 100) avisa, y siempre
+     con texto que nombra el problema. */
+  --background: #f3f2f2;
+  --foreground: #201e1d;
 
   --card: #ffffff;
-  --card-foreground: #1c1b17;
+  --card-foreground: #201e1d;
 
   --popover: #ffffff;
-  --popover-foreground: #1c1b17;
+  --popover-foreground: #201e1d;
 
-  --primary: #1f3d2b;
-  --primary-foreground: #f7f6f1;
+  /* Blanco sobre Rojo 600 = 4,74:1 (el Fondo o el Rojo Ganera no llegan a 4,5). */
+  --primary: #dd2b0f;
+  --primary-foreground: #ffffff;
+  /* Hover del boton principal: Rojo 700 (no opacidad, que bajaria el contraste). */
+  --primary-hover: #ae1800;
 
-  --secondary: #f1f0e8;
-  --secondary-foreground: #1c1b17;
+  /* Rojo Ganera: solo el simbolo del logo, nunca texto ni acciones. */
+  --marca: #ec3013;
+  /* Enlaces de texto: Rojo 700 (7,17:1 sobre blanco, 5,91:1 sobre Superficie). */
+  --enlace: #ae1800;
 
-  --muted: #eeede4;
-  --muted-foreground: #6b6b60;
+  --secondary: #eae9e9;
+  --secondary-foreground: #201e1d;
 
-  --accent: #eeede4;
-  --accent-foreground: #1c1b17;
+  --muted: #eae9e9;
+  --muted-foreground: #605d5d;
 
-  --destructive: #791f1f;
+  --accent: #eae9e9;
+  --accent-foreground: #201e1d;
+
+  /* Problema, no accion: Rojo 800, nunca en solido. */
+  --destructive: #7c1405;
 
   /* Badges semanticos de estado (Cola de tramites) -- pares exactos, no
      derivados por opacidad, para que el color coincida con la paleta de marca. */
@@ -44,12 +57,15 @@
   --success-foreground: #27500a;
   --warning: #faeeda;
   --warning-foreground: #854f0b;
-  --danger: #fcebeb;
-  --danger-foreground: #791f1f;
+  --danger: #fff2ef;
+  --danger-foreground: #7c1405;
 
-  --border: #e6e4da;
-  --input: #e6e4da;
-  --ring: #1f3d2b;
+  --border: #d7d3d3;
+  /* Gris 600: el gris mas claro de la rampa que llega a 3:1 sobre blanco (4,30)
+     y sobre Superficie (3,55). */
+  --input: #7d7979;
+  /* Foco: Rojo 700 al 100 % (7,17 / 6,41 / 5,91 sobre blanco / Fondo / Superficie). */
+  --ring: #ae1800;
 
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
@@ -62,14 +78,14 @@
 
   /* "Sidebar" = la barra de navegacion superior ya existente (ver AppLayout) --
      Prompt de rebrand pidio explicitamente no restructurar a un panel lateral. */
-  --sidebar: #f1f0e8;
-  --sidebar-foreground: #1c1b17;
-  --sidebar-primary: #1f3d2b;
-  --sidebar-primary-foreground: #f7f6f1;
-  --sidebar-accent: #e5e3d6;
-  --sidebar-accent-foreground: #1c1b17;
-  --sidebar-border: #e6e4da;
-  --sidebar-ring: #1f3d2b;
+  --sidebar: #eae9e9;
+  --sidebar-foreground: #201e1d;
+  --sidebar-primary: #dd2b0f;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #d7d3d3;
+  --sidebar-accent-foreground: #201e1d;
+  --sidebar-border: #d7d3d3;
+  --sidebar-ring: #ae1800;
 }
 
 .dark {
@@ -114,7 +130,7 @@
 
 @theme inline {
   --font-heading: var(--font-sans);
-  --font-sans: 'Geist Variable', sans-serif;
+  --font-sans: 'Archivo Variable', system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -146,6 +162,9 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-marca: var(--marca);
+  --color-enlace: var(--enlace);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -167,7 +186,7 @@ body {
 
 /* Símbolo de Ganera (componente LogoGanera). El SVG usa fill="currentColor", que no hereda color
    dentro de un <img>; se usa como máscara sobre currentColor para que el color salga del token de
-   texto (text-primary) y no haya ningún hex en componentes. Vite reescribe la URL absoluta de
+   texto (text-marca) y no haya ningún hex en componentes. Vite reescribe la URL absoluta de
    public/ con el `base` del build. */
 @utility logo-ganera {
   background-color: currentColor;
@@ -190,7 +209,7 @@ body {
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-ring;
   }
   body {
     @apply bg-background text-foreground;
@@ -198,7 +217,8 @@ body {
   html {
     @apply font-sans;
   }
-  /* Selección y cursor de texto con el verde de la paleta, no los del navegador. */
+  /* Selección (Rojo 600 al 18 %) y cursor de texto (Rojo 600) con el rojo de marca de las
+     acciones, no los del navegador. */
   ::selection {
     background-color: color-mix(in oklab, var(--primary) 18%, transparent);
   }

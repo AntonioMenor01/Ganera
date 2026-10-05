@@ -115,6 +115,8 @@ describe("sesión persistente: recarga con token guardado", () => {
     const { router, rutasVisitadas } = montarApp("/ganaderos")
 
     expect(await screen.findByText(TEXTO_ERROR_RED)).toBeInTheDocument()
+    const alerta = screen.getByText("No se ha podido comprobar tu sesión").closest('[role="alert"]')!
+    expect(alerta.firstElementChild?.matches('svg[aria-hidden="true"]')).toBe(true)
     expect(sessionStorage.getItem(CLAVE)).toBe("tok-guardado")
     expect(screen.queryByText(AVISO_CADUCADA)).not.toBeInTheDocument()
     expect(router.state.location.pathname).toBe("/ganaderos")

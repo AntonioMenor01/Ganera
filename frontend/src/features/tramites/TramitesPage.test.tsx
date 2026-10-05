@@ -155,6 +155,7 @@ describe("TramitesPage: errores visibles", () => {
     render(<TramitesPage />)
 
     expect(await screen.findByText("No se han podido cargar los trámites")).toBeInTheDocument()
+    expect(screen.getByText("No se han podido cargar los trámites").closest("[role=alert]")!.firstElementChild?.matches('svg[aria-hidden="true"]')).toBe(true)
     expect(
       screen.getByText("No se ha podido conectar con Ganera. Inténtalo de nuevo en unos segundos."),
     ).toBeInTheDocument()
@@ -215,6 +216,10 @@ describe("TramitesPage: filas accesibles por teclado (P0 de la critique)", () =>
     render(<TramitesPage />)
     const boton = await screen.findByRole("button", { name: "Revisar trámite #1" })
     expect(boton).toHaveTextContent("#1")
+    // Enlace en columna de tabla: Tinta en reposo; Rojo 700 solo al apuntar o con foco.
+    expect(boton).toHaveClass("text-foreground", "hover:text-enlace", "focus-visible:text-enlace", "focus-visible:ring-ring")
+    expect(boton).not.toHaveClass("text-enlace")
+    expect(boton).toHaveClass("font-medium", "tabular-nums")
 
     for (let i = 0; i < 10 && document.activeElement !== boton; i++) await user.tab()
     expect(boton).toHaveFocus()

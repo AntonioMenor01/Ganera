@@ -150,7 +150,8 @@ describe("ImportarExcelSection: estado anunciado (Task 10, 4.1.3)", () => {
     const input = container.querySelector<HTMLInputElement>('input[type="file"]')!
     await user.upload(input, new File(["x"], "inventario.xlsx"))
 
-    expect(await screen.findByRole("alert")).toBeInTheDocument()
+    const alerta = await screen.findByRole("alert")
+    expect(alerta.firstElementChild?.matches('svg[aria-hidden="true"]')).toBe(true)
     expect(screen.getByRole("status")).toBeEmptyDOMElement()
   })
 })

@@ -2,46 +2,47 @@
 name: Ganera
 description: Review-and-approve workspace for Spanish cattle-ranching gestorías.
 colors:
-  verde-monte: "#1f3d2b"
-  crema-papel: "#f7f6f1"
-  paja-clara: "#f1f0e8"
-  paja-hover: "#e5e3d6"
-  lino: "#eeede4"
-  tinta: "#1c1b17"
-  gris-oliva: "#6b6b60"
-  borde-lino: "#e6e4da"
-  blanco-tarjeta: "#ffffff"
+  rojo-ganera: "#ec3013"
+  rojo-accion: "#dd2b0f"
+  rojo-enlace: "#ae1800"
+  rojo-problema: "#7c1405"
+  rojo-tinte: "#fff2ef"
+  tinta: "#201e1d"
+  fondo: "#f3f2f2"
+  superficie: "#eae9e9"
+  gris-borde: "#d7d3d3"
+  gris-input: "#7d7979"
+  gris-texto: "#605d5d"
+  blanco: "#ffffff"
   exito-fondo: "#eaf3de"
   exito-texto: "#27500a"
   aviso-fondo: "#faeeda"
   aviso-texto: "#854f0b"
-  peligro-fondo: "#fcebeb"
-  peligro-texto: "#791f1f"
 typography:
   headline:
-    fontFamily: "Geist Variable, sans-serif"
+    fontFamily: "Archivo Variable, system-ui, sans-serif"
     fontSize: "1.25rem"
-    fontWeight: 600
+    fontWeight: 800
     lineHeight: 1.4
   metric:
-    fontFamily: "Geist Variable, sans-serif"
+    fontFamily: "Archivo Variable, system-ui, sans-serif"
     fontSize: "1.875rem"
-    fontWeight: 600
+    fontWeight: 800
     lineHeight: 1.2
   title:
-    fontFamily: "Geist Variable, sans-serif"
+    fontFamily: "Archivo Variable, system-ui, sans-serif"
     fontSize: "1rem"
-    fontWeight: 500
+    fontWeight: 600
     lineHeight: 1.375
   body:
-    fontFamily: "Geist Variable, sans-serif"
+    fontFamily: "Archivo Variable, system-ui, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 400
     lineHeight: 1.43
   label:
-    fontFamily: "Geist Variable, sans-serif"
+    fontFamily: "Archivo Variable, system-ui, sans-serif"
     fontSize: "0.75rem"
-    fontWeight: 500
+    fontWeight: 600
     lineHeight: 1.33
     letterSpacing: "0.025em"
 rounded:
@@ -58,21 +59,29 @@ spacing:
   lg: "24px"
 components:
   button-primary:
-    backgroundColor: "{colors.verde-monte}"
-    textColor: "{colors.crema-papel}"
+    backgroundColor: "{colors.rojo-accion}"
+    textColor: "{colors.blanco}"
     rounded: "{rounded.lg}"
     height: "32px"
     padding: "0 10px"
+  button-primary-hover:
+    backgroundColor: "{colors.rojo-enlace}"
   button-outline:
-    backgroundColor: "{colors.crema-papel}"
+    backgroundColor: "{colors.fondo}"
     textColor: "{colors.tinta}"
     rounded: "{rounded.lg}"
     height: "32px"
     padding: "0 10px"
   button-outline-hover:
-    backgroundColor: "{colors.lino}"
+    backgroundColor: "{colors.superficie}"
+  button-destructive:
+    backgroundColor: "rgba(124, 20, 5, 0.1)"
+    textColor: "{colors.rojo-problema}"
+    rounded: "{rounded.lg}"
+    height: "32px"
+    padding: "0 10px"
   card:
-    backgroundColor: "{colors.blanco-tarjeta}"
+    backgroundColor: "{colors.blanco}"
     textColor: "{colors.tinta}"
     rounded: "{rounded.xl}"
     padding: "{spacing.md}"
@@ -82,19 +91,19 @@ components:
     height: "32px"
     padding: "4px 10px"
   nav-bar:
-    backgroundColor: "{colors.paja-clara}"
+    backgroundColor: "{colors.superficie}"
     textColor: "{colors.tinta}"
     padding: "16px 24px" # from md; 12px 16px 4px below md
   nav-link:
-    textColor: "{colors.gris-oliva}"
+    textColor: "{colors.gris-texto}"
     rounded: "{rounded.lg}"
     padding: "6px 10px"
   nav-link-hover:
-    backgroundColor: "{colors.paja-hover}"
+    backgroundColor: "{colors.gris-borde}"
     textColor: "{colors.tinta}"
   nav-link-active:
-    backgroundColor: "{colors.verde-monte}"
-    textColor: "{colors.crema-papel}"
+    backgroundColor: "{colors.rojo-accion}"
+    textColor: "{colors.blanco}"
   badge-success:
     backgroundColor: "{colors.exito-fondo}"
     textColor: "{colors.exito-texto}"
@@ -108,8 +117,8 @@ components:
     height: "20px"
     padding: "2px 8px"
   badge-danger:
-    backgroundColor: "{colors.peligro-fondo}"
-    textColor: "{colors.peligro-texto}"
+    backgroundColor: "{colors.rojo-tinte}"
+    textColor: "{colors.rojo-problema}"
     rounded: "{rounded.pill}"
     height: "20px"
     padding: "2px 8px"
@@ -119,109 +128,144 @@ components:
 
 <!-- Records the visual system as it is implemented today (frontend/src/index.css,
      frontend/src/components/ui/ and the patterns the feature screens share), brought up to date
-     after Prompt A2 (2026-10-02). It describes the current system and proposes no changes. The
-     palette and typeface are fixed brand commitments (see PRODUCT.md): don't alter them unless
-     Antonio asks. -->
+     after the new brand colours and typography (2026-10-05, plan
+     docs/superpowers/plans/2026-10-04-colores-y-tipografia.md). The palette comes from the Ganera
+     landing (https://ganera-web.vercel.app/css/tokens.css) and the typeface is Archivo: both are
+     fixed brand commitments (see PRODUCT.md); don't alter them unless Antonio asks. -->
 
 ## Overview
 
-**Creative North Star: "The Field Office Ledger"**
+**Creative North Star: "The Red-Stamp Ledger"**
 
-Ganera looks like a well-kept office ledger in a rural gestoría: warm cream paper instead of
-clinical white, one deep forest green that says "this is the action", and white cards laid on the
-paper with barely visible edges. It is a working tool for people who process a queue several
-times a day, so density is moderate, type is small and even, and decoration is almost absent.
-The brand shows in the palette and restraint, not in ornament.
+Ganera looks like a well-kept office ledger that carries the brand's red stamp: a light warm-grey
+canvas, white sheets laid on it with hairline edges, near-black ink, and one vivid red that means
+"this is the action". It is a working tool for people who process a queue several times a day, so
+density is moderate, type is small and even, and decoration is almost absent. The brand shows in
+the red, in Archivo's heavy headlines and in restraint, not in ornament.
 
-Hierarchy comes from tone, not from depth. The page is cream, the navigation bar a slightly darker
-straw, and content sits on white cards or tables framed by a fine 10%-ink ring. Color is reserved
-for meaning: green for primary actions and the active section, and three soft paired tints for
-trámite state.
+Hierarchy comes from tone and weight, not from depth. The page is Fondo, the navigation bar the
+slightly darker Superficie, and content sits on white cards or tables framed by a fine 10%-ink
+ring. Color is reserved for meaning, and red has two jobs that never mix: **solid red acts, dark
+tinted red warns.**
 
 **Key Characteristics:**
-- A warm cream canvas, never pure white, with white content surfaces.
-- One accent, the deep forest green, used for primary buttons, the active nav item, links and the
-  focus ring.
+- A light warm-grey canvas (Fondo), never pure white, with white content surfaces.
+- One action red (Rojo Acción, 600) for primary buttons and the active nav item; a deeper red
+  (Rojo Enlace, 700) for text links, the primary hover and the focus ring; the vivid Rojo Ganera
+  only on the brand mark.
+- Problems use a dark red (Rojo Problema, 800), never as a solid fill, and always with text that
+  names them; error alerts also carry an icon.
 - Semantic state tints come as exact background/text pairs, not opacity-derived colors.
 - Flat surfaces separated by hairline borders and tone, with no ambient shadows.
-- One typeface (Geist Variable) throughout, with weight rather than family carrying hierarchy.
+- One typeface (Archivo Variable, self-hosted) throughout, with weight (400/600/800) carrying
+  hierarchy.
 
 ## Colors
 
-A warm, low-chroma paper-and-ink palette with a single deep green accent and three muted state
-pairs.
+A low-chroma grey-and-ink palette from the Ganera landing, with one red ramp split by job and two
+muted state pairs (success, warning). The landing's coral `accent-2` (`#E15B47`) is **not** used in
+the app: it would be a third red, almost indistinguishable from the brand one.
 
-### Primary
-- **Verde Monte** (`--primary`): primary buttons, the active navigation item, the brand mark and
-  the "GANERA" logotype, text links, and the focus ring (`--ring`). It also tints text selection
-  (18%, mixed in oklab) and colors the text caret in inputs. It is the only saturated brand color on
-  screen.
+### Red (one ramp, four jobs)
+- **Rojo Ganera** (`--marca`, `#EC3013`): the brand mark only (`LogoGanera` with `text-marca`).
+  Never text: at 16px it gives 3.47:1 on Superficie. As a non-text graphic it passes 3:1 on every
+  surface (3.47 / 3.76 / 4.20 on Superficie / Fondo / white).
+- **Rojo Acción** (`--primary`, `--sidebar-primary`, ramp 600 `#DD2B0F`): the primary button
+  ("Aprobar", "Entrar", "Guardar", "Importar Excel") and the active nav link, always as a solid fill
+  with white text (`--primary-foreground`, 4.74:1). It also tints text selection (18%, mixed in
+  oklab) and colors the caret. Never used as text on its own (4.25:1 on Fondo is short).
+- **Rojo Enlace** (`--enlace`, `--primary-hover`, `--ring`, ramp 700 `#AE1800`): text links
+  (`CLASE_ENLACE`, `CLASE_ENLACE_TABLA` for link columns inside tables, `Button variant="link"`),
+  the primary button's hover fill (white on it, 7.17:1) and the focus ring, always at 100%
+  (7.17 / 6.41 / 5.91 on white / Fondo / Superficie).
+- **Rojo Problema** (`--destructive`, `--danger-foreground`, ramp 800 `#7C1405`) with **Rojo Tinte**
+  (`--danger`, ramp 100 `#FFF2EF`): error alerts (text on white, 10.72:1), the `RECHAZADO` /
+  `ERROR_OVZ` badges (9.80:1) and the confirming "Sí, rechazar" button as a 10% tint (8.91:1).
 
 ### Neutral
-- **Crema Papel** (`--background`): the page canvas behind everything. It also serves as the text
-  color on green (`--primary-foreground`), so the pairing reads as cream-on-green rather than
-  white-on-green.
-- **Paja Clara** (`--secondary`, `--sidebar`): the top navigation bar and secondary buttons.
-- **Paja Hover** (`--sidebar-accent`): hover fill for inactive navigation links.
-- **Lino** (`--muted`, `--accent`): hover fill for outline/ghost buttons and table rows (at 50%),
-  and the card-footer fill.
-- **Tinta** (`--foreground`): all primary text, a warm near-black.
-- **Gris Oliva** (`--muted-foreground`): secondary text, descriptions, counts, empty-state
-  messages and inactive nav links.
-- **Borde Lino** (`--border`, `--input`): every divider, table rule, input stroke and table
-  container border.
-- **Blanco Tarjeta** (`--card`, `--popover`): cards, table containers, dialogs and popovers.
+- **Fondo** (`--background`, `#F3F2F2`): the page canvas behind everything, and the fill of outline
+  buttons.
+- **Superficie** (`--secondary`, `--sidebar`, `--muted`, `--accent`, `#EAE9E9`): the top navigation
+  bar, secondary buttons, the hover fill of outline/ghost buttons and table rows (at 50%), the
+  card-footer strip, the quoted WhatsApp message and skeleton bars.
+- **Blanco** (`--card`, `--popover`, `#FFFFFF`): cards, table containers, dialogs and popovers,
+  everything that holds data, so tables and badges get the most contrast.
+- **Tinta** (`--foreground` and the neutral `*-foreground`, `#201E1D`): all primary text and the
+  "GANERA" logotype (16.60 / 14.86 / 13.70 on white / Fondo / Superficie).
+- **Gris Texto** (`--muted-foreground`, ramp 700 `#605D5D`): secondary text, descriptions, counts,
+  empty-state messages and inactive nav links (6.52 / 5.83 / 5.38). Ramp 600 would fail (3.55–4.30).
+- **Gris Borde** (`--border`, `--sidebar-border`, `--sidebar-accent`, ramp 300 `#D7D3D3`): every
+  divider, table rule and table container border, and the hover fill of inactive nav links.
+- **Gris Input** (`--input`, ramp 600 `#7D7979`): the stroke of inputs, selects and the combobox,
+  the lightest grey of the ramp that reaches 3:1 as a non-text boundary (4.30 on white, 3.85 on
+  Fondo, 3.55 on Superficie; ramp 500 gave 2.89 / 2.38).
 
 ### Semantic (trámite state)
-- **Éxito** (`--success` / `--success-foreground`): resolved favorably, meaning `APROBADO` and
-  `EJECUTADO_OVZ`.
-- **Aviso** (`--warning` / `--warning-foreground`): not resolved yet, meaning
-  `PENDIENTE_EXTRACCION`, `PENDIENTE_REVISION` and `EN_PROCESO`.
+- **Éxito** (`--success` / `--success-foreground`, unchanged): resolved favorably, meaning
+  `APROBADO` and `EJECUTADO_OVZ`.
+- **Aviso** (`--warning` / `--warning-foreground`, unchanged): not resolved yet, meaning
+  `PENDIENTE_EXTRACCION`, `PENDIENTE_REVISION` and `EN_PROCESO`. The amber stays clearly apart from
+  both reds.
 - **Peligro** (`--danger` / `--danger-foreground`): resolved unfavorably, meaning `ERROR_OVZ` and
-  `RECHAZADO`. `--destructive` uses the same deep red as `peligro-texto` for destructive buttons
-  and alerts, applied as a 10% tint behind red text.
+  `RECHAZADO`, in Rojo Problema on Rojo Tinte, so there is a single "problem red".
 
 ### Named Rules
 **The Token-Only Rule.** Every color is a CSS variable in `frontend/src/index.css`, exposed to
-Tailwind through `@theme inline`. Components reference tokens (`bg-primary`,
-`text-muted-foreground`, `bg-success`) and never a literal hex.
+Tailwind through `@theme inline`. Components reference tokens (`bg-primary`, `text-enlace`,
+`text-marca`, `bg-primary-hover`, `text-muted-foreground`, `bg-success`) and never a literal hex.
 
-**The One Green Rule.** Verde Monte is the only accent. If something needs to stand out and isn't
-a primary action, the active location or a link, it uses weight or a state tint, not more green.
+**The Two Reds Rule.** Solid red acts; dark tinted red warns. Rojo Acción appears only as a solid
+fill on an action or the current location; Rojo Enlace only as link text, hover or focus (in a
+table column the link waits in Tinta and the red appears on pointing); Rojo
+Problema never as a solid fill and always with words that name the problem (plus an icon on error
+alerts). A primary action and an error can never be confused. No badge uses Rojo Acción. If
+something needs to stand out and isn't an action, the location, a link or a problem, it uses
+weight, not more red.
 
 **The Exact Pair Rule.** Each state badge is a hand-picked background/foreground pair, not a
 color at reduced opacity. Add new states by mapping them to one of the three existing pairs, or to
 the neutral `outline`, in the domain's constant in `features/tramites/etiquetas.ts`
-(`ESTADOS_TRAMITE`, `RESOLUCIONES_CROTAL`, `ROLES_CONTACTO`). Measured contrast (AA at 12px/500):
-success 8.21:1, warning 5.87:1, danger 8.98:1, and `outline` (ink on whatever surface it sits on)
-at least 15.9:1.
+(`ESTADOS_TRAMITE`, `RESOLUCIONES_CROTAL`, `ROLES_CONTACTO`). Measured contrast (WCAG 2.x, AA at
+12px/600): success 8.21:1, warning 5.87:1, danger 9.80:1, and `outline` (ink on whatever surface it
+sits on) at least 13.70:1.
 
 ## Typography
 
-**Body Font:** Geist Variable (via `@fontsource-variable/geist`, with a `sans-serif` fallback)
+**Body Font:** Archivo Variable (self-hosted via `@fontsource-variable/archivo`, OFL-1.1, `wght`
+100–900, latin and latin-ext by `unicode-range`; fallback `system-ui, sans-serif`). Vite bundles the
+`.woff2` files into `assets/`: no request ever goes to Google or a CDN.
 **Display/Heading Font:** the same family (`--font-heading` aliases `--font-sans`)
 
-**Character:** a single neutral, slightly technical grotesque. Hierarchy comes only from size
-and weight (400/500/600), which suits a data-dense review tool.
+**Character:** a sturdy, slightly wide grotesque, the landing's typeface. Hierarchy comes only from
+size and three weights: 800 for headlines, 600 for interface elements, 400 for body. Archivo is a
+little wider than the previous Geist; the nav bar, queue badges and columns were checked at 375px.
 
 ### Hierarchy
-- **Headline** (600, 20px, `text-xl`): one page title per screen ("Cola de trámites",
-  "Ganaderos", "Explotaciones"), followed by a muted 14px subtitle or count.
-- **Metric** (600, 30px, `text-3xl`): the single large number in a metric card (the Explotaciones
+- **Headline** (800, 20px, `text-xl font-extrabold`): one page title per screen ("Cola de
+  trámites", "Ganaderos", "Explotaciones", a ganadero's name), followed by a muted 14px subtitle or
+  count. The "Ganera" title on Login/Registro (16px) and the "GANERA" logotype are also 800.
+- **Metric** (800, 30px, `text-3xl`): the single large number in a metric card (the Explotaciones
   count).
-- **Title** (500, 16px): card titles.
-- **Body** (400, 14px, `text-sm`): the default for tables, cards, forms, alerts and buttons
-  (buttons at 500). Inputs are 16px on mobile and 14px from `md` up.
-- **Label** (500, 12px, uppercase, `tracking-wide`): eyebrow labels above metrics. Badges use
-  12px/500 in sentence case. The eyebrow and the metric card belong to the Explotaciones count
+- **Title** (600, 16px): card, section and dialog titles.
+- **Interface** (600, `font-semibold`): buttons, badges, field labels, table headers, alert titles,
+  nav links and the text links on the auth screens.
+- **Body** (400, 14px, `text-sm`): the default for tables, cards, forms and alerts. Inputs are 16px
+  on mobile and 14px from `md` up.
+- **Data emphasis** (500, `font-medium`): kept on purpose for data inside tables and lists (the
+  last digits of a crotal, the written crotal in the queue, the queue's `#id` and the ganadero's
+  name in its table), so it never competes with the 600 headers. `font-medium` is not redefined
+  globally.
+- **Label** (600, 12px, uppercase, `tracking-wide`): eyebrow labels above metrics. Badges use
+  12px/600 in sentence case. The eyebrow and the metric card belong to the Explotaciones count
   only; newer screens (Ganaderos, the review dialog) deliberately don't use them.
-- **Subsection / field label** (500, 14px, Gris Oliva, sentence case): a real heading or label
+- **Subsection / field label** (600, 14px, Gris Texto, sentence case): a real heading or label
   over the block below it ("Contactos", "Explotación", "Tipo de trámite"). It is never an
   uppercase eyebrow.
-- **Data numerals:** códigos REGA, NIF, crotales, phones, counts and pagers use `tabular-nums`.
+- **Data numerals:** códigos REGA, NIF, crotales, phones, counts and pagers use `tabular-nums`
+  (Archivo has tabular figures: "1111" and "8888" measure the same).
 
 ### Named Rules
-**The Single Family Rule.** Geist Variable only. Hierarchy never comes from a second typeface.
+**The Single Family Rule.** Archivo Variable only. Hierarchy never comes from a second typeface.
 
 ## Layout
 
@@ -243,7 +287,7 @@ family styles this horizontal bar, and the brand pass deliberately kept it horiz
   shrinks to its content (`w-fit`, min 192px).
 - **Tables:** full width inside a bordered white container, with 40px header rows and 8px cell
   padding.
-- **Auth screens** (Login, Registro): a single card at most 384px wide, centered on the cream
+- **Auth screens** (Login, Registro): a single card at most 384px wide, centered on the Fondo
   canvas, inside a `main`. The card header opens with the 40px brand mark above the "Ganera"
   title, which is the page's `h1`.
 - **Responsive:** no custom breakpoints; Tailwind defaults only (`md` switches input text from
@@ -257,9 +301,9 @@ family styles this horizontal bar, and the brand pass deliberately kept it horiz
 
 ## Elevation & Depth
 
-The system is flat. Depth comes from tone (cream canvas, straw bar, white surfaces) and from
+The system is flat. Depth comes from tone (Fondo canvas, Superficie bar, white surfaces) and from
 hairline edges, not from shadows. Cards and dialogs use a 1px ring at 10% ink
-(`ring-foreground/10`), and table containers use a 1px Borde Lino border.
+(`ring-foreground/10`), and table containers use a 1px Gris Borde border.
 
 ### Shadow Vocabulary
 - **Floating menu** (`shadow-md`): only the `Select` and `Combobox` popups, the elements that
@@ -284,14 +328,18 @@ are no thick strokes and no clipping or angled geometry.
 
 ### Buttons
 Compact and quiet, 32px tall by default.
-- **Shape:** gently rounded (`rounded-lg`, about 8.6px), 14px/500 text, 10px horizontal padding.
+- **Shape:** gently rounded (`rounded-lg`, about 8.6px), 14px/600 text, 10px horizontal padding.
   Sizes are `xs` 24px, `sm` 28px, default 32px and `lg` 36px, plus square icon variants.
-- **Primary:** Verde Monte fill with Crema Papel text. On hover the fill drops to 80% opacity.
-- **Outline:** Borde Lino stroke on the cream canvas, with a Lino fill on hover (used for "Salir").
-- **Secondary / Ghost / Link:** a straw fill, a transparent button that fills with Lino on hover,
-  and green underlined text on hover.
-- **Destructive:** deep red text on a 10% red tint, rising to 20% on hover.
-- **Focus / Active:** a green border plus a 3px green ring at 50%. On press the button shifts down
+- **Primary:** Rojo Acción fill with white text. On hover the fill turns Rojo Enlace
+  (`hover:bg-primary-hover`), never an opacity drop, which would lower the white text's contrast.
+- **Outline:** Gris Borde stroke on a Fondo fill, with a Superficie fill on hover (used for "Salir"
+  and "Rechazar").
+- **Secondary / Ghost / Link:** a Superficie fill, a transparent button that fills with Superficie
+  on hover, and Rojo Enlace text underlined on hover.
+- **Destructive:** Rojo Problema text on a 10% tint of itself, rising to 20% on hover. Never a
+  solid fill, so it can't be mistaken for the primary action.
+- **Focus / Active:** a Rojo Enlace border plus a solid 3px Rojo Enlace ring (`ring-ring`, 100%),
+  the same on every variant, "Sí, rechazar" included. On press the button shifts down
   1px. When disabled it is at 50% opacity and doesn't respond to the pointer.
 
 - **Destructive usage:** the first step of an irreversible action (Rechazar) is `outline`; only
@@ -299,10 +347,10 @@ Compact and quiet, 32px tall by default.
 
 ### Badges (state)
 The signature component, since state is the main thing the queue communicates.
-- **Style:** a 20px-tall pill with 12px/500 text, 8px horizontal padding and a transparent border.
+- **Style:** a 20px-tall pill with 12px/600 text, 8px horizontal padding and a transparent border.
 - **Variants:** `success`, `warning` and `danger` use the exact semantic pairs above. `outline`
-  (ink text, Borde Lino stroke, no fill) is the neutral for values that aren't a problem or that
-  the frontend doesn't know. `default` (green), `secondary`, `destructive`, `ghost` and `link`
+  (ink text, Gris Borde stroke, no fill) is the neutral for values that aren't a problem or that
+  the frontend doesn't know. `default` (Rojo Acción), `secondary`, `destructive`, `ghost` and `link`
   exist but aren't used for state.
 - **Always a label:** a badge shows the Spanish label from `features/tramites/etiquetas.ts`, never
   the raw enum, and is rendered through `BadgeEstadoTramite`, `BadgeResolucionCrotal` or
@@ -327,18 +375,18 @@ The signature component, since state is the main thing the queue communicates.
 
 ### Cards / Containers
 - **Corner Style:** 12px (`rounded-xl`).
-- **Background:** Blanco Tarjeta on the Crema Papel page.
+- **Background:** Blanco on the Fondo page.
 - **Shadow Strategy:** none; a 1px ring at 10% ink (see Elevation & Depth).
 - **Border:** the ring on cards; table containers use `rounded-xl border bg-card`.
-- **Internal Padding:** 16px, or 12px for `size="sm"`. The footer is a Lino strip at 50% opacity
+- **Internal Padding:** 16px, or 12px for `size="sm"`. The footer is a Superficie strip at 50% opacity
   above a top border.
 - **Metric card:** an uppercase 12px eyebrow label above a 30px/600 number.
 
 ### Inputs / Fields
-- **Style:** 32px tall, a 1px Borde Lino stroke, transparent fill (the parent surface shows
-  through), `rounded-lg`, 10px horizontal padding. Placeholders are Gris Oliva.
-- **Focus:** a green border plus a 3px green ring at 50%, matching buttons.
-- **Error / Disabled:** `aria-invalid` gives a deep red border and ring. Disabled fields are at 50%
+- **Style:** 32px tall, a 1px Gris Input stroke (3:1 or more on every surface), transparent fill (the parent surface shows
+  through), `rounded-lg`, 10px horizontal padding. Placeholders are Gris Texto.
+- **Focus:** a Rojo Enlace border plus a solid 3px Rojo Enlace ring, matching buttons.
+- **Error / Disabled:** `aria-invalid` gives a Rojo Problema border and ring. Disabled fields are at 50%
   opacity with a faint input-colored fill.
 - **Select:** the trigger matches the input. The popup is a white panel with a 10% ink ring and
   `shadow-md`. Its trigger label comes from a render-function child, so the user sees a label, never
@@ -349,34 +397,34 @@ The signature component, since state is the main thing the queue communicates.
   while the popup is open, 300ms after the last keystroke, cancelling the previous request. It shows
   the first 20 results, with a "Hay N coincidencias; escribe para acotar." line when there are more.
   Searching, error (with "Reintentar") and empty states live inside the popup, in one status region.
-  Known regression until the backend task before the pilot: the search isn't accent-insensitive and
-  matches the whole text, not word by word.
+  The backend search is accent-insensitive and word by word (since 2026-10-04).
 
 ### Brand mark
 - The mark is `public/ganera-logo.svg`, always rendered through `LogoGanera`
-  (`shared/brand/LogoGanera.tsx`) as a CSS mask over `currentColor`, colored with a token class
-  (`text-primary`). It is 20px in the nav bar and 40px on the auth cards.
+  (`shared/brand/LogoGanera.tsx`) as a CSS mask over `currentColor`, colored with its own token
+  (`text-marca`, Rojo Ganera; never `text-primary`). It is 20px in the nav bar and 40px on the auth cards.
 
 **The Brand Mark Rule.** The mark is never an `<img>` and never a hex. It is decorative
-(`aria-hidden`) wherever visible text already names Ganera. `ganera-logo-verde.svg` (hard-coded
-`#1F3D2B`) is only for contexts without CSS, such as email or external documents, and is never used
+(`aria-hidden`) wherever visible text already names Ganera. `ganera-logo-rojo.svg` (hard-coded
+`#EC3013`) is only for contexts without CSS, such as email or external documents, and is never used
 in the UI. The favicon is `favicon-64.png`.
 
 ### Navigation
-- **Style:** the horizontal top bar in Paja Clara with a Borde Lino bottom border. The brand mark
-  (20px, Verde Monte, decorative) is followed by the "GANERA" logotype in 600 weight,
-  `tracking-wide`, in green.
+- **Style:** the horizontal top bar in Superficie with a Gris Borde bottom border. The brand mark
+  (20px, Rojo Ganera, decorative) is followed by the "GANERA" logotype in 800 weight,
+  `tracking-wide`, in Tinta: red as text would fall short (3.47:1), so the red stays in the mark.
 - **Links, in working order:** Trámites, Ganaderos, Explotaciones. That is, the daily queue, then
   who it belongs to (a Ganadero, then their explotaciones). There is no Facturación link: payment
   is not handled in the app, and `/facturacion` or any unknown route redirects to Trámites. A section
   stays active on its sub-routes (`/ganaderos/:id` marks Ganaderos).
-- **Link style:** 14px/500, `rounded-lg`, 6px by 10px padding. Inactive links are Gris Oliva text
-  and fill with Paja Hover plus ink text on hover. The active link is a solid Verde Monte pill with
-  Crema Papel text. Transitions are color-only.
-- **Focus:** links show the standard 3px green ring at 50%; the active one has `aria-current="page"`.
+- **Link style:** 14px/600, `rounded-lg`, 6px by 10px padding. Inactive links are Gris Texto
+  and fill with Gris Borde plus ink text on hover. The active link is a solid Rojo Acción pill with
+  white text. Transitions are color-only.
+- **Focus:** links show the standard solid 3px Rojo Enlace ring (on the active pill it reads as a
+  darker rim, still 5.91:1 on Superficie); the active one has `aria-current="page"`.
   There is a single `nav` ("Principal") in the DOM for every width, and links come before "Salir"
   in tab order.
-- **Mobile (below `md`):** two rows in one Paja Clara bar, with no rule between them. The first row
+- **Mobile (below `md`):** two rows in one Superficie bar, with no rule between them. The first row
   holds the brand and "Salir"; the email is hidden. The second row is the link strip: full-bleed to
   the screen edges with 16px inner padding, scrolling horizontally inside itself (hidden scrollbar,
   `overscroll-x-contain`), never the page. The hint that there is more is the last link cut at the
@@ -389,10 +437,16 @@ in the UI. The favicon is `favicon-64.png`.
   overflowing at 768px.
 
 ### Text links
-- **Recipe:** Verde Monte text that underlines on hover or keyboard focus, with a 40% green
-  underline 4px below the text, and the standard 3px focus ring on a `rounded-sm` corner. It lives
-  once in `CLASE_ENLACE` (`shared/ui/enlace.ts`) and is used everywhere: Ganaderos, the ganadero
-  link in Explotaciones, the queue's `#id` button, Login/Registro and the dialog's notices.
+- **Recipe:** Rojo Enlace text (`text-enlace`) that underlines on hover or keyboard focus, with a
+  40% Rojo Enlace underline 4px below the text, and the standard 3px focus ring on a `rounded-sm` corner. It lives
+  once in `CLASE_ENLACE` (`shared/ui/enlace.ts`) and is used everywhere outside table columns:
+  the ganadero detail (index, `tel:` links, back link), the empty-state links, Login/Registro and
+  the dialog's notices.
+- **Table variant:** links that form a column inside a table rest in Tinta (`text-foreground`) and
+  turn Rojo Enlace, with the same underline, only on hover or keyboard focus (same focus ring).
+  It lives in `CLASE_ENLACE_TABLA` (`shared/ui/enlace.ts`) and is used for the queue's `#id`
+  button, the ganadero name in Ganaderos and the ganadero link in Explotaciones. Red on every row
+  would fill the table with red and read as an error; the color appears where the pointer is.
 - **Phone numbers** are `tel:` links with the exact E.164 value, preceded by a 14px phone icon.
   They are grouped for reading (`+34 612 345 678`) only for Spanish 9-digit numbers; other numbers
   are shown as stored.
@@ -401,7 +455,11 @@ in the UI. The favicon is `favicon-64.png`.
 
 ### Alerts / Subscription banner
 - **Style:** `rounded-lg`, a 1px border, 14px text on a white surface. The destructive variant
-  turns text deep red, with no red fill.
+  turns text Rojo Problema, with no red fill, and every error alert opens with a 16px
+  `CircleAlertIcon` (decorative, `aria-hidden`, first child so the alert grid places it): login and
+  registration errors, load errors, the import error, the dialog's action notices (409/403) and the
+  `ERROR_OVZ` reason. The subscription banner keeps its `TriangleAlertIcon`. Neutral alerts ("El
+  trámite ha cambiado de estado", "Aviso de pago") carry no new icon.
 - **Banner use:** `SuscripcionBanner` renders the alert full-bleed under the nav bar, with no
   radius and only a bottom border. It uses the destructive variant for states that block approvals
   (`TRIAL_EXPIRADO_SIN_PAGO`, `SUSPENDIDA`, no Suscripción; title "No puedes aprobar trámites ahora
@@ -418,18 +476,19 @@ in the UI. The favicon is `favicon-64.png`.
   off a failing page. No load fails silently.
 
 ### Tables
-- 14px body text, 40px header row in 500 weight and ink color, Borde Lino row rules, and a 50%
-  Lino fill on row hover.
+- 14px body text, 40px header row in 600 weight and ink color, Gris Borde row rules, and a 50%
+  Superficie fill on row hover.
 - **Rows that open something** (the trámites queue): the first cell holds a real button styled as
-  a text link (`#N`, tabular, `aria-label` "Revisar trámite #N"). The whole row stays clickable with
+  a table link (`CLASE_ENLACE_TABLA`: Tinta at rest, Rojo Enlace on hover or focus; `#N`, tabular,
+  `aria-label` "Revisar trámite #N"). The whole row stays clickable with
   the mouse, and the row highlights while its button has keyboard focus.
 - **Sortable headers:** a text button in the `th` with a small arrow icon, ink on the active column
-  (up/down) and Gris Oliva on the others (up-down), with a Lino fill on hover. Only the active
+  (up/down) and Gris Texto on the others (up-down), with a Superficie fill on hover. Only the active
   column carries `aria-sort`. Clicking the active column reverses it; clicking another starts
   ascending and returns to page 1. Sort only on columns the backend whitelists.
-- **Loading:** a skeleton, not text. Lino (`bg-muted`) bars on a `rounded-sm` corner, pulsing only
+- **Loading:** a skeleton, not text. Superficie (`bg-muted`) bars on a `rounded-sm` corner, pulsing only
   when motion is allowed: 16px in table cells, 5 skeleton rows for a list (a number cell is a short
-  right-aligned bar), 12px for an inline value still loading (a REGA in the queue). On a Lino strip
+  right-aligned bar), 12px for an inline value still loading (a REGA in the queue). On a Superficie strip
   the bars use `bg-foreground/10`, since `bg-muted` would vanish there. Bars are `aria-hidden`; one
   always-mounted `role="status"`, outside any `aria-busy` element, announces the load and is
   emptied afterwards. A reload over existing data dims the rows to 60% instead.
@@ -442,10 +501,10 @@ in the UI. The favicon is `favicon-64.png`.
 
 ### Record sections
 - A detail page has one white section per child record (12px radius, 10% ink ring, no nested
-  cards), stacked with a 16px gap. The header strip (16px by 12px padding, Borde Lino bottom rule)
-  holds a 16px title: the identifier in 500 weight with tabular numerals, then ` · nombre` in 400.
-  The body lists rows divided by Borde Lino. An action strip closes the section with the card-footer
-  treatment: a 50% Lino fill, a top hairline and rounded bottom corners.
+  cards), stacked with a 16px gap. The header strip (16px by 12px padding, Gris Borde bottom rule)
+  holds a 16px title: the identifier in 600 weight with tabular numerals, then ` · nombre` in 400.
+  The body lists rows divided by Gris Borde. An action strip closes the section with the card-footer
+  treatment: a 50% Superficie fill, a top hairline and rounded bottom corners.
 - **Index:** with more than 3 sections, a compact inline index of links (`REGA · nombre`, wrapping,
   16px by 6px gaps), labeled as a `nav`, sits between the header and the first section. Following a
   link (or a `#explotacion-N` deep link, once the data arrives) scrolls to the section and moves
@@ -458,12 +517,12 @@ in the UI. The favicon is `favicon-64.png`.
   with `aria-expanded` and `aria-controls`. It sits flush with the content edge (its negative margin
   equals its own padding). The panel is collapsed by default and mounts its content, and makes its
   request, only when opened.
-- "Ver animales" opens inline on the Lino strip: the footer of a Ganadero section, or a full-width
+- "Ver animales" opens inline on the Superficie strip: the footer of a Ganadero section, or a full-width
   expansion row under the Explotaciones row (the open row loses its bottom rule so both read as one
   strip). Inside, no border, ring or card.
 - **Crotal grid:** an ordered list in an auto-fill grid (`minmax(8rem,1fr)`), 14px tabular, with a
   muted count above ("N animales") and a compact pager below. The last digits are ink at 500 and the
-  prefix is Gris Oliva: the one place a value is visually split, mirroring how Contactos quote
+  prefix is Gris Texto: the one place a value is visually split, mirroring how Contactos quote
   crotales on WhatsApp.
 
 ### Not found
@@ -479,7 +538,7 @@ in the UI. The favicon is `favicon-64.png`.
   from the top (so it doesn't jump when its content grows) and at most 84dvh tall. Below `md` it
   fills the screen and the columns stack.
 - **Structure:** a fixed header (title + state badge), a scrolling body and a fixed footer on a 50%
-  Lino strip with the actions. The WhatsApp message column is a Lino quoted block, sticky on
+  Superficie strip with the actions. The WhatsApp message column is a Superficie quoted block, sticky on
   desktop; the editable data (explotación combobox, tipo select, crotal rows) sits on the right. The
   close X comes last in the DOM.
 - **Crotal rows:** one row per crotal with its input, the resolution badge (or "Sin guardar"), the
@@ -504,13 +563,14 @@ in the UI. The favicon is `favicon-64.png`.
 ### Do:
 - **Do** define every color as a CSS variable in `index.css` and use it through its Tailwind token
   (`bg-primary`, `text-success-foreground`).
-- **Do** keep Crema Papel (`#f7f6f1`) as the page background and put content on white cards or
+- **Do** keep Fondo (`#f3f2f2`) as the page background and put content on white cards or
   bordered white table containers.
 - **Do** show state with the domain badge components (`BadgeEstadoTramite`,
   `BadgeResolucionCrotal`, `BadgeRolContacto`), whose label and variant come from `etiquetas.ts`.
 - **Do** keep one 20px/600 page title per screen, with a muted 14px subtitle or count under it.
-- **Do** use the green focus ring (a 3px ring at 50% plus a green border) on every interactive
-  control, and `CLASE_ENLACE` for every text link.
+- **Do** use the solid Rojo Enlace focus ring (a 3px `ring-ring` at 100% plus a Rojo Enlace border) on every interactive
+  control, and `CLASE_ENLACE` for every text link
+  (`CLASE_ENLACE_TABLA` for link columns inside tables).
 - **Do** give every load a visible loading, error (with "Reintentar") and empty state, and show
   the backend's `motivo` verbatim when there is one.
 - **Do** announce loading and results through an always-mounted `role="status"` outside any
@@ -520,6 +580,10 @@ in the UI. The favicon is `favicon-64.png`.
 - **Don't** introduce a new palette, accent color or typeface. The brand identity is fixed unless
   Antonio asks.
 - **Don't** hard-code hex values or arbitrary colors in components.
+- **Don't** use Rojo Acción as text or in a badge, fill a problem with solid red, or bring in the
+  landing's coral `accent-2`. Solid red acts; dark tinted red warns.
+- **Don't** lighten the focus ring or the primary hover with opacity (`ring-ring/50`,
+  `bg-primary/80`): both fall below their contrast minimum.
 - **Don't** add ambient shadows to cards or page surfaces. Only floating menus get `shadow-md`.
 - **Don't** derive state colors by opacity. Use the exact success/warning/danger pairs.
 - **Don't** show a raw enum value, or a badge that predicts what the backend will decide: until a

@@ -32,16 +32,16 @@ THESIS: la ficha de un cliente de la gestoría, leída de arriba abajo como un e
 qué explotaciones tiene y quién habla por cada una. Rechaza el panel de tarjetas iguales con
 métricas y el maestro-detalle con drawers.
 
-OWN-WORLD: el ledger de Ganera sin cambios: lienzo Crema Papel, un único contenedor blanco con
-anillo al 10 % por bloque, filas separadas por Borde Lino, Verde Monte solo para enlaces y foco,
+OWN-WORLD: el ledger de Ganera sin cambios: lienzo Fondo, un único contenedor blanco con
+anillo al 10 % por bloque, filas separadas por Gris Borde, Rojo Enlace solo para enlaces y foco,
 badges de rol en par exacto (Titular = éxito, Empleado = outline neutro), cifras tabulares.
 
 STORY: el empleado encuentra al ganadero en una lista ordenable, abre su ficha, identifica cada
 explotación por su código REGA, ve y llama a sus contactos, y despliega los animales solo cuando
 los necesita.
 
-FIRST VIEWPORT: enlace "← Ganaderos" pequeño arriba; título = nombre (20px/600) con NIF tabular
-en gris oliva al lado; subtítulo con "N explotaciones"; con más de 3, índice en línea de enlaces
+FIRST VIEWPORT: enlace "← Ganaderos" pequeño arriba; título = nombre (20px/800) con NIF tabular
+en Gris Texto al lado; subtítulo con "N explotaciones"; con más de 3, índice en línea de enlaces
 REGA·nombre; debajo, la primera sección de explotación: cabecera REGA + nombre, lista de
 contactos (nombre, teléfono tel:, badge de rol), pie "Ver animales" plegado.
 

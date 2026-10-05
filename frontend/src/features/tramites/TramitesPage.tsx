@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { CircleAlertIcon } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -17,7 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
-import { CLASE_ENLACE } from "@/shared/ui/enlace";
+import { CLASE_ENLACE_TABLA } from "@/shared/ui/enlace";
 import { aErrorApi, mensajeDeError, type ErrorApi } from "@/shared/api/errores";
 import type { Pagina } from "@/shared/api/types";
 import { listarTramites } from "./api";
@@ -124,7 +125,7 @@ export function TramitesPage() {
     <div className="flex min-w-0 flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold">Cola de trámites</h1>
+          <h1 className="text-xl font-extrabold">Cola de trámites</h1>
           <p className="text-sm text-muted-foreground">{subtitulo}</p>
         </div>
         <Select value={filtroEstado} onValueChange={(value) => cambiarFiltro(value as FiltroEstado)}>
@@ -147,6 +148,7 @@ export function TramitesPage() {
 
       {errorCarga && (
         <Alert variant="destructive">
+          <CircleAlertIcon />
           <AlertTitle>No se han podido cargar los trámites</AlertTitle>
           <AlertDescription>
             <p>{mensajeDeError(errorCarga, "listar-tramites")}</p>
@@ -211,7 +213,7 @@ export function TramitesPage() {
                       evento.stopPropagation();
                       setTramiteSeleccionado(tramite.id);
                     }}
-                    className={cn("-mx-1 px-1 font-medium tabular-nums", CLASE_ENLACE)}
+                    className={cn("-mx-1 px-1 font-medium tabular-nums", CLASE_ENLACE_TABLA)}
                   >
                     #{tramite.id}
                   </button>
@@ -337,7 +339,7 @@ function CeldaCrotales({ crotales }: { crotales: TramiteCrotal[] | undefined }) 
               evento.stopPropagation();
               setDesplegado((d) => !d);
             }}
-            className="rounded-sm text-muted-foreground underline-offset-4 outline-none hover:underline focus-visible:underline focus-visible:ring-3 focus-visible:ring-ring/50"
+            className="rounded-sm text-muted-foreground underline-offset-4 outline-none hover:underline focus-visible:underline focus-visible:ring-3 focus-visible:ring-ring"
           >
             {desplegado ? "Ver menos" : `+${resto} más`}
           </button>
