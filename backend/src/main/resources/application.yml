@@ -33,6 +33,12 @@ ganera:
     secret: ${ONBOARDING_SECRET:}
   frontend:
     origen: ${FRONTEND_ORIGEN:http://localhost:5173}
+  registro:
+    # Registro publico (POST /gestorias/registro). CERRADO por defecto (Prompt C, D4, fail-closed):
+    # cerrado responde 404 sin cuerpo y no crea nada. Sin placeholder ${...} a proposito; solo lo
+    # abren los tests que lo necesitan (abrirlo en un entorno exigiria definir a mano
+    # GANERA_REGISTRO_ABIERTO=true, por el binding relajado de Spring).
+    abierto: false
   twilio:
     # URL publica exacta que Twilio llama (la del sandbox/numero); la firma se valida contra ella.
     # Vacia -> el webhook responde 503 y no guarda nada (fail-closed).

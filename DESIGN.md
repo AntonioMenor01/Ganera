@@ -243,7 +243,7 @@ little wider than the previous Geist; the nav bar, queue badges and columns were
 ### Hierarchy
 - **Headline** (800, 20px, `text-xl font-extrabold`): one page title per screen ("Cola de
   trámites", "Ganaderos", "Explotaciones", a ganadero's name), followed by a muted 14px subtitle or
-  count. The "Ganera" title on Login/Registro (16px) and the "GANERA" logotype are also 800.
+  count. The "Ganera" title on Login (16px) and the "GANERA" logotype are also 800.
 - **Metric** (800, 30px, `text-3xl`): the single large number in a metric card (the Explotaciones
   count).
 - **Title** (600, 16px): card, section and dialog titles.
@@ -287,7 +287,7 @@ family styles this horizontal bar, and the brand pass deliberately kept it horiz
   shrinks to its content (`w-fit`, min 192px).
 - **Tables:** full width inside a bordered white container, with 40px header rows and 8px cell
   padding.
-- **Auth screens** (Login, Registro): a single card at most 384px wide, centered on the Fondo
+- **Auth screen** (Login): a single card at most 384px wide, centered on the Fondo
   canvas, inside a `main`. The card header opens with the 40px brand mark above the "Ganera"
   title, which is the page's `h1`.
 - **Responsive:** no custom breakpoints; Tailwind defaults only (`md` switches input text from
@@ -440,8 +440,8 @@ in the UI. The favicon is `favicon-64.png`.
 - **Recipe:** Rojo Enlace text (`text-enlace`) that underlines on hover or keyboard focus, with a
   40% Rojo Enlace underline 4px below the text, and the standard 3px focus ring on a `rounded-sm` corner. It lives
   once in `CLASE_ENLACE` (`shared/ui/enlace.ts`) and is used everywhere outside table columns:
-  the ganadero detail (index, `tel:` links, back link), the empty-state links, Login/Registro and
-  the dialog's notices.
+  the ganadero detail (index, `tel:` links, back link), the empty-state links and the dialog's
+  notices.
 - **Table variant:** links that form a column inside a table rest in Tinta (`text-foreground`) and
   turn Rojo Enlace, with the same underline, only on hover or keyboard focus (same focus ring).
   It lives in `CLASE_ENLACE_TABLA` (`shared/ui/enlace.ts`) and is used for the queue's `#id`
@@ -456,8 +456,8 @@ in the UI. The favicon is `favicon-64.png`.
 ### Alerts / Subscription banner
 - **Style:** `rounded-lg`, a 1px border, 14px text on a white surface. The destructive variant
   turns text Rojo Problema, with no red fill, and every error alert opens with a 16px
-  `CircleAlertIcon` (decorative, `aria-hidden`, first child so the alert grid places it): login and
-  registration errors, load errors, the import error, the dialog's action notices (409/403) and the
+  `CircleAlertIcon` (decorative, `aria-hidden`, first child so the alert grid places it): login
+  errors, load errors, the import error, the dialog's action notices (409/403) and the
   `ERROR_OVZ` reason. The subscription banner keeps its `TriangleAlertIcon`. Neutral alerts ("El
   trámite ha cambiado de estado", "Aviso de pago") carry no new icon.
 - **Banner use:** `SuscripcionBanner` renders the alert full-bleed under the nav bar, with no

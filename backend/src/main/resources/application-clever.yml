@@ -1,0 +1,16 @@
+# Perfil de la demo en Clever Cloud (Prompt C): SPRING_PROFILES_ACTIVE=clever.
+# Solo placeholders, ningun valor secreto. Las variables POSTGRESQL_ADDON_* las inyecta Clever al
+# enlazar el add-on PostgreSQL a la app; el resto de secretos (JWT_SECRET, ENCRYPTION_KEY...) se
+# leen con los placeholders de application.yml. El registro publico ya esta cerrado por defecto
+# (ganera.registro.abierto: false en application.yml) y la zona horaria va como TZ=UTC en las
+# variables de Clever, no aqui (D8).
+spring:
+  datasource:
+    # logServerErrorDetail=false: que un error de restriccion no lleve "Failing row contains (...)"
+    # con datos de mensajes a los logs (nota de B1 para produccion).
+    url: jdbc:postgresql://${POSTGRESQL_ADDON_HOST}:${POSTGRESQL_ADDON_PORT}/${POSTGRESQL_ADDON_DB}?logServerErrorDetail=false
+    username: ${POSTGRESQL_ADDON_USER}
+    password: ${POSTGRESQL_ADDON_PASSWORD}
+    # Explicito para que el perfil no dependa de que nadie mas defina el driver (en los tests,
+    # application.yml de test fija org.h2.Driver y sin esto lo heredaria).
+    driver-class-name: org.postgresql.Driver

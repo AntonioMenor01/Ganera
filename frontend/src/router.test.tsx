@@ -53,12 +53,39 @@ describe("rutas: comodín del layout autenticado (D5)", () => {
     expect(router.state.location.pathname).toBe("/login")
   })
 
-  it("sin sesión, /login y /registro siguen siendo sus pantallas", async () => {
+  it("sin sesión, /login sigue siendo su pantalla", async () => {
     const router = montarApp("/login")
     expect(await screen.findByText("Inicia sesión con tu cuenta de gestoría.")).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe("/login")
+  })
+})
+
+describe("rutas: /registro ya no es una pantalla (Prompt C, D4)", () => {
+  // El alta pública está cerrada en el backend (404) y pasará a la landing: /registro lleva a /login.
+  it("sin sesión, /registro lleva a /login sin quedar en el historial", async () => {
+    const router = montarApp("/registro")
+
+    expect(await screen.findByText("Inicia sesión con tu cuenta de gestoría.")).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe("/login")
+    expect(router.state.historyAction).toBe("REPLACE")
+    expect(screen.queryByText("Registra tu gestoría y empieza tu prueba de 15 días.")).not.toBeInTheDocument()
+  })
+
+  it("con sesión, /registro lleva a /login como cualquier visita a /login (sin pantalla rota)", async () => {
+    conSesion()
+    const router = montarApp("/registro")
+
+    expect(await screen.findByText("Inicia sesión con tu cuenta de gestoría.")).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe("/login")
+    expect(screen.queryByText("Registra tu gestoría y empieza tu prueba de 15 días.")).not.toBeInTheDocument()
+  })
+
+  it("navegar a /registro desde /login deja en /login", async () => {
+    const router = montarApp("/login")
+    await screen.findByText("Inicia sesión con tu cuenta de gestoría.")
 
     await act(() => router.navigate("/registro"))
-    expect(await screen.findByText("Registra tu gestoría y empieza tu prueba de 15 días.")).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe("/registro")
+    expect(router.state.location.pathname).toBe("/login")
+    expect(await screen.findByLabelText("Contraseña")).toBeInTheDocument()
   })
 })

@@ -127,12 +127,11 @@ describe("mensajeDeError", () => {
     )
   })
 
-  it("503 en registro → facturación no configurada (comportamiento previo)", () => {
+  it("un 503 es un fallo de servidor más, en cualquier contexto (sin el texto de facturación del registro)", () => {
     const error = new ErrorApi({ tipo: "servidor", status: 503 })
-    const esperado = "La facturación todavía no está configurada. Vuelve a intentarlo más tarde."
-    expect(mensajeDeError(error, "registro")).toBe(esperado)
-    // Fuera de esos contextos, un 503 es un fallo de servidor más.
     expect(mensajeDeError(error, "listar-tramites")).toBe(TEXTO_ERROR_SERVIDOR)
+    expect(mensajeDeError(error, "login")).toBe(TEXTO_ERROR_SERVIDOR)
+    expect(mensajeDeError(error)).toBe(TEXTO_ERROR_SERVIDOR)
   })
 
   it("401 en login → el error uniforme de credenciales", () => {
@@ -150,15 +149,6 @@ describe("mensajeDeError", () => {
     expect(
       mensajeDeError(new ErrorApi({ tipo: "validacion", status: 400, motivo: "Email no registrado" }), "login"),
     ).toBe("No se ha podido iniciar sesión. Inténtalo de nuevo.")
-  })
-
-  it("registro ignora cualquier motivo del backend: siempre el mismo 400 uniforme (I1)", () => {
-    const uniforme =
-      "No se ha podido completar el registro con esos datos. Revisa el email y la contraseña e inténtalo de nuevo."
-    expect(
-      mensajeDeError(new ErrorApi({ tipo: "validacion", status: 400, motivo: "El email ya existe" }), "registro"),
-    ).toBe(uniforme)
-    expect(mensajeDeError(new ErrorApi({ tipo: "validacion", status: 400 }), "registro")).toBe(uniforme)
   })
 
   it("401 fuera del login → sesión caducada", () => {
@@ -202,7 +192,6 @@ describe("mensajeDeError", () => {
     const contextos: (ContextoError | undefined)[] = [
       undefined,
       "login",
-      "registro",
       "suscripcion",
       "importar-excel",
       "listar-explotaciones",

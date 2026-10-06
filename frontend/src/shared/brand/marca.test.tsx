@@ -51,13 +51,10 @@ describe("marca: el símbolo de Ganera aparece donde debe", () => {
     expect(cabecera.querySelector(".rounded-full")).toBeNull()
   })
 
-  it.each([
-    ["/login", "Inicia sesión con tu cuenta de gestoría."],
-    ["/registro", "Registra tu gestoría y empieza tu prueba de 15 días."],
-  ])("%s: símbolo encima del título de la tarjeta", async (url, descripcion) => {
-    const { container } = montarApp(url)
+  it("/login: símbolo encima del título de la tarjeta", async () => {
+    const { container } = montarApp("/login")
 
-    await screen.findByText(descripcion)
+    await screen.findByText("Inicia sesión con tu cuenta de gestoría.")
     const logos = logosDe(container)
     expect(logos).toHaveLength(1)
     const [logo] = logos
@@ -71,10 +68,20 @@ describe("marca: el símbolo de Ganera aparece donde debe", () => {
 
 describe("marca: enlace de texto", () => {
   it("el enlace de texto usa Rojo 700 (--enlace) y el anillo de foco sólido", async () => {
-    montarApp("/login")
+    // Antes se comprobaba en «Regístrate» del login, que ya no existe (Prompt C): ahora en el
+    // «Volver a Ganaderos» de la ficha de un ganadero que no se encuentra.
+    sessionStorage.setItem("ganera.token", "tok")
+    server.use(
+      http.get(apiUrl("/auth/me"), () =>
+        HttpResponse.json({ id: 1, email: "ana@gestoria.es", nombre: "Ana", gestoriaId: 1, activo: true }),
+      ),
+      http.get(apiUrl("/facturacion/suscripcion"), () => new HttpResponse(null, { status: 404 })),
+      http.get(apiUrl("/ganaderos/99"), () => new HttpResponse(null, { status: 404 })),
+    )
+    montarApp("/ganaderos/99")
 
-    const enlace = await screen.findByRole("link", { name: "Regístrate" })
-    expect(enlace).toHaveClass("text-enlace", "decoration-enlace/40", "focus-visible:ring-ring")
+    const enlace = await screen.findByRole("link", { name: "Volver a Ganaderos" })
+    expect(enlace).toHaveClass("text-enlace", "decoration-enlace/40", "focus-visible:ring-3", "focus-visible:ring-ring")
     expect(enlace).not.toHaveClass("text-primary")
     expect(enlace).not.toHaveClass("focus-visible:ring-ring/50")
     // La variante de tabla (Tinta en reposo) no se usa fuera de las tablas.

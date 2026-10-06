@@ -815,3 +815,33 @@ Informes en `.superpowers/sdd/b1-*`.
   incluida). `CLAUDE.md` (bullet de B1, proveedor de IA, flujo, estado y conteos), `DESIGN.md`, el surface brief
   del modal, `ganera-prompts.md` y este fichero al día.
 - **Sin commit**: pendiente de la aprobación de Antonio.
+
+## 2026-10-06 — C mínimo: demo desplegada en la UE (backend, frontend y datos de demo fuera del repo)
+
+Plan: `docs/superpowers/plans/2026-10-06-promptC-minimo-demo-desplegada.md`. Decisiones de Antonio: D1 Clever
+Cloud (París), D2 PostgreSQL XXS Small, D3 frontend en Clever Static, D4 `ganera.registro.abierto` cerrado por
+defecto (fail-closed) y backend + frontend en el mismo commit, D5 trámites por SQL en Adminer (no tiene `psql`),
+D6 el smoke lo ejecuta Antonio en su terminal y Claude solo ve PASS/FAIL, D7 WhatsApp al final y opcional, D8
+tras T1 (sin `V20`; SQL a mano con `SET TIME ZONE 'UTC'` y `created_at` explícito; `TZ=UTC`; `ALTER DATABASE …
+SET timezone TO 'UTC'` comprobado con `SHOW timezone`). Informes en `.superpowers/sdd/c0-*`.
+
+- **T1** (PostgreSQL 16 embebido con zonky, solo test): Flyway V1–V19 + `validate`, V18 con 1203 filas, `Instant`
+  en `TIMESTAMP` sin zona en UTC y Madrid. La hipótesis de desfase del plan §7 **no se cumple** (sensibilidad
+  comprobada forzando `preferred_instant_jdbc_type=TIMESTAMP`); solo `DEFAULT now()` depende de la zona de sesión.
+  676 → **684**. Approved with minors; m1 (`@Disabled` → test de caracterización) y m2 (Javadoc) corregidos.
+- **T2** (`RegistroCerradoFilter` + `RegistroConfig`, `application-clever.yml`, `.clever.json` en `.gitignore`):
+  **690**. Approved with minors; el revisor probó 38 variantes de ruta con socket crudo. M1 (el plan aún decía
+  `registro.activo`) corregido en el plan; N3 (no definir `GANERA_REGISTRO_*` en Clever) añadido al plan.
+- **T3** (enlace "Regístrate" fuera, `/registro` → `/login`, `RegistroPage` y su API borradas, `noindex`):
+  558 → **557** (36 ficheros). Approved with minors; `DESIGN.md` (tres frases) y el test del anillo de foco de
+  `CLASE_ENLACE` corregidos desde la sesión principal. `PRODUCT.md` (alta pública, l. 53/59/70/83) pendiente de
+  la excepción de Antonio.
+- **T4** (fuera del repo, `C:\Users\Antonio\Desktop\ganera-demo\`: generador, dos Excel, `seed-tramites.sql`,
+  `alta-gestorias.sh`, `smoke.sh`, `LEEME.md`): ensayo contra PostgreSQL real, smoke 20/20. Approved with minors;
+  m1–m7, n1, n2 y n4 corregidos (CORS sin `Origin` daba PASS, PATCH con `version`, salida de error del alta,
+  crotales del trámite "sin explotación" de una misma explotación, NIF con letra imposible) y ensayo repetido:
+  smoke **21/21**.
+- **Cierre previo al despliegue (sesión principal):** `npm test` 557/557, build y lint con los avisos de siempre;
+  `./mvnw clean test` **690/690** (0 fallos, 0 saltados) en la sesión principal, sin `postgres.exe` al acabar. `CLAUDE.md`, `ganera-prompts.md` y este fichero al día.
+- **Sin commit**: pendiente de la aprobación de Antonio. Después: despliegue en Clever, siembra, smoke y, si se
+  quiere, el sandbox de Twilio.

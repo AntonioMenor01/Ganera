@@ -15,6 +15,14 @@ import java.util.Optional;
  * Alta publica de Gestoria, en paralelo a /internal/onboarding/gestoria (que se queda igual, para
  * soporte/casos manuales -- esta es una via adicional, no un reemplazo). Publico, sin JWT ni
  * secreto compartido: ver SecurityConfig.permitAll para esta ruta.
+ *
+ * <p><b>Cerrado por defecto (Prompt C, T2, D4).</b> Solo se llega aqui con
+ * {@code ganera.registro.abierto=true}. Con {@code false} (el valor por defecto, fail-closed)
+ * {@link RegistroCerradoFilter} contesta 404 sin cuerpo antes de Spring Security y antes de leer
+ * el cuerpo, asi que este metodo no se ejecuta y no se crea nada. El permitAll de SecurityConfig se
+ * queda: con el registro abierto la ruta tiene que seguir siendo publica, y con el cerrado el filtro
+ * va antes que la seguridad (mismo 404 con o sin JWT). Llamar a este metodo directamente (como hacen
+ * los tests unitarios) se salta el filtro.
  */
 @RestController
 public class RegistroGestoriaController {

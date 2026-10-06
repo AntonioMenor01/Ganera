@@ -61,8 +61,8 @@ interface AuthContextValue {
   olvidarMotivoCierre: () => void;
   /**
    * RequireAuth lo llama al montarse (devuelve la función para desmontarse). Solo con una ruta
-   * protegida en pantalla un 401 deja el aviso de "caducada": si el 401 llega estando en /registro
-   * o /login, no hay nada que avisar y el aviso no debe quedar pendiente para una visita posterior.
+   * protegida en pantalla un 401 deja el aviso de "caducada": si el 401 llega estando en /login, no
+   * hay nada que avisar y el aviso no debe quedar pendiente para una visita posterior.
    */
   registrarRutaProtegida: () => () => void;
 }

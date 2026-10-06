@@ -2,7 +2,6 @@ import { createBrowserRouter, Navigate, type RouteObject } from "react-router-do
 import { AppLayout } from "@/shared/layout/AppLayout";
 import { RequireAuth } from "@/shared/auth/RequireAuth";
 import { LoginPage } from "@/features/auth/LoginPage";
-import { RegistroPage } from "@/features/auth/RegistroPage";
 import { ExplotacionesPage } from "@/features/explotaciones/ExplotacionesPage";
 import { TramitesPage } from "@/features/tramites/TramitesPage";
 import { GanaderosPage } from "@/features/ganaderos/GanaderosPage";
@@ -11,7 +10,10 @@ import { GanaderoDetallePage } from "@/features/ganaderos/GanaderoDetallePage";
 /** Exportadas para que los tests monten las rutas reales en un createMemoryRouter. */
 export const routes: RouteObject[] = [
   { path: "/login", element: <LoginPage /> },
-  { path: "/registro", element: <RegistroPage /> },
+  // El alta pública está cerrada (POST /gestorias/registro responde 404 salvo con
+  // ganera.registro.abierto) y pasará a la landing en el Prompt C: /registro ya no es una pantalla.
+  // Se queda la ruta para que un enlace o marcador antiguo lleve al login y no a un error.
+  { path: "/registro", element: <Navigate to="/login" replace /> },
   {
     element: <RequireAuth />,
     children: [

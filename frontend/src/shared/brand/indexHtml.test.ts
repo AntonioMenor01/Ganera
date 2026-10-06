@@ -23,4 +23,10 @@ describe("index.html", () => {
     expect(iconos[0].getAttribute("type")).toBe("image/png")
     expect(iconos[0].getAttribute("href")).toBe("/favicon-64.png")
   })
+
+  it("pide a los buscadores que no la indexen ni sigan sus enlaces (la app va tras el login)", () => {
+    const robots = documento.querySelectorAll('meta[name="robots"]')
+    expect(robots).toHaveLength(1)
+    expect(robots[0].getAttribute("content")).toBe("noindex, nofollow")
+  })
 })

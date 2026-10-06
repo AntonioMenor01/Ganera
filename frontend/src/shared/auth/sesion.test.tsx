@@ -43,6 +43,16 @@ beforeEach(() => {
   )
 })
 
+/**
+ * Sale de /login y vuelve a entrar, para que LoginPage se monte de nuevo y relea el aviso pendiente.
+ * Sin sesión, "/" pasa por RequireAuth, que manda a /login (antes se usaba /registro, que desde el
+ * Prompt C ya no es una pantalla).
+ */
+async function volverALogin(router: ReturnType<typeof createMemoryRouter>) {
+  await act(() => router.navigate("/"))
+  expect(router.state.location.pathname).toBe("/login")
+}
+
 const TITULO_GANADEROS = { level: 1, name: "Ganaderos" } as const
 
 /** Handlers de lo que pide la app autenticada fuera de la sesión (banner de suscripción). */
@@ -236,8 +246,7 @@ describe("sesión persistente: login, caducidad en uso y salida manual", () => {
     expect(await screen.findByText("Email o contraseña incorrectos.")).toBeInTheDocument()
     expect(sessionStorage.getItem(CLAVE)).toBeNull()
     expect(router.state.location.pathname).toBe("/login")
-    await act(() => router.navigate("/registro"))
-    await act(() => router.navigate("/login"))
+    await volverALogin(router)
     expect(await screen.findByLabelText("Contraseña")).toBeInTheDocument()
     expect(screen.queryByText(AVISO_CADUCADA)).not.toBeInTheDocument()
   })
@@ -255,8 +264,7 @@ describe("sesión persistente: login, caducidad en uso y salida manual", () => {
     expect(sessionStorage.getItem(CLAVE)).toBeNull()
 
     // Una vez visto, no vuelve a salir al volver a /login.
-    await act(() => router.navigate("/registro"))
-    await act(() => router.navigate("/login"))
+    await volverALogin(router)
     expect(await screen.findByLabelText("Contraseña")).toBeInTheDocument()
     expect(screen.queryByText(AVISO_CADUCADA)).not.toBeInTheDocument()
   })
@@ -288,7 +296,7 @@ describe("sesión persistente: login, caducidad en uso y salida manual", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/tramites"))
   })
 
-  it("M4: Salir, /registro y un 401 tardío no dejan aviso de caducada para /login", async () => {
+  it("M4: Salir y un 401 tardío en /login no dejan aviso de caducada para la siguiente visita", async () => {
     sessionStorage.setItem(CLAVE, "tok-guardado")
     meDevuelveUsuario()
     suscripcionSinDatos()
@@ -298,16 +306,15 @@ describe("sesión persistente: login, caducidad en uso y salida manual", () => {
     await user.click(await screen.findByRole("button", { name: "Salir" }))
     expect(await screen.findByLabelText("Contraseña")).toBeInTheDocument()
 
-    await act(() => router.navigate("/registro"))
-    // Una petición lanzada antes de Salir responde 401 ahora.
+    // Una petición lanzada antes de Salir responde 401 ahora, ya en /login (ruta pública).
     act(() => notifyUnauthorized())
-    await act(() => router.navigate("/login"))
+    await volverALogin(router)
 
     expect(await screen.findByLabelText("Contraseña")).toBeInTheDocument()
     expect(screen.queryByText(AVISO_CADUCADA)).not.toBeInTheDocument()
   })
 
-  it("M3: un token caducado detectado en /registro no deja aviso para una visita posterior a /login", async () => {
+  it("M3: un token caducado detectado en /login no deja aviso para una visita posterior a /login", async () => {
     sessionStorage.setItem(CLAVE, "tok-caducado")
     let llamadasMe = 0
     server.use(
@@ -317,11 +324,11 @@ describe("sesión persistente: login, caducidad en uso y salida manual", () => {
       }),
     )
 
-    const { router } = montarApp("/registro")
+    const { router } = montarApp("/login")
     await waitFor(() => expect(llamadasMe).toBe(1))
     await waitFor(() => expect(sessionStorage.getItem(CLAVE)).toBeNull())
 
-    await act(() => router.navigate("/login"))
+    await volverALogin(router)
     expect(await screen.findByLabelText("Contraseña")).toBeInTheDocument()
     expect(screen.queryByText(AVISO_CADUCADA)).not.toBeInTheDocument()
   })

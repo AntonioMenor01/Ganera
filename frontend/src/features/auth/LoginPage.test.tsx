@@ -35,7 +35,7 @@ describe("LoginPage: error uniforme (I1)", () => {
   })
 })
 
-describe("LoginPage: estructura y enlace (Task 10)", () => {
+describe("LoginPage: estructura (Task 10)", () => {
   function renderizar() {
     render(
       <AuthProvider>
@@ -52,8 +52,10 @@ describe("LoginPage: estructura y enlace (Task 10)", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Ganera" })).toBeInTheDocument()
   })
 
-  it("el enlace «Regístrate» usa la receta común, con el anillo de foco", () => {
+  it("no ofrece darse de alta: sin «Regístrate» ni ningún enlace (Prompt C, D4)", () => {
     renderizar()
-    expect(screen.getByRole("link", { name: "Regístrate" })).toHaveClass("focus-visible:ring-3")
+    expect(screen.queryByText(/Regístrate/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/¿No tienes cuenta\?/)).not.toBeInTheDocument()
+    expect(screen.queryAllByRole("link")).toHaveLength(0)
   })
 })

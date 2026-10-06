@@ -50,13 +50,14 @@ gestoría always reviews and approves: nothing reaches the Administración witho
   Excel importer (`.xlsx`). A read-only sync from OVZ.net is planned but blocked.
 - **Billing:** Stripe, priced by number of active Explotaciones, with a 15-day trial. Payment is
   handled from the Ganera landing page, not inside the app: the app has no billing page, and its
-  only trace of the subscription is a banner. Customers sign up by client-count range. Some
+  only trace of the subscription is a banner. Sign-up also moves to the landing: the app's public
+  self-registration is closed by default and its screen was removed (2026-10-06). Some
   subscription states make the account read-only: browsing still works, but approving is blocked,
   and the app asks the user to contact Ganera (no payment link).
 
 ## Capabilities and Constraints
 
-- **Built:** login; public gestoría self-registration; Explotaciones dashboard plus Excel import;
+- **Built:** login; Explotaciones dashboard plus Excel import;
   Trámites queue with state filter, editable review modal and Aprobar/Rechazar; Ganaderos list
   and detail with contactos and animales; a subscription banner.
 - **Not built, deliberately:** a manual Ganadero/Explotación creation form (Excel is the only
@@ -67,8 +68,7 @@ gestoría always reviews and approves: nothing reaches the Administración witho
   the state, so the UI must never suggest that anything happens in OVZ.net.
 - **Read-only accounts:** a subscription without approval rights never hides the rest of the app.
   Only the approve action is blocked, and the UI shows the real reason.
-- **Login and registration errors are uniform:** they never reveal why a login or a sign-up was
-  rejected.
+- **Login errors are uniform:** they never reveal why a login was rejected.
 - **Stack in place:** Vite + React 19 + TypeScript + Tailwind v4 + shadcn/ui (base-nova style,
   `@base-ui/react`), `lucide-react` icons, Archivo Variable font (self-hosted). Session authentication in
   `sessionStorage`: it survives a reload and ends when the tab is closed.
@@ -80,7 +80,7 @@ gestoría always reviews and approves: nothing reaches the Administración witho
 ## Brand Commitments
 
 - **Name:** Ganera. The app shows the brand mark next to the text logotype "GANERA" in the
-  navigation bar, and above the "Ganera" title on the login and registration screens.
+  navigation bar, and above the "Ganera" title on the login screen.
 - **Official logo:** `frontend/public/ganera-logo.svg` (`fill="currentColor"`, so it takes its
   color from a token). Variants: `ganera-logo-rojo.svg` (fixed Rojo Ganera `#EC3013`, for contexts without CSS),
   `ganera-logo-512.png` and `favicon-64.png` (the favicon).

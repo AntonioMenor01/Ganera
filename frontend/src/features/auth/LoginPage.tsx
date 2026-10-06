@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { CircleAlertIcon } from "lucide-react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,8 +15,6 @@ import { useAuth } from "@/shared/auth/AuthContext";
 import { destinoTrasLogin } from "./destinoTrasLogin";
 import { mensajeDeError } from "@/shared/api/errores";
 import { LogoGanera } from "@/shared/brand/LogoGanera";
-import { CLASE_ENLACE } from "@/shared/ui/enlace";
-import { cn } from "@/lib/utils";
 
 const AVISO_SESION_CADUCADA = "Tu sesión ha caducado. Vuelve a iniciar sesión.";
 export function LoginPage() {
@@ -100,12 +98,6 @@ export function LoginPage() {
               {enviando ? "Entrando…" : "Entrar"}
             </Button>
           </form>
-          <p className="mt-4 text-center text-sm text-muted-foreground">
-            ¿No tienes cuenta?{" "}
-            <Link to="/registro" className={cn("font-semibold", CLASE_ENLACE)}>
-              Regístrate
-            </Link>
-          </p>
         </CardContent>
       </Card>
     </main>

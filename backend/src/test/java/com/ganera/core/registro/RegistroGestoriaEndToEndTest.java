@@ -24,8 +24,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * application.yml de test, asi que el camino de exito real observable aqui es 503 (Stripe no
  * configurado) con Gestoria+Usuario ya persistidos -- limitacion ya aceptada mientras el Price
  * de Stripe siga sin crearse (ver CLAUDE.md, Prompt 2.7).
+ *
+ * <p>El registro esta cerrado por defecto (Prompt C, D4); este test lo abre explicitamente para
+ * probar el comportamiento con el registro abierto. El cerrado lo cubre RegistroCerradoEndToEndTest.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "ganera.registro.abierto=true")
 class RegistroGestoriaEndToEndTest {
 
     @Autowired

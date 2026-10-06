@@ -660,7 +660,12 @@ Plan con las decisiones cerradas: `docs/superpowers/plans/2026-10-03-tarea-front
      mensaje y la extracción con Haiku en segundo plano (SDK oficial, salida estructurada nativa,
      reintentos). También el acuse por TwiML, la retención y el aviso en la cola y en el modal.
    - **B2** (pendiente): lo de las notas de abajo que B1 dejó fuera.
-4. **Prompt C**, después la app de escritorio, el MVP a la gestoría piloto y, tras el piloto, OVZ 3a/3c.
+4. **C mínimo** (2026-10-06, en curso): demo desplegada en Clever Cloud (París) con PostgreSQL gestionado y
+   datos inventados, para el socio. Plan `docs/superpowers/plans/2026-10-06-promptC-minimo-demo-desplegada.md`.
+   Código cerrado (tests contra PostgreSQL real embebido, perfil `clever`, registro cerrado por defecto y
+   pantalla de registro fuera; backend 690/690, frontend 557/557); falta desplegar, sembrar y el smoke en
+   Clever, y opcionalmente el sandbox de Twilio. **No es la infraestructura definitiva del C.**
+5. **Prompt C**, después la app de escritorio, el MVP a la gestoría piloto y, tras el piloto, OVZ 3a/3c.
 
 ## Prompt B — notas acumuladas (pendiente)
 

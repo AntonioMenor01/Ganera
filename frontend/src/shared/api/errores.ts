@@ -98,10 +98,9 @@ export function aErrorApi(error: unknown): ErrorApi {
 
 /**
  * `{motivo}` es el formato del backend en todos sus errores con texto (400/403/409), también el 400
- * del importador y el de POST /gestorias/registro. Un cuerpo de texto plano se sigue tomando como
- * motivo solo como defensa: hoy ningún endpoint lo usa. Una página HTML (un proxy) no es un texto
- * para el usuario. El `{motivo}` del registro sí se extrae, pero esa pantalla no lo enseña
- * (`ignorarMotivo`, ver el contexto "registro"). Nunca lanza.
+ * del importador. Un cuerpo de texto plano se sigue tomando como motivo solo como defensa: hoy
+ * ningún endpoint lo usa. Una página HTML (un proxy) no es un texto para el usuario. Aunque llegue
+ * un `{motivo}`, el login no lo enseña (`ignorarMotivo`). Nunca lanza.
  */
 function extraerMotivo(data: unknown, contentType: string | undefined): string | undefined {
   try {
@@ -142,8 +141,6 @@ export const TEXTO_ERROR_RED =
 export const TEXTO_ERROR_SERVIDOR =
   "Ha fallado algo en el servidor. Inténtalo de nuevo; si se repite, avísanos.";
 
-const TEXTO_FACTURACION_NO_CONFIGURADA =
-  "La facturación todavía no está configurada. Vuelve a intentarlo más tarde.";
 const TEXTO_TRAMITE_NO_ENCONTRADO = "Este trámite ya no existe o no es de tu gestoría.";
 /** Exportado: la ficha del Ganadero lo enseña en su estado "no encontrado" (404 o id no válido). */
 export const TEXTO_GANADERO_NO_ENCONTRADO = "Este ganadero no existe o no es de tu gestoría.";
@@ -162,7 +159,6 @@ const TEXTO_GENERICO = "Ha ocurrido un error inesperado. Inténtalo de nuevo.";
 export type ContextoError =
   | "login"
   | "comprobar-sesion"
-  | "registro"
   | "suscripcion"
   | "importar-excel"
   | "listar-explotaciones"
@@ -179,16 +175,14 @@ interface TextosContexto {
   /** Texto de reserva del contexto: validación/conflicto/desconocido sin motivo. Obligatorio. */
   generico: string;
   /**
-   * true en pantallas cuyo error debe ser uniforme (login, registro): el `motivo` del backend no
-   * se enseña nunca, para que ningún cambio futuro del backend pueda revelar por qué se rechazó
-   * (cuenta inactiva, email ya registrado…). Solo se distinguen red y servidor.
+   * true en pantallas cuyo error debe ser uniforme (login): el `motivo` del backend no se enseña
+   * nunca, para que ningún cambio futuro del backend pueda revelar por qué se rechazó (cuenta
+   * inactiva, email desconocido…). Solo se distinguen red y servidor.
    */
   ignorarMotivo?: boolean;
   noAutorizado?: string;
   prohibido?: string;
   noEncontrado?: string;
-  /** Textos por status concreto, antes que los del tipo (p. ej. 503 = facturación sin configurar). */
-  porStatus?: Partial<Record<number, string>>;
 }
 
 const TEXTOS: Record<ContextoError, TextosContexto> = {
@@ -202,16 +196,6 @@ const TEXTOS: Record<ContextoError, TextosContexto> = {
   // solo llegan red, servidor y lo inesperado, que no deben desloguear.
   "comprobar-sesion": {
     generico: "No se ha podido comprobar tu sesión. Inténtalo de nuevo.",
-  },
-  registro: {
-    ignorarMotivo: true,
-    // Copia literal del texto uniforme del backend (RegistroGestoriaController.
-    // MOTIVO_REGISTRO_INVALIDO), el mismo para cualquier causa: email duplicado, contraseña débil,
-    // email mal formado o campo vacío. El backend lo manda como `{motivo}`, pero se ignora a
-    // propósito: el texto lo fija el frontend, sin oráculo de enumeración.
-    generico:
-      "No se ha podido completar el registro con esos datos. Revisa el email y la contraseña e inténtalo de nuevo.",
-    porStatus: { 503: TEXTO_FACTURACION_NO_CONFIGURADA },
   },
   suscripcion: {
     generico: "No se ha podido cargar el estado de la suscripción. Inténtalo de nuevo.",
@@ -267,20 +251,16 @@ const TEXTOS: Record<ContextoError, TextosContexto> = {
 
 /**
  * Texto que se enseña al usuario para un error. Orden (decisión 2 del plan A2):
- * 1. el `motivo` del backend, tal cual (salvo en contextos con `ignorarMotivo`: login y registro);
- * 2. un texto del contexto para ese status concreto;
- * 3. un texto del contexto para el tipo (401/403/404);
- * 4. red y servidor → los dos textos genéricos;
- * 5. 401/403/404 sin texto de contexto → uno genérico de ese tipo;
- * 6. el genérico del contexto o, sin contexto, uno global. Nunca devuelve una cadena vacía.
+ * 1. el `motivo` del backend, tal cual (salvo en contextos con `ignorarMotivo`: el login);
+ * 2. un texto del contexto para el tipo (401/403/404);
+ * 3. red y servidor → los dos textos genéricos;
+ * 4. 401/403/404 sin texto de contexto → uno genérico de ese tipo;
+ * 5. el genérico del contexto o, sin contexto, uno global. Nunca devuelve una cadena vacía.
  */
 export function mensajeDeError(error: unknown, contexto?: ContextoError): string {
   const errorApi = aErrorApi(error);
   const textos = contexto ? TEXTOS[contexto] : undefined;
   if (errorApi.motivo && !textos?.ignorarMotivo) return errorApi.motivo;
-
-  const porStatus = errorApi.status !== undefined ? textos?.porStatus?.[errorApi.status] : undefined;
-  if (porStatus) return porStatus;
 
   switch (errorApi.tipo) {
     case "red":

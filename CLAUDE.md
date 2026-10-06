@@ -18,7 +18,8 @@ approval step before anything is written to OVZ.net.
 - **Usuario** — an employee of a Gestoría. Has a login (JWT, via `POST /auth/login`). No role
   differentiation yet — any Usuario can operate anywhere within their own Gestoría. A Gestoría +
   its first Usuario are created either through the public self-registration
-  (`POST /gestorias/registro`, real customers, goes straight to Stripe Checkout) or by hand through
+  (`POST /gestorias/registro`, real customers, goes straight to Stripe Checkout — **closed by default
+  since C mínimo**, see that bullet) or by hand through
   the internal onboarding endpoint (`POST /internal/onboarding/gestoria`, pilots/support) — see
   Technical decisions and Architecture notes.
 - **Ganadero** — a Gestoría's client. **Never logs in.** Holds the OVZ.net credentials
@@ -269,7 +270,13 @@ approval step before anything is written to OVZ.net.
      Stripe Checkout, no webhook ever arrives and nothing local expires the row, so it stays in
      `TRIAL` — with full approval rights — indefinitely. Needs a design decision (e.g. don't grant
      `TRIAL` until `checkout.session.completed`, or a local trial-expiry check) before fixing.
-- **Public self-registration** (`registro` package): `POST /gestorias/registro`, public (no JWT,
+- **Public self-registration** (`registro` package) — **closed by default since C mínimo
+  (2026-10-06)**: `ganera.registro.abierto` is `false` in `application.yml` and only
+  `RegistroGestoriaEndToEndTest` opens it; while closed, `RegistroCerradoFilter` answers `404` with no
+  body before Spring Security, without reading the body or creating anything. The frontend
+  `RegistroPage`, its API and the "Regístrate" link were deleted (`/registro` → `/login`); sign-up
+  moves to the landing in Prompt C. The rest of this bullet describes the endpoint when open:
+  `POST /gestorias/registro`, public (no JWT,
   no shared secret), in parallel with `/internal/onboarding/gestoria` — the internal endpoint is
   unchanged and stays for support/manual cases; this is an additional entry point for real
   customers, not a replacement. Reuses the exact Gestoria→Usuario creation shape already proven by
@@ -697,7 +704,32 @@ approval step before anything is written to OVZ.net.
   - **Migration `V19`** (SQL): the `tramite` and `mensaje_campo` columns above; `mensaje_campo.cuerpo`
     lost its `@Lob` (`TEXT`).
   - **For production (Prompt C):** add `logServerErrorDetail=false` to the PostgreSQL URL, so a
-    constraint violation can't log `Failing row contains (…)` with message data.
+    constraint violation can't log `Failing row contains (…)` with message data. (Done in the
+    `clever` profile, see the next bullet.)
+- **C mínimo — demo deployed in the EU** (2026-10-06; plan
+  `docs/superpowers/plans/2026-10-06-promptC-minimo-demo-desplegada.md`, decisions D1–D8). Not the
+  final Prompt C infrastructure: a demo with **invented data only** for Antonio's partner.
+  - **Clever Cloud, Paris zone**: Java/Maven app XS (`APP_FOLDER=backend`, one instance, no
+    autoscaling — the extraction queue doesn't claim rows), PostgreSQL 16 add-on XXS Small Space,
+    frontend on the Static runtime (pico, `VITE_API_BASE_URL` baked in at build time). Every secret
+    lives only in Clever's environment variables; Claude never sees them. `.clever.json` is ignored.
+  - **`application-clever.yml`** (`SPRING_PROFILES_ACTIVE=clever`): datasource from the add-on's
+    `POSTGRESQL_ADDON_HOST/PORT/DB/USER/PASSWORD`, `?logServerErrorDetail=false`, explicit
+    PostgreSQL driver. Never define a `GANERA_REGISTRO_*` variable there (relaxed binding would open
+    the registration).
+  - **Tests against real PostgreSQL 16** (`com.ganera.core.postgres`, `io.zonky.test:embedded-postgres`
+    2.2.2 + binaries BOM 16.15.0, test scope only, no Docker; `PostgresEmbebido` shares one server per
+    JVM, UTF8, a fresh database per test): Flyway V1–V19 + `ddl-auto=validate`, V18 on existing rows,
+    the `clever` profile end to end, and `InstantTimestampPostgresTest`. **Finding (D8):** with
+    Hibernate 6.6 + pgjdbc 42.7.4 an `Instant` round-trips through a `TIMESTAMP` (without time zone)
+    column with no shift even with the JVM in `Europe/Madrid`, and the extraction queue and
+    retention cut exactly (also in October's repeated hour); that test is the regression guard for
+    pgjdbc/Hibernate upgrades. Only `DEFAULT now()` on rows inserted by hand depends on the session
+    zone (`DefaultNowPostgresTest`): hand-written SQL starts with `SET TIME ZONE 'UTC'` and sets
+    `created_at` explicitly; `TZ=UTC` on Clever and `ALTER DATABASE … SET timezone TO 'UTC'`.
+  - Demo data and scripts (two invented Gestorías, Excel, seed SQL for Adminer, onboarding and smoke
+    scripts that Antonio runs in his own terminal) live **outside the repo**, in
+    `C:\Users\Antonio\Desktop\ganera-demo\`.
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)
@@ -725,13 +757,14 @@ Package layout under `backend/src/main/java/com/ganera/core/`: `gestoria`, `gana
   `authenticationEntryPoint` so a missing/invalid JWT on a protected endpoint returns `401`, not
   Spring Security's default `403`.
 - Public paths: `/webhooks/**`, `/auth/login`, `/gestorias/registro` (public self-registration,
-  no JWT and no shared secret), `/internal/**` (only at the Spring Security layer —
+  no JWT and no shared secret; `404` while `ganera.registro.abierto` is `false`, the default), `/internal/**` (only at the Spring Security layer —
   `/internal/onboarding/gestoria` still gates itself on the `X-Internal-Secret` header inside
   `OnboardingController`), and `/error` (Prompt A1, decision 29: Spring's error dispatch runs
   without the JWT filter, so without this a malformed-body `400` turned into a `401` that logs the
   frontend out — see the "Prompt A1" bullet). Everything else requires a valid JWT.
 - **`OnboardingController` (`POST /internal/onboarding/gestoria`) is a temporary bootstrap, not the
-  final design.** Real customers now sign up through `POST /gestorias/registro`; this endpoint
+  final design.** Real customers were meant to sign up through `POST /gestorias/registro` (closed by
+  default since C mínimo; sign-up moves to the landing in Prompt C); this endpoint
   stays only for pilot Gestorías (created directly in `ACTIVA`, no Stripe) and support/manual
   cases, hit by hand and guarded by a shared secret (`ONBOARDING_SECRET`,
   constant-time compare, fails closed if unset) instead of a JWT — at the time it's called, no admin
@@ -904,7 +937,7 @@ reference for every frontend decision below.
   handler fails the test (`onUnhandledRequest: "error"`), and session state is cleared after each
   test. `npm test` ran **475 tests in 36 files** at the end of A2 (476 after the mini-prompt's
   Rechazar change; **506 in 36 files** after the frontend task before the pilot; **508 in 36** after billing left the app;
-  **513 in 37** after the brand colours and typography; **558 in 37** after Prompt B1). Layout can't be checked in
+  **513 in 37** after the brand colours and typography; **558 in 37** after Prompt B1; **557 in 36** after C mínimo removed the registration screen). Layout can't be checked in
   jsdom: for visual changes, also drive the real app in a browser (Playwright from npm installed
   **outside the repo**, as in Prompts 4 and A2).
 
@@ -926,7 +959,7 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw clean test` — runs the test suite (676 tests after Prompt B1); **always with `clean`**
+- `./mvnw clean test` — runs the test suite (690 tests after C mínimo, including the embedded-PostgreSQL ones); **always with `clean`**
   (see the VS Code/ECJ note under Architecture notes). A single test:
   `./mvnw clean test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
@@ -1226,6 +1259,18 @@ key completed it; unknown number → no reply, stored as `NUMERO_DESCONOCIDO`. T
 a misconfigured `TWILIO_AUTH_TOKEN` (an Anthropic key in it): the webhook failed closed with `403`,
 as designed. Tunnel closed and checked (Cloudflare 530/1033), H2 and every smoke file deleted. Next:
 B2 (see `ganera-prompts.md`).
+
+**C mínimo — demo deployed in the EU — code done, deployment pending** (2026-10-06), following
+`docs/superpowers/plans/2026-10-06-promptC-minimo-demo-desplegada.md` (D1–D8 closed with Antonio)
+with the Superpowers flow (T1 tests on real PostgreSQL, T2 `clever` profile + registration closed by
+default, T3 registration screen removed, T4 demo data and scripts outside the repo; one implementer +
+one independent reviewer each, all **Approved with minors**, minors fixed; reports in
+`.superpowers/sdd/c0-*`, not committed). **Backend and frontend in the same commit.** See the "C mínimo"
+bullet under Technical decisions. No migrations. Verified with `./mvnw clean test` **690/690**,
+`npm test` **557/557** (36 files), `npm run build` and `npm run lint` (known warnings only), and a
+dress rehearsal against embedded PostgreSQL 16 (onboarding, both Excel imports, the seed SQL from a
+non-UTC session, `smoke.sh` all PASS). Still to do: deploy on Clever (Antonio's account, console and
+secrets), seed, and the smoke against the deployed environment; then optionally the Twilio sandbox.
 
 **Still blocked: Prompts 3a and 3c (OVZ.net read sync and write-mode automation).** They need real
 OVZ.net credentials so the actual site structure and trámite catalog can be explored live (the
