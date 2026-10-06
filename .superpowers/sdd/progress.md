@@ -843,5 +843,11 @@ SET timezone TO 'UTC'` comprobado con `SHOW timezone`). Informes en `.superpower
   smoke **21/21**.
 - **Cierre previo al despliegue (sesión principal):** `npm test` 557/557, build y lint con los avisos de siempre;
   `./mvnw clean test` **690/690** (0 fallos, 0 saltados) en la sesión principal, sin `postgres.exe` al acabar. `CLAUDE.md`, `ganera-prompts.md` y este fichero al día.
-- **Sin commit**: pendiente de la aprobación de Antonio. Después: despliegue en Clever, siembra, smoke y, si se
-  quiere, el sandbox de Twilio.
+- **Commit `0d761f3`** con el visto bueno de Antonio (37 rutas añadidas una a una), push a `origin main` comprobado
+  con `git ls-remote`.
+- **Parado sin desplegar (2026-10-06, decisión de Antonio):** por ahora no se paga hosting. El despliegue en Clever
+  (cuenta, add-on PostgreSQL, las dos apps, variables, `ALTER DATABASE … SET timezone TO 'UTC'`, `clever deploy`,
+  siembra y smoke) queda pendiente, para hacerlo con los créditos gratuitos o antes del piloto. Pasos y variables
+  completos en `ganera-prompts.md`, "Despliegue en Clever Cloud — pendiente". Los datos y scripts de demo siguen en
+  `C:\Users\Antonio\Desktop\ganera-demo\` (fuera del repo).
+- **Dominio:** Ganera ya tiene `ganera.es` en IONOS, sin configurar todavía.

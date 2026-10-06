@@ -660,12 +660,88 @@ Plan con las decisiones cerradas: `docs/superpowers/plans/2026-10-03-tarea-front
      mensaje y la extracción con Haiku en segundo plano (SDK oficial, salida estructurada nativa,
      reintentos). También el acuse por TwiML, la retención y el aviso en la cola y en el modal.
    - **B2** (pendiente): lo de las notas de abajo que B1 dejó fuera.
-4. **C mínimo** (2026-10-06, en curso): demo desplegada en Clever Cloud (París) con PostgreSQL gestionado y
-   datos inventados, para el socio. Plan `docs/superpowers/plans/2026-10-06-promptC-minimo-demo-desplegada.md`.
-   Código cerrado (tests contra PostgreSQL real embebido, perfil `clever`, registro cerrado por defecto y
-   pantalla de registro fuera; backend 690/690, frontend 557/557); falta desplegar, sembrar y el smoke en
-   Clever, y opcionalmente el sandbox de Twilio. **No es la infraestructura definitiva del C.**
+4. **C mínimo** (2026-10-06, **código en `main`, despliegue pendiente**): demo en Clever Cloud (París) con
+   PostgreSQL gestionado y datos inventados, para el socio. Plan
+   `docs/superpowers/plans/2026-10-06-promptC-minimo-demo-desplegada.md`. El código está en `main` (`0d761f3`):
+   tests contra PostgreSQL real embebido, perfil `clever`, registro cerrado por defecto y pantalla de registro
+   fuera; backend 690/690, frontend 557/557. **Parado sin desplegar por decisión de Antonio (2026-10-06): por
+   ahora no se paga hosting.** El despliegue se hará cuando se decida (con los créditos gratuitos de Clever o
+   antes del piloto), con los pasos y variables de "Despliegue en Clever Cloud — pendiente" (más abajo). **No es
+   la infraestructura definitiva del C.**
 5. **Prompt C**, después la app de escritorio, el MVP a la gestoría piloto y, tras el piloto, OVZ 3a/3c.
+
+### Despliegue en Clever Cloud — pendiente
+
+Pasos y variables, para cuando se decida desplegar. Los secretos los genera Antonio en **su** terminal y los
+pega en la consola de Clever; nunca en el chat ni en el repo.
+
+**Generar los secretos** (Git Bash, cada uno copia al portapapeles sin mostrarlo; pegar antes de generar el
+siguiente):
+
+```bash
+openssl rand -base64 48 | tr -d '\n' | clip   # JWT_SECRET
+openssl rand -base64 32 | tr -d '\n' | clip   # ENCRYPTION_KEY (32 bytes)
+openssl rand -hex 32    | tr -d '\n' | clip   # ONBOARDING_SECRET (se borra tras sembrar)
+```
+
+**App de la API** (`ganera-demo-api`, Java + Maven, XS, 1 instancia, sin autoescalado, París):
+
+| Variable | Valor |
+|---|---|
+| `APP_FOLDER` | `backend` |
+| `CC_JAVA_VERSION` | `21` |
+| `CC_MAVEN_BUILD_GOAL` | `package -DskipTests` |
+| `CC_RUN_COMMAND` | `java -XX:MaxRAMPercentage=70 -jar target/ganera-core-0.1.0-SNAPSHOT.jar` |
+| `SPRING_PROFILES_ACTIVE` | `clever` |
+| `TZ` | `UTC` |
+| `FRONTEND_ORIGEN` | `https://<dominio-del-frontend>` (sin barra final) |
+| `JWT_SECRET`, `ENCRYPTION_KEY`, `ONBOARDING_SECRET` | los genera Antonio |
+| `POSTGRESQL_ADDON_*` | las pone Clever al enlazar el add-on |
+
+No definir: `GANERA_REGISTRO_*` (abriría el registro), ni `ANTHROPIC_API_KEY`, `TWILIO_*` o `STRIPE_*` (vacías:
+el webhook de Twilio responde `503` hasta el paso opcional de WhatsApp).
+
+**App del frontend** (`ganera-demo`, Static, pico, París; nada secreto, va en el JavaScript público):
+
+| Variable | Valor |
+|---|---|
+| `APP_FOLDER` | `frontend` |
+| `CC_NODE_VERSION` | `22` (Vite necesita Node ≥ 22.12) |
+| `CC_BUILD_COMMAND` | `npm ci && npm run build` |
+| `CC_WEBROOT` | `/dist` |
+| `VITE_API_BASE_URL` | `https://<dominio-de-la-api>` (sin barra final) |
+| `SERVER_FALLBACK_PAGE` | `./dist/index.html` (fallback de la SPA; comprobar al desplegar que `/tramites` recarga) |
+
+**Pasos:**
+1. Cuenta y organización en Clever Cloud, con método de pago (o los créditos gratuitos del alta).
+2. Add-on PostgreSQL **16**, plan **XXS Small Space**, zona **Paris** (`ganera-demo-db`).
+3. App de la API (Java + Maven, Paris, XS, mín. = máx. = 1, sin autoescalado), **enlazada** a `ganera-demo-db`; sin
+   desplegar todavía.
+4. App del frontend (Static, pico, Paris).
+5. Dominios: un subdominio de `cleverapps.io` para cada app (p. ej. `ganera-demo` y `ganera-demo-api`), o
+   subdominios de `ganera.es` (ver abajo).
+6. Variables de las dos tablas, ya con los dominios reales.
+7. Adminer (desde el panel del add-on): `ALTER DATABASE <nombre-de-la-bd> SET timezone TO 'UTC';`, reconectar y
+   comprobar que `SHOW timezone;` devuelve `UTC`.
+8. `npm i -g clever-tools`; `clever login` en la terminal de Antonio; desde la raíz del repo
+   `clever link <id-api> --alias api` y `clever link <id-front> --alias front` (`.clever.json` está ignorado).
+9. `clever deploy --alias api`, revisar en `clever logs --alias api` que Flyway aplica V1–V19 y que arranca; luego
+   `clever deploy --alias front`.
+10. Datos y smoke según `C:\Users\Antonio\Desktop\ganera-demo\LEEME.md` (fuera del repo): `alta-gestorias.sh` →
+    importar los dos Excel desde la UI → `seed-tramites.sql` en Adminer → borrar `ONBOARDING_SECRET` y reiniciar
+    (comprobar en la consola que ya no está) → `smoke.sh` en la terminal de Antonio (solo PASS/FAIL) → pasada en
+    navegador real a 1440 y 375 px.
+11. Opcional: sandbox de Twilio con una clave de Anthropic aparte, en su propio workspace con límite de gasto.
+12. Entre demos: parar las apps desde la consola o con `clever stop --alias api` / `--alias front` (la instancia no
+    factura parada; el add-on de PostgreSQL sí, unos 5 € al mes) y `clever restart` para volver a arrancarlas.
+
+Coste estimado (2026-10-06): ≈ 26 € al mes + IVA con las tres piezas encendidas todo el mes.
+
+**Dominio:** Ganera ya tiene `ganera.es` registrado en IONOS, **sin configurar todavía**. Al desplegar puede
+usarse (p. ej. `demo.ganera.es` y `api.demo.ganera.es` con CNAME hacia Clever, y `FRONTEND_ORIGEN` /
+`VITE_API_BASE_URL` con esos nombres) o dejarse para el Prompt C.
+
+---
 
 ## Prompt B — notas acumuladas (pendiente)
 
