@@ -4,6 +4,7 @@ import { RequireAuth } from "@/shared/auth/RequireAuth";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { ExplotacionesPage } from "@/features/explotaciones/ExplotacionesPage";
 import { TramitesPage } from "@/features/tramites/TramitesPage";
+import { FichaOvzPage } from "@/features/tramites/FichaOvzPage";
 import { GanaderosPage } from "@/features/ganaderos/GanaderosPage";
 import { GanaderoDetallePage } from "@/features/ganaderos/GanaderoDetallePage";
 
@@ -17,6 +18,9 @@ export const routes: RouteObject[] = [
   {
     element: <RequireAuth />,
     children: [
+      // Ficha para OVZ: ventana auxiliar junto a OVZ, sin la barra de la app (fuera de AppLayout).
+      // Sin sesión (abierta sin heredarla), RequireAuth manda al login y este vuelve aquí (D3).
+      { path: "/tramites/:id/ovz", element: <FichaOvzPage /> },
       {
         path: "/",
         element: <AppLayout />,

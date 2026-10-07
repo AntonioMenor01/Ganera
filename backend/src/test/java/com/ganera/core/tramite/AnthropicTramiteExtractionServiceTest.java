@@ -82,7 +82,7 @@ class AnthropicTramiteExtractionServiceTest {
 
     @Test
     void laPeticionLlevaElModeloFijadoYLaSalidaEstructuradaNativaConElEsquema() throws Exception {
-        responderMensaje("{\"tipoTramite\":\"ALTA\",\"crotales\":[\"1234\"]}", "end_turn");
+        responderMensaje("{\"tipoTramite\":\"ALTA_NACIMIENTO\",\"crotales\":[\"1234\"]}", "end_turn");
 
         servicio().extraer(MENSAJE);
 
@@ -107,7 +107,8 @@ class AnthropicTramiteExtractionServiceTest {
         assertThat(esquema.path("additionalProperties").asBoolean()).isFalse();
         assertThat(textos(esquema.path("required"))).containsExactlyInAnyOrder("tipoTramite", "crotales");
         assertThat(textos(esquema.path("properties").path("tipoTramite").path("enum")))
-                .containsExactlyInAnyOrder("ALTA", "BAJA", "CENSO", "MOVIMIENTO", "DEMORA", "NO_IDENTIFICADO");
+                .containsExactlyInAnyOrder("ALTA_NACIMIENTO", "BAJA_MUERTE", "SOLICITUD_MOVIMIENTO",
+                        "CONFIRMACION_MOVIMIENTO", "DECLARACION_CENSO", "DEMORA_CROTALIZACION", "NO_IDENTIFICADO");
         JsonNode crotales = esquema.path("properties").path("crotales");
         assertThat(crotales.path("type").asText()).isEqualTo("array");
         assertThat(crotales.path("items").path("type").asText()).isEqualTo("string");
@@ -140,11 +141,11 @@ class AnthropicTramiteExtractionServiceTest {
 
     @Test
     void unaRespuestaValidaSeConvierteEnElResultadoConLosCrotalesTalCualSeEscribieron() throws Exception {
-        responderMensaje("{\"tipoTramite\":\"ALTA\",\"crotales\":[\"1234\",\"ES-0100 0000 5678\"]}", "end_turn");
+        responderMensaje("{\"tipoTramite\":\"ALTA_NACIMIENTO\",\"crotales\":[\"1234\",\"ES-0100 0000 5678\"]}", "end_turn");
 
         TramiteExtraido extraido = servicio().extraer(MENSAJE);
 
-        assertThat(extraido.tipoTramite()).isEqualTo(TipoTramite.ALTA);
+        assertThat(extraido.tipoTramite()).isEqualTo(TipoTramite.ALTA_NACIMIENTO);
         assertThat(extraido.crotales()).containsExactly("1234", "ES-0100 0000 5678");
     }
 
@@ -169,7 +170,7 @@ class AnthropicTramiteExtractionServiceTest {
 
     @Test
     void unaRespuestaCortadaPorMaxTokensEsExtraccionFallida() throws Exception {
-        responderMensaje("{\"tipoTramite\":\"ALTA\",\"crotales\":[\"12", "max_tokens");
+        responderMensaje("{\"tipoTramite\":\"ALTA_NACIMIENTO\",\"crotales\":[\"12", "max_tokens");
 
         assertThatThrownBy(() -> servicio().extraer(MENSAJE))
                 .isInstanceOf(ExtraccionFallidaException.class)
@@ -179,7 +180,7 @@ class AnthropicTramiteExtractionServiceTest {
     /** Aunque el texto sea un JSON valido, una negativa nunca se usa como extraccion. */
     @Test
     void unaNegativaConUnJsonValidoTambienEsExtraccionFallida() throws Exception {
-        responderMensaje("{\"tipoTramite\":\"BAJA\",\"crotales\":[\"1234\"]}", "refusal");
+        responderMensaje("{\"tipoTramite\":\"BAJA_MUERTE\",\"crotales\":[\"1234\"]}", "refusal");
 
         assertThatThrownBy(() -> servicio().extraer(MENSAJE)).isInstanceOf(ExtraccionFallidaException.class);
     }
@@ -187,7 +188,7 @@ class AnthropicTramiteExtractionServiceTest {
     /** max_tokens puede cortar justo tras cerrar el JSON: tampoco se da por buena. */
     @Test
     void maxTokensConUnJsonCompletoTambienEsExtraccionFallida() throws Exception {
-        responderMensaje("{\"tipoTramite\":\"BAJA\",\"crotales\":[\"1234\"]}", "max_tokens");
+        responderMensaje("{\"tipoTramite\":\"BAJA_MUERTE\",\"crotales\":[\"1234\"]}", "max_tokens");
 
         assertThatThrownBy(() -> servicio().extraer(MENSAJE)).isInstanceOf(ExtraccionFallidaException.class);
     }
@@ -239,14 +240,14 @@ class AnthropicTramiteExtractionServiceTest {
 
     @Test
     void unJsonSinLosCamposObligatoriosEsExtraccionFallida() throws Exception {
-        responderMensaje("{\"tipoTramite\":\"ALTA\"}", "end_turn");
+        responderMensaje("{\"tipoTramite\":\"ALTA_NACIMIENTO\"}", "end_turn");
 
         sinDatosEnLaCadena(fallo(servicio()), "1234");
     }
 
     @Test
     void unCrotalNuloEsExtraccionFallida() throws Exception {
-        responderMensaje("{\"tipoTramite\":\"ALTA\",\"crotales\":[\"9876\",null]}", "end_turn");
+        responderMensaje("{\"tipoTramite\":\"ALTA_NACIMIENTO\",\"crotales\":[\"9876\",null]}", "end_turn");
 
         sinDatosEnLaCadena(fallo(servicio()), "9876", "1234");
     }
@@ -271,15 +272,57 @@ class AnthropicTramiteExtractionServiceTest {
         assertThat(extraidos).containsExactlyInAnyOrderElementsOf(esperados);
     }
 
+    /**
+     * Cada tipo de dominio esta descrito en el prompt (si B2 anade un tipo y no lo explica, la IA
+     * no sabra cuando usarlo) y el prompt ya no nombra ningun tipo viejo de antes de la V20.
+     */
+    @Test
+    void elPromptDescribeCadaTipoDeTramiteYNingunoViejo() {
+        for (TipoTramite tipo : TipoTramite.values()) {
+            assertThat(AnthropicTramiteExtractionService.PROMPT_SISTEMA).contains("  " + tipo.name() + ": ");
+        }
+        assertThat(AnthropicTramiteExtractionService.PROMPT_SISTEMA).contains("NO_IDENTIFICADO");
+        assertThat(AnthropicTramiteExtractionService.PROMPT_SISTEMA)
+                .doesNotContainPattern("\\b(ALTA|BAJA|CENSO|MOVIMIENTO|DEMORA):");
+    }
+
+    /** El bloque de tipos del prompt es exactamente el que se decidio en la ficha OVZ (T1). */
+    @Test
+    void elPromptLlevaLasDescripcionesDeLosTiposDeOvz() {
+        assertThat(AnthropicTramiteExtractionService.PROMPT_SISTEMA).contains("""
+                - Tipos:
+                  ALTA_NACIMIENTO: nacimiento de un ternero en la explotación.
+                  BAJA_MUERTE: muerte del animal en la propia explotación, incluido el sacrificio allí mismo.
+                  SOLICITUD_MOVIMIENTO: salida de animales hacia otra explotación: venta, envío a matadero,
+                  a cebadero, a una feria o a pastos.
+                  CONFIRMACION_MOVIMIENTO: llegada a la explotación de animales que vienen de otra (compra o
+                  entrada).
+                  DECLARACION_CENSO: declaración del censo de la explotación.
+                  DEMORA_CROTALIZACION: poner los crotales a animales dados de alta con demora en la
+                  crotalización.
+                  Si el tipo no está claro, o el mensaje no pide ningún trámite, usa NO_IDENTIFICADO.
+                """);
+    }
+
+    /** Cada tipo que puede contestar la IA llega al dominio con el mismo nombre. */
+    @Test
+    void cadaTipoQueContestaLaIaSeConvierteEnElTipoDeDominio() throws Exception {
+        for (TipoTramite tipo : TipoTramite.values()) {
+            responderMensaje("{\"tipoTramite\":\"" + tipo.name() + "\",\"crotales\":[]}", "end_turn");
+
+            assertThat(servicio().extraer(MENSAJE).tipoTramite()).isEqualTo(tipo);
+        }
+    }
+
     @Test
     void cerrarSinClienteCreadoNoFallaYTrasCerrarSePuedeVolverAExtraer() throws Exception {
         AnthropicTramiteExtractionService servicio = servicio();
         servicio.cerrar();
 
-        responderMensaje("{\"tipoTramite\":\"BAJA\",\"crotales\":[]}", "end_turn");
-        assertThat(servicio.extraer(MENSAJE).tipoTramite()).isEqualTo(TipoTramite.BAJA);
+        responderMensaje("{\"tipoTramite\":\"BAJA_MUERTE\",\"crotales\":[]}", "end_turn");
+        assertThat(servicio.extraer(MENSAJE).tipoTramite()).isEqualTo(TipoTramite.BAJA_MUERTE);
         servicio.cerrar();
-        assertThat(servicio.extraer(MENSAJE).tipoTramite()).isEqualTo(TipoTramite.BAJA);
+        assertThat(servicio.extraer(MENSAJE).tipoTramite()).isEqualTo(TipoTramite.BAJA_MUERTE);
         servicio.cerrar();
         assertThat(cuerposRecibidos).hasSize(2);
     }

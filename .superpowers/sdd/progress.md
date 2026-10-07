@@ -594,6 +594,13 @@ implementador + un revisor independiente por tarea; informes en `.superpowers/sd
   `scrollIntoView` y comprobar `scrollY`): **501**. Approved with minors; minors 1–3
   (`ResizeObserver`, aserciones de clases, restauración del espía) resueltos por el implementador:
   **505**.
+- **Mutaciones de la contraseña de OVZ (2026-10-07, pedidas por Antonio antes del commit, desde la sesión principal):** A, la
+  contraseña en claro (getter tras el converter) en un campo de nombre neutro de `TramiteDetalleResponse` → falla
+  `niElGetNiElPatch…:166`; B, el texto cifrado guardado (mapeo de solo lectura de la columna sin converter en `Ganadero`) en ese
+  campo → falla `…:168`. Copias en el scratchpad, restaurado con `cp` + `cmp` (idénticos); `./mvnw clean test` **706/706** después.
+  El clasificador no bloqueó esta vez.
+- **Aceptado por Antonio (2026-10-07):** el check de fila copiada en tinta (no gris), y que una ficha ya abierta conserve la
+  sesión anterior si en la ventana principal se entra con otro usuario: da «Trámite no encontrado», sin filtrar datos.
 - **T6 (cierre):** `npm test` **505/505** (36 ficheros); `npm run build` en verde (aviso del chunk);
   `npm run lint` con los 3 avisos de siempre; `./mvnw clean test` **472/472**. Smoke en navegador real
   (Playwright en el scratchpad, H2 en fichero, dos gestorías, B `SUSPENDIDA`), A–F OK
@@ -851,3 +858,66 @@ SET timezone TO 'UTC'` comprobado con `SHOW timezone`). Informes en `.superpower
   completos en `ganera-prompts.md`, "Despliegue en Clever Cloud — pendiente". Los datos y scripts de demo siguen en
   `C:\Users\Antonio\Desktop\ganera-demo\` (fuera del repo).
 - **Dominio:** Ganera ya tiene `ganera.es` en IONOS, sin configurar todavía.
+
+## 2026-10-06 — Ficha lista para OVZ (escalón 1 de OVZ)
+
+Análisis del manual de OVZNET (Junta de Extremadura, rev. 13.01/13.02; el PDF fuera del repo, `docs/referencias/*.pdf`
+en `.gitignore`) en `docs/referencias/ovz-tramites-bovino.md`. Plan: `docs/superpowers/plans/2026-10-06-ficha-ovz.md`.
+Decisiones de Antonio:
+- D1 sí, con dos condiciones: `V20`, prompt de la IA y frontend en el mismo commit; `MOVIMIENTO` →
+  `SOLICITUD_MOVIMIENTO`, con test de migración también en PostgreSQL embebido.
+- D2, D4, D6 y D7, como se recomiendan.
+- D3 sí, comprobando la sesión en la ventana nueva: `window.open` sin `noopener` y `opener = null` al montar;
+  red de seguridad con el login de vuelta a la ficha. Se prueba en un navegador real en T5.
+- D5 ("Marcar como registrado en OVZ"), fuera: es la siguiente tarea antes del piloto, anotada en `ganera-prompts.md`.
+- El guion de la "sesión de mapeo de OVZ" (listas de valores y preferencias de la gestoría) queda en
+  `ganera-prompts.md`.
+Informes en `.superpowers/sdd/fo-*`.
+
+- **T1** (tipos de OVZ, `V20` + IA + frontend): backend 690 → **697**, frontend 557 → **563**. Approved with minors.
+  M1 (el test de H2 aceptaba cualquier `SQLException` antes de la V20; ahora exige SQLState `22001`) corregido desde la
+  sesión principal; tests de la V20 en verde. M2 (las etiquetas largas se recortan en el `Select`, por el `nowrap`) se
+  mira en el smoke de T6. Notas: finales de línea LF en el árbol (no ensucian el diff); `ganera-demo/seed-tramites.sql`
+  sigue con `'BAJA'`/`'MOVIMIENTO'`; backend y frontend se despliegan juntos.
+- **T2** (titular en el detalle: `ganaderoNombre`/`ganaderoNif` en `TramiteDetalleResponse`): backend 697 → **702**.
+  Approved with minors. M1: la regresión con `ovzPasswordCifrada` que pedía el brief del revisor **no se ejecutó** (la
+  bloqueó el clasificador de permisos); la del implementador con `ovzUsuario` sí (3 tests en rojo); queda para Antonio.
+  M2: el detalle carga el `Ganadero` entero y descifra la contraseña de OVZ en cada GET/PATCH (un valor corrupto o una
+  rotación de `ENCRYPTION_KEY` daría `500`; ya pasa igual en `/ganaderos`); pendiente de decisión de Antonio
+  (aceptarlo o proyección JPQL con `gestoriaId`). N1/N2 opcionales.
+  **Decisión de Antonio (2026-10-07):** M2 se acepta; queda pendiente del resto del bloque C, antes del piloto: «descifrar la contraseña de OVZ solo bajo demanda, no al cargar el ganadero; hoy una cifra corrupta o un cambio de ENCRYPTION_KEY da 500 en el detalle y en /ganaderos»
+  (anotado en `ganera-prompts.md`, notas del Prompt C). La prueba de la contraseña de OVZ, autorizada como test automático con
+  contraseña y clave inventadas (sin tocar `ENCRYPTION_KEY`, `.env` ni secretos reales).
+- **T3** (catálogo puro `fichaOvz.ts`, `modoFicha` de D4, `ganaderoNombre`/`ganaderoNif` en `TramiteDetalle`): frontend
+  563 → 645 (37 ficheros). Approved with minors; corregidos por el implementador: M1 (`CampoFicha.escrito` con el
+  `crotalIndicado`, nunca se copia), M2 (bloque "Crotales del trámite" aparte en el alta, no obligatorio), M3
+  (`satisfies` sobre `TipoTramite`, `buscar` exportado de `etiquetas.ts`), N1 (avisos de 15 días MER, pestañas
+  Internos/Externos, 13 días), N3 y N4. **668** (37 ficheros), build y lint con los avisos de siempre.
+- **T2b** (la contraseña de OVZ nunca sale en el detalle; autorizada por Antonio el 2026-10-07):
+  `CredencialesOvzDetalleEndToEndTest`, con contraseña y clave inventadas en el propio test. Backend 702 → **706**. Pasan las 4
+  comprobaciones: cifrado real en BD ≠ claro; GET y PATCH sin claro, cifrado, `ovzUsuario` ni claves, ni en el cuerpo ni en los logs
+  capturados; `404` cruzado; cifrado corrupto → `500` con el cuerpo por defecto de Boot y sin el texto cifrado en cuerpo ni logs
+  (caracteriza el M2). **Las dos pruebas de regresión (campo `ovzPasswordCifrada` en la respuesta y `log.warn` del cifrado) NO se
+  ejecutaron: las bloqueó el clasificador de permisos** ("Credential Leakage"), pese a la autorización de Antonio; queda en sus manos.
+- **T4** (`shared/ui/BotonCopiar`): cortado por el límite de uso y retomado el 2026-10-07 en el orden de Antonio (mutación con
+  componente vacío → 14 tests en rojo; pasa; regresión del temporizador; suite). Approved with minors; corregidos I1 (tests de
+  desmontar con la copia pendiente y de vaciar la región), M1 (fuera el shim `globalThis.jest`: `act` + `fireEvent`), M2 (se vuelve a
+  anunciar con `flushSync` + siguiente tick), M3 (`Input` de `components/ui`), aviso "Ctrl+C o ⌘C" y `mockRestore` sobrantes; cada
+  corrección con su mutación. Frontend **685** (38 ficheros). Para la T5: WCAG 2.5.3 con "Copiado" visible y una región compartida
+  o una por botón.
+- **T5** (página `/tramites/:id/ovz`, desde la sesión principal con Impeccable; shape aprobado por Antonio: sin barra, marca de
+  filas copiadas, mensaje abierto y plegable). TDD: `BotonCopiar` siempre dice "Copiar" (WCAG 2.5.3) + `onCopiado`; `abrirFichaOvz`
+  (`window.open` sin `noopener`, nombre fijo; mutación con `noopener` → rojo); `FichaOvzPage` (mutación vista previa copiable → rojo);
+  ruta fuera de `AppLayout`; botones en el modal. El test de honestidad del modal pasa de "sin OVZ" a "la única mención es el
+  botón y nada dice enviado/ejecutado/registrado…". Revisión independiente: Approved with minors; corregidos M1 (asterisco en
+  tinta), M2 (vista previa desactivada con cambios sin guardar), M3/M4 (tests de varios bloques en vista previa, estado
+  desconocido y título restaurado), N5 ("(se abre en otra ventana)" con `aria-label`), N6 (texto de "no disponible") y N7 (regex).
+  Anotados para Antonio: N1 (cabecera COOP en el Prompt C), N2 (la ventana reutilizada conserva el token si en la principal se
+  entra con otro usuario: no filtra, da 404), N3 (el check de fila copiada es de tinta, el shape decía gris). Frontend **720** (40).
+- **T6 (cierre):** smoke en navegador real (H2 en fichero, dos gestorías inventadas sembradas por la API real, Playwright en el
+  scratchpad): **36/36 PASS** en dos pasadas (sesión heredada en Chromium y Firefox, copiar y pegar de verdad, todos los tipos y
+  estados, `404` cruzado, sin scroll lateral a 375/420/1440, login y vuelta desde una pestaña sin opener). `./mvnw clean test`
+  **706/706** sin `postgres.exe` colgado; `npm test` **720/720**, build y lint con los avisos de siempre. Servidores parados por PID;
+  H2 y secreto del smoke borrados. `CLAUDE.md`, `DESIGN.md`, `ganera-prompts.md` y el plan al día. **Pendiente:** el commit (con la
+  aprobación de Antonio) y regenerar `ganera-demo/seed-tramites.sql` con los tipos nuevos, que pasa a ser un paso de la tarea de despliegue
+  (anotado en `ganera-prompts.md`, "Despliegue en Clever Cloud — pendiente").

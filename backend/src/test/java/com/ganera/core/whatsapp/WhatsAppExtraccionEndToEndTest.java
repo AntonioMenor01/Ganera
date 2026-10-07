@@ -158,7 +158,7 @@ class WhatsAppExtraccionEndToEndTest {
     @Test
     void elMensajeDeAAcabaEnRevisionConTipoYCrotalEnInventarioSoloParaA(CapturedOutput salida) throws IOException {
         // "12" no es un crotal (3 digitos o menos): se descarta y se cuenta (D5).
-        ia.devolver(TipoTramite.BAJA, "1234", "12");
+        ia.devolver(TipoTramite.BAJA_MUERTE, "1234", "12");
         assertThat(enviar(parametros("SM-ext-a", TEL_A, TEXTO)).getStatusCode().value()).isEqualTo(200);
 
         extraccionTramiteService.procesarPendientes();
@@ -169,7 +169,7 @@ class WhatsAppExtraccionEndToEndTest {
         JsonNode tramite = listado.get(0);
         long tramiteId = tramite.get("id").asLong();
         assertThat(tramite.get("estado").asText()).isEqualTo("PENDIENTE_REVISION");
-        assertThat(tramite.get("tipoTramite").asText()).isEqualTo("BAJA");
+        assertThat(tramite.get("tipoTramite").asText()).isEqualTo("BAJA_MUERTE");
         assertThat(tramite.get("crotales")).hasSize(1);
         assertThat(tramite.get("crotales").get(0).get("crotal").asText()).isEqualTo("ES010000001234");
         assertThat(tramite.get("crotales").get(0).get("resolucion").asText()).isEqualTo("EN_INVENTARIO");
@@ -262,7 +262,7 @@ class WhatsAppExtraccionEndToEndTest {
         suscripcion.setEstado(EstadoSuscripcion.ACTIVA);
         suscripcionRepository.save(suscripcion);
         // "12" se descarta (D5): crotalesDescartados = 1 en los dos tramites.
-        ia.devolver(TipoTramite.BAJA, "1234", "12");
+        ia.devolver(TipoTramite.BAJA_MUERTE, "1234", "12");
         enviar(parametros("SM-ext-aprobar", TEL_A, TEXTO));
         enviar(parametros("SM-ext-rechazar", TEL_A, TEXTO));
         extraccionTramiteService.procesarPendientes();
@@ -272,7 +272,7 @@ class WhatsAppExtraccionEndToEndTest {
         long rechazable = listado.get(1).get("id").asLong();
 
         ResponseEntity<String> patch = enviarJson(HttpMethod.PATCH, "/tramites/" + aprobable,
-                "{\"version\":" + detalle(aprobable, tokenA).get("version").asLong() + ",\"tipoTramite\":\"BAJA\"}");
+                "{\"version\":" + detalle(aprobable, tokenA).get("version").asLong() + ",\"tipoTramite\":\"BAJA_MUERTE\"}");
         assertThat(patch.getStatusCode().value()).isEqualTo(200);
         tieneLosTresCampos(objectMapper.readTree(patch.getBody()));
 
@@ -326,7 +326,7 @@ class WhatsAppExtraccionEndToEndTest {
 
     @Test
     void pasadoElPlazoElDetalleDevuelveElTextoEliminadoYElTramiteSigueIgual() throws IOException {
-        ia.devolver(TipoTramite.BAJA, "1234");
+        ia.devolver(TipoTramite.BAJA_MUERTE, "1234");
         enviar(parametros("SM-ext-retencion", TEL_A, TEXTO));
         extraccionTramiteService.procesarPendientes();
         long tramiteId = contenido(get("/tramites", tokenA)).get(0).get("id").asLong();
@@ -342,7 +342,7 @@ class WhatsAppExtraccionEndToEndTest {
         JsonNode despues = detalle(tramiteId, tokenA);
         assertThat(despues.get("mensajeOriginal").asText()).isEqualTo(RetencionMensajesService.TEXTO_ELIMINADO);
         assertThat(despues.get("version").asLong()).isEqualTo(antes.get("version").asLong());
-        assertThat(despues.get("tipoTramite").asText()).isEqualTo("BAJA");
+        assertThat(despues.get("tipoTramite").asText()).isEqualTo("BAJA_MUERTE");
         assertThat(despues.get("estadoExtraccion").asText()).isEqualTo("COMPLETADA");
         assertThat(despues.get("crotales")).hasSize(1);
         assertThat(get("/tramites/" + tramiteId, tokenB).getStatusCode().value()).isEqualTo(404);

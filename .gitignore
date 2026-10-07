@@ -12,3 +12,5 @@ dist/
 .claude/skills/impeccable/
 # Lo crea `clever link` con los ids de las apps de Clever Cloud (Prompt C)
 .clever.json
+# Manuales de terceros (p. ej. el de OVZNET): binarios pesados y ajenos; el análisis va en docs/referencias/*.md
+docs/referencias/*.pdf

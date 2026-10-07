@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
-import { CircleAlertIcon, XIcon } from "lucide-react";
+import { CircleAlertIcon, ExternalLinkIcon, XIcon } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { BadgeEstadoTramite } from "./BadgesTramite";
 import { AvisosRevision } from "./AvisosRevision";
 import { CampoExplotacion, TextoExplotacion } from "./CampoExplotacion";
 import { BadgeSinGuardar, CrotalesSoloLectura, ListaCrotalesEditable } from "./ListaCrotales";
+import { abrirFichaOvz } from "./abrirFichaOvz";
 import { useRevisionTramite, type AccionRevision, type RevisionTramite } from "./useRevisionTramite";
 
 /**
@@ -233,8 +234,23 @@ export function TramiteReviewDialog({
                 idAvisoSucio={ids.avisoSucio}
                 refs={{ rechazar: rechazarRef, guardar: guardarRef, aprobar: aprobarRef }}
                 onRechazar={() => setConfirmacion("rechazar")}
+                onVistaPrevia={() => detalle && abrirFichaOvz(detalle.id)}
               />
             )}
+          </div>
+        )}
+
+        {/* Ficha OVZ (T5): un trámite aprobado se pasa a OVZ a mano desde su ficha, en otra ventana. */}
+        {!editable && carga.estado === "listo" && detalle?.estado === "APROBADO" && (
+          <div className="flex justify-end border-t bg-muted/50 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <Button
+              variant="outline"
+              aria-label="Abrir ficha para OVZ (se abre en otra ventana)"
+              onClick={() => abrirFichaOvz(detalle.id)}
+            >
+              Abrir ficha para OVZ
+              <ExternalLinkIcon aria-hidden />
+            </Button>
           </div>
         )}
 
@@ -502,11 +518,14 @@ function BarraAcciones({
   idAvisoSucio,
   refs,
   onRechazar,
+  onVistaPrevia,
 }: {
   revision: RevisionTramite;
   idAvisoSucio: string;
   refs: RefsAcciones;
   onRechazar: () => void;
+  /** Ficha OVZ (T5, D4): la ficha del trámite pendiente, sin botones de copiar. */
+  onVistaPrevia: () => void;
 }) {
   const { enviando, avisoCambiosSinGuardar } = revision;
   const descritoPor = avisoCambiosSinGuardar ? idAvisoSucio : undefined;
@@ -532,6 +551,17 @@ function BarraAcciones({
           aria-describedby={descritoPor}
         >
           {enviando === "rechazar" ? TEXTO_EN_CURSO.rechazar : "Rechazar"}
+        </Button>
+        {/* Con cambios sin guardar se desactiva, como Aprobar: la ficha enseña lo guardado. */}
+        <Button
+          variant="ghost"
+          onClick={onVistaPrevia}
+          disabled={revision.sucio || enviando !== null}
+          aria-describedby={descritoPor}
+          aria-label="Vista previa de la ficha (se abre en otra ventana)"
+        >
+          Vista previa de la ficha
+          <ExternalLinkIcon aria-hidden />
         </Button>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Button

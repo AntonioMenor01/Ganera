@@ -123,7 +123,7 @@ class ExtraccionTramiteServiceTest {
         animal(gestoriaA, explotacionA, "ES010000001234");
         Tramite tramite = tramitePendiente(gestoriaA, contactoA, explotacionA, TEXTO);
         long versionInicial = tramite.getVersion();
-        ia.devolver(TipoTramite.BAJA, "1234", "ES 9999 9999 9999", "12", "ES*1");
+        ia.devolver(TipoTramite.BAJA_MUERTE, "1234", "ES 9999 9999 9999", "12", "ES*1");
 
         servicio.procesarPendientes();
 
@@ -132,7 +132,7 @@ class ExtraccionTramiteServiceTest {
         Tramite despues = recargar(tramite);
         assertThat(despues.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
         assertThat(despues.getEstadoExtraccion()).isEqualTo(EstadoExtraccion.COMPLETADA);
-        assertThat(despues.getTipoTramite()).isEqualTo(TipoTramite.BAJA);
+        assertThat(despues.getTipoTramite()).isEqualTo(TipoTramite.BAJA_MUERTE);
         assertThat(despues.getCrotalesDescartados()).isEqualTo(2);
         assertThat(despues.getProximoIntentoExtraccion()).isNull();
         assertThat(despues.getIntentosExtraccion()).isZero();
@@ -167,7 +167,7 @@ class ExtraccionTramiteServiceTest {
         animal(gestoriaA, explotacionA, "ES010000005678");
         Tramite tramite = tramitePendiente(gestoriaA, contactoA, explotacionA, TEXTO);
         long versionInicial = tramite.getVersion();
-        ia.devolver(TipoTramite.BAJA, "001234", "5678", "ES010000001234", "1234");
+        ia.devolver(TipoTramite.BAJA_MUERTE, "001234", "5678", "ES010000001234", "1234");
 
         servicio.procesarPendientes();
 
@@ -182,7 +182,7 @@ class ExtraccionTramiteServiceTest {
     @Test
     void sinExplotacionLosCrotalesQuedanSinExplotacion() {
         Tramite tramite = tramitePendiente(gestoriaA, contactoA, null, TEXTO);
-        ia.devolver(TipoTramite.ALTA, "1234");
+        ia.devolver(TipoTramite.ALTA_NACIMIENTO, "1234");
 
         servicio.procesarPendientes();
 
@@ -247,14 +247,14 @@ class ExtraccionTramiteServiceTest {
         long versionTrasFallo = recargar(tramite).getVersion();
 
         reloj.avanzar(Duration.ofMinutes(1));
-        ia.devolver(TipoTramite.BAJA, "1234");
+        ia.devolver(TipoTramite.BAJA_MUERTE, "1234");
         servicio.procesarPendientes();
 
         Tramite despues = recargar(tramite);
         assertThat(ia.llamadas()).isEqualTo(2);
         assertThat(despues.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
         assertThat(despues.getEstadoExtraccion()).isEqualTo(EstadoExtraccion.COMPLETADA);
-        assertThat(despues.getTipoTramite()).isEqualTo(TipoTramite.BAJA);
+        assertThat(despues.getTipoTramite()).isEqualTo(TipoTramite.BAJA_MUERTE);
         assertThat(despues.getProximoIntentoExtraccion()).isNull();
         assertThat(despues.getIntentosExtraccion()).isEqualTo(1);
         assertThat(despues.getVersion()).isEqualTo(versionTrasFallo + 1);
@@ -291,7 +291,7 @@ class ExtraccionTramiteServiceTest {
         servicio.procesarPendientes();
 
         TramiteDetalleResponse respuesta = revisionService.actualizar(gestoriaA.getId(), tramite.getId(), versionVista,
-                null, TipoTramite.ALTA, null);
+                null, TipoTramite.ALTA_NACIMIENTO, null);
 
         assertThat(respuesta.version()).isEqualTo(versionVista + 1);
     }
@@ -332,17 +332,17 @@ class ExtraccionTramiteServiceTest {
         ia.lanzar(new ExtraccionFallidaException("caida"));
         servicio.procesarPendientes();
         long version = recargar(tramite).getVersion();
-        revisionService.actualizar(gestoriaA.getId(), tramite.getId(), version, null, TipoTramite.ALTA, List.of("9876"));
+        revisionService.actualizar(gestoriaA.getId(), tramite.getId(), version, null, TipoTramite.ALTA_NACIMIENTO, List.of("9876"));
         long versionEditada = recargar(tramite).getVersion();
 
         reloj.avanzar(Duration.ofMinutes(1));
-        ia.devolver(TipoTramite.BAJA, "1234");
+        ia.devolver(TipoTramite.BAJA_MUERTE, "1234");
         servicio.procesarPendientes();
 
         Tramite despues = recargar(tramite);
         assertThat(ia.llamadas()).isEqualTo(1);
         assertThat(despues.getProximoIntentoExtraccion()).isNull();
-        assertThat(despues.getTipoTramite()).isEqualTo(TipoTramite.ALTA);
+        assertThat(despues.getTipoTramite()).isEqualTo(TipoTramite.ALTA_NACIMIENTO);
         assertThat(despues.getVersion()).isEqualTo(versionEditada);
         assertThat(crotales(despues)).extracting(TramiteCrotal::getCrotalIndicado).containsExactly("9876");
     }
@@ -365,10 +365,10 @@ class ExtraccionTramiteServiceTest {
         reloj.avanzar(Duration.ofMinutes(1));
         ia.responder(texto -> {
             empleado(() -> {
-                revisionService.actualizar(gestoriaA.getId(), tramite.getId(), versionTrasFallo, null, TipoTramite.ALTA, null);
+                revisionService.actualizar(gestoriaA.getId(), tramite.getId(), versionTrasFallo, null, TipoTramite.ALTA_NACIMIENTO, null);
                 revisionService.aprobar(gestoriaA.getId(), tramite.getId(), versionTrasFallo + 1);
             });
-            return new TramiteExtraido(TipoTramite.BAJA, List.of("1234"));
+            return new TramiteExtraido(TipoTramite.BAJA_MUERTE, List.of("1234"));
         });
 
         servicio.procesarPendientes();
@@ -376,7 +376,7 @@ class ExtraccionTramiteServiceTest {
         assertThat(esperasDelEmpleadoAgotadas).isZero();
         Tramite despues = recargar(tramite);
         assertThat(despues.getEstado()).isEqualTo(EstadoTramite.APROBADO);
-        assertThat(despues.getTipoTramite()).isEqualTo(TipoTramite.ALTA);
+        assertThat(despues.getTipoTramite()).isEqualTo(TipoTramite.ALTA_NACIMIENTO);
         assertThat(despues.getEstadoExtraccion()).isEqualTo(EstadoExtraccion.FALLIDA);
         assertThat(despues.getProximoIntentoExtraccion()).isNull();
         assertThat(crotales(despues)).isEmpty();
@@ -392,7 +392,7 @@ class ExtraccionTramiteServiceTest {
         reloj.avanzar(Duration.ofMinutes(1));
         ia.responder(texto -> {
             empleado(() -> revisionService.rechazar(gestoriaA.getId(), tramite.getId(), version));
-            return new TramiteExtraido(TipoTramite.BAJA, List.of("1234"));
+            return new TramiteExtraido(TipoTramite.BAJA_MUERTE, List.of("1234"));
         });
 
         servicio.procesarPendientes();
@@ -421,8 +421,8 @@ class ExtraccionTramiteServiceTest {
         reloj.avanzar(Duration.ofMinutes(1));
         ia.responder(texto -> {
             empleado(() -> revisionService.actualizar(gestoriaA.getId(), tramite.getId(), versionVista, null,
-                    TipoTramite.CENSO, List.of("9876")));
-            return new TramiteExtraido(TipoTramite.BAJA, List.of("1234"));
+                    TipoTramite.DECLARACION_CENSO, List.of("9876")));
+            return new TramiteExtraido(TipoTramite.BAJA_MUERTE, List.of("1234"));
         });
 
         servicio.procesarPendientes();
@@ -432,7 +432,7 @@ class ExtraccionTramiteServiceTest {
         Tramite despues = recargar(tramite);
         assertThat(despues.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
         assertThat(despues.getEstadoExtraccion()).isEqualTo(EstadoExtraccion.FALLIDA);
-        assertThat(despues.getTipoTramite()).isEqualTo(TipoTramite.CENSO);
+        assertThat(despues.getTipoTramite()).isEqualTo(TipoTramite.DECLARACION_CENSO);
         assertThat(crotales(despues)).extracting(TramiteCrotal::getCrotalIndicado).containsExactly("9876");
         assertThat(despues.getVersion()).isEqualTo(versionVista + 1);
         assertThat(despues.getProximoIntentoExtraccion()).isNull();
@@ -448,7 +448,7 @@ class ExtraccionTramiteServiceTest {
         reloj.avanzar(Duration.ofMinutes(1));
         ia.responder(texto -> {
             empleado(() -> revisionService.actualizar(gestoriaA.getId(), tramite.getId(), version, null,
-                    TipoTramite.CENSO, null));
+                    TipoTramite.DECLARACION_CENSO, null));
             throw new ExtraccionFallidaException("caida");
         });
 
@@ -457,7 +457,7 @@ class ExtraccionTramiteServiceTest {
         assertThat(esperasDelEmpleadoAgotadas).isZero();
         Tramite despues = recargar(tramite);
         assertThat(despues.getVersion()).isEqualTo(version + 1);
-        assertThat(despues.getTipoTramite()).isEqualTo(TipoTramite.CENSO);
+        assertThat(despues.getTipoTramite()).isEqualTo(TipoTramite.DECLARACION_CENSO);
         assertThat(despues.getProximoIntentoExtraccion()).isNull();
         assertThat(despues.getEstadoExtraccion()).isEqualTo(EstadoExtraccion.FALLIDA);
     }
@@ -510,7 +510,7 @@ class ExtraccionTramiteServiceTest {
         Tramite roto = tramitePendiente(gestoriaA, contactoA, explotacionB, "roto 1234");
         Tramite bueno = tramitePendiente(gestoriaA, contactoA, explotacionA, TEXTO);
         reloj.avanzar(Duration.ofSeconds(1));
-        ia.devolver(TipoTramite.BAJA, "1234");
+        ia.devolver(TipoTramite.BAJA_MUERTE, "1234");
 
         servicio.procesarPendientes();
 
@@ -562,7 +562,7 @@ class ExtraccionTramiteServiceTest {
         Animal vacaB = animal(gestoriaB, explotacionB, "ES020000001234");
         Tramite tramiteA = tramitePendiente(gestoriaA, contactoA, explotacionA, TEXTO);
         Tramite tramiteB = tramitePendiente(gestoriaB, contactoB, explotacionB, TEXTO);
-        ia.devolver(TipoTramite.BAJA, "1234");
+        ia.devolver(TipoTramite.BAJA_MUERTE, "1234");
 
         servicio.procesarPendientes();
 
@@ -595,7 +595,7 @@ class ExtraccionTramiteServiceTest {
     void niElTextoNiElTelefonoSalenEnLosLogsAlProcesar(CapturedOutput salida) {
         Tramite exito = tramitePendiente(gestoriaA, contactoA, explotacionA, TEXTO);
         servicio.procesarPendientes(); // sin programar: la IA lanza
-        ia.devolver(TipoTramite.BAJA, "1234");
+        ia.devolver(TipoTramite.BAJA_MUERTE, "1234");
         reloj.avanzar(Duration.ofMinutes(1));
         servicio.procesarPendientes();
         Tramite fallo = tramitePendiente(gestoriaA, contactoA, explotacionA, TEXTO);

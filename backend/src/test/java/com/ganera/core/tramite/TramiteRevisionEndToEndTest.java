@@ -146,6 +146,80 @@ class TramiteRevisionEndToEndTest {
         gestoriaRepository.deleteAll();
     }
 
+    // ------------------------------------------------- titular (ficha OVZ, T2)
+
+    private static final String OVZ_USUARIO_SEMBRADO = "ovz-usuario-sembrado-T2";
+    private static final String OVZ_PASSWORD_SEMBRADA = "ovz-password-sembrada-T2";
+
+    /** Da al ganadero de la explotacion un NIF y credenciales de OVZ reconocibles. */
+    private Ganadero sembrarTitular(Explotacion explotacion, String nombre, String nif) {
+        Ganadero ganadero = explotacion.getGanadero();
+        ganadero.setNombre(nombre);
+        ganadero.setNif(nif);
+        ganadero.setOvzUsuario(OVZ_USUARIO_SEMBRADO);
+        ganadero.setOvzPasswordCifrada(OVZ_PASSWORD_SEMBRADA);
+        return ganaderoRepository.save(ganadero);
+    }
+
+    private static void sinCredencialesOvz(String cuerpo) {
+        assertThat(cuerpo).doesNotContain("ovzUsuario");
+        assertThat(cuerpo).doesNotContain("ovzPassword");
+        assertThat(cuerpo).doesNotContain(OVZ_USUARIO_SEMBRADO);
+        assertThat(cuerpo).doesNotContain(OVZ_PASSWORD_SEMBRADA);
+    }
+
+    @Test
+    void detalleDeADevuelveElTitularDeAYNuncaSusCredencialesDeOvz() throws IOException {
+        sembrarTitular(explotacionA1, "Titular de A", "11111111H");
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, null, EstadoTramite.PENDIENTE_REVISION);
+
+        ResponseEntity<String> respuesta = get("/tramites/" + tramite.getId(), tokenA);
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
+        JsonNode cuerpo = objectMapper.readTree(respuesta.getBody());
+        assertThat(cuerpo.get("ganaderoNombre").asText()).isEqualTo("Titular de A");
+        assertThat(cuerpo.get("ganaderoNif").asText()).isEqualTo("11111111H");
+        sinCredencialesOvz(respuesta.getBody());
+    }
+
+    @Test
+    void detalleSinExplotacionDevuelveElTitularANull() throws IOException {
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, null, null, EstadoTramite.PENDIENTE_REVISION);
+
+        ResponseEntity<String> respuesta = get("/tramites/" + tramite.getId(), tokenA);
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
+        JsonNode cuerpo = objectMapper.readTree(respuesta.getBody());
+        assertThat(cuerpo.has("ganaderoNombre")).isTrue();
+        assertThat(cuerpo.get("ganaderoNombre").isNull()).isTrue();
+        assertThat(cuerpo.get("ganaderoNif").isNull()).isTrue();
+    }
+
+    @Test
+    void patchQueAsignaLaExplotacionDevuelveElTitularYaRelleno() throws IOException {
+        sembrarTitular(explotacionA1, "Titular de A", "11111111H");
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, null, null, EstadoTramite.PENDIENTE_REVISION);
+
+        ResponseEntity<String> respuesta = patch(tramite, tokenA, Map.of("explotacionId", explotacionA1.getId()));
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
+        JsonNode cuerpo = objectMapper.readTree(respuesta.getBody());
+        assertThat(cuerpo.get("ganaderoNombre").asText()).isEqualTo("Titular de A");
+        assertThat(cuerpo.get("ganaderoNif").asText()).isEqualTo("11111111H");
+        sinCredencialesOvz(respuesta.getBody());
+    }
+
+    @Test
+    void detalleDelTramiteDeBConElTokenDeADevuelve404SinCuerpo() {
+        sembrarTitular(explotacionB, "Titular de B", "22222222J");
+        Tramite tramiteB = nuevoTramite(gestoriaB, contactoB, explotacionB, null, EstadoTramite.PENDIENTE_REVISION);
+
+        ResponseEntity<String> respuesta = get("/tramites/" + tramiteB.getId(), tokenA);
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(404);
+        assertThat(respuesta.getBody()).isNullOrEmpty();
+    }
+
     // ------------------------------------------------------------------ PATCH
 
     /** Caso obligatorio del plan: asignar a un Tramite de A una Explotacion de B. */
@@ -156,7 +230,7 @@ class TramiteRevisionEndToEndTest {
         Map<String, Object> antes = foto(tramite);
 
         ResponseEntity<String> respuesta = patch(tramite, tokenA, Map.of(
-                "explotacionId", explotacionB.getId(), "tipoTramite", "ALTA", "crotales", List.of("9999")));
+                "explotacionId", explotacionB.getId(), "tipoTramite", "ALTA_NACIMIENTO", "crotales", List.of("9999")));
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(404);
         assertThat(respuesta.getBody()).isNullOrEmpty();
@@ -172,7 +246,7 @@ class TramiteRevisionEndToEndTest {
         Map<String, Object> antes = foto(tramite);
 
         ResponseEntity<String> respuesta = patch(tramite, tokenB, Map.of(
-                "explotacionId", explotacionB.getId(), "tipoTramite", "BAJA", "crotales", List.of("9999")));
+                "explotacionId", explotacionB.getId(), "tipoTramite", "BAJA_MUERTE", "crotales", List.of("9999")));
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(404);
         assertThat(respuesta.getBody()).isNullOrEmpty();
@@ -181,10 +255,10 @@ class TramiteRevisionEndToEndTest {
 
     @Test
     void patchFueraDePendienteRevisionDevuelve409YNoCambiaNada() throws IOException {
-        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.APROBADO);
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.APROBADO);
         Map<String, Object> antes = foto(tramite);
 
-        ResponseEntity<String> respuesta = patch(tramite, tokenA, Map.of("tipoTramite", "BAJA"));
+        ResponseEntity<String> respuesta = patch(tramite, tokenA, Map.of("tipoTramite", "BAJA_MUERTE"));
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(409);
         assertThat(motivo(respuesta)).isEqualTo("Solo se puede editar un trámite pendiente de revisión.");
@@ -197,14 +271,14 @@ class TramiteRevisionEndToEndTest {
 
         ResponseEntity<String> respuesta = patch(tramite, tokenA, Map.of(
                 "explotacionId", explotacionA1.getId(),
-                "tipoTramite", "baja",
+                "tipoTramite", "baja_muerte",
                 "crotales", List.of("ES-9800-0001-5678", "1234", "5678", "9999")));
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
         JsonNode json = objectMapper.readTree(respuesta.getBody());
         assertThat(json.get("explotacionId").asLong()).isEqualTo(explotacionA1.getId());
         assertThat(json.get("explotacionCodigoRega").asText()).isEqualTo("ES980000000001");
-        assertThat(json.get("tipoTramite").asText()).isEqualTo("BAJA");
+        assertThat(json.get("tipoTramite").asText()).isEqualTo("BAJA_MUERTE");
         assertThat(json.get("estado").asText()).isEqualTo("PENDIENTE_REVISION");
         JsonNode crotales = json.get("crotales");
         assertThat(crotales).hasSize(4);
@@ -231,7 +305,7 @@ class TramiteRevisionEndToEndTest {
                 "1234|ES980000011234|EN_INVENTARIO",
                 "5678|5678|AMBIGUO",
                 "9999|9999|NO_ENCONTRADO");
-        assertThat(foto(tramite).get("tipo_tramite")).isEqualTo("BAJA");
+        assertThat(foto(tramite).get("tipo_tramite")).isEqualTo("BAJA_MUERTE");
     }
 
     @Test
@@ -258,7 +332,7 @@ class TramiteRevisionEndToEndTest {
 
         ResponseEntity<String> respuesta = patch(tramite, tokenA, Map.of(
                 "explotacionId", explotacionA2.getId(),
-                "tipoTramite", "ALTA",
+                "tipoTramite", "ALTA_NACIMIENTO",
                 "crotales", List.of("1234", "ES980000031234")));
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(409);
@@ -276,7 +350,7 @@ class TramiteRevisionEndToEndTest {
 
         ResponseEntity<String> respuesta = patch(tramite, tokenA, Map.of(
                 "explotacionId", explotacionA2.getId(),
-                "tipoTramite", "ALTA",
+                "tipoTramite", "ALTA_NACIMIENTO",
                 "crotales", List.of("9999", "12_34")));
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(400);
@@ -296,11 +370,24 @@ class TramiteRevisionEndToEndTest {
         assertThat(foto(tramite)).isEqualTo(antes);
     }
 
+    /** Los tipos de antes de la V20 ya no existen: un cliente desfasado recibe el mismo 400. */
+    @Test
+    void patchConUnTipoViejoDeAntesDeLaV20Devuelve400ConMotivo() throws IOException {
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, null, null, EstadoTramite.PENDIENTE_REVISION);
+        Map<String, Object> antes = foto(tramite);
+
+        ResponseEntity<String> respuesta = patch(tramite, tokenA, Map.of("tipoTramite", "BAJA"));
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(400);
+        assertThat(motivo(respuesta)).isEqualTo("Tipo de trámite no válido.");
+        assertThat(foto(tramite)).isEqualTo(antes);
+    }
+
     @Test
     void patchSinJwtDevuelve401() {
         Tramite tramite = nuevoTramite(gestoriaA, contactoA, null, null, EstadoTramite.PENDIENTE_REVISION);
 
-        ResponseEntity<String> respuesta = patch(tramite, null, Map.of("tipoTramite", "ALTA"));
+        ResponseEntity<String> respuesta = patch(tramite, null, Map.of("tipoTramite", "ALTA_NACIMIENTO"));
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(401);
         assertThat(foto(tramite).get("tipo_tramite")).isNull();
@@ -309,11 +396,11 @@ class TramiteRevisionEndToEndTest {
     /** El Tramite se carga con bloqueo de fila (PESSIMISTIC_WRITE -> "for update" en H2). */
     @Test
     void patchAprobarYRechazarCarganElTramiteConBloqueoDeFila() {
-        Tramite editable = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite editable = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         Tramite rechazable = nuevoTramite(gestoriaA, contactoA, null, null, EstadoTramite.PENDIENTE_REVISION);
 
         SqlCapturadoInspector.limpiar();
-        assertThat(patch(editable, tokenA, Map.of("tipoTramite", "BAJA")).getStatusCode().value()).isEqualTo(200);
+        assertThat(patch(editable, tokenA, Map.of("tipoTramite", "BAJA_MUERTE")).getStatusCode().value()).isEqualTo(200);
         assertThat(seleccionConBloqueoDeTramite()).as("PATCH").isEqualTo(1);
 
         SqlCapturadoInspector.limpiar();
@@ -343,7 +430,7 @@ class TramiteRevisionEndToEndTest {
      */
     @Test
     void patchConcurrenteEsperaAlBloqueoYVeElEstadoConfirmadoPorLaOtraTransaccion() throws Exception {
-        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         CountDownLatch bloqueado = new CountDownLatch(1);
         CountDownLatch liberar = new CountDownLatch(1);
         ExecutorService hilos = Executors.newFixedThreadPool(2);
@@ -370,7 +457,7 @@ class TramiteRevisionEndToEndTest {
             assertThat(bloqueado.await(10, TimeUnit.SECONDS)).isTrue();
 
             Future<ResponseEntity<String>> peticion =
-                    hilos.submit(() -> patch(tramite, tokenA, Map.of("tipoTramite", "BAJA")));
+                    hilos.submit(() -> patch(tramite, tokenA, Map.of("tipoTramite", "BAJA_MUERTE")));
             long limite = System.currentTimeMillis() + 10_000;
             while (sesionesEsperandoUnBloqueo() == 0) {
                 assertThat(System.currentTimeMillis()).as("el PATCH deberia estar esperando al bloqueo").isLessThan(limite);
@@ -383,7 +470,7 @@ class TramiteRevisionEndToEndTest {
 
             assertThat(respuesta.getStatusCode().value()).isEqualTo(409);
             assertThat(motivo(respuesta)).isEqualTo("Solo se puede editar un trámite pendiente de revisión.");
-            assertThat(foto(tramite).get("tipo_tramite")).isEqualTo("ALTA");
+            assertThat(foto(tramite).get("tipo_tramite")).isEqualTo("ALTA_NACIMIENTO");
             assertThat(estadoEnBd(tramite)).isEqualTo("APROBADO");
         } finally {
             liberar.countDown();
@@ -400,7 +487,7 @@ class TramiteRevisionEndToEndTest {
 
     @Test
     void aprobarSinExplotacionDevuelve409NombrandoLoQueFaltaYElCrotal() throws IOException {
-        Tramite tramite = nuevoTramite(gestoriaA, contactoA, null, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, null, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of("1234"), gestoriaA.getId());
 
         ResponseEntity<String> respuesta = aprobar(tramite, tokenA);
@@ -424,7 +511,7 @@ class TramiteRevisionEndToEndTest {
 
     @Test
     void aprobarConCrotalAmbiguoOIncompletoNoEncontradoDevuelve409NombrandoCadaCrotal() throws IOException {
-        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of("1234", "5678", "9999"), gestoriaA.getId());
 
         ResponseEntity<String> respuesta = aprobar(tramite, tokenA);
@@ -438,7 +525,7 @@ class TramiteRevisionEndToEndTest {
     /** Decision 25: un crotal completo que no esta en inventario (entrada de animales) si vale. */
     @Test
     void aprobarConCrotalCompletoNoEncontradoDevuelve200() throws IOException {
-        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of("ES980000077777", "1234"), gestoriaA.getId());
 
         ResponseEntity<String> respuesta = aprobar(tramite, tokenA);
@@ -453,7 +540,7 @@ class TramiteRevisionEndToEndTest {
 
     @Test
     void aprobarUnTramiteResueltoDevuelve200() throws IOException {
-        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.BAJA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.BAJA_MUERTE, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of("1234"), gestoriaA.getId());
 
         ResponseEntity<String> respuesta = aprobar(tramite, tokenA);
@@ -474,7 +561,7 @@ class TramiteRevisionEndToEndTest {
      */
     @Test
     void aprobarConUnCrotalQueAhoraEsAmbiguoGuardaLaNuevaResolucionYDevuelve409() throws IOException {
-        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of("1234"), gestoriaA.getId());
         nuevoAnimal(gestoriaA, explotacionA1, "ES980000091234");
 
@@ -504,7 +591,7 @@ class TramiteRevisionEndToEndTest {
      */
     @Test
     void aprobarNoApruebaEnSilencioUnAnimalDistintoDelRevisado() throws IOException {
-        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         assertThat(patch(tramite, tokenA, Map.of("crotales", List.of("1234"))).getStatusCode().value()).isEqualTo(200);
         assertThat(crotalesEnBd(tramite)).containsExactly("1234|ES980000011234|EN_INVENTARIO");
         jdbcTemplate.update("update animal set explotacion_id = ? where id = ?",
@@ -537,7 +624,7 @@ class TramiteRevisionEndToEndTest {
      */
     @Test
     void aprobarNoApruebaEnSilencioUnCrotalQueHaSalidoDelInventario() throws IOException {
-        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.BAJA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.BAJA_MUERTE, EstadoTramite.PENDIENTE_REVISION);
         assertThat(patch(tramite, tokenA, Map.of("crotales", List.of("ES980000011234"))).getStatusCode().value())
                 .isEqualTo(200);
         jdbcTemplate.update("update animal set explotacion_id = ? where id = ?",
@@ -570,7 +657,7 @@ class TramiteRevisionEndToEndTest {
      */
     @Test
     void dosAprobacionesSimultaneasDanExactamenteUn200YUn409() throws Exception {
-        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         CountDownLatch bloqueado = new CountDownLatch(1);
         CountDownLatch liberar = new CountDownLatch(1);
         ExecutorService hilos = Executors.newFixedThreadPool(3);
@@ -621,7 +708,7 @@ class TramiteRevisionEndToEndTest {
 
     @Test
     void aprobarConDosCrotalesDelMismoAnimalDevuelve409() throws IOException {
-        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of("1234", "ES980000011234"), gestoriaA.getId());
 
         ResponseEntity<String> respuesta = aprobar(tramite, tokenA);
@@ -636,7 +723,7 @@ class TramiteRevisionEndToEndTest {
     @Test
     void aprobarYRechazarDesdeAprobadoORechazadoDevuelven409YNoCambianElEstado() throws IOException {
         for (EstadoTramite estado : List.of(EstadoTramite.APROBADO, EstadoTramite.RECHAZADO)) {
-            Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, estado);
+            Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, estado);
 
             ResponseEntity<String> aprobar = aprobar(tramite, tokenA);
             ResponseEntity<String> rechazar = rechazar(tramite, tokenA);
@@ -652,7 +739,7 @@ class TramiteRevisionEndToEndTest {
     /** El 403 de suscripcion va antes que cualquier otra comprobacion. */
     @Test
     void aprobarConSuscripcionSuspendidaOSinSuscripcionDevuelve403AunqueElTramiteSeaAprobable() throws IOException {
-        Tramite aprobable = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite aprobable = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         suscripcionA.setEstado(EstadoSuscripcion.SUSPENDIDA);
         suscripcionRepository.save(suscripcionA);
 
@@ -677,7 +764,7 @@ class TramiteRevisionEndToEndTest {
 
     @Test
     void aprobarYRechazarUnTramiteDeAConElTokenDeBDevuelven404YNoLoCambian() {
-        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
 
         ResponseEntity<String> aprobar = aprobar(tramite, tokenB);
         ResponseEntity<String> rechazar = rechazar(tramite, tokenB);
@@ -757,7 +844,7 @@ class TramiteRevisionEndToEndTest {
      */
     @Test
     void aprobarTrasUnCambioDeInventarioSoloApruebaConLaVersionNueva() throws IOException {
-        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         ResponseEntity<String> edicion = patch(tramite, tokenA, Map.of("crotales", List.of("1234")));
         assertThat(edicion.getStatusCode().value()).isEqualTo(200);
         long vista = objectMapper.readTree(edicion.getBody()).get("version").asLong();
@@ -804,17 +891,17 @@ class TramiteRevisionEndToEndTest {
      */
     @Test
     void patchAprobarYRechazarSinVersionDevuelven400ConMotivoYNoCambianNada() throws IOException {
-        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
-        Tramite ajeno = nuevoTramite(gestoriaB, contactoB, explotacionB, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
+        Tramite ajeno = nuevoTramite(gestoriaB, contactoB, explotacionB, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         Map<String, Object> antes = foto(tramite);
         Map<String, Object> antesAjeno = foto(ajeno);
         Map<String, Object> versionNula = new HashMap<>();
         versionNula.put("version", null);
-        versionNula.put("tipoTramite", "BAJA");
+        versionNula.put("tipoTramite", "BAJA_MUERTE");
 
         for (Long id : List.of(tramite.getId(), ajeno.getId(), 999999L)) {
             List<ResponseEntity<String>> respuestas = List.of(
-                    patchCrudo(id, tokenA, Map.of("tipoTramite", "BAJA")),
+                    patchCrudo(id, tokenA, Map.of("tipoTramite", "BAJA_MUERTE")),
                     patchCrudo(id, tokenA, versionNula),
                     postCrudo("/tramites/" + id + "/aprobar", tokenA, null),
                     postCrudo("/tramites/" + id + "/aprobar", tokenA, "{}"),
@@ -834,7 +921,7 @@ class TramiteRevisionEndToEndTest {
     /** El 403 de suscripcion sigue siendo lo primero, antes incluso que la version ausente. */
     @Test
     void aprobarSinSuscripcionYSinVersionDevuelve403ConMotivo() throws IOException {
-        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         suscripcionA.setEstado(EstadoSuscripcion.SUSPENDIDA);
         suscripcionRepository.save(suscripcionA);
 
@@ -850,16 +937,16 @@ class TramiteRevisionEndToEndTest {
 
     @Test
     void patchYAprobarConVersionDesfasadaDevuelven409SinCambiarNada() throws IOException {
-        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of("1234"), gestoriaA.getId());
         long vieja = versionEnBd(tramite);
-        assertThat(patch(tramite, tokenA, Map.of("version", vieja, "tipoTramite", "BAJA")).getStatusCode().value())
+        assertThat(patch(tramite, tokenA, Map.of("version", vieja, "tipoTramite", "BAJA_MUERTE")).getStatusCode().value())
                 .isEqualTo(200);
         assertThat(versionEnBd(tramite)).isEqualTo(vieja + 1);
         Map<String, Object> antes = foto(tramite);
 
         for (long otra : List.of(vieja, vieja + 5)) {
-            ResponseEntity<String> edicion = patch(tramite, tokenA, Map.of("version", otra, "tipoTramite", "ALTA",
+            ResponseEntity<String> edicion = patch(tramite, tokenA, Map.of("version", otra, "tipoTramite", "ALTA_NACIMIENTO",
                     "explotacionId", explotacionA2.getId(), "crotales", List.of("5678")));
             ResponseEntity<String> aprobacion = aprobarConVersion(tramite, tokenA, otra);
 
@@ -877,7 +964,7 @@ class TramiteRevisionEndToEndTest {
     void rechazarConVersionDesfasadaDevuelve409SinCambiarNada() throws IOException {
         Tramite tramite = nuevoTramite(gestoriaA, contactoA, null, null, EstadoTramite.PENDIENTE_REVISION);
         long vieja = versionEnBd(tramite);
-        assertThat(patch(tramite, tokenA, Map.of("version", vieja, "tipoTramite", "BAJA")).getStatusCode().value())
+        assertThat(patch(tramite, tokenA, Map.of("version", vieja, "tipoTramite", "BAJA_MUERTE")).getStatusCode().value())
                 .isEqualTo(200);
         Map<String, Object> antes = foto(tramite);
 
@@ -903,11 +990,11 @@ class TramiteRevisionEndToEndTest {
         assertThat(objectMapper.readTree(soloCrotales.getBody()).get("version").asLong()).isEqualTo(v0 + 1);
         assertThat(versionEnBd(tramite)).isEqualTo(v0 + 1);
 
-        ResponseEntity<String> soloTipo = patch(tramite, tokenA, Map.of("version", v0 + 1, "tipoTramite", "BAJA"));
+        ResponseEntity<String> soloTipo = patch(tramite, tokenA, Map.of("version", v0 + 1, "tipoTramite", "BAJA_MUERTE"));
         assertThat(soloTipo.getStatusCode().value()).isEqualTo(200);
         assertThat(objectMapper.readTree(soloTipo.getBody()).get("version").asLong()).isEqualTo(v0 + 2);
         assertThat(versionEnBd(tramite)).isEqualTo(v0 + 2);
-        assertThat(foto(tramite).get("tipo_tramite")).isEqualTo("BAJA");
+        assertThat(foto(tramite).get("tipo_tramite")).isEqualTo("BAJA_MUERTE");
     }
 
     @Test
@@ -926,12 +1013,12 @@ class TramiteRevisionEndToEndTest {
     /** Un Tramite de otra Gestoria es 404 sin cuerpo con CUALQUIER version, incluida la correcta. */
     @Test
     void unTramiteDeOtraGestoriaEs404SeaCualSeaLaVersion() {
-        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         long actual = versionEnBd(tramite);
         Map<String, Object> antes = foto(tramite);
 
         for (long version : List.of(actual, actual + 1, actual + 100)) {
-            ResponseEntity<String> edicion = patch(tramite, tokenB, Map.of("version", version, "tipoTramite", "BAJA"));
+            ResponseEntity<String> edicion = patch(tramite, tokenB, Map.of("version", version, "tipoTramite", "BAJA_MUERTE"));
             ResponseEntity<String> aprobacion = aprobarConVersion(tramite, tokenB, version);
             ResponseEntity<String> rechazo = rechazarConVersion(tramite, tokenB, version);
 
@@ -953,7 +1040,7 @@ class TramiteRevisionEndToEndTest {
     @Test
     void listadoIncluyeRegaYNombreDeLaExplotacionSinCargarlaPorFilaNiMezclarGestorias() throws IOException {
         Explotacion explotacionA3 = nuevaExplotacion(gestoriaA, "ES980000000003");
-        Tramite enA1 = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite enA1 = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         Tramite enA2 = nuevoTramite(gestoriaA, contactoA, explotacionA2, null, EstadoTramite.PENDIENTE_REVISION);
         Tramite enA3 = nuevoTramite(gestoriaA, contactoA, explotacionA3, null, EstadoTramite.APROBADO);
         Tramite sinExplotacion = nuevoTramite(gestoriaA, contactoA, null, null, EstadoTramite.PENDIENTE_REVISION);
@@ -1002,7 +1089,7 @@ class TramiteRevisionEndToEndTest {
     /** Punto 5, efecto colateral: aprobar y rechazar devuelven TramiteResponse, con REGA y nombre. */
     @Test
     void aprobarYRechazarDevuelvenRegaYNombreDeLaExplotacion() throws IOException {
-        Tramite aprobable = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite aprobable = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         Tramite rechazable = nuevoTramite(gestoriaA, contactoA, explotacionA2, null, EstadoTramite.PENDIENTE_REVISION);
         Tramite sinExplotacion = nuevoTramite(gestoriaA, contactoA, null, null, EstadoTramite.PENDIENTE_REVISION);
 
@@ -1093,7 +1180,7 @@ class TramiteRevisionEndToEndTest {
     void aprobarUnCrotalDeInventarioConFormatoIncompletoDevuelve409YNoCambiaNada() throws IOException {
         Explotacion sinPrefijo = nuevaExplotacion(gestoriaA, "ES980000000003");
         nuevoAnimal(gestoriaA, sinPrefijo, "010000001234");
-        Tramite tramite = nuevoTramite(gestoriaA, contactoA, sinPrefijo, TipoTramite.BAJA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, sinPrefijo, TipoTramite.BAJA_MUERTE, EstadoTramite.PENDIENTE_REVISION);
         ResponseEntity<String> edicion = patch(tramite, tokenA, Map.of("crotales", List.of("1234")));
         assertThat(edicion.getStatusCode().value()).isEqualTo(200);
         JsonNode crotal = objectMapper.readTree(edicion.getBody()).get("crotales").get(0);

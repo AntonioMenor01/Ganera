@@ -89,11 +89,11 @@ class TramiteRevisionServiceTest {
         Tramite tramite = nuevoTramite(null, null, EstadoTramite.PENDIENTE_REVISION);
 
         TramiteDetalleResponse respuesta = servicio.actualizar(
-                gestoriaA.getId(), tramite.getId(), version(tramite), explotacionA1.getId(), TipoTramite.BAJA, List.of("1234", "5678", "9999"));
+                gestoriaA.getId(), tramite.getId(), version(tramite), explotacionA1.getId(), TipoTramite.BAJA_MUERTE, List.of("1234", "5678", "9999"));
 
         assertThat(respuesta.explotacionId()).isEqualTo(explotacionA1.getId());
         assertThat(respuesta.explotacionCodigoRega()).isEqualTo("ES970000000001");
-        assertThat(respuesta.tipoTramite()).isEqualTo("BAJA");
+        assertThat(respuesta.tipoTramite()).isEqualTo("BAJA_MUERTE");
         assertThat(respuesta.estado()).isEqualTo("PENDIENTE_REVISION");
         assertThat(respuesta.crotales()).containsExactly(
                 new TramiteCrotalResponse("1234", "ES970000011234", false, animalA1.getId(), true, "EN_INVENTARIO"),
@@ -104,13 +104,13 @@ class TramiteRevisionServiceTest {
 
     @Test
     void actualizarConCamposNulosNoCambiaNada() {
-        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of("1234"), gestoriaA.getId());
 
         TramiteDetalleResponse respuesta = servicio.actualizar(gestoriaA.getId(), tramite.getId(), version(tramite), null, null, null);
 
         assertThat(respuesta.explotacionId()).isEqualTo(explotacionA1.getId());
-        assertThat(respuesta.tipoTramite()).isEqualTo("ALTA");
+        assertThat(respuesta.tipoTramite()).isEqualTo("ALTA_NACIMIENTO");
         assertThat(respuesta.crotales()).extracting(TramiteCrotalResponse::crotal).containsExactly("ES970000011234");
     }
 
@@ -139,7 +139,7 @@ class TramiteRevisionServiceTest {
     void actualizarUnTramiteDeOtraGestoriaEsNoEncontrado() {
         Tramite tramite = nuevoTramite(null, null, EstadoTramite.PENDIENTE_REVISION);
 
-        assertThatThrownBy(() -> servicio.actualizar(gestoriaB.getId(), tramite.getId(), version(tramite), null, TipoTramite.ALTA, null))
+        assertThatThrownBy(() -> servicio.actualizar(gestoriaB.getId(), tramite.getId(), version(tramite), null, TipoTramite.ALTA_NACIMIENTO, null))
                 .isInstanceOf(RecursoNoEncontradoException.class);
         assertThat(tramite.getTipoTramite()).isNull();
     }
@@ -161,7 +161,7 @@ class TramiteRevisionServiceTest {
                 EstadoTramite.EJECUTADO_OVZ, EstadoTramite.ERROR_OVZ)) {
             Tramite tramite = nuevoTramite(null, null, estado);
 
-            assertThatThrownBy(() -> servicio.actualizar(gestoriaA.getId(), tramite.getId(), version(tramite), null, TipoTramite.ALTA, null))
+            assertThatThrownBy(() -> servicio.actualizar(gestoriaA.getId(), tramite.getId(), version(tramite), null, TipoTramite.ALTA_NACIMIENTO, null))
                     .isInstanceOf(TramiteConflictoException.class)
                     .hasMessage(TramiteRevisionService.MOTIVO_EDITAR_SOLO_PENDIENTE);
             assertThat(tramite.getTipoTramite()).isNull();
@@ -190,7 +190,7 @@ class TramiteRevisionServiceTest {
 
     @Test
     void aprobarUnTramiteCompletoLoDejaAprobado() {
-        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of("1234"), gestoriaA.getId());
 
         TramiteResponse respuesta = servicio.aprobar(gestoriaA.getId(), tramite.getId(), version(tramite));
@@ -202,14 +202,14 @@ class TramiteRevisionServiceTest {
 
     @Test
     void aprobarSinCrotalesSePermite() {
-        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
 
         assertThat(servicio.aprobar(gestoriaA.getId(), tramite.getId(), version(tramite)).estado()).isEqualTo("APROBADO");
     }
 
     @Test
     void aprobarConUnCrotalCompletoNoEncontradoSePermite() {
-        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of("ES970000088888"), gestoriaA.getId());
 
         TramiteResponse respuesta = servicio.aprobar(gestoriaA.getId(), tramite.getId(), version(tramite));
@@ -220,7 +220,7 @@ class TramiteRevisionServiceTest {
 
     @Test
     void aprobarSinExplotacionEsConflicto() {
-        Tramite tramite = nuevoTramite(null, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(null, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
 
         assertThatThrownBy(() -> servicio.aprobar(gestoriaA.getId(), tramite.getId(), version(tramite)))
                 .isInstanceOf(TramiteConflictoException.class)
@@ -249,7 +249,7 @@ class TramiteRevisionServiceTest {
 
     @Test
     void aprobarConCrotalSinExplotacionNombraElCrotal() {
-        Tramite tramite = nuevoTramite(null, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(null, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of("1234"), gestoriaA.getId());
 
         assertThatThrownBy(() -> servicio.aprobar(gestoriaA.getId(), tramite.getId(), version(tramite)))
@@ -260,7 +260,7 @@ class TramiteRevisionServiceTest {
 
     @Test
     void aprobarConCrotalAmbiguoOIncompletoNoEncontradoNombraCadaCrotal() {
-        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(
                 tramite, List.of("5678", "1234", "4444", "ES970000077777"), gestoriaA.getId());
 
@@ -281,7 +281,7 @@ class TramiteRevisionServiceTest {
     void aprobarUnCrotalEnInventarioConFormatoIncompletoEsConflictoNombrandoloYNoCambiaNada() {
         Explotacion sinPrefijo = nuevaExplotacion(gestoriaA, "ES970000000003");
         Animal incompleto = nuevoAnimal(gestoriaA, sinPrefijo, "010000001234");
-        Tramite tramite = nuevoTramite(sinPrefijo, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(sinPrefijo, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of("1234"), gestoriaA.getId());
         long v0 = version(tramite);
 
@@ -317,7 +317,7 @@ class TramiteRevisionServiceTest {
     void aprobarUnCrotalEnInventarioConFormatoCompletoSePermite() {
         Explotacion conPrefijo = nuevaExplotacion(gestoriaA, "ES970000000005");
         Animal completo = nuevoAnimal(gestoriaA, conPrefijo, "ES010000001234");
-        Tramite tramite = nuevoTramite(conPrefijo, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(conPrefijo, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of("1234"), gestoriaA.getId());
 
         TramiteResponse respuesta = servicio.aprobar(gestoriaA.getId(), tramite.getId(), version(tramite));
@@ -336,7 +336,7 @@ class TramiteRevisionServiceTest {
     @org.junit.jupiter.params.provider.ValueSource(strings = {"ES123456789012", "FR12345678", "DE123456789012",
             "IT1234567890"})
     void aprobarUnNoEncontradoConFormatoCompletoValidoSePermite(String crotal) {
-        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of(crotal), gestoriaA.getId());
 
         TramiteResponse respuesta = servicio.aprobar(gestoriaA.getId(), tramite.getId(), version(tramite));
@@ -350,7 +350,7 @@ class TramiteRevisionServiceTest {
             "FR1234567", "DE1234567890123", "A1234", "1234567890123", "12A34", "ESP12345678901",
             "FR12345A78", "ES12345678901A"})
     void aprobarUnNoEncontradoSinFormatoCompletoValidoEsConflictoNombrandoElCrotal(String crotal) {
-        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of(crotal), gestoriaA.getId());
         assertThat(filas(tramite)).extracting(TramiteCrotal::getResolucion).containsExactly(ResolucionCrotal.NO_ENCONTRADO);
 
@@ -367,7 +367,7 @@ class TramiteRevisionServiceTest {
      */
     @Test
     void aprobarConUnCrotalQueAhoraEsAmbiguoEsConflictoDeResolucionCambiada() {
-        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of("1234"), gestoriaA.getId());
         // Despues de resolverse, entra otro animal con el mismo sufijo en la explotacion.
         nuevoAnimal(gestoriaA, explotacionA1, "ES970000091234");
@@ -384,7 +384,7 @@ class TramiteRevisionServiceTest {
     /** Escenario A de la revision: el sufijo pasa a resolver a OTRO animal -> nunca 200 directo. */
     @Test
     void aprobarConUnCrotalQueAhoraResuelveAOtroAnimalEsConflictoYNoAprueba() {
-        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of("1234"), gestoriaA.getId());
         animalA1.setExplotacion(explotacionA2);
         animalRepository.save(animalA1);
@@ -404,7 +404,7 @@ class TramiteRevisionServiceTest {
     /** Escenario B: EN_INVENTARIO pasa a NO_ENCONTRADO (completo) -> tampoco se aprueba sin revisar. */
     @Test
     void aprobarConUnCrotalQueHaSalidoDelInventarioEsConflictoDeResolucionCambiada() {
-        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.BAJA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.BAJA_MUERTE, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of("ES970000011234"), gestoriaA.getId());
         animalA1.setExplotacion(explotacionA2);
         animalRepository.save(animalA1);
@@ -423,7 +423,7 @@ class TramiteRevisionServiceTest {
      */
     @Test
     void aprobarUsaElEstadoActualDeLaBdAunqueElTramiteYaEstuvieraCargado() {
-        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         entityManager.flush();
         jdbcTemplate.update("update tramite set estado = 'APROBADO' where id = ?", tramite.getId());
         assertThat(tramite.getEstado()).as("instancia en cache, obsoleta").isEqualTo(EstadoTramite.PENDIENTE_REVISION);
@@ -434,14 +434,14 @@ class TramiteRevisionServiceTest {
         assertThatThrownBy(() -> servicio.rechazar(gestoriaA.getId(), tramite.getId(), version(tramite)))
                 .isInstanceOf(TramiteConflictoException.class)
                 .hasMessage(TramiteRevisionService.MOTIVO_RECHAZAR_SOLO_PENDIENTE);
-        assertThatThrownBy(() -> servicio.actualizar(gestoriaA.getId(), tramite.getId(), version(tramite), null, TipoTramite.BAJA, null))
+        assertThatThrownBy(() -> servicio.actualizar(gestoriaA.getId(), tramite.getId(), version(tramite), null, TipoTramite.BAJA_MUERTE, null))
                 .isInstanceOf(TramiteConflictoException.class)
                 .hasMessage(TramiteRevisionService.MOTIVO_EDITAR_SOLO_PENDIENTE);
     }
 
     @Test
     void aprobarConDosCrotalesDelMismoAnimalEsConflicto() {
-        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         // Sembrado directo (el PATCH ya lo impediria): simula un tramite creado por otra via.
         tramiteCrotalService.reemplazarCrotales(tramite, List.of("1234", "ES970000011234"), gestoriaA.getId());
 
@@ -453,7 +453,7 @@ class TramiteRevisionServiceTest {
     @Test
     void aprobarFueraDePendienteRevisionEsConflicto() {
         for (EstadoTramite estado : List.of(EstadoTramite.APROBADO, EstadoTramite.RECHAZADO, EstadoTramite.ERROR_OVZ)) {
-            Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA, estado);
+            Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, estado);
 
             assertThatThrownBy(() -> servicio.aprobar(gestoriaA.getId(), tramite.getId(), version(tramite)))
                     .isInstanceOf(TramiteConflictoException.class)
@@ -464,7 +464,7 @@ class TramiteRevisionServiceTest {
 
     @Test
     void aprobarUnTramiteDeOtraGestoriaEsNoEncontrado() {
-        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
 
         assertThatThrownBy(() -> servicio.aprobar(gestoriaB.getId(), tramite.getId(), version(tramite)))
                 .isInstanceOf(RecursoNoEncontradoException.class);
@@ -551,7 +551,7 @@ class TramiteRevisionServiceTest {
         long v0 = version(tramite);
 
         // Solo tipo (el Tramite queda sucio): +1, no +2.
-        TramiteDetalleResponse r1 = servicio.actualizar(gestoriaA.getId(), tramite.getId(), v0, null, TipoTramite.ALTA, null);
+        TramiteDetalleResponse r1 = servicio.actualizar(gestoriaA.getId(), tramite.getId(), v0, null, TipoTramite.ALTA_NACIMIENTO, null);
         assertThat(version(tramite)).isEqualTo(v0 + 1);
         assertThat(r1.version()).isEqualTo(v0 + 1);
 
@@ -574,27 +574,27 @@ class TramiteRevisionServiceTest {
 
     @Test
     void actualizarConUnaVersionDistintaEsConflictoSinCambiar() {
-        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of("1234"), gestoriaA.getId());
         long v0 = version(tramite);
-        servicio.actualizar(gestoriaA.getId(), tramite.getId(), v0, null, TipoTramite.BAJA, null);
+        servicio.actualizar(gestoriaA.getId(), tramite.getId(), v0, null, TipoTramite.BAJA_MUERTE, null);
 
         for (Long otra : java.util.Arrays.asList(v0, v0 + 2, null)) {
             assertThatThrownBy(() -> servicio.actualizar(
-                    gestoriaA.getId(), tramite.getId(), otra, explotacionA2.getId(), TipoTramite.ALTA, List.of("5678")))
+                    gestoriaA.getId(), tramite.getId(), otra, explotacionA2.getId(), TipoTramite.ALTA_NACIMIENTO, List.of("5678")))
                     .as("version " + otra)
                     .isInstanceOf(TramiteConflictoException.class)
                     .hasMessage(TramiteRevisionService.MOTIVO_VERSION_DESFASADA);
         }
         assertThat(version(tramite)).isEqualTo(v0 + 1);
-        assertThat(tramite.getTipoTramite()).isEqualTo(TipoTramite.BAJA);
+        assertThat(tramite.getTipoTramite()).isEqualTo(TipoTramite.BAJA_MUERTE);
         assertThat(tramite.getExplotacion().getId()).isEqualTo(explotacionA1.getId());
         assertThat(filas(tramite)).extracting(TramiteCrotal::getCrotalIndicado).containsExactly("1234");
     }
 
     @Test
     void aprobarConUnaVersionDistintaEsConflictoYNoAprueba() {
-        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         long v0 = version(tramite);
 
         for (Long otra : java.util.Arrays.asList(v0 + 1, v0 - 1, null)) {
@@ -609,7 +609,7 @@ class TramiteRevisionServiceTest {
 
     @Test
     void aprobarYRechazarIncrementanLaVersion() {
-        Tramite aprobable = nuevoTramite(explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite aprobable = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         Tramite rechazable = nuevoTramite(null, null, EstadoTramite.PENDIENTE_REVISION);
         long va = version(aprobable);
         long vr = version(rechazable);
@@ -626,7 +626,7 @@ class TramiteRevisionServiceTest {
     /** La re-resolucion al aprobar solo toca tramite_crotal: aun asi incrementa la version. */
     @Test
     void laReResolucionAlAprobarIncrementaLaVersionYLaVersionAntiguaYaNoVale() {
-        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         tramiteCrotalService.reemplazarCrotales(tramite, List.of("1234"), gestoriaA.getId());
         long v0 = version(tramite);
         // Entra otro animal con el mismo sufijo: "1234" pasa a ser ambiguo.
@@ -651,7 +651,7 @@ class TramiteRevisionServiceTest {
     /** Orden: 404 antes que la version; estado antes que la version (motivo mas concreto). */
     @Test
     void elOrdenEs404LuegoEstadoLuegoVersion() {
-        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA, EstadoTramite.PENDIENTE_REVISION);
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
         long v0 = version(tramite);
         for (Long cualquiera : java.util.Arrays.asList(v0, v0 + 7, null)) {
             assertThatThrownBy(() -> servicio.aprobar(gestoriaB.getId(), tramite.getId(), cualquiera))
@@ -660,7 +660,7 @@ class TramiteRevisionServiceTest {
                     .isInstanceOf(RecursoNoEncontradoException.class);
         }
 
-        Tramite aprobado = nuevoTramite(explotacionA1, TipoTramite.ALTA, EstadoTramite.APROBADO);
+        Tramite aprobado = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.APROBADO);
         long va = version(aprobado);
         assertThatThrownBy(() -> servicio.aprobar(gestoriaA.getId(), aprobado.getId(), va + 3))
                 .isInstanceOf(TramiteConflictoException.class)

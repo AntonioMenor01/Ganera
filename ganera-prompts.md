@@ -318,7 +318,7 @@ Stripe test-mode no se puede probar todavía; ninguna tarea de este prompt lo ha
 - **`findByTelefono` (decisión 11):** `ContactoRepository.findByTelefono` (sin scope de Gestoría) es exclusivo de este webhook; nada más lo usa. Normalizar el `From` de Twilio con `TelefonoNormalizador` antes de buscar.
 - **Finder sin scope heredado (revisión 7b, I1) — resuelto:** `AnimalRepository.findByExplotacionIdAndCrotalUltimosDigitos` (sin `gestoriaId`, sin llamadas, anterior a A1) se eliminó en un commit aparte justo después de A1, por decisión de Antonio. Para resolver crotales desde WhatsApp, usar `findByExplotacionIdAndGestoriaIdAndCrotalEndingWithOrderByIdAsc`, como A1.
 - **Crotales duplicados (decisión 23):** la creación automática de trámites desde WhatsApp debe deduplicar los crotales que resuelvan al mismo Animal (el `PATCH` ya responde `409` en ese caso, y aprobar también lo bloquea).
-- **Catálogo de tipos (decisión 18):** el enum `TipoTramite` actual (`ALTA`, `BAJA`, `CENSO`, `MOVIMIENTO`, `DEMORA`) se sustituirá en el **prompt B** por los tipos reales de OVZ para vacuno: `ALTA_BOVINO`, `BAJA`, `SOLICITUD_MOVIMIENTO`, `CONFIRMACION_MOVIMIENTO`, `DECLARACION_CENSO`, `MOD_DECLARACION_CENSO`, `DEMORA_CROTALIZACION`. Ocasionales, para una fase posterior: anulación de guías y rechazo de animales en origen. **En A1 el enum NO se cambió.**
+- **Catálogo de tipos (decisión 18):** el enum `TipoTramite` actual (`ALTA`, `BAJA`, `CENSO`, `MOVIMIENTO`, `DEMORA`) se sustituirá en el **prompt B** por los tipos reales de OVZ para vacuno: `ALTA_BOVINO`, `BAJA`, `SOLICITUD_MOVIMIENTO`, `CONFIRMACION_MOVIMIENTO`, `DECLARACION_CENSO`, `MOD_DECLARACION_CENSO`, `DEMORA_CROTALIZACION`. Ocasionales, para una fase posterior: anulación de guías y rechazo de animales en origen. **En A1 el enum NO se cambió.** **Hecho en la ficha OVZ (2026-10-07, `V20`)**, con dos ajustes: `ALTA_NACIMIENTO` en vez de `ALTA_BOVINO`, `BAJA_MUERTE` en vez de `BAJA`, y sin `MOD_DECLARACION_CENSO` (es el mismo formulario que la declaración, en las 24 h siguientes).
 
 ---
 
@@ -670,6 +670,41 @@ Plan con las decisiones cerradas: `docs/superpowers/plans/2026-10-03-tarea-front
    la infraestructura definitiva del C.**
 5. **Prompt C**, después la app de escritorio, el MVP a la gestoría piloto y, tras el piloto, OVZ 3a/3c.
 
+**Añadido el 2026-10-06 — escalón 1 de OVZ:** la **ficha lista para OVZ** (**hecha el 2026-10-07, pendiente de commit**: backend 706/706, frontend 720/720, smoke en navegador real
+36/36 en Chromium y Firefox; análisis en
+`docs/referencias/ovz-tramites-bovino.md`, plan en `docs/superpowers/plans/2026-10-06-ficha-ovz.md`). En un
+trámite aprobado, Ganera enseña sus datos en el orden del formulario de OVZ, con un botón de copiar en cada
+campo, para que el gestor los pegue en OVZ. Incluye el cambio de `TipoTramite` a los tipos de OVZ (`V20`).
+**Siguiente tarea, antes del piloto:** "Marcar como registrado en OVZ" (D5 del plan). Sin ella, la cola no
+distingue un aprobado que ya está en OVZ de uno pendiente. Antes de hacerla hay que decidir el estado:
+`EJECUTADO_OVZ` a mano, o uno nuevo, porque `EJECUTADO_OVZ` estaba pensado para Playwright.
+
+### Sesión de mapeo de OVZ — guion (pendiente)
+
+Es una sesión con OVZNET real, con Antonio y la gestoría piloto (o con las credenciales de un ganadero de
+prueba), para cerrar lo que el manual no dice. Va antes del B2: la IA necesita estas listas. El detalle
+está en `docs/referencias/ovz-tramites-bovino.md`.
+
+1. **Listas de valores que el manual no trae** (copiar cada lista completa, con el texto exacto):
+   - Sexo (alta);
+   - Raza (alta y censo);
+   - Tipo de identificador (alta);
+   - Aptitud del movimiento (solicitud de guía; el manual solo enseña SACRIFICIO);
+   - Categoría del censo.
+2. **Preferencias fijas de la gestoría**, para saber si basta con guardarlas una vez (por gestoría o por
+   ganadero):
+   - oficina de la OVZ: recogida de DI en el alta, copia del MER en la baja y DI en la confirmación;
+   - emisión del DI: "emitidos en la OVZ" o "los imprimo desde animales sin DI";
+   - transporte: medio, matrícula, transportista (código SIRENTRA) y tipo de responsable;
+   - teléfono de la solicitud de guía.
+3. **Comprobar en pantalla:**
+   - que la gestoría ve los mismos menús que el manual del ganadero;
+   - el orden de tabulación de cada formulario;
+   - si País y Comunidad Autónoma salen del REGA de destino;
+   - qué campos son editables en la confirmación de una entrada;
+   - el plazo del alta por nacimiento (el manual remite a un enlace que no incluye).
+4. **Frecuencia real** de cada trámite en la gestoría piloto, para ordenar el MVP.
+
 ### Despliegue en Clever Cloud — pendiente
 
 Pasos y variables, para cuando se decida desplegar. Los secretos los genera Antonio en **su** terminal y los
@@ -727,7 +762,9 @@ el webhook de Twilio responde `503` hasta el paso opcional de WhatsApp).
    `clever link <id-api> --alias api` y `clever link <id-front> --alias front` (`.clever.json` está ignorado).
 9. `clever deploy --alias api`, revisar en `clever logs --alias api` que Flyway aplica V1–V19 y que arranca; luego
    `clever deploy --alias front`.
-10. Datos y smoke según `C:\Users\Antonio\Desktop\ganera-demo\LEEME.md` (fuera del repo): `alta-gestorias.sh` →
+10. **Antes de sembrar (añadido el 2026-10-07, ficha OVZ):** regenerar `ganera-demo/seed-tramites.sql` (y revisar
+    `smoke.sh`) con los tipos de OVZ de la `V20` (`BAJA_MUERTE`, `SOLICITUD_MOVIMIENTO`…): hoy usa `'BAJA'` y
+    `'MOVIMIENTO'`, que el backend ya no lee. Datos y smoke según `C:\Users\Antonio\Desktop\ganera-demo\LEEME.md` (fuera del repo): `alta-gestorias.sh` →
     importar los dos Excel desde la UI → `seed-tramites.sql` en Adminer → borrar `ONBOARDING_SECRET` y reiniciar
     (comprobar en la consola que ya no está) → `smoke.sh` en la terminal de Antonio (solo PASS/FAIL) → pasada en
     navegador real a 1440 y 375 px.
@@ -769,6 +806,8 @@ Además del catálogo real de tipos de trámite (ver los pendientes heredados en
 
 ## Prompt C — notas acumuladas (pendiente)
 
+- **Credenciales de OVZ bajo demanda (2026-10-07, ficha OVZ T2 M2; pendiente del resto del bloque C, antes del
+  piloto):** «descifrar la contraseña de OVZ solo bajo demanda, no al cargar el ganadero; hoy una cifra corrupta o un cambio de ENCRYPTION_KEY da 500 en el detalle y en /ganaderos».
 - **Stripe: bugs conocidos, pendientes (detectados el 2026-09-25; siguen fuera de "quitar el pago de la app"):**
   1. `invoice.payment_failed` sobre una suscripción que ya está en `TRIAL_EXPIRADO_SIN_PAGO` la pasa a
      `IMPAGO_GRACIA`, lo que vuelve a permitir aprobar. Arreglarlo empezando por el test.

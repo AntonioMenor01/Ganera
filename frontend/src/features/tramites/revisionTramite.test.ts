@@ -23,12 +23,14 @@ function crotal(crotalIndicado: string): TramiteCrotal {
 function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
   return {
     id: 7,
-    tipoTramite: "ALTA",
+    tipoTramite: "ALTA_NACIMIENTO",
     estado: "PENDIENTE_REVISION",
     motivoError: null,
     explotacionId: 3,
     explotacionCodigoRega: "ES123",
     explotacionNombre: "La Dehesa",
+    ganaderoNombre: "Ana Martínez",
+    ganaderoNif: "12345678Z",
     mensajeOriginal: null,
     crotales: [crotal("1234"), crotal("ES010000005678")],
     version: 4,
@@ -64,7 +66,7 @@ describe("formularioDesdeDetalle", () => {
     })
     expect(formularioDesdeDetalle(d)).toEqual({
       explotacionId: 3,
-      tipoTramite: "ALTA",
+      tipoTramite: "ALTA_NACIMIENTO",
       crotales: ["1234"],
     })
   })
@@ -117,7 +119,7 @@ describe("estaSucio", () => {
     const d = detalle()
     const base = formularioDesdeDetalle(d)
     expect(estaSucio(d, { ...base, explotacionId: 9 })).toBe(true)
-    expect(estaSucio(d, { ...base, tipoTramite: "BAJA" })).toBe(true)
+    expect(estaSucio(d, { ...base, tipoTramite: "BAJA_MUERTE" })).toBe(true)
     expect(estaSucio(d, { ...base, crotales: ["1235", "ES010000005678"] })).toBe(true)
     expect(estaSucio(d, { ...base, crotales: ["1234"] })).toBe(true)
   })
@@ -139,9 +141,9 @@ describe("construirPatch", () => {
 
   it("solo la versión y el campo cambiado: tipo", () => {
     const d = detalle()
-    expect(construirPatch(d, { ...formularioDesdeDetalle(d), tipoTramite: "CENSO" })).toEqual({
+    expect(construirPatch(d, { ...formularioDesdeDetalle(d), tipoTramite: "DECLARACION_CENSO" })).toEqual({
       version: 4,
-      tipoTramite: "CENSO",
+      tipoTramite: "DECLARACION_CENSO",
     })
   })
 
@@ -166,10 +168,10 @@ describe("construirPatch", () => {
 
   it("varios cambios a la vez van juntos, con la versión del detalle", () => {
     const d = detalle({ version: 0, explotacionId: null, tipoTramite: null, crotales: [] })
-    expect(construirPatch(d, { explotacionId: 5, tipoTramite: "ALTA", crotales: ["1234"] })).toEqual({
+    expect(construirPatch(d, { explotacionId: 5, tipoTramite: "ALTA_NACIMIENTO", crotales: ["1234"] })).toEqual({
       version: 0,
       explotacionId: 5,
-      tipoTramite: "ALTA",
+      tipoTramite: "ALTA_NACIMIENTO",
       crotales: ["1234"],
     })
   })

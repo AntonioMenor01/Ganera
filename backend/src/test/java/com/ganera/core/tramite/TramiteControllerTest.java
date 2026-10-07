@@ -103,7 +103,7 @@ class TramiteControllerTest {
         // Regla de aprobacion (Task 6): hace falta explotacion y tipo para aprobar.
         Tramite tramite = guardarTramite(gestoria, contacto, EstadoTramite.PENDIENTE_REVISION);
         tramite.setExplotacion(nuevaExplotacion(gestoria, "ES700000000020", "Finca aprobar"));
-        tramite.setTipoTramite(TipoTramite.ALTA);
+        tramite.setTipoTramite(TipoTramite.ALTA_NACIMIENTO);
         tramiteRepository.save(tramite);
 
         TramiteController controller = nuevoController();
@@ -202,7 +202,7 @@ class TramiteControllerTest {
         // Aprobable si fuera de la Gestoria propia: el 404 solo puede venir del aislamiento.
         Tramite tramiteAjeno = guardarTramite(gestoriaAjena, contacto, EstadoTramite.PENDIENTE_REVISION);
         tramiteAjeno.setExplotacion(nuevaExplotacion(gestoriaAjena, "ES700000000021", "Finca ajena"));
-        tramiteAjeno.setTipoTramite(TipoTramite.ALTA);
+        tramiteAjeno.setTipoTramite(TipoTramite.ALTA_NACIMIENTO);
         tramiteRepository.save(tramiteAjeno);
 
         TramiteController controller = nuevoController();
@@ -222,7 +222,7 @@ class TramiteControllerTest {
         Explotacion explotacion = nuevaExplotacion(gestoria, "ES700000000001", "Finca detalle");
         Tramite tramite = guardarTramite(gestoria, contacto, EstadoTramite.PENDIENTE_REVISION);
         tramite.setExplotacion(explotacion);
-        tramite.setTipoTramite(TipoTramite.ALTA);
+        tramite.setTipoTramite(TipoTramite.ALTA_NACIMIENTO);
         tramiteRepository.save(tramite);
 
         MensajeCampo mensaje = new MensajeCampo();
@@ -242,9 +242,37 @@ class TramiteControllerTest {
         TramiteDetalleResponse cuerpo = respuesta.getBody();
         assertThat(cuerpo).isNotNull();
         assertThat(cuerpo.mensajeOriginal()).isEqualTo("Alta de 3 terneros en la finca");
-        assertThat(cuerpo.tipoTramite()).isEqualTo("ALTA");
+        assertThat(cuerpo.tipoTramite()).isEqualTo("ALTA_NACIMIENTO");
         assertThat(cuerpo.explotacionCodigoRega()).isEqualTo("ES700000000001");
         assertThat(cuerpo.explotacionNombre()).isEqualTo("Finca detalle");
+        // Ficha OVZ (T2): el titular sale del ganadero de la explotacion; este no tiene NIF.
+        assertThat(cuerpo.ganaderoNombre()).isEqualTo("Ganadero de prueba detalle");
+        assertThat(cuerpo.ganaderoNif()).isNull();
+    }
+
+    @Test
+    void detalleIncluyeElNombreYElNifDelGanaderoDeLaExplotacion() {
+        Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria detalle ganadero"));
+        Contacto contacto = nuevoContacto(gestoria, "+34600111299");
+        Explotacion explotacion = nuevaExplotacion(gestoria, "ES700000000099", "Finca titular");
+        Ganadero ganadero = explotacion.getGanadero();
+        ganadero.setNombre("Maria Lopez Garcia");
+        ganadero.setNif("12345678Z");
+        ganadero.setOvzUsuario("usuario-ovz-secreto");
+        ganaderoRepository.save(ganadero);
+        Tramite tramite = guardarTramite(gestoria, contacto, EstadoTramite.PENDIENTE_REVISION);
+        tramite.setExplotacion(explotacion);
+        tramiteRepository.save(tramite);
+
+        ResponseEntity<TramiteDetalleResponse> respuesta = nuevoController().detalle(
+                new GaneraUserPrincipal(1L, gestoria.getId(), "empleado@test.com"), tramite.getId());
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
+        TramiteDetalleResponse cuerpo = respuesta.getBody();
+        assertThat(cuerpo).isNotNull();
+        assertThat(cuerpo.ganaderoNombre()).isEqualTo("Maria Lopez Garcia");
+        assertThat(cuerpo.ganaderoNif()).isEqualTo("12345678Z");
+        assertThat(cuerpo.toString()).doesNotContain("usuario-ovz-secreto");
     }
 
     @Test
@@ -263,6 +291,8 @@ class TramiteControllerTest {
         assertThat(cuerpo.mensajeOriginal()).isNull();
         assertThat(cuerpo.explotacionId()).isNull();
         assertThat(cuerpo.tipoTramite()).isNull();
+        assertThat(cuerpo.ganaderoNombre()).isNull();
+        assertThat(cuerpo.ganaderoNif()).isNull();
     }
 
     @Test
@@ -393,12 +423,12 @@ class TramiteControllerTest {
         Tramite tramite = guardarTramite(gestoria, nuevoContacto(gestoria, "+34600111250"), EstadoTramite.PENDIENTE_REVISION);
 
         ResponseEntity<?> respuesta = nuevoController().actualizar(principal(gestoria), tramite.getId(),
-                new TramitePatchRequest(version(tramite), explotacion.getId(), " baja ", List.of("12-34")));
+                new TramitePatchRequest(version(tramite), explotacion.getId(), " baja_muerte ", List.of("12-34")));
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
         TramiteDetalleResponse cuerpo = (TramiteDetalleResponse) respuesta.getBody();
         assertThat(cuerpo.explotacionId()).isEqualTo(explotacion.getId());
-        assertThat(cuerpo.tipoTramite()).isEqualTo("BAJA");
+        assertThat(cuerpo.tipoTramite()).isEqualTo("BAJA_MUERTE");
         assertThat(cuerpo.crotales()).containsExactly(
                 new TramiteCrotalResponse("1234", "ES700000031234", false, animal.getId(), true, "EN_INVENTARIO"));
     }
@@ -408,7 +438,8 @@ class TramiteControllerTest {
         Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria patch tipo"));
         Tramite tramite = guardarTramite(gestoria, nuevoContacto(gestoria, "+34600111251"), EstadoTramite.PENDIENTE_REVISION);
 
-        for (String tipo : List.of("TRASLADO", "", "  ")) {
+        // Los tipos de antes de la V20 (ficha OVZ) tampoco valen.
+        for (String tipo : List.of("TRASLADO", "", "  ", "ALTA", "BAJA", "MOVIMIENTO", "CENSO", "DEMORA")) {
             ResponseEntity<?> respuesta = nuevoController().actualizar(principal(gestoria), tramite.getId(),
                     new TramitePatchRequest(version(tramite), null, tipo, null));
 
@@ -453,7 +484,7 @@ class TramiteControllerTest {
         Tramite tramiteAjeno = guardarTramite(ajena, nuevoContacto(ajena, "+34600111254"), EstadoTramite.PENDIENTE_REVISION);
 
         ResponseEntity<?> respuesta = nuevoController().actualizar(principal(gestoria), tramiteAjeno.getId(),
-                new TramitePatchRequest(version(tramiteAjeno), null, "ALTA", null));
+                new TramitePatchRequest(version(tramiteAjeno), null, "ALTA_NACIMIENTO", null));
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(404);
         assertThat(respuesta.getBody()).isNull();
@@ -466,7 +497,7 @@ class TramiteControllerTest {
         Tramite tramite = guardarTramite(gestoria, nuevoContacto(gestoria, "+34600111255"), EstadoTramite.APROBADO);
 
         ResponseEntity<?> respuesta = nuevoController().actualizar(principal(gestoria), tramite.getId(),
-                new TramitePatchRequest(version(tramite), null, "ALTA", null));
+                new TramitePatchRequest(version(tramite), null, "ALTA_NACIMIENTO", null));
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(409);
         assertThat(respuesta.getBody()).isEqualTo(
@@ -493,7 +524,7 @@ class TramiteControllerTest {
         suscripcionActiva(gestoria);
         Tramite tramite = guardarTramite(gestoria, nuevoContacto(gestoria, "+34600111257"), EstadoTramite.APROBADO);
         tramite.setExplotacion(nuevaExplotacion(gestoria, "ES700000000032", "Finca reaprobar"));
-        tramite.setTipoTramite(TipoTramite.ALTA);
+        tramite.setTipoTramite(TipoTramite.ALTA_NACIMIENTO);
         tramiteRepository.save(tramite);
 
         ResponseEntity<?> aprobar = nuevoController().aprobar(principal(gestoria), tramite.getId(), aprobarCon(tramite));
@@ -531,7 +562,7 @@ class TramiteControllerTest {
         Gestoria ajena = gestoriaRepository.save(new Gestoria("Gestoria ajena aprobar sin version"));
         Tramite tramite = guardarTramite(gestoria, nuevoContacto(gestoria, "+34600111260"), EstadoTramite.PENDIENTE_REVISION);
         tramite.setExplotacion(nuevaExplotacion(gestoria, "ES700000000060", "Finca sin version"));
-        tramite.setTipoTramite(TipoTramite.ALTA);
+        tramite.setTipoTramite(TipoTramite.ALTA_NACIMIENTO);
         tramiteRepository.save(tramite);
         Tramite tramiteAjeno = guardarTramite(ajena, nuevoContacto(ajena, "+34600111261"), EstadoTramite.PENDIENTE_REVISION);
         long versionAntes = version(tramite);
@@ -558,7 +589,7 @@ class TramiteControllerTest {
 
         for (Long id : List.of(tramite.getId(), tramiteAjeno.getId(), 999999L)) {
             ResponseEntity<?> respuesta = nuevoController().actualizar(principal(gestoria), id,
-                    new TramitePatchRequest(null, null, "BAJA", List.of("1234")));
+                    new TramitePatchRequest(null, null, "BAJA_MUERTE", List.of("1234")));
 
             assertThat(respuesta.getStatusCode().value()).as("id " + id).isEqualTo(400);
             assertThat(respuesta.getBody()).isEqualTo(new MotivoErrorResponse(TramiteController.MOTIVO_FALTA_VERSION));
@@ -620,7 +651,7 @@ class TramiteControllerTest {
         Tramite tramite = guardarTramite(gestoria, nuevoContacto(gestoria, "+34600111268"), EstadoTramite.PENDIENTE_REVISION);
         long vieja = version(tramite);
         assertThat(nuevoController().actualizar(principal(gestoria), tramite.getId(),
-                new TramitePatchRequest(vieja, null, "BAJA", null)).getStatusCode().value()).isEqualTo(200);
+                new TramitePatchRequest(vieja, null, "BAJA_MUERTE", null)).getStatusCode().value()).isEqualTo(200);
 
         ResponseEntity<?> respuesta = nuevoController().rechazar(principal(gestoria), tramite.getId(),
                 new TramiteRechazarRequest(vieja));
@@ -653,14 +684,14 @@ class TramiteControllerTest {
         suscripcionActiva(gestoria);
         Tramite tramite = guardarTramite(gestoria, nuevoContacto(gestoria, "+34600111265"), EstadoTramite.PENDIENTE_REVISION);
         tramite.setExplotacion(nuevaExplotacion(gestoria, "ES700000000065", "Finca desfasada"));
-        tramite.setTipoTramite(TipoTramite.ALTA);
+        tramite.setTipoTramite(TipoTramite.ALTA_NACIMIENTO);
         tramiteRepository.save(tramite);
         long vieja = version(tramite);
         assertThat(nuevoController().actualizar(principal(gestoria), tramite.getId(),
-                new TramitePatchRequest(vieja, null, "BAJA", null)).getStatusCode().value()).isEqualTo(200);
+                new TramitePatchRequest(vieja, null, "BAJA_MUERTE", null)).getStatusCode().value()).isEqualTo(200);
 
         ResponseEntity<?> patch = nuevoController().actualizar(principal(gestoria), tramite.getId(),
-                new TramitePatchRequest(vieja, null, "ALTA", null));
+                new TramitePatchRequest(vieja, null, "ALTA_NACIMIENTO", null));
         ResponseEntity<?> aprobar = nuevoController().aprobar(principal(gestoria), tramite.getId(),
                 new TramiteAprobarRequest(vieja));
 
@@ -669,7 +700,7 @@ class TramiteControllerTest {
             assertThat(respuesta.getBody()).isEqualTo(
                     new MotivoErrorResponse(TramiteRevisionService.MOTIVO_VERSION_DESFASADA));
         }
-        assertThat(tramite.getTipoTramite()).isEqualTo(TipoTramite.BAJA);
+        assertThat(tramite.getTipoTramite()).isEqualTo(TipoTramite.BAJA_MUERTE);
         assertThat(tramite.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
         assertThat(version(tramite)).isEqualTo(vieja + 1);
     }

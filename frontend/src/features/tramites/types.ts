@@ -48,6 +48,10 @@ export interface TramiteDetalle {
   explotacionId: number | null;
   explotacionCodigoRega: string | null;
   explotacionNombre: string | null;
+  /** Ficha OVZ, T2: titular de la explotación, para saber con qué cuenta entrar en OVZ. null sin
+   * explotación. El backend nunca manda las credenciales de OVZ. */
+  ganaderoNombre: string | null;
+  ganaderoNif: string | null;
   mensajeOriginal: string | null;
   crotales: TramiteCrotal[];
   version: number;

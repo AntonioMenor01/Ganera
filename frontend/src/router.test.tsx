@@ -89,3 +89,41 @@ describe("rutas: /registro ya no es una pantalla (Prompt C, D4)", () => {
     expect(await screen.findByLabelText("Contraseña")).toBeInTheDocument()
   })
 })
+
+describe("rutas: ficha para OVZ (ficha OVZ, T5)", () => {
+  const detalle = {
+    id: 5,
+    tipoTramite: "BAJA_MUERTE",
+    estado: "APROBADO",
+    motivoError: null,
+    explotacionId: 3,
+    explotacionCodigoRega: "ES061230000012",
+    explotacionNombre: "Los Llanos",
+    ganaderoNombre: "Juan Pérez Gil",
+    ganaderoNif: "12345678Z",
+    mensajeOriginal: null,
+    crotales: [],
+    version: 1,
+    origen: null,
+    estadoExtraccion: null,
+    crotalesDescartados: 0,
+  }
+
+  it("con sesión, /tramites/5/ovz es la ficha, fuera del layout (sin la barra de la app)", async () => {
+    conSesion()
+    server.use(http.get(apiUrl("/tramites/5"), () => HttpResponse.json(detalle)))
+    const router = montarApp("/tramites/5/ovz")
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Baja de Bovino" })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe("/tramites/5/ovz")
+    expect(screen.queryByRole("navigation", { name: "Principal" })).not.toBeInTheDocument()
+  })
+
+  it("sin sesión (ventana abierta sin heredarla, D3), va al login recordando la ficha para volver", async () => {
+    const router = montarApp("/tramites/5/ovz")
+
+    expect(await screen.findByText("Inicia sesión con tu cuenta de gestoría.")).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe("/login")
+    expect(router.state.location.state).toMatchObject({ from: "/tramites/5/ovz" })
+  })
+})

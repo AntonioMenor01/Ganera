@@ -28,7 +28,7 @@ function tramite(id: number, extra: Record<string, unknown> = {}) {
     explotacionId: null,
     explotacionCodigoRega: null,
     explotacionNombre: null,
-    tipoTramite: "ALTA",
+    tipoTramite: "ALTA_NACIMIENTO",
     estado: "PENDIENTE_REVISION",
     motivoError: null,
     crotales: [],
@@ -73,7 +73,7 @@ describe("TramitesPage: etiquetas legibles", () => {
               explotacionId: null,
               explotacionCodigoRega: null,
               explotacionNombre: null,
-              tipoTramite: "MOVIMIENTO",
+              tipoTramite: "SOLICITUD_MOVIMIENTO",
               estado: "PENDIENTE_REVISION",
               motivoError: null,
               crotales: [],
@@ -87,7 +87,7 @@ describe("TramitesPage: etiquetas legibles", () => {
               explotacionId: 3,
               explotacionCodigoRega: "ES280790000123",
               explotacionNombre: "Finca La Dehesa",
-              tipoTramite: "ALTA",
+              tipoTramite: "ALTA_NACIMIENTO",
               estado: "EJECUTADO_OVZ",
               motivoError: null,
               crotales: [],
@@ -112,9 +112,9 @@ describe("TramitesPage: etiquetas legibles", () => {
     const tabla = screen.getByRole("table")
     expect(within(tabla).getByText("Pendiente de revisión")).toHaveClass("bg-warning")
     expect(within(tabla).getByText("Ejecutado en OVZ.net")).toHaveClass("bg-success")
-    expect(screen.getByText("Movimiento")).toBeInTheDocument()
-    expect(screen.getByText("Alta")).toBeInTheDocument()
-    for (const enumCrudo of ["PENDIENTE_REVISION", "EJECUTADO_OVZ", "MOVIMIENTO", "ALTA"]) {
+    expect(screen.getByText("Solicitud de movimiento")).toBeInTheDocument()
+    expect(screen.getByText("Alta por nacimiento")).toBeInTheDocument()
+    for (const enumCrudo of ["PENDIENTE_REVISION", "EJECUTADO_OVZ", "SOLICITUD_MOVIMIENTO", "ALTA_NACIMIENTO"]) {
       expect(screen.queryByText(enumCrudo)).not.toBeInTheDocument()
     }
   })

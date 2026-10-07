@@ -19,25 +19,34 @@ import {
 import { badgeVarianteDeEstado as badgeVarianteDeEstadoReexportado } from "./types"
 
 describe("TIPOS_TRAMITE", () => {
-  it("tiene exactamente los 5 tipos del backend con su etiqueta", () => {
-    expect(TIPOS_TRAMITE).toEqual({
-      ALTA: "Alta",
-      BAJA: "Baja",
-      CENSO: "Censo",
-      MOVIMIENTO: "Movimiento",
-      DEMORA: "Demora",
-    })
+  it("tiene exactamente los 6 tipos de OVZ del backend, en su orden, con su etiqueta", () => {
+    expect(Object.entries(TIPOS_TRAMITE)).toEqual([
+      ["ALTA_NACIMIENTO", "Alta por nacimiento"],
+      ["BAJA_MUERTE", "Baja por muerte"],
+      ["SOLICITUD_MOVIMIENTO", "Solicitud de movimiento"],
+      ["CONFIRMACION_MOVIMIENTO", "Confirmación de entrada"],
+      ["DECLARACION_CENSO", "Declaración de censo"],
+      ["DEMORA_CROTALIZACION", "Demora de crotalización"],
+    ])
   })
 
   it.each([
-    ["ALTA", "Alta"],
-    ["BAJA", "Baja"],
-    ["CENSO", "Censo"],
-    ["MOVIMIENTO", "Movimiento"],
-    ["DEMORA", "Demora"],
+    ["ALTA_NACIMIENTO", "Alta por nacimiento"],
+    ["BAJA_MUERTE", "Baja por muerte"],
+    ["SOLICITUD_MOVIMIENTO", "Solicitud de movimiento"],
+    ["CONFIRMACION_MOVIMIENTO", "Confirmación de entrada"],
+    ["DECLARACION_CENSO", "Declaración de censo"],
+    ["DEMORA_CROTALIZACION", "Demora de crotalización"],
   ])("%s se muestra como %s", (tipo, etiqueta) => {
     expect(etiquetaTipoTramite(tipo)).toBe(etiqueta)
   })
+
+  it.each(["ALTA", "BAJA", "CENSO", "MOVIMIENTO", "DEMORA"])(
+    "el tipo viejo %s (antes de la V20) ya no es conocido y se muestra tal cual",
+    (tipo) => {
+      expect(etiquetaTipoTramite(tipo)).toBe(tipo)
+    },
+  )
 
   it("un tipo desconocido (p. ej. tras el prompt B) muestra el valor tal cual", () => {
     expect(etiquetaTipoTramite("TRASLADO_FERIA")).toBe("TRASLADO_FERIA")

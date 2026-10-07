@@ -575,6 +575,37 @@ in the UI. The favicon is `favicon-64.png`.
   and saves** the trámite: it records that the AI didn't extract it, which is still true. Don't
   "fix" that by hiding it on save.
 
+### Ficha para OVZ (auxiliary window)
+- **What it is:** `/tramites/:id/ovz`, a companion window the gestor keeps next to OVZ.net
+  (360–480 px wide) while typing a trámite there by hand. Ganera sends nothing to OVZ; the page says so
+  in one muted line ("Para copiar en OVZ. Ganera no envía nada.").
+- **Shell:** no app nav bar. Inside `RequireAuth`, outside `AppLayout`: a sticky Superficie header
+  with the 20px brand mark, "Ficha para OVZ", the `#id` (tabular, muted) and the state badge, then a
+  single column up to `max-w-xl`, 16px gutters, 20px gap.
+- **Order is OVZ's order:** title = the OVZ form name (800), "En OVZ: " plus the menu path, then the
+  manual's deadlines as a quiet list (Info icon, Gris Texto; never an `Alert`). The WhatsApp message
+  is a disclosure, open by default, with the Superficie quoted block. Then record sections: "Entrar en
+  OVZ" (titular, NIF, REGA) and one section per OVZ block, in `fichaOvz.ts` order.
+- **Field rows** (`dl`): the exact OVZ label in Gris Texto 14px with an ink `*` (600) for mandatory, not red: solid
+  red only acts (and "obligatorio" for screen readers); the value below in ink, 500, tabular, breaking anywhere; Copiar
+  (outline `sm`) on the right. Missing data is plain Gris Texto, "Falta · {pista}", never amber or red:
+  most fields are missing until B2, and coloring them would turn the page into alarms. A crotal shows
+  what was written ("escrito: 1234") under the resolved value, or inside the missing text.
+- **Copy:** the button always reads "Copiar" (WCAG 2.5.3: its name, "Copiar {etiqueta}", contains
+  the visible text); success swaps the icon to a check for 2s and is announced in a polite live region.
+  A copied row keeps a small ink check before its label until reload (memory only, nothing saved).
+  Without the Clipboard API the value appears in a read-only `Input`, selected and focused, with
+  "Selecciona el texto y cópialo (Ctrl+C o ⌘C)".
+- **States (D4):** only `APROBADO` copies. `PENDIENTE_REVISION` is a preview: a neutral Superficie
+  strip (Eye icon) "Vista previa: aprueba el trámite antes de pasarlo a OVZ." and no Copiar buttons.
+  Rejected, extracting, no type, unknown type, censo and 404 use the "Not found" pattern (title, one
+  sentence, "Volver a trámites").
+- **Entry:** from the review dialog footer, "Abrir ficha para OVZ" (outline, external-link icon) when
+  approved, and "Vista previa de la ficha" (ghost) next to Rechazar while pending. Both call
+  `window.open` with a fixed window name and no `noopener`, so the window inherits the session; their
+  accessible name adds "(se abre en otra ventana)". The preview is disabled while there are unsaved
+  edits (it would show what is saved), like Aprobar.
+
 ## Do's and Don'ts
 
 ### Do:

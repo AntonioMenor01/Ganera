@@ -15,10 +15,10 @@ class ExtraccionValidadorTest {
 
     @Test
     void normalizaCadaCrotalYConservaElOrden() {
-        ExtraccionValidada validada = ExtraccionValidador.validar(new TramiteExtraido(TipoTramite.BAJA,
+        ExtraccionValidada validada = ExtraccionValidador.validar(new TramiteExtraido(TipoTramite.BAJA_MUERTE,
                 List.of("es-0100 0000.1234", "1234", " 5678 ")));
 
-        assertThat(validada.tipo()).isEqualTo(TipoTramite.BAJA);
+        assertThat(validada.tipo()).isEqualTo(TipoTramite.BAJA_MUERTE);
         assertThat(validada.crotales()).containsExactly("ES010000001234", "1234", "5678");
         assertThat(validada.descartados()).isZero();
     }
@@ -33,7 +33,7 @@ class ExtraccionValidadorTest {
 
     @Test
     void losInvalidosSeDescartanYSeCuentanSinLanzar() {
-        ExtraccionValidada validada = ExtraccionValidador.validar(new TramiteExtraido(TipoTramite.ALTA,
+        ExtraccionValidada validada = ExtraccionValidador.validar(new TramiteExtraido(TipoTramite.ALTA_NACIMIENTO,
                 Arrays.asList("123", "", "   ", null, "ES*1234", "ñ1234", "A".repeat(31), "56789")));
 
         assertThat(validada.crotales()).containsExactly("56789");
@@ -42,7 +42,7 @@ class ExtraccionValidadorTest {
 
     @Test
     void losDuplicadosDelMismoValorNormalizadoSeColapsanYNoCuentan() {
-        ExtraccionValidada validada = ExtraccionValidador.validar(new TramiteExtraido(TipoTramite.ALTA,
+        ExtraccionValidada validada = ExtraccionValidador.validar(new TramiteExtraido(TipoTramite.ALTA_NACIMIENTO,
                 List.of("1234", "12-34", "ES1", "es1", "1234", "123")));
 
         assertThat(validada.crotales()).containsExactly("1234", "ES1");
@@ -59,7 +59,7 @@ class ExtraccionValidadorTest {
         crotales.add("100051"); // repetido de uno que paso del maximo: ya contado una vez
         crotales.add("12");     // invalido: cuenta
 
-        ExtraccionValidada validada = ExtraccionValidador.validar(new TramiteExtraido(TipoTramite.CENSO, crotales));
+        ExtraccionValidada validada = ExtraccionValidador.validar(new TramiteExtraido(TipoTramite.DECLARACION_CENSO, crotales));
 
         assertThat(validada.crotales()).hasSize(50);
         assertThat(validada.crotales().get(0)).isEqualTo("100000");
@@ -74,7 +74,7 @@ class ExtraccionValidadorTest {
             crotales.add(String.valueOf(200000 + i));
         }
 
-        ExtraccionValidada validada = ExtraccionValidador.validar(new TramiteExtraido(TipoTramite.CENSO, crotales));
+        ExtraccionValidada validada = ExtraccionValidador.validar(new TramiteExtraido(TipoTramite.DECLARACION_CENSO, crotales));
 
         assertThat(validada.crotales()).hasSize(50);
         assertThat(validada.descartados()).isZero();
@@ -82,15 +82,15 @@ class ExtraccionValidadorTest {
 
     @Test
     void listaNulaOVaciaDaCeroCrotales() {
-        assertThat(ExtraccionValidador.validar(new TramiteExtraido(TipoTramite.ALTA, null)))
-                .isEqualTo(new ExtraccionValidada(TipoTramite.ALTA, List.of(), 0));
-        assertThat(ExtraccionValidador.validar(new TramiteExtraido(TipoTramite.ALTA, List.of())))
-                .isEqualTo(new ExtraccionValidada(TipoTramite.ALTA, List.of(), 0));
+        assertThat(ExtraccionValidador.validar(new TramiteExtraido(TipoTramite.ALTA_NACIMIENTO, null)))
+                .isEqualTo(new ExtraccionValidada(TipoTramite.ALTA_NACIMIENTO, List.of(), 0));
+        assertThat(ExtraccionValidador.validar(new TramiteExtraido(TipoTramite.ALTA_NACIMIENTO, List.of())))
+                .isEqualTo(new ExtraccionValidada(TipoTramite.ALTA_NACIMIENTO, List.of(), 0));
     }
 
     @Test
     void laListaDevueltaEsInmutable() {
-        ExtraccionValidada validada = ExtraccionValidador.validar(new TramiteExtraido(TipoTramite.ALTA, List.of("1234")));
+        ExtraccionValidada validada = ExtraccionValidador.validar(new TramiteExtraido(TipoTramite.ALTA_NACIMIENTO, List.of("1234")));
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> validada.crotales().add("5678"))
                 .isInstanceOf(UnsupportedOperationException.class);

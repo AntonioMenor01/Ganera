@@ -177,7 +177,7 @@ class TenantIsolationEndToEndTest {
         explotacionA.setCodigoRega("ES900000000103");
         explotacionA.setNombre("Finca E2E aprobar");
         tramiteA.setExplotacion(explotacionRepository.save(explotacionA));
-        tramiteA.setTipoTramite(TipoTramite.ALTA);
+        tramiteA.setTipoTramite(TipoTramite.ALTA_NACIMIENTO);
         tramiteA = tramiteRepository.save(tramiteA);
         String tokenB = login("aprB@test.com");
 

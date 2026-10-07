@@ -7,7 +7,7 @@ import { actualizarTramite, aprobarTramite, obtenerDetalleTramite, rechazarTrami
 
 const DETALLE = {
   id: 7,
-  tipoTramite: "ALTA",
+  tipoTramite: "ALTA_NACIMIENTO",
   estado: "PENDIENTE_REVISION",
   motivoError: null,
   explotacionId: 3,
@@ -24,7 +24,7 @@ const DETALLE = {
 const RESPUESTA_LISTA = {
   id: 7,
   explotacionId: 3,
-  tipoTramite: "ALTA",
+  tipoTramite: "ALTA_NACIMIENTO",
   estado: "APROBADO",
   motivoError: null,
   crotales: [],
@@ -75,8 +75,8 @@ describe("actualizarTramite (PATCH /tramites/{id})", () => {
         return HttpResponse.json(DETALLE)
       }),
     )
-    await actualizarTramite(7, { version: 2, explotacionId: 9, tipoTramite: "BAJA" })
-    expect(cuerpo).toEqual({ version: 2, explotacionId: 9, tipoTramite: "BAJA" })
+    await actualizarTramite(7, { version: 2, explotacionId: 9, tipoTramite: "BAJA_MUERTE" })
+    expect(cuerpo).toEqual({ version: 2, explotacionId: 9, tipoTramite: "BAJA_MUERTE" })
   })
 
   it("un 400 llega como ErrorApi de validación con el motivo", async () => {

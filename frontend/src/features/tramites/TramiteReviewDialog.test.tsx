@@ -12,7 +12,7 @@ import { TramiteReviewDialog } from "./TramiteReviewDialog"
 
 const DETALLE = {
   id: 7,
-  tipoTramite: "ALTA",
+  tipoTramite: "ALTA_NACIMIENTO",
   estado: "PENDIENTE_REVISION",
   motivoError: null,
   explotacionId: 3,
@@ -166,14 +166,14 @@ describe("TramiteReviewDialog: etiquetas legibles", () => {
   it("muestra la etiqueta del estado y del tipo, nunca el enum", async () => {
     server.use(
       http.get(apiUrl("/tramites/7"), () =>
-        HttpResponse.json({ ...DETALLE, estado: "ERROR_OVZ", tipoTramite: "DEMORA" }),
+        HttpResponse.json({ ...DETALLE, estado: "ERROR_OVZ", tipoTramite: "DEMORA_CROTALIZACION" }),
       ),
     )
     renderDialog()
     expect(await screen.findByText("Error en OVZ.net")).toHaveClass("bg-danger")
-    expect(screen.getByText("Demora")).toBeInTheDocument()
+    expect(screen.getByText("Demora de crotalización")).toBeInTheDocument()
     expect(screen.queryByText("ERROR_OVZ")).not.toBeInTheDocument()
-    expect(screen.queryByText("DEMORA")).not.toBeInTheDocument()
+    expect(screen.queryByText("DEMORA_CROTALIZACION")).not.toBeInTheDocument()
   })
 
   it("sin tipo todavía, lo dice en vez de dejarlo en blanco", async () => {
@@ -368,14 +368,15 @@ describe("TramiteReviewDialog: solo lectura fuera de PENDIENTE_REVISION (decisi�
       renderDialog()
       const dialogo = await dialogoListo()
       expect(within(dialogo).getByText("ES123 · La Dehesa")).toBeInTheDocument()
-      expect(within(dialogo).getByText("Alta")).toBeInTheDocument()
+      expect(within(dialogo).getByText("Alta por nacimiento")).toBeInTheDocument()
       expect(within(dialogo).getByText("1234")).toBeInTheDocument()
       expect(within(dialogo).getByText("ES010000001234")).toBeInTheDocument()
       expect(within(dialogo).getByText("En inventario")).toBeInTheDocument()
       expect(within(dialogo).queryByRole("textbox")).not.toBeInTheDocument()
       expect(within(dialogo).queryByRole("combobox")).not.toBeInTheDocument()
-      // El único botón es el de cerrar el modal.
-      expect(within(dialogo).getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual(["Cerrar"])
+      // Sin acciones de revisión: solo cerrar y, en APROBADO, abrir la ficha para OVZ (ficha OVZ, T5).
+      const esperados = estado === "APROBADO" ? ["Abrir ficha para OVZ (se abre en otra ventana)", "Cerrar"] : ["Cerrar"]
+      expect(within(dialogo).getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual(esperados)
     })
   }
 
@@ -386,12 +387,53 @@ describe("TramiteReviewDialog: solo lectura fuera de PENDIENTE_REVISION (decisi�
     renderDialog()
     const dialogo = await dialogoListo()
     expect(within(dialogo).getByRole("combobox", { name: "Explotación" })).toHaveValue("ES123 · La Dehesa")
-    expect(within(dialogo).getByRole("combobox", { name: "Tipo de trámite" })).toHaveTextContent("Alta")
+    expect(within(dialogo).getByRole("combobox", { name: "Tipo de trámite" })).toHaveTextContent("Alta por nacimiento")
     expect(within(dialogo).getByRole("textbox", { name: "Crotal 1" })).toHaveValue("1234")
     expect(boton(dialogo, "Rechazar")).toBeEnabled()
     expect(boton(dialogo, "Guardar")).toBeDisabled()
     expect(boton(dialogo, "Aprobar")).toBeEnabled()
     expect(within(dialogo).queryByText("Guarda antes de aprobar")).not.toBeInTheDocument()
+  })
+})
+
+describe("TramiteReviewDialog: ficha para OVZ (ficha OVZ, T5)", () => {
+  it("APROBADO: «Abrir ficha para OVZ» la abre en su ventana, sin noopener (D3)", async () => {
+    const user = userEvent.setup()
+    const open = vi.spyOn(window, "open").mockReturnValue({ focus: vi.fn() } as unknown as Window)
+    server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(detalle({ estado: "APROBADO" }))))
+    renderDialog()
+    const dialogo = await dialogoListo()
+
+    await user.click(boton(dialogo, "Abrir ficha para OVZ (se abre en otra ventana)"))
+
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(open.mock.calls[0][0]).toBe("/tramites/7/ovz")
+    expect(open.mock.calls[0][1]).toBe("ganera-ficha-ovz")
+    expect(open.mock.calls[0][2]).toBeUndefined()
+  })
+
+  it("PENDIENTE_REVISION: «Vista previa de la ficha» junto a las acciones", async () => {
+    const user = userEvent.setup()
+    const open = vi.spyOn(window, "open").mockReturnValue({ focus: vi.fn() } as unknown as Window)
+    server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(detalle())))
+    renderDialog()
+    const dialogo = await dialogoListo()
+
+    await user.click(boton(dialogo, "Vista previa de la ficha (se abre en otra ventana)"))
+
+    expect(open).toHaveBeenCalledWith("/tramites/7/ovz", "ganera-ficha-ovz")
+    expect(within(dialogo).queryByRole("button", { name: /^Abrir ficha para OVZ/ })).not.toBeInTheDocument()
+  })
+
+  it("PENDIENTE_REVISION con cambios sin guardar: la vista previa se desactiva (enseñaría lo guardado)", async () => {
+    const user = userEvent.setup()
+    server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(detalle({ crotales: [crotal("1234")] }))))
+    renderDialog()
+    const dialogo = await dialogoListo()
+
+    await user.type(within(dialogo).getByRole("textbox", { name: "Crotal 1" }), "5")
+
+    expect(boton(dialogo, /^Vista previa de la ficha/)).toBeDisabled()
   })
 })
 
@@ -626,10 +668,17 @@ describe("TramiteReviewDialog: tipo de trámite", () => {
     const selector = within(dialogo).getByRole("combobox", { name: "Tipo de trámite" })
     await user.click(selector)
     const opciones = await screen.findAllByRole("option")
-    expect(opciones.map((o) => o.textContent)).toEqual(["Alta", "Baja", "Censo", "Movimiento", "Demora"])
-    await user.click(screen.getByRole("option", { name: "Censo" }))
-    expect(selector).toHaveTextContent("Censo")
-    expect(selector).not.toHaveTextContent("CENSO")
+    expect(opciones.map((o) => o.textContent)).toEqual([
+      "Alta por nacimiento",
+      "Baja por muerte",
+      "Solicitud de movimiento",
+      "Confirmación de entrada",
+      "Declaración de censo",
+      "Demora de crotalización",
+    ])
+    await user.click(screen.getByRole("option", { name: "Declaración de censo" }))
+    expect(selector).toHaveTextContent("Declaración de censo")
+    expect(selector).not.toHaveTextContent("DECLARACION_CENSO")
     expect(within(dialogo).getByText("Sin guardar")).toBeInTheDocument()
   })
 })
@@ -757,7 +806,7 @@ describe("TramiteReviewDialog: Guardar", () => {
       http.patch(apiUrl("/tramites/7"), async ({ request }) => {
         patches.push(await request.json())
         await espera.promesa
-        return HttpResponse.json(detalle({ version: 3, explotacionId: 9, explotacionCodigoRega: "ES999", explotacionNombre: "Los Olivos", tipoTramite: "CENSO" }))
+        return HttpResponse.json(detalle({ version: 3, explotacionId: 9, explotacionCodigoRega: "ES999", explotacionNombre: "Los Olivos", tipoTramite: "CONFIRMACION_MOVIMIENTO" }))
       }),
     )
     const user = userEvent.setup()
@@ -767,7 +816,7 @@ describe("TramiteReviewDialog: Guardar", () => {
     await user.click(campo)
     await user.click(await screen.findByRole("option", { name: /Los Olivos/ }))
     await user.click(within(dialogo).getByRole("combobox", { name: "Tipo de trámite" }))
-    await user.click(await screen.findByRole("option", { name: "Censo" }))
+    await user.click(await screen.findByRole("option", { name: "Confirmación de entrada" }))
     await user.click(boton(dialogo, "Guardar"))
 
     expect(await within(dialogo).findByRole("button", { name: "Guardando…" })).toBeDisabled()
@@ -775,7 +824,7 @@ describe("TramiteReviewDialog: Guardar", () => {
     expect(boton(dialogo, "Rechazar")).toBeDisabled()
     espera.abrir()
     expect(await within(dialogo).findByRole("button", { name: "Guardar" })).toBeDisabled()
-    expect(patches).toEqual([{ version: 2, explotacionId: 9, tipoTramite: "CENSO" }])
+    expect(patches).toEqual([{ version: 2, explotacionId: 9, tipoTramite: "CONFIRMACION_MOVIMIENTO" }])
     expect(boton(dialogo, "Aprobar")).toBeEnabled()
     // Tras guardar, el campo enseña la guardada (la del detalle nuevo), sin «Sin guardar».
     expect(campo).toHaveValue("ES999 · Los Olivos")
@@ -854,8 +903,12 @@ describe("TramiteReviewDialog: Aprobar", () => {
     for (const nombre of ["Aprobar", "Rechazar", "Guardar", "Añadir crotal"]) {
       expect(within(dialogo).queryByRole("button", { name: nombre })).not.toBeInTheDocument()
     }
-    // Nada sugiere OVZ.net.
-    expect(dialogo).not.toHaveTextContent(/OVZ/)
+    // Nada sugiere que algo se haya enviado a OVZ.net: la única mención es la ficha para pasarlo a
+    // mano (ficha OVZ, T5), que es lo que de verdad queda por hacer.
+    expect(dialogo).not.toHaveTextContent(/enviad|ejecutad|registrad|en curso en OVZ|tramitad|completad|procesad|presentad/i)
+    const menciones = within(dialogo).getAllByText(/OVZ/)
+    expect(menciones).toHaveLength(1)
+    expect(menciones[0].closest("button")).toHaveAccessibleName("Abrir ficha para OVZ (se abre en otra ventana)")
     await waitFor(() => expect(within(dialogo).getByRole("heading", { name: "Trámite #7" })).toHaveFocus())
   })
 })
@@ -936,7 +989,7 @@ describe("TramiteReviewDialog: avisos", () => {
   it("409 al guardar: el motivo tal cual, persistente, sobre los datos frescos; se puede cerrar el aviso", async () => {
     detallesEnOrden(
       () => HttpResponse.json(detalle({ crotales: [crotal("1234")] })),
-      () => HttpResponse.json(detalle({ version: 1, tipoTramite: "BAJA", crotales: [crotal("1234")] })),
+      () => HttpResponse.json(detalle({ version: 1, tipoTramite: "BAJA_MUERTE", crotales: [crotal("1234")] })),
     )
     server.use(
       http.patch(apiUrl("/tramites/7"), () =>
@@ -955,7 +1008,7 @@ describe("TramiteReviewDialog: avisos", () => {
     expect(alerta.firstElementChild?.matches('svg[aria-hidden="true"]')).toBe(true)
     // Datos frescos, edición descartada.
     await waitFor(() =>
-      expect(within(dialogo).getByRole("combobox", { name: "Tipo de trámite" })).toHaveTextContent("Baja"),
+      expect(within(dialogo).getByRole("combobox", { name: "Tipo de trámite" })).toHaveTextContent("Baja por muerte"),
     )
     expect(within(dialogo).getByRole("textbox", { name: "Crotal 1" })).toHaveValue("1234")
     expect(onCambiado).toHaveBeenCalled()
@@ -1089,7 +1142,7 @@ describe("TramiteReviewDialog: avisos", () => {
   it("N1: guardar 404 y la recarga trae otra versión: se descartan las ediciones con un aviso", async () => {
     detallesEnOrden(
       () => HttpResponse.json(detalle({ crotales: [crotal("1234")] })),
-      () => HttpResponse.json(detalle({ version: 1, tipoTramite: "CENSO", crotales: [crotal("1234")] })),
+      () => HttpResponse.json(detalle({ version: 1, tipoTramite: "DECLARACION_CENSO", crotales: [crotal("1234")] })),
     )
     server.use(http.patch(apiUrl("/tramites/7"), () => new HttpResponse(null, { status: 404 })))
     const user = userEvent.setup()
@@ -1103,7 +1156,7 @@ describe("TramiteReviewDialog: avisos", () => {
       ),
     ).toBeInTheDocument()
     expect(within(dialogo).getByRole("textbox", { name: "Crotal 1" })).toHaveValue("1234")
-    expect(within(dialogo).getByRole("combobox", { name: "Tipo de trámite" })).toHaveTextContent("Censo")
+    expect(within(dialogo).getByRole("combobox", { name: "Tipo de trámite" })).toHaveTextContent("Declaración de censo")
   })
 
   it("N2: sin respuesta al aprobar, pero la recarga lo muestra aprobado: se dice eso, no «Inténtalo de nuevo»", async () => {

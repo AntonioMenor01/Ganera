@@ -39,12 +39,14 @@ function crotal(crotalIndicado: string, parcial: Partial<TramiteCrotal> = {}): T
 function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
   return {
     id: 7,
-    tipoTramite: "ALTA",
+    tipoTramite: "ALTA_NACIMIENTO",
     estado: "PENDIENTE_REVISION",
     motivoError: null,
     explotacionId: 3,
     explotacionCodigoRega: "ES123",
     explotacionNombre: "La Dehesa",
+    ganaderoNombre: "Ana Martínez",
+    ganaderoNif: "12345678Z",
     mensajeOriginal: "alta del 1234",
     crotales: [crotal("1234")],
     version: 4,
@@ -126,7 +128,7 @@ describe("useRevisionTramite: carga del detalle", () => {
     expect(result.current.detalle?.id).toBe(7)
     expect(result.current.formulario).toEqual({
       explotacionId: 3,
-      tipoTramite: "ALTA",
+      tipoTramite: "ALTA_NACIMIENTO",
       crotales: ["1234", "ES010000005678"],
     })
     expect(result.current.explotacionAsignada).toEqual({ id: 3, codigoRega: "ES123", nombre: "La Dehesa" })
@@ -173,11 +175,11 @@ describe("useRevisionTramite: carga del detalle", () => {
     server.use(
       http.get(apiUrl("/tramites/7"), async () => {
         await lento.promesa
-        return HttpResponse.json(detalle({ id: 7, tipoTramite: "BAJA" }))
+        return HttpResponse.json(detalle({ id: 7, tipoTramite: "BAJA_MUERTE" }))
       }),
       http.get(apiUrl("/tramites/8"), async () => {
         await lento8.promesa
-        return HttpResponse.json(detalle({ id: 8, tipoTramite: "CENSO" }))
+        return HttpResponse.json(detalle({ id: 8, tipoTramite: "DECLARACION_CENSO" }))
       }),
     )
     const onCambiado = vi.fn()
@@ -197,7 +199,7 @@ describe("useRevisionTramite: carga del detalle", () => {
     lento.liberar()
     await new Promise((r) => setTimeout(r, 30))
     expect(result.current.detalle?.id).toBe(8)
-    expect(result.current.formulario.tipoTramite).toBe("CENSO")
+    expect(result.current.formulario.tipoTramite).toBe("DECLARACION_CENSO")
     // Una cancelación nunca es un error.
     expect(result.current.carga.estado).toBe("listo")
   })
@@ -268,7 +270,7 @@ describe("useRevisionTramite: editable por estado", () => {
     const { result } = await montar()
     let resultado: ReturnType<typeof result.current.cambiarTipoTramite> | undefined
     act(() => {
-      resultado = result.current.cambiarTipoTramite("BAJA")
+      resultado = result.current.cambiarTipoTramite("BAJA_MUERTE")
     })
     expect(resultado?.aceptado).toBe(false)
     act(() => {
@@ -277,7 +279,7 @@ describe("useRevisionTramite: editable por estado", () => {
       result.current.quitarCrotal(0)
       result.current.cambiarExplotacion(9)
     })
-    expect(result.current.formulario).toEqual({ explotacionId: 3, tipoTramite: "ALTA", crotales: ["1234"] })
+    expect(result.current.formulario).toEqual({ explotacionId: 3, tipoTramite: "ALTA_NACIMIENTO", crotales: ["1234"] })
     expect(result.current.sucio).toBe(false)
   })
 
@@ -367,7 +369,7 @@ describe("useRevisionTramite: formulario", () => {
       motivo: "Una vez asignado, el tipo de trámite no se puede quitar. Elige otro si es necesario.",
     })
     expect(result.current.formulario.explotacionId).toBe(9)
-    expect(result.current.formulario.tipoTramite).toBe("ALTA")
+    expect(result.current.formulario.tipoTramite).toBe("ALTA_NACIMIENTO")
   })
 
   it("sin valor guardado, se puede elegir y volver a null (vuelve a no estar sucio)", async () => {
@@ -381,7 +383,7 @@ describe("useRevisionTramite: formulario", () => {
     expect(result.current.puedeQuitarTipo).toBe(true)
     act(() => {
       result.current.cambiarExplotacion(5)
-      result.current.cambiarTipoTramite("BAJA")
+      result.current.cambiarTipoTramite("BAJA_MUERTE")
     })
     expect(result.current.sucio).toBe(true)
     act(() => {
@@ -396,12 +398,12 @@ describe("useRevisionTramite: formulario", () => {
     detallesEnOrden(() => HttpResponse.json(detalle()))
     const { result } = await montar()
     act(() => {
-      result.current.cambiarTipoTramite("BAJA")
+      result.current.cambiarTipoTramite("BAJA_MUERTE")
       result.current.anadirCrotal("9999")
     })
     expect(result.current.sucio).toBe(true)
     act(() => result.current.descartarCambios())
-    expect(result.current.formulario).toEqual({ explotacionId: 3, tipoTramite: "ALTA", crotales: ["1234"] })
+    expect(result.current.formulario).toEqual({ explotacionId: 3, tipoTramite: "ALTA_NACIMIENTO", crotales: ["1234"] })
     expect(result.current.sucio).toBe(false)
   })
 })
@@ -416,7 +418,7 @@ describe("useRevisionTramite: cambios sin guardar", () => {
     expect(result.current.avisoCambiosSinGuardar).toBeNull()
 
     act(() => {
-      result.current.cambiarTipoTramite("BAJA")
+      result.current.cambiarTipoTramite("BAJA_MUERTE")
     })
     expect(result.current.sucio).toBe(true)
     expect(result.current.puedeGuardar).toBe(true)
@@ -483,7 +485,7 @@ describe("useRevisionTramite: envío único", () => {
       http.patch(apiUrl("/tramites/7"), async () => {
         patches += 1
         await lento.promesa
-        return HttpResponse.json(detalle({ tipoTramite: "BAJA", version: 5 }))
+        return HttpResponse.json(detalle({ tipoTramite: "BAJA_MUERTE", version: 5 }))
       }),
       http.post(apiUrl("/tramites/7/aprobar"), () => {
         posts += 1
@@ -492,7 +494,7 @@ describe("useRevisionTramite: envío único", () => {
     )
     const { result } = await montar()
     act(() => {
-      result.current.cambiarTipoTramite("BAJA")
+      result.current.cambiarTipoTramite("BAJA_MUERTE")
     })
     let primera!: Promise<void>
     act(() => {
@@ -509,7 +511,7 @@ describe("useRevisionTramite: envío único", () => {
     // Mientras hay una petición en curso tampoco se edita.
     let edicion: ReturnType<typeof result.current.cambiarTipoTramite> | undefined
     act(() => {
-      edicion = result.current.cambiarTipoTramite("CENSO")
+      edicion = result.current.cambiarTipoTramite("DECLARACION_CENSO")
     })
     expect(edicion?.aceptado).toBe(false)
 
@@ -566,7 +568,7 @@ describe("useRevisionTramite: 200", () => {
     let cuerpo: unknown
     detallesEnOrden(() => HttpResponse.json(detalle({ crotales: [crotal("1234")] })))
     const respuesta = detalle({
-      tipoTramite: "BAJA",
+      tipoTramite: "BAJA_MUERTE",
       version: 5,
       crotales: [crotal("1234", { crotal: "ES010000001234", resolucion: "EN_INVENTARIO", animalId: 1 }), crotal("5678")],
     })
@@ -578,16 +580,16 @@ describe("useRevisionTramite: 200", () => {
     )
     const { result, onCambiado } = await montar()
     act(() => {
-      result.current.cambiarTipoTramite("BAJA")
+      result.current.cambiarTipoTramite("BAJA_MUERTE")
       result.current.anadirCrotal(" 5678 ")
       result.current.anadirCrotal("")
     })
     await act(async () => {
       await result.current.guardar()
     })
-    expect(cuerpo).toEqual({ version: 4, tipoTramite: "BAJA", crotales: ["1234", "5678"] })
+    expect(cuerpo).toEqual({ version: 4, tipoTramite: "BAJA_MUERTE", crotales: ["1234", "5678"] })
     expect(result.current.detalle).toEqual(respuesta)
-    expect(result.current.formulario).toEqual({ explotacionId: 3, tipoTramite: "BAJA", crotales: ["1234", "5678"] })
+    expect(result.current.formulario).toEqual({ explotacionId: 3, tipoTramite: "BAJA_MUERTE", crotales: ["1234", "5678"] })
     expect(result.current.sucio).toBe(false)
     expect(result.current.puedeAprobar).toBe(true)
     expect(onCambiado).toHaveBeenCalledTimes(1)
@@ -601,12 +603,12 @@ describe("useRevisionTramite: 200", () => {
         patches += 1
         return patches === 1
           ? HttpResponse.json({ motivo: "Crotal no válido." }, { status: 400 })
-          : HttpResponse.json(detalle({ tipoTramite: "BAJA", version: 5 }))
+          : HttpResponse.json(detalle({ tipoTramite: "BAJA_MUERTE", version: 5 }))
       }),
     )
     const { result } = await montar()
     act(() => {
-      result.current.cambiarTipoTramite("BAJA")
+      result.current.cambiarTipoTramite("BAJA_MUERTE")
     })
     await act(async () => {
       await result.current.guardar()
@@ -630,13 +632,13 @@ describe("useRevisionTramite: 200", () => {
     )
     const { result } = await montar()
     act(() => {
-      result.current.cambiarTipoTramite("BAJA")
+      result.current.cambiarTipoTramite("BAJA_MUERTE")
     })
     await act(async () => {
       await result.current.guardar()
     })
     act(() => {
-      result.current.cambiarTipoTramite("CENSO")
+      result.current.cambiarTipoTramite("DECLARACION_CENSO")
     })
     await act(async () => {
       await result.current.guardar()
@@ -708,7 +710,7 @@ describe("useRevisionTramite: 200", () => {
             detalle({
               estado: "APROBADO",
               version: 5,
-              tipoTramite: "BAJA",
+              tipoTramite: "BAJA_MUERTE",
               crotales: [crotal("1234", { crotal: "ES010000001234", resolucion: "EN_INVENTARIO", animalId: 1 })],
             }),
           ),
@@ -724,12 +726,12 @@ describe("useRevisionTramite: 200", () => {
     expect(result.current.detalle).toMatchObject({
       estado: "APROBADO",
       version: 5,
-      tipoTramite: "BAJA",
+      tipoTramite: "BAJA_MUERTE",
       explotacionCodigoRega: "ES123",
       mensajeOriginal: "alta del 1234",
     })
     expect(result.current.detalle?.crotales[0]).toMatchObject({ crotal: "ES010000001234", resolucion: "EN_INVENTARIO" })
-    expect(result.current.formulario).toEqual({ explotacionId: 3, tipoTramite: "BAJA", crotales: ["1234"] })
+    expect(result.current.formulario).toEqual({ explotacionId: 3, tipoTramite: "BAJA_MUERTE", crotales: ["1234"] })
     expect(result.current.editable).toBe(false)
     expect(result.current.puedeAprobar).toBe(false)
     expect(result.current.enviando).toBeNull()
@@ -836,7 +838,7 @@ describe("useRevisionTramite: 409", () => {
     let patches = 0
     const get = detallesEnOrden(
       () => HttpResponse.json(detalle({ version: 4 })),
-      () => HttpResponse.json(detalle({ tipoTramite: "CENSO", version: 6, crotales: [crotal("7777")] })),
+      () => HttpResponse.json(detalle({ tipoTramite: "DECLARACION_CENSO", version: 6, crotales: [crotal("7777")] })),
     )
     server.use(
       http.patch(apiUrl("/tramites/7"), () => {
@@ -849,7 +851,7 @@ describe("useRevisionTramite: 409", () => {
     )
     const { result, onCambiado } = await montar()
     act(() => {
-      result.current.cambiarTipoTramite("BAJA")
+      result.current.cambiarTipoTramite("BAJA_MUERTE")
       result.current.anadirCrotal("5555")
     })
     await act(async () => {
@@ -862,7 +864,7 @@ describe("useRevisionTramite: 409", () => {
       accion: "guardar",
       mensaje: "Otra persona ha modificado este trámite. Recarga y vuelve a intentarlo.",
     })
-    expect(result.current.formulario).toEqual({ explotacionId: 3, tipoTramite: "CENSO", crotales: ["7777"] })
+    expect(result.current.formulario).toEqual({ explotacionId: 3, tipoTramite: "DECLARACION_CENSO", crotales: ["7777"] })
     expect(result.current.detalle?.version).toBe(6)
     expect(result.current.sucio).toBe(false)
     expect(onCambiado).toHaveBeenCalledTimes(1)
@@ -1080,7 +1082,7 @@ describe("useRevisionTramite: 400, 403, 404, red y servidor", () => {
     const { result, onCambiado } = await montar()
     act(() => {
       result.current.cambiarExplotacion(9)
-      result.current.cambiarTipoTramite("BAJA")
+      result.current.cambiarTipoTramite("BAJA_MUERTE")
     })
     await act(async () => {
       await result.current.guardar()
@@ -1091,7 +1093,7 @@ describe("useRevisionTramite: 400, 403, 404, red y servidor", () => {
       mensaje: "La explotación elegida ya no está disponible. Elige otra.",
     })
     expect(result.current.detalle?.mensajeOriginal).toBe("recargado")
-    expect(result.current.formulario).toMatchObject({ explotacionId: 9, tipoTramite: "BAJA" })
+    expect(result.current.formulario).toMatchObject({ explotacionId: 9, tipoTramite: "BAJA_MUERTE" })
     expect(result.current.sucio).toBe(true)
     expect(result.current.puedeGuardar).toBe(true)
     expect(result.current.carga.estado).toBe("listo")
@@ -1100,7 +1102,7 @@ describe("useRevisionTramite: 400, 403, 404, red y servidor", () => {
   })
 
   for (const caso of [
-    { nombre: "otra versión", fresco: { version: 5, tipoTramite: "CENSO" } },
+    { nombre: "otra versión", fresco: { version: 5, tipoTramite: "DECLARACION_CENSO" } },
     { nombre: "ya no está pendiente", fresco: { version: 4, estado: "APROBADO" } },
   ] as const) {
     it(`N1: guardar 404 y la recarga trae ${caso.nombre}: se descartan las ediciones como en un 409`, async () => {
@@ -1118,12 +1120,12 @@ describe("useRevisionTramite: 400, 403, 404, red y servidor", () => {
       const { result, onCambiado } = await montar()
       act(() => {
         result.current.cambiarExplotacion(9)
-        result.current.cambiarTipoTramite("BAJA")
+        result.current.cambiarTipoTramite("BAJA_MUERTE")
       })
       await act(async () => {
         await result.current.guardar()
       })
-      expect(patches).toEqual([{ version: 4, explotacionId: 9, tipoTramite: "BAJA" }])
+      expect(patches).toEqual([{ version: 4, explotacionId: 9, tipoTramite: "BAJA_MUERTE" }])
       expect(result.current.aviso).toEqual({
         tipo: "conflicto",
         accion: "guardar",
@@ -1132,7 +1134,7 @@ describe("useRevisionTramite: 400, 403, 404, red y servidor", () => {
       expect(result.current.detalle).toMatchObject(caso.fresco)
       expect(result.current.formulario).toMatchObject({
         explotacionId: 3,
-        tipoTramite: "tipoTramite" in caso.fresco ? caso.fresco.tipoTramite : "ALTA",
+        tipoTramite: "tipoTramite" in caso.fresco ? caso.fresco.tipoTramite : "ALTA_NACIMIENTO",
       })
       expect(result.current.sucio).toBe(false)
       expect(result.current.puedeGuardar).toBe(false)
@@ -1152,7 +1154,7 @@ describe("useRevisionTramite: 400, 403, 404, red y servidor", () => {
     )
     const { result, onCambiado } = await montar()
     act(() => {
-      result.current.cambiarTipoTramite("BAJA")
+      result.current.cambiarTipoTramite("BAJA_MUERTE")
     })
     await act(async () => {
       await result.current.guardar()
@@ -1162,7 +1164,7 @@ describe("useRevisionTramite: 400, 403, 404, red y servidor", () => {
       await result.current.guardar()
     })
     expect(result.current.aviso).toEqual({ tipo: "error", accion: "guardar", mensaje: TEXTO_ERROR_SERVIDOR })
-    expect(result.current.formulario.tipoTramite).toBe("BAJA")
+    expect(result.current.formulario.tipoTramite).toBe("BAJA_MUERTE")
     expect(onCambiado).not.toHaveBeenCalled()
   })
 
@@ -1471,7 +1473,7 @@ describe("useRevisionTramite: sesión ligada al trámite (M3, R2)", () => {
     const tardia = diferido()
     vi.mocked(obtenerDetalleTramite).mockImplementationOnce(async () => {
       await tardia.promesa
-      return detalle({ id: 7, estado: "APROBADO", version: 5, tipoTramite: "DEMORA" })
+      return detalle({ id: 7, estado: "APROBADO", version: 5, tipoTramite: "DEMORA_CROTALIZACION" })
     })
     let accion!: Promise<void>
     act(() => {
@@ -1486,7 +1488,7 @@ describe("useRevisionTramite: sesión ligada al trámite (M3, R2)", () => {
       await accion
     })
     expect(result.current.detalle).toMatchObject({ id: 8, version: 1, estado: "PENDIENTE_REVISION" })
-    expect(result.current.formulario.tipoTramite).toBe("ALTA")
+    expect(result.current.formulario.tipoTramite).toBe("ALTA_NACIMIENTO")
     expect(result.current.recargaFallida).toBeNull()
   })
 })

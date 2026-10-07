@@ -141,7 +141,8 @@ export const TEXTO_ERROR_RED =
 export const TEXTO_ERROR_SERVIDOR =
   "Ha fallado algo en el servidor. Inténtalo de nuevo; si se repite, avísanos.";
 
-const TEXTO_TRAMITE_NO_ENCONTRADO = "Este trámite ya no existe o no es de tu gestoría.";
+/** Exportado: la ficha para OVZ lo enseña en su estado "no encontrado" (404 o id no válido). */
+export const TEXTO_TRAMITE_NO_ENCONTRADO = "Este trámite ya no existe o no es de tu gestoría.";
 /** Exportado: la ficha del Ganadero lo enseña en su estado "no encontrado" (404 o id no válido). */
 export const TEXTO_GANADERO_NO_ENCONTRADO = "Este ganadero no existe o no es de tu gestoría.";
 const TEXTO_EXPLOTACION_NO_ENCONTRADA = "Esta explotación no existe o no es de tu gestoría.";

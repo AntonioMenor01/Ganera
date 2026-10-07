@@ -16,7 +16,8 @@ export interface Presentacion {
 const VARIANTE_DESCONOCIDA: VarianteBadge = "outline";
 const TEXTO_VACIO = "—";
 
-function buscar<T>(tabla: Readonly<Record<string, T>>, clave: string): T | undefined {
+/** Busca `clave` solo entre las propias de `tabla` (exportada para fichaOvz.ts). */
+export function buscar<T>(tabla: Readonly<Record<string, T>>, clave: string): T | undefined {
   // hasOwnProperty evita que "toString" o "constructor" se tomen por valores conocidos.
   return Object.prototype.hasOwnProperty.call(tabla, clave) ? tabla[clave] : undefined;
 }
@@ -31,14 +32,16 @@ function presentacionDe(tabla: Readonly<Record<string, Presentacion>>, valor: st
 }
 
 // ---------------------------------------------------------------------------------------------
-// Tipo de trámite. ÚNICA constante con los tipos: cambiará en el prompt B.
+// Tipo de trámite. ÚNICA constante con los tipos. Cada uno es un formulario de OVZ, en el orden
+// del enum TipoTramite del backend (ficha OVZ, T1; docs/referencias/ovz-tramites-bovino.md).
 
 export const TIPOS_TRAMITE = {
-  ALTA: "Alta",
-  BAJA: "Baja",
-  CENSO: "Censo",
-  MOVIMIENTO: "Movimiento",
-  DEMORA: "Demora",
+  ALTA_NACIMIENTO: "Alta por nacimiento",
+  BAJA_MUERTE: "Baja por muerte",
+  SOLICITUD_MOVIMIENTO: "Solicitud de movimiento",
+  CONFIRMACION_MOVIMIENTO: "Confirmación de entrada",
+  DECLARACION_CENSO: "Declaración de censo",
+  DEMORA_CROTALIZACION: "Demora de crotalización",
 } as const satisfies Record<string, string>;
 
 export type TipoTramite = keyof typeof TIPOS_TRAMITE;

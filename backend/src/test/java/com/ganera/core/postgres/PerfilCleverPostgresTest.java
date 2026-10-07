@@ -62,11 +62,11 @@ class PerfilCleverPostgresTest {
                 assertThat(conexion.unwrap(BaseConnection.class).getLogServerErrorDetail()).isFalse();
             }
 
-            // Flyway ha aplicado V1-V19 al arrancar.
+            // Flyway ha aplicado V1-V20 al arrancar.
             List<String> versiones = jdbc.queryForList(
                     "select version from flyway_schema_history where success order by installed_rank", String.class);
             assertThat(versiones).containsExactlyElementsOf(
-                    IntStream.rangeClosed(1, 19).mapToObj(String::valueOf).toList());
+                    IntStream.rangeClosed(1, 20).mapToObj(String::valueOf).toList());
 
             // Registro publico cerrado: 404 sin cuerpo y nada creado.
             int puerto = Integer.parseInt(contexto.getEnvironment().getProperty("local.server.port"));

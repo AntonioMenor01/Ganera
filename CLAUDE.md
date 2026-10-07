@@ -124,7 +124,10 @@ approval step before anything is written to OVZ.net.
 - **The frontend never implies a trámite is executed against OVZ.net when "Aprobar" is clicked** —
   `OvzAutomationService.ejecutarTramite()` is unimplemented (Prompt 3c), so the button only changes
   `EstadoTramite` in DB, matching the backend exactly. Don't add wording, spinners, or toasts that
-  suggest anything happens in OVZ.net until 3c is real. (Since Prompt A2 the review dialog sends
+  suggest anything happens in OVZ.net until 3c is real. The one OVZ reference allowed after approving
+  is the manual hand-off of the ficha OVZ escalón 1 ("Abrir ficha para OVZ", which opens the data to
+  copy by hand; Ganera sends nothing). `TramiteReviewDialog.test.tsx` checks it is the only mention and
+  that nothing says sent/executed/registered/processed. (Since Prompt A2 the review dialog sends
   the trámite's `version` with `PATCH` and `aprobar`, so approving from the UI works again — the
   breakage A1 introduced is closed.)
 - **No manual "alta de Ganadero" form in the frontend, no OVZ-credentials-onboarding screen.** The
@@ -690,7 +693,8 @@ approval step before anything is written to OVZ.net.
     `max_tokens` 1024, no tools, no thinking. Any `stop_reason` other than `end_turn`, an HTTP or
     network error or invalid JSON → `ExtraccionFallidaException`, which never chains the SDK cause
     (it carries the model's answer). The system prompt describes the types as Antonio decided: sale
-    and slaughterhouse are `MOVIMIENTO`; `BAJA` is death or slaughter on the farm. **Jackson:** the
+    and slaughterhouse are `SOLICITUD_MOVIMIENTO`; `BAJA_MUERTE` is death or slaughter on the farm
+    (OVZ type names since the ficha OVZ, `V20`). **Jackson:** the
     SDK declares 2.19.4 and Boot pins 2.18.2; it works today (the SDK checks it when building the
     client), but a future SDK could require pinning `jackson-bom.version` and would fail on the first
     call, not at startup.
@@ -719,7 +723,7 @@ approval step before anything is written to OVZ.net.
     the registration).
   - **Tests against real PostgreSQL 16** (`com.ganera.core.postgres`, `io.zonky.test:embedded-postgres`
     2.2.2 + binaries BOM 16.15.0, test scope only, no Docker; `PostgresEmbebido` shares one server per
-    JVM, UTF8, a fresh database per test): Flyway V1–V19 + `ddl-auto=validate`, V18 on existing rows,
+    JVM, UTF8, a fresh database per test): Flyway V1–V20 + `ddl-auto=validate`, V18 on existing rows,
     the `clever` profile end to end, and `InstantTimestampPostgresTest`. **Finding (D8):** with
     Hibernate 6.6 + pgjdbc 42.7.4 an `Instant` round-trips through a `TIMESTAMP` (without time zone)
     column with no shift even with the JVM in `Europe/Madrid`, and the extraction queue and
@@ -730,6 +734,33 @@ approval step before anything is written to OVZ.net.
   - Demo data and scripts (two invented Gestorías, Excel, seed SQL for Adminer, onboarding and smoke
     scripts that Antonio runs in his own terminal) live **outside the repo**, in
     `C:\Users\Antonio\Desktop\ganera-demo\`.
+- **Ficha lista para OVZ — escalón 1 de OVZ** (2026-10-07; analysis of the OVZNET manual in
+  `docs/referencias/ovz-tramites-bovino.md`, the PDF itself is git-ignored; plan
+  `docs/superpowers/plans/2026-10-06-ficha-ovz.md`, decisions D1–D8 and the approved T5 shape). Ganera
+  shows an approved trámite's data in the order of the OVZ form, with Copiar on each field, so the gestor
+  pastes it into OVZ by hand. Ganera still writes nothing to OVZ (3c).
+  - **`TipoTramite` = the OVZ forms** (`V20`, SQL): `ALTA_NACIMIENTO`, `BAJA_MUERTE`,
+    `SOLICITUD_MOVIMIENTO`, `CONFIRMACION_MOVIMIENTO`, `DECLARACION_CENSO`, `DEMORA_CROTALIZACION`
+    (supersedes A1 decision 18's list). `tipo_tramite` widened to `VARCHAR(30)`; every old `MOVIMIENTO`
+    became `SOLICITUD_MOVIMIENTO` (an old one can't be told apart from an entrada). Migration tested on H2
+    and embedded PostgreSQL. An old value in `PATCH` is a `400`. The AI's `TipoExtraido`/prompt and the
+    frontend `TIPOS_TRAMITE` changed in the same commit; backend and frontend must deploy together.
+  - **`TramiteDetalleResponse` gained `ganaderoNombre`/`ganaderoNif`** (the account to log into OVZ with;
+    null without explotación). Never `ovzUsuario`/`ovzPasswordCifrada`:
+    `CredencialesOvzDetalleEndToEndTest` (invented password and key) checks neither the plain password
+    nor the ciphertext appears in GET/PATCH bodies or logs. **Known (accepted, pending before the pilot):**
+    loading the Ganadero decrypts its OVZ password; a corrupt ciphertext or a changed `ENCRYPTION_KEY`
+    gives `500` on the trámite detail and on `/ganaderos` — decrypt on demand instead (Prompt C notes).
+  - **Frontend:** `features/tramites/fichaOvz.ts` is the single source of each OVZ form's fields, order,
+    hints and deadlines (pure, tested), plus `modoFicha` (D4: only `APROBADO` copies; pending is a preview
+    without copy buttons). `/tramites/:id/ovz` (`FichaOvzPage`) lives inside `RequireAuth` but outside
+    `AppLayout` (no nav bar). The review dialog opens it with `abrirFichaOvz` (`window.open` with a fixed
+    window name and **no `noopener`**, so the new window inherits the `sessionStorage` token; the page sets
+    `window.opener = null`). A tab opened without opener (middle click, pasted URL) goes to login and back.
+    Verified in real Chromium and Firefox. `shared/ui/BotonCopiar` (Clipboard API, read-only `Input`
+    fallback, polite live region, always reads "Copiar" for WCAG 2.5.3). See `DESIGN.md` → "Ficha para OVZ".
+  - **Next, before the pilot:** "Marcar como registrado en OVZ" (D5; state to decide), and the "sesión de
+    mapeo de OVZ" in `ganera-prompts.md` (OVZ value lists and gestoría preferences) before B2.
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)
@@ -903,7 +934,7 @@ reference for every frontend decision below.
   crotal resolution (`presentacionCrotal`: `NO_ENCONTRADO` + `completo: false` → amber "No está en
   el inventario · incompleto", read from the backend, never computed) and contact role come from
   **one source**, `features/tramites/etiquetas.ts`
-  (`TIPOS_TRAMITE` is the single constant to change in Prompt B). Since Prompt B1 the first cell
+  (`TIPOS_TRAMITE`, the six OVZ types since the ficha OVZ, is the single constant with the types). Since Prompt B1 the first cell
   adds a WhatsApp marker (outside the button, announced once), and while the trámite is pending a
   12px line under the state shows the extraction (`avisosExtraccion()` in `etiquetas.ts`:
   "Extracción en curso" neutral, "No se ha podido extraer" / "Mensaje sin texto" / "N descartados"
@@ -937,7 +968,7 @@ reference for every frontend decision below.
   handler fails the test (`onUnhandledRequest: "error"`), and session state is cleared after each
   test. `npm test` ran **475 tests in 36 files** at the end of A2 (476 after the mini-prompt's
   Rechazar change; **506 in 36 files** after the frontend task before the pilot; **508 in 36** after billing left the app;
-  **513 in 37** after the brand colours and typography; **558 in 37** after Prompt B1; **557 in 36** after C mínimo removed the registration screen). Layout can't be checked in
+  **513 in 37** after the brand colours and typography; **558 in 37** after Prompt B1; **557 in 36** after C mínimo removed the registration screen; **720 in 40** after the ficha OVZ). Layout can't be checked in
   jsdom: for visual changes, also drive the real app in a browser (Playwright from npm installed
   **outside the repo**, as in Prompts 4 and A2).
 
@@ -959,7 +990,7 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw clean test` — runs the test suite (690 tests after C mínimo, including the embedded-PostgreSQL ones); **always with `clean`**
+- `./mvnw clean test` — runs the test suite (706 tests after the ficha OVZ, including the embedded-PostgreSQL ones); **always with `clean`**
   (see the VS Code/ECJ note under Architecture notes). A single test:
   `./mvnw clean test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
@@ -1141,7 +1172,7 @@ tests** (`./mvnw clean test`), plus a real HTTP smoke test on a file-backed H2 (
 crotal `EN_INVENTARIO` by its last digits, one full crotal `NO_ENCONTRADO`) → stale-version PATCH
 and `aprobar` `409` → `aprobar` with the new version `200 APROBADO` (`version` 2) → malformed body
 `400`, not `401`). Committed as `2538583` (plus `880d3ca`, which removed the last unscoped
-Animal finder). `TipoTramite` was deliberately left unchanged (to be replaced in Prompt B, see
+Animal finder). `TipoTramite` was deliberately left unchanged then (replaced by the OVZ types in the ficha OVZ, `V20`; see
 `ganera-prompts.md`).
 
 **Prompt A2 — frontend for A1 (Ganaderos, animales, editable review) — is complete**
@@ -1271,6 +1302,21 @@ bullet under Technical decisions. No migrations. Verified with `./mvnw clean tes
 dress rehearsal against embedded PostgreSQL 16 (onboarding, both Excel imports, the seed SQL from a
 non-UTC session, `smoke.sh` all PASS). Still to do: deploy on Clever (Antonio's account, console and
 secrets), seed, and the smoke against the deployed environment; then optionally the Twilio sandbox.
+
+**Ficha lista para OVZ (escalón 1 de OVZ) — complete, pending commit** (2026-10-06 → 2026-10-07),
+following `docs/superpowers/plans/2026-10-06-ficha-ovz.md` with the Superpowers flow (T1 OVZ types +
+`V20`, T2 titular in the detail + T2b OVZ-password leak test, T3 the pure ficha catalog, T4 the copy
+button, one implementer + one independent reviewer each, all **Approved with minors**, minors fixed; T5
+the page, crafted from the main session with Impeccable after Antonio approved the shape, and reviewed
+independently; reports in `.superpowers/sdd/fo-*`, not committed). See the "Ficha lista para OVZ" bullet
+under Technical decisions. Migration `V20`. Verified with `./mvnw clean test` **706/706**, `npm test`
+**720/720** (40 files), `npm run build` and `npm run lint` (known warnings only), and a real-browser smoke
+(H2 file DB, two invented gestorías seeded through the real API, Playwright outside the repo) with
+36/36 PASS: session inherited by the new window in Chromium and Firefox, real copy and Ctrl+V paste, every
+type and state, cross-gestoría `404`, no page-level horizontal scroll at 375/420/1440 px, login-and-back
+for a tab without opener. The OVZ-password test was mutation-checked before the commit: exposing the
+plain password in `TramiteDetalleResponse` fails it at the body check, and exposing the stored
+ciphertext (a raw read-only mapping of the column) fails it too; both restored with `cp` + `cmp`.
 
 **Still blocked: Prompts 3a and 3c (OVZ.net read sync and write-mode automation).** They need real
 OVZ.net credentials so the actual site structure and trámite catalog can be explored live (the
