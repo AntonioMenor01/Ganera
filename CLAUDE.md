@@ -85,10 +85,13 @@ approval step before anything is written to OVZ.net.
    "Prompt A1" bullet. Then they paste the approved data into OVZ by hand (ficha OVZ, escalón 1) and
    click "Marcar como hecho en OVZ" → `HECHO_EN_OVZ`, recording who and when (reversible; see the
    "Hecho en OVZ" bullet under Technical decisions). Ganera sends nothing.
-7. Playwright executes the trámite against OVZ.net using the **Ganadero's** encrypted credentials.
-   One immediate automatic retry on failure; if it fails again, `ERROR_OVZ` with the reason
-   recorded — never silent. The same Playwright service is also used read-only to sync a newly
-   onboarded Ganadero's initial inventory of explotaciones/animales.
+7. **OVZ is always assisted, never automatic** (partners' decision of 2026-10-06,
+   `docs/referencias/decisiones-ovz-y-piloto.md`): Ganera **never** submits a trámite to OVZ.net
+   by itself. Escalón 1 (done) is the ficha to copy by hand; escalón 2 (pending the OVZ mapping
+   session) is an assisted mode where Ganera fills in the OVZ form and **the gestor reviews it and
+   clicks submit**. There is no escalón 3, so no autonomous Playwright execution and no automatic
+   retry. A read-only Playwright sync of a newly onboarded Ganadero's inventory is still possible
+   (Prompt 3a).
 
 ## Non-negotiable rules
 
@@ -214,7 +217,9 @@ approval step before anything is written to OVZ.net.
   (`output_config.format`, JSON Schema with `additionalProperties: false`) enforces the JSON shape,
   and the server validates it again. See the "Prompt B1" bullet for the rest.
 - **WhatsApp**: Twilio, one shared number across all Gestorías (see Operational flow above).
-- **Automation**: Playwright (Java) for OVZ.net, both read-only sync and write-mode execution.
+- **Automation**: Playwright (Java) for OVZ.net: read-only sync and, in the future, the assisted
+  mode that fills in the OVZ form for the gestor to submit (never a submission by Ganera itself;
+  see Operational flow step 7).
 - **Billing**: Stripe, priced by number of contracted active Explotaciones, 15-day trial.
   `EstadoSuscripcion` has exactly 6 values: `TRIAL` (full access), `TRIAL_EXPIRADO_SIN_PAGO`
   (no approvals), `ACTIVA` (full access), `IMPAGO_GRACIA` (full access, but the
@@ -728,7 +733,7 @@ approval step before anything is written to OVZ.net.
     the registration).
   - **Tests against real PostgreSQL 16** (`com.ganera.core.postgres`, `io.zonky.test:embedded-postgres`
     2.2.2 + binaries BOM 16.15.0, test scope only, no Docker; `PostgresEmbebido` shares one server per
-    JVM, UTF8, a fresh database per test): Flyway V1–V20 + `ddl-auto=validate`, V18 on existing rows,
+    JVM, UTF8, a fresh database per test): Flyway V1–V21 + `ddl-auto=validate`, V18 on existing rows,
     the `clever` profile end to end, and `InstantTimestampPostgresTest`. **Finding (D8):** with
     Hibernate 6.6 + pgjdbc 42.7.4 an `Instant` round-trips through a `TIMESTAMP` (without time zone)
     column with no shift even with the JVM in `Europe/Madrid`, and the extraction queue and
@@ -851,7 +856,8 @@ Package layout under `backend/src/main/java/com/ganera/core/`: `gestoria`, `gana
 - **Twilio footgun (fixed)**: `TwilioWebhookController` used to build `new RequestValidator(authToken)`
   in its constructor — Twilio's SDK throws `IllegalArgumentException: Empty key` on a blank token,
   which meant the *entire app* refused to start whenever `TWILIO_AUTH_TOKEN` was unset (true for
-  every environment so far, since Twilio isn't wired to business logic yet). Fixed by constructing
+  every environment at the time; Twilio has been wired to business logic since Prompt B1, and the
+  token can still be blank — the webhook then fails closed). Fixed by constructing
   `RequestValidator` per-request instead of in the constructor. Don't move Stripe's or any other
   optional integration's client construction back into a constructor without checking it tolerates
   a blank credential — verified live by actually starting the app, not just by compiling (see
@@ -1360,7 +1366,7 @@ for a tab without opener. The OVZ-password test was mutation-checked before the 
 plain password in `TramiteDetalleResponse` fails it at the body check, and exposing the stored
 ciphertext (a raw read-only mapping of the column) fails it too; both restored with `cp` + `cmp`.
 
-**Hecho en OVZ (D5 of the ficha OVZ) — complete, pending commit** (2026-10-07), following
+**Hecho en OVZ (D5 of the ficha OVZ) — complete, committed as `747b2ad`** (2026-10-07), following
 `docs/superpowers/plans/2026-10-07-hecho-en-ovz.md` with the Superpowers flow (T1 backend, T2 frontend, one
 implementer + one independent reviewer each: T1 **Approved with minors**, T2 **Changes requested** → fixed →
 **Approved with minors**, minors fixed; T3 smoke delegated; reports in `.superpowers/sdd/ho-*`, not
@@ -1371,7 +1377,8 @@ screenshots. See the "Hecho en OVZ" bullet under Technical decisions. Migration 
 usuarios, B `SUSPENDIDA`; Chromium and Firefox) with 13/13 scenarios PASS; screenshots outside the repo in
 `C:\Users\Antonio\Desktop\capturas-ganera-hecho-ovz\`.
 
-**Still blocked: Prompts 3a and 3c (OVZ.net read sync and write-mode automation).** They need real
+**Still blocked: Prompts 3a and 3c (OVZ.net read sync and the assisted mode — Ganera fills in, the
+gestor submits; never autonomous).** They need real
 OVZ.net credentials so the actual site structure and trámite catalog can be explored live (the
 Playwright MCP is set up for exactly this — driving the real site with Antonio steering, not
 guessing at its structure from assumptions). Until then `OvzAutomationService` stays an

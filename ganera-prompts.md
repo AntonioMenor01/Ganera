@@ -659,7 +659,14 @@ Plan con las decisiones cerradas: `docs/superpowers/plans/2026-10-03-tarea-front
      Incluye el webhook con firma completa y fail-closed, la recepción idempotente que nunca pierde un
      mensaje y la extracción con Haiku en segundo plano (SDK oficial, salida estructurada nativa,
      reintentos). También el acuse por TwiML, la retención y el aviso en la cola y en el modal.
-   - **B2** (pendiente): lo de las notas de abajo que B1 dejó fuera.
+   - **B2 reducido** (redefinido el 2026-10-11; plan
+     `docs/superpowers/plans/2026-10-11-promptB2-reducido-responder-whatsapp.md`): la gestoría **responde al
+     ganadero por WhatsApp** desde el trámite, siempre a mano. Los tipos de OVZ y el tipo de alta por
+     nacimiento ya están hechos con la `V20`. **Antes del piloto, tras la sesión de mapeo:** la fecha del
+     hecho, junto con los campos propios del alta por nacimiento (crotal de la madre, sexo y fecha de
+     nacimiento). **Después de B2 y antes del piloto:** `SIN_TRAMITE` en la extracción (ver «Pendientes
+     técnicos» de `progress.md`). **Después del piloto:** varios trámites por mensaje. El resto de las notas de abajo (números
+     desconocidos, adjuntos, medición de uso) sigue pendiente.
 4. **C mínimo** (2026-10-06, **código en `main`, despliegue pendiente**): demo en Clever Cloud (París) con
    PostgreSQL gestionado y datos inventados, para el socio. Plan
    `docs/superpowers/plans/2026-10-06-promptC-minimo-demo-desplegada.md`. El código está en `main` (`0d761f3`):
@@ -675,7 +682,7 @@ Plan con las decisiones cerradas: `docs/superpowers/plans/2026-10-03-tarea-front
 `docs/referencias/ovz-tramites-bovino.md`, plan en `docs/superpowers/plans/2026-10-06-ficha-ovz.md`). En un
 trámite aprobado, Ganera enseña sus datos en el orden del formulario de OVZ, con un botón de copiar en cada
 campo, para que el gestor los pegue en OVZ. Incluye el cambio de `TipoTramite` a los tipos de OVZ (`V20`).
-**Hecho en OVZ (D5 del plan de la ficha), hecho el 2026-10-07, pendiente de commit:** backend 742/742, frontend
+**Hecho en OVZ (D5 del plan de la ficha), hecho el 2026-10-07, commit `747b2ad`:** backend 742/742, frontend
 811/811, smoke en navegador real 13/13; plan en `docs/superpowers/plans/2026-10-07-hecho-en-ovz.md`. El gestor
 marca que **él** ya metió en OVZ un trámite aprobado y Ganera guarda quién y cuándo: estado nuevo `HECHO_EN_OVZ`
 (no `EJECUTADO_OVZ`), `V21` con `CHECK`, se puede deshacer, botón en la ficha y en el modal, badges «Aprobado ·
@@ -764,7 +771,7 @@ el webhook de Twilio responde `503` hasta el paso opcional de WhatsApp).
    comprobar que `SHOW timezone;` devuelve `UTC`.
 8. `npm i -g clever-tools`; `clever login` en la terminal de Antonio; desde la raíz del repo
    `clever link <id-api> --alias api` y `clever link <id-front> --alias front` (`.clever.json` está ignorado).
-9. `clever deploy --alias api`, revisar en `clever logs --alias api` que Flyway aplica V1–V19 y que arranca; luego
+9. `clever deploy --alias api`, revisar en `clever logs --alias api` que Flyway aplica V1–V21 y que arranca; luego
    `clever deploy --alias front`.
 10. **Antes de sembrar (añadido el 2026-10-07, ficha OVZ):** regenerar `ganera-demo/seed-tramites.sql` (y revisar
     `smoke.sh`) con los tipos de OVZ de la `V20` (`BAJA_MUERTE`, `SOLICITUD_MOVIMIENTO`…): hoy usa `'BAJA'` y
@@ -796,6 +803,12 @@ usarse (p. ej. `demo.ganera.es` y `api.demo.ganera.es` con CNAME hacia Clever, y
   para **B2**: respuesta a números desconocidos, varios trámites por mensaje, adjuntos, medición de uso,
   tipos OVZ y alta por nacimiento, y la **fecha del hecho** en el esquema de la IA (`Tramite` no tiene
   campo de fecha en B1).
+- **Alcance de B2 (2026-10-11):** «B2 reducido» pasa a ser **responder al ganadero por WhatsApp** desde el
+  trámite. Los tipos de OVZ y el tipo de alta por nacimiento ya están hechos con la `V20` (hoy la ficha pide a
+  mano el crotal de la madre, el sexo y la fecha de nacimiento: la IA no los extrae y el modal no los edita).
+  La **fecha del hecho** y esos **tres campos del alta por nacimiento** (extracción y edición en el modal) van
+  juntos, antes del piloto, y se deciden tras la sesión de mapeo de OVZ. **Varios trámites por mensaje**,
+  después del piloto.
 - **Requisito: la IA solo extrae del mensaje (2026-10-05):** tipo, crotales o últimos dígitos, fechas… Nunca
   recibe el inventario de animales; el cruce con el inventario lo hace el servidor. Así se evitan coste y
   envío de datos de más.
@@ -855,8 +868,12 @@ Además del catálogo real de tipos de trámite (ver los pendientes heredados en
 ## Decisiones de negocio ya cerradas (para referencia rápida)
 
 - **Mensajería:** Twilio, número de WhatsApp único compartido entre gestorías (a matizar más adelante).
-- **IA:** Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) vía Spring AI, con Structured Outputs.
-- **OVZ.net:** automatización real con Playwright (lectura y escritura), nunca sin aprobación humana previa.
+- **IA:** Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) con el SDK oficial `com.anthropic:anthropic-java`
+  (Spring AI se quitó en el B1), con salida estructurada nativa.
+- **OVZ.net:** siempre asistido, nunca automático (decisión del 2026-10-06,
+  `docs/referencias/decisiones-ovz-y-piloto.md`): Ganera prepara la ficha y, en el escalón 2, rellena el
+  formulario; **el gestor revisa y pulsa enviar**. Ganera nunca presenta un trámite por su cuenta. Playwright
+  sirve para leer el inventario y para el modo asistido.
 - **Cifrado:** AES-256-GCM para credenciales de OVZ.net, vía JPA `AttributeConverter`.
 - **Facturación:** Stripe, paga la Gestoría, por número de explotaciones activas, trial de 15 días. Impago → periodo de gracia → bloqueo de aprobación de trámites (no de lectura).
 - **Jerarquía:** `Gestoria → Usuario` (empleados, con login) y `Gestoria → Ganadero → Explotacion → Animal` (sin login, solo WhatsApp vía `Contacto`).

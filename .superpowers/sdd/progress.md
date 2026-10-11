@@ -959,3 +959,12 @@ Europe/Madrid; sin pase de Impeccable (patrones existentes, revisión en las cap
 - **Bloque C:** endurecer el aislamiento en BD con FK compuestas `(id, gestoria_id)` de forma global (hoy, por ejemplo,
   `tramite.hecho_en_ovz_por` no garantiza en BD que el usuario sea de la gestoría del trámite; solo lo garantiza el
   servicio).
+- **Antes del piloto, después de B2 — contestaciones del ganadero crean trámites (B2 reducido, D12; tarea aparte
+  aprobada por Antonio el 2026-10-11):** desde B1 cada mensaje de un contacto activo crea un trámite, así que un
+  «vale, gracias» a una respuesta de la gestoría aparece en la cola. Tarea: separar en la IA `NO_IDENTIFICADO` (no
+  está claro) de un `SIN_TRAMITE` nuevo (agradecimientos, confirmaciones, charla; hoy el prompt los mete en
+  `NO_IDENTIFICADO`). Con `SIN_TRAMITE` y ningún crotal, el trámite **sigue en `PENDIENTE_REVISION`** (no se oculta
+  nada por un error de la IA), con un aviso «Parece un mensaje sin trámite» y un «Descartar» de un clic que lo
+  rechaza con su `version`. **Al descartar no se ofrece ni se envía ninguna respuesta al ganadero.**
+- **Antes del piloto, tras la sesión de mapeo de OVZ:** la fecha del hecho y los campos propios del alta por
+  nacimiento (crotal de la madre, sexo y fecha de nacimiento: extracción por la IA y edición en el modal), juntos.

@@ -1,6 +1,6 @@
 # Decisiones sobre OVZ y la ruta al piloto (06/10/2026, noche)
 
-Prevalece sobre la sección "Ruta" de `estado-ganera-2026-10-06.md`.
+Prevalece sobre la sección "Ruta" del estado del proyecto. El estado vive en el Project de claude.ai.
 
 ## OVZ: siempre asistido, nunca automático
 - Decisión firme de los socios: Ganera **nunca** presenta trámites en OVZ por sí sola. Ganera prepara y rellena; **el gestor revisa y pulsa enviar**. Motivo: con datos oficiales de este calibre no se puede permitir un error de la IA.
@@ -22,7 +22,7 @@ Prevalece sobre la sección "Ruta" de `estado-ganera-2026-10-06.md`.
 
 ## Ruta mínima al piloto (acordada)
 1. Ficha lista para OVZ (1–2 días), empezando por el análisis del manual de OVZ.
-2. B2 reducido (1–2 días): tipos reales de OVZ, fecha del hecho, alta por nacimiento y, si la piloto lo usa, varios trámites por mensaje.
+2. B2 reducido (1–2 días), **redefinido el 2026-10-11**: la gestoría responde al ganadero por WhatsApp desde el trámite. Los tipos reales de OVZ y el tipo de alta por nacimiento ya están hechos con la `V20`. La fecha del hecho pasa a pendiente antes del piloto (se decide tras la sesión de mapeo); varios trámites por mensaje, después del piloto.
 3. Desplegar (medio día; receta ya hecha).
 → ~3–5 días de trabajo, ~2 semanas de calendario.
 4. Con las credenciales (sesión de mapeo): modo asistido + documentos por ganadero (~5–8 días). Si las credenciales llegan antes del piloto, el asistido puede estar desde el primer día.
