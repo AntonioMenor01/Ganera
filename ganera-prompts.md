@@ -661,10 +661,11 @@ Plan con las decisiones cerradas: `docs/superpowers/plans/2026-10-03-tarea-front
      reintentos). También el acuse por TwiML, la retención y el aviso en la cola y en el modal.
    - **B2 reducido** (redefinido el 2026-10-11; plan
      `docs/superpowers/plans/2026-10-11-promptB2-reducido-responder-whatsapp.md`): la gestoría **responde al
-     ganadero por WhatsApp** desde el trámite, siempre a mano. **Envío hecho el 2026-10-11, pendiente de
-     commit** (backend 796/796, frontend 912/912, `V22`, smoke en navegador real con Twilio simulado). Faltan el
-     **callback de estado de Twilio** (commit propio, solo backend) y el envío real al sandbox, que hace Antonio
-     desde su terminal a su propio móvil. Los tipos de OVZ y el tipo de alta por
+     ganadero por WhatsApp** desde el trámite, siempre a mano. **Envío hecho el 2026-10-11, commit `f816f6e`**
+     (backend 796/796, frontend 912/912, `V22`, smoke en navegador real con Twilio simulado). **Callback de estado
+     de Twilio** hecho el mismo día, pendiente de commit (solo backend, 906/906; plan
+     `docs/superpowers/plans/2026-10-11-b2-callback-estado-twilio.md`). Falta el envío real al sandbox, que hace
+     Antonio desde su terminal a su propio móvil. Los tipos de OVZ y el tipo de alta por
      nacimiento ya están hechos con la `V20`. **Antes del piloto, tras la sesión de mapeo:** la fecha del
      hecho, junto con los campos propios del alta por nacimiento (crotal de la madre, sexo y fecha de
      nacimiento). **Después de B2 y antes del piloto:** `SIN_TRAMITE` en la extracción (ver «Pendientes
@@ -786,7 +787,9 @@ el webhook de Twilio responde `503` hasta el paso opcional de WhatsApp).
     navegador real a 1440 y 375 px.
 11. Opcional: sandbox de Twilio con una clave de Anthropic aparte, en su propio workspace con límite de gasto.
     Para responder desde el trámite (B2 reducido) hacen falta además `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` y
-    `TWILIO_WHATSAPP_FROM` (el número del sandbox); sin ellos el botón responde «no está configurado» (`503`).
+    `TWILIO_WHATSAPP_FROM` (el número del sandbox); sin ellos el botón responde «no está configurado» (`503`). Para
+    saber si llegó o se leyó, `TWILIO_STATUS_CALLBACK_URL` = `https://<dominio-de-la-api>/webhooks/twilio/whatsapp/estado`
+    (siempre `https`).
 12. Entre demos: parar las apps desde la consola o con `clever stop --alias api` / `--alias front` (la instancia no
     factura parada; el add-on de PostgreSQL sí, unos 5 € al mes) y `clever restart` para volver a arrancarlas.
 

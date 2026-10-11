@@ -3,6 +3,7 @@ package com.ganera.core.shared.security;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -50,7 +51,11 @@ public class SecurityConfig {
                         .authenticationEntryPoint((request, response, authException) ->
                                 response.sendError(401)))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/webhooks/**").permitAll()
+                        // Solo los tres webhooks exactos y solo por POST (B2 reducido, T4): una ruta inventada
+                        // bajo /webhooks/ sin JWT es 401, nunca un 200 anonimo. Cada uno valida su firma.
+                        .requestMatchers(HttpMethod.POST, "/webhooks/twilio/whatsapp").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/webhooks/twilio/whatsapp/estado").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/webhooks/stripe").permitAll()
                         .requestMatchers("/internal/**").permitAll()
                         .requestMatchers("/auth/login").permitAll()
                         .requestMatchers("/gestorias/registro").permitAll()

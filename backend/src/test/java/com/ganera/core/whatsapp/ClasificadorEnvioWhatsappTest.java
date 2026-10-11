@@ -98,11 +98,11 @@ class ClasificadorEnvioWhatsappTest {
 
     @Test
     void configuradoSoloConLasTresPropiedades() {
-        assertThat(new TwilioEnvioWhatsapp("AC1", "token", "whatsapp:+14155238886").configurado()).isTrue();
-        assertThat(new TwilioEnvioWhatsapp("", "token", "whatsapp:+14155238886").configurado()).isFalse();
-        assertThat(new TwilioEnvioWhatsapp("AC1", " ", "whatsapp:+14155238886").configurado()).isFalse();
-        assertThat(new TwilioEnvioWhatsapp("AC1", "token", "").configurado()).isFalse();
-        assertThat(new TwilioEnvioWhatsapp("AC1", "token", "no-es-un-numero").configurado()).isFalse();
-        assertThat(new TwilioEnvioWhatsapp(null, null, null).configurado()).isFalse();
+        assertThat(new TwilioEnvioWhatsapp("AC1", "token", "whatsapp:+14155238886", "").configurado()).isTrue();
+        assertThat(new TwilioEnvioWhatsapp("", "token", "whatsapp:+14155238886", "").configurado()).isFalse();
+        assertThat(new TwilioEnvioWhatsapp("AC1", " ", "whatsapp:+14155238886", "").configurado()).isFalse();
+        assertThat(new TwilioEnvioWhatsapp("AC1", "token", "", "").configurado()).isFalse();
+        assertThat(new TwilioEnvioWhatsapp("AC1", "token", "no-es-un-numero", "").configurado()).isFalse();
+        assertThat(new TwilioEnvioWhatsapp(null, null, null, "").configurado()).isFalse();
     }
 }

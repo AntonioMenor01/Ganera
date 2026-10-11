@@ -25,6 +25,7 @@ ganera:
   twilio:
     webhook-url: ""
     whatsapp-from: ""
+    status-callback-url: ""
   anthropic:
     api-key: ""
   extraccion:

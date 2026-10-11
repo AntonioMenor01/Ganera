@@ -972,6 +972,43 @@ Orden de commits: docs → envío (backend + frontend, `V22`) → callback de es
   PASS; falló el 9 (N2: el foco caía en `body` al desactivarse «Enviar» y tras un 409). Corregido («Enviando…» solo
   `aria-disabled`; foco a la alerta tras un error) → 910. Re-smoke del foco (T3b) 5/5 PASS en Chromium y Firefox; Firefox no desplazaba el modal hasta la alerta enfocada: `scrollIntoView({ block: "nearest" })` tras el foco → 911; test de un segundo clic sobre «Enviando…» (en rojo sin la guarda) → frontend **912/912**; comprobación del desplazamiento en navegador (T3c) 8/8 PASS (Chromium y Firefox, 1440 y 375 px). Nota: el anillo de foco de la alerta queda bajo el pie por abajo (posible `scroll-mb-3`), a decidir. Doble clic con «Enviando…» como `aria-disabled` (T3d): 12/12 PASS en Chromium y Firefox a 1440 y 375 px (ratón, clics forzados y por JS, teclado): una sola llamada al Twilio falso en cada pasada.
 - Decisiones de Antonio en esta tarea: N3 y N6 quedan como notas; callback de estado en el commit 3.
+- **Commit `f816f6e`** (envío, 66 ficheros) con el visto bueno de Antonio, tras confirmar en navegador real el doble
+  clic con «Enviando…» como `aria-disabled` (T3d, 12/12) y cuadrar las rutas contra `git status`.
+- **T4 — callback de estado de Twilio** (plan `docs/superpowers/plans/2026-10-11-b2-callback-estado-twilio.md`, D1–D3
+  con los ajustes de Antonio: vaciar el código al corregir un `FALLIDO`, SID aún no guardado → `200` sin cambios,
+  rutas públicas exactas en vez de `/webhooks/**`, `ErrorCode` acotado). Backend 796 → **906**; frontend sin cambios
+  (912). Cinco regresiones en rojo (firma, tope de tamaño, `UPDATE` que retrocede, fila por otro dato que el SID,
+  volver a abrir `/webhooks/**`). Revisión independiente **Approved with minors** (M1: el log da el conjunto de estados
+  anteriores posibles, no el exacto; N1–N6 notas; N4: usar `https` en la URL de callback), aceptados y anotados en
+  `CLAUDE.md`.
+
+### Traspaso del commit 3 (2026-10-11, sesión cortada por límite; sin commit ni push)
+
+- **Hecho y verificado:** código de la T4 (implementador) con `./mvnw clean test` **906/906** según el implementador y,
+  de forma independiente, según el revisor (Approved with minors, cinco regresiones repetidas en rojo). `npm test`
+  **912/912** ejecutado por la sesión principal tras el último cambio; `frontend/` sin cambios (`git status` vacío).
+  Diff de los dos `application.yml` revisado: solo `status-callback-url: ${TWILIO_STATUS_CALLBACK_URL:}` (main) y `""`
+  (test), sin secretos.
+- **Verificado también por la sesión principal:** su propio `./mvnw clean test` terminó con **906/906, BUILD SUCCESS**
+  (leído tras escribir esta nota; el código no cambió desde entonces, solo documentación).
+- **Revisado el 2026-10-12 (sesión nueva):** `./mvnw clean test` **906/906** otra vez; desglose de +110 por los informes de
+  surefire: `CallbackEstadoWhatsappTest` 75 (17 métodos, casi todos parametrizados), `TwilioEstadoWebhookEndToEndTest` 22,
+  `TwilioEstadoWebhookSinConfiguracionEndToEndTest` 6 (3 clases anidadas × 2), `WebhooksPublicosEndToEndTest` 4,
+  `CallbackEstadoConcurrenciaPostgresTest` 1, `TwilioEnvioWhatsappArranqueTest` +2. Diff de `CLAUDE.md`, `ganera-prompts.md` y
+  `progress.md` revisado contra el código (transiciones, URL de callback, orden del filtro, rutas públicas, cuerpos vacíos).
+- **Falta:** enseñar a Antonio `git diff --cached --stat`; commit (`feat: callback de estado de Twilio para las respuestas por
+  WhatsApp`) y push solo con su visto bueno; después, el envío real al sandbox lo hace Antonio.
+- **Rutas del commit 3 (21, contadas contra `git status`; fuera `.superpowers/sdd/b2-*`, `capturaTramites.jpeg`,
+  `logo.jpg`, `preview.png`):** `.superpowers/sdd/progress.md`, `CLAUDE.md`, `ganera-prompts.md`,
+  `docs/superpowers/plans/2026-10-11-b2-callback-estado-twilio.md`; backend modificados:
+  `shared/security/SecurityConfig.java`, `whatsapp/RespuestaWhatsappRepository.java`, `whatsapp/TwilioEnvioWhatsapp.java`,
+  `src/main/resources/application.yml`, `src/test/resources/application.yml`, tests
+  `whatsapp/ClasificadorEnvioWhatsappTest.java`, `whatsapp/TwilioEnvioWhatsappArranqueTest.java`; backend nuevos:
+  `whatsapp/CallbackEstadoWhatsapp.java`, `whatsapp/EstadoRespuestaWhatsappService.java`,
+  `whatsapp/LimiteCuerpoCallbackEstadoFilter.java`, `whatsapp/TwilioEstadoWebhookController.java`,
+  `whatsapp/WhatsappFiltrosConfig.java`, tests `postgres/CallbackEstadoConcurrenciaPostgresTest.java`,
+  `shared/security/WebhooksPublicosEndToEndTest.java`, `whatsapp/CallbackEstadoWhatsappTest.java`,
+  `whatsapp/TwilioEstadoWebhookEndToEndTest.java`, `whatsapp/TwilioEstadoWebhookSinConfiguracionEndToEndTest.java`.
 
 ### Pendientes técnicos
 

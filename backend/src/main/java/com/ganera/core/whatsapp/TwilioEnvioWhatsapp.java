@@ -4,12 +4,15 @@ import com.twilio.http.NetworkHttpClient;
 import com.twilio.http.Response;
 import com.twilio.http.TwilioRestClient;
 import com.twilio.rest.api.v2010.account.Message;
+import com.twilio.rest.api.v2010.account.MessageCreator;
 import com.twilio.type.PhoneNumber;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.client.config.RequestConfig;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+
+import java.net.URI;
 
 /**
  * Envio real por la API de mensajes de Twilio (B2 reducido, T1).
@@ -21,6 +24,9 @@ import org.springframework.stereotype.Component;
  *   <li>El {@link TwilioRestClient} se crea de forma perezosa en el primer envio, NUNCA en el
  *       constructor (footgun de Twilio de B1: la app tiene que arrancar con todo vacio), con timeouts
  *       explicitos de conexion y lectura.</li>
+ *   <li>Callback de estado (T4): si {@code ganera.twilio.status-callback-url} ({@code TWILIO_STATUS_CALLBACK_URL})
+ *       es una URL valida segun {@link CallbackEstadoWhatsapp#urlCallback}, el envio pide a Twilio que avise ahi
+ *       ({@code StatusCallback}); vacia o no valida, se envia igual y la respuesta se queda en ENVIADO.</li>
  *   <li>Una sola llamada, sin reintentos. La clasificacion del resultado es la funcion pura
  *       {@link ClasificadorEnvioWhatsapp}; aqui no hay logica que probar sin red, asi que esta clase no
  *       tiene test unitario que llame a Twilio (se valida en el envio real que hace Antonio).</li>
@@ -37,6 +43,7 @@ public class TwilioEnvioWhatsapp implements EnvioWhatsapp {
     private final String accountSid;
     private final String authToken;
     private final String remitente;
+    private final URI statusCallback;
 
     private volatile TwilioRestClient cliente;
 
@@ -44,10 +51,12 @@ public class TwilioEnvioWhatsapp implements EnvioWhatsapp {
     public TwilioEnvioWhatsapp(
             @Value("${twilio.account-sid:}") String accountSid,
             @Value("${twilio.auth-token:}") String authToken,
-            @Value("${ganera.twilio.whatsapp-from:}") String remitente) {
+            @Value("${ganera.twilio.whatsapp-from:}") String remitente,
+            @Value("${ganera.twilio.status-callback-url:}") String statusCallback) {
         this.accountSid = accountSid;
         this.authToken = authToken;
         this.remitente = ClasificadorEnvioWhatsapp.normalizarRemitente(remitente);
+        this.statusCallback = CallbackEstadoWhatsapp.urlCallback(statusCallback);
     }
 
     @Override
@@ -65,11 +74,14 @@ public class TwilioEnvioWhatsapp implements EnvioWhatsapp {
             return new ResultadoEnvioWhatsapp.Rechazado(null);
         }
         try {
-            Message mensaje = Message.creator(
-                            new PhoneNumber(ClasificadorEnvioWhatsapp.destino(telefonoE164)),
-                            new PhoneNumber(remitente),
-                            texto)
-                    .create(cliente());
+            MessageCreator creador = Message.creator(
+                    new PhoneNumber(ClasificadorEnvioWhatsapp.destino(telefonoE164)),
+                    new PhoneNumber(remitente),
+                    texto);
+            if (statusCallback != null) {
+                creador.setStatusCallback(statusCallback);
+            }
+            Message mensaje = creador.create(cliente());
             return ClasificadorEnvioWhatsapp.aceptado(mensaje.getSid());
         } catch (RuntimeException e) {
             log.warn("Twilio no acepto el envio por WhatsApp: excepcion={}, status={}, codigo={}",
@@ -77,6 +89,11 @@ public class TwilioEnvioWhatsapp implements EnvioWhatsapp {
                     ClasificadorEnvioWhatsapp.codigo(e));
             return ClasificadorEnvioWhatsapp.clasificar(e);
         }
+    }
+
+    /** URL del StatusCallback que se pide a Twilio, o null si no se pide (para los tests). */
+    URI statusCallback() {
+        return statusCallback;
     }
 
     /** Si ya se creo el cliente de Twilio (solo para el test de arranque). */

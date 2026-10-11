@@ -810,7 +810,8 @@ approval step before anything is written to OVZ.net.
 - **B2 reducido — the gestoría replies to the Contacto by WhatsApp** (2026-10-11; plan
   `docs/superpowers/plans/2026-10-11-promptB2-reducido-responder-whatsapp.md`, "Decisiones de Antonio" at the top
   prevails). Always manual: the gestor sees and edits the text, nothing is ever sent by itself. The Twilio
-  status callback (delivered/read/failed later) is **not** here: it is its own commit after this one (D10).
+  status callback (delivered/read/failed later) came in its own commit, right after (see the next sub-bullet
+  "Status callback").
   - **Entity `RespuestaWhatsapp`** (`whatsapp` package, `GestoriaScopedEntity`, migration `V22`, table
     `respuesta_whatsapp`): tramite, contacto, `telefono_destino` (copy at send time, nullable), `cuerpo`,
     `enviado_por` (from the JWT), `creado_en`/`actualizado_en`, `estado` (`ENVIANDO`, `ENVIADO` = accepted by
@@ -855,8 +856,32 @@ approval step before anything is written to OVZ.net.
   - **Known limitations:** the window is per Contacto, not per phone number (changing a contact's phone could give
     a 63016 `FALLIDO`); a DB failure right after Twilio accepted gives `500` and leaves `ENVIANDO` (shown as
     `SIN_CONFIRMAR` after 2 minutes; the same key never resends) — and since the Twilio SID was never stored, the
-    status callback (next commit) cannot reconcile that row: it stays `SIN_CONFIRMAR`; a farmer's reply ("vale, gracias") still creates a
+    status callback cannot reconcile that row: it stays `SIN_CONFIRMAR`; a farmer's reply ("vale, gracias") still creates a
     trámite (the `SIN_TRAMITE` task is pending, `progress.md`).
+  - **Status callback** (2026-10-11, its own commit; plan `docs/superpowers/plans/2026-10-11-b2-callback-estado-twilio.md`,
+    backend only). If `TWILIO_STATUS_CALLBACK_URL` (`ganera.twilio.status-callback-url`) is a valid http(s) URL with a
+    host and no user, query or fragment (**use `https` in production**), every send asks Twilio to report there;
+    otherwise sends go without it and replies stay `ENVIADO`. Endpoint `POST /webhooks/twilio/whatsapp/estado`, no
+    JWT, no response body ever. Order: body over 8 KB → `413` (`LimiteCuerpoCallbackEstadoFilter`, only for this
+    route, runs **before** Spring Security and before anything reads the body; chunked bodies are read with a cap; the
+    filter itself parses the form, always as UTF-8, and query-string parameters enter the signature like in Tomcat)
+    → no `TWILIO_AUTH_TOKEN` or no valid callback URL → `503` → missing/invalid `X-Twilio-Signature` (all parameters,
+    the **configured** URL, `RequestValidator` per request) → `403` → no `MessageSid`/`MessageStatus` → `400` →
+    `200`. Only `MessageSid`, `MessageStatus` and `ErrorCode` are read. Pure transition (`CallbackEstadoWhatsapp`):
+    `queued`/`accepted`/`sending`/`sent` → `ENVIADO`, `delivered` → `ENTREGADO`, `read` → `LEIDO`,
+    `failed`/`undelivered` → `FALLIDO`; order `ENVIANDO`/`SIN_CONFIRMAR` < `ENVIADO` < `ENTREGADO` < `LEIDO`;
+    `FALLIDO` beats only the first three, and a later `delivered`/`read` corrects a `FALLIDO` **and clears the
+    error code**; `ErrorCode` stored only if 1–6 ASCII digits (else ignored, the state still applies). Applied by
+    **one conditional JPQL `UPDATE … WHERE twilio_message_sid = :sid AND estado IN (:anteriores)`** — repeated,
+    out-of-order or concurrent callbacks never go back (checked on embedded PostgreSQL). **The lookup by SID is the
+    second deliberately tenant-unscoped query** (the request carries no tenant; the SID is globally `UNIQUE`), next
+    to `ContactoRepository.findByTelefono`; there is no finder by SID. Logs: only SID, states and code.
+    **Known limitations:** a callback that arrives before the send stored the SID (Twilio may report before step 3
+    commits) gets `200` with no change and an `INFO` log with only the SID — **if it happens in the pilot, add a
+    status query to Twilio by SID**; with one `UPDATE` and no read, the log can't tell an unknown SID from a row
+    already in that or a later state, nor give the exact previous state (it logs the set of possible ones);
+    `SIN_CONFIRMAR`/`ENVIANDO` rows with a SID don't exist with today's code (those transitions are tested on
+    seeded rows); a repeated form parameter is signed with its first value (same as the inbound webhook).
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)
@@ -884,7 +909,9 @@ Package layout under `backend/src/main/java/com/ganera/core/`: `gestoria`, `gana
   controllers via `@AuthenticationPrincipal GaneraUserPrincipal`. `SecurityConfig` has an explicit
   `authenticationEntryPoint` so a missing/invalid JWT on a protected endpoint returns `401`, not
   Spring Security's default `403`.
-- Public paths: `/webhooks/**`, `/auth/login`, `/gestorias/registro` (public self-registration,
+- Public paths: exactly `POST /webhooks/twilio/whatsapp`, `POST /webhooks/twilio/whatsapp/estado` and
+  `POST /webhooks/stripe` (since the B2 status callback, no more `/webhooks/**` wildcard: anything else under
+  `/webhooks/` without a JWT is `401`; `WebhooksPublicosEndToEndTest`), `/auth/login`, `/gestorias/registro` (public self-registration,
   no JWT and no shared secret; `404` while `ganera.registro.abierto` is `false`, the default), `/internal/**` (only at the Spring Security layer —
   `/internal/onboarding/gestoria` still gates itself on the `X-Internal-Secret` header inside
   `OnboardingController`), and `/error` (Prompt A1, decision 29: Spring's error dispatch runs
@@ -1088,7 +1115,7 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw clean test` — runs the test suite (796 tests after B2 reducido, including the embedded-PostgreSQL ones); **always with `clean`**
+- `./mvnw clean test` — runs the test suite (906 tests after the B2 status callback, including the embedded-PostgreSQL ones); **always with `clean`**
   (see the VS Code/ECJ note under Architecture notes). A single test:
   `./mvnw clean test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
@@ -1427,7 +1454,7 @@ screenshots. See the "Hecho en OVZ" bullet under Technical decisions. Migration 
 usuarios, B `SUSPENDIDA`; Chromium and Firefox) with 13/13 scenarios PASS; screenshots outside the repo in
 `C:\Users\Antonio\Desktop\capturas-ganera-hecho-ovz\`.
 
-**B2 reducido — replying to the Contacto by WhatsApp — complete, pending commit** (2026-10-11), following
+**B2 reducido — replying to the Contacto by WhatsApp — complete, committed as `f816f6e`** (2026-10-11), following
 `docs/superpowers/plans/2026-10-11-promptB2-reducido-responder-whatsapp.md` with the Superpowers flow (T1 backend:
 **Changes requested** (the Twilio SDK's 5xx retries) → fixed → **Approved with minors**; T2 frontend: **Approved
 with minors**; the correction rounds after a usage-limit cut were done from the main session with TDD and
@@ -1435,8 +1462,14 @@ reviewed independently, **Approved with minors**, minors fixed; reports in `.sup
 See the "B2 reducido" bullet under Technical decisions. Migration `V22`. Verified with `./mvnw clean test`
 **796/796**, `npm test` **912/912** (43 files), `npm run build` and `npm run lint` (known warnings only), and a
 real-browser smoke with two Gestorías and Twilio faked by a bean compiled outside the repo; screenshots outside the
-repo in `C:\Users\Antonio\Desktop\capturas-ganera-b2\`. Next: the Twilio status callback (its own commit), then the
-real sandbox send that Antonio runs from his own terminal to his own phone.
+repo in `C:\Users\Antonio\Desktop\capturas-ganera-b2\`.
+
+**B2 reducido — Twilio status callback — complete, pending commit** (2026-10-11), following
+`docs/superpowers/plans/2026-10-11-b2-callback-estado-twilio.md` (backend only; one implementer + one independent
+reviewer, **Approved with minors**, minors accepted as notes; reports `.superpowers/sdd/b2-t4-*`, not committed). See
+the "Status callback" sub-bullet under "B2 reducido". No migration. Verified with `./mvnw clean test` **906/906**
+(frontend untouched, `npm test` **912/912**). Next: the real sandbox send that Antonio runs from his own terminal to
+his own phone (callbacks need a public URL, e.g. a tunnel as in B1).
 
 **Still blocked: Prompts 3a and 3c (OVZ.net read sync and the assisted mode — Ganera fills in, the
 gestor submits; never autonomous).** They need real

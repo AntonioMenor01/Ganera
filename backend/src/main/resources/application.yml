@@ -47,6 +47,11 @@ ganera:
     # Vacio (o sin TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN) -> POST /tramites/{id}/respuestas-whatsapp da 503
     # y no crea nada. La app arranca igual: el cliente de Twilio se crea en el primer envio.
     whatsapp-from: ${TWILIO_WHATSAPP_FROM:}
+    # URL publica exacta del callback de estado (POST /webhooks/twilio/whatsapp/estado), sin query string.
+    # Con ella, cada envio pide a Twilio que avise ahi de entregado/leido/fallido y las firmas del callback se
+    # validan contra ella. Vacia -> se envia sin callback (la respuesta se queda en ENVIADO) y el endpoint
+    # responde 503 (fail-closed).
+    status-callback-url: ${TWILIO_STATUS_CALLBACK_URL:}
   anthropic:
     # Vacia -> la app arranca igual; cada extraccion falla con ExtraccionFallidaException.
     api-key: ${ANTHROPIC_API_KEY:}
