@@ -66,14 +66,15 @@ describe("ESTADOS_TRAMITE", () => {
   const esperado = {
     PENDIENTE_EXTRACCION: { etiqueta: "Pendiente de extracción", variante: "warning" },
     PENDIENTE_REVISION: { etiqueta: "Pendiente de revisión", variante: "warning" },
-    APROBADO: { etiqueta: "Aprobado", variante: "success" },
+    APROBADO: { etiqueta: "Aprobado · falta OVZ", variante: "warning" },
+    HECHO_EN_OVZ: { etiqueta: "Hecho en OVZ", variante: "success" },
     EN_PROCESO: { etiqueta: "En proceso", variante: "warning" },
     EJECUTADO_OVZ: { etiqueta: "Ejecutado en OVZ.net", variante: "success" },
     ERROR_OVZ: { etiqueta: "Error en OVZ.net", variante: "danger" },
     RECHAZADO: { etiqueta: "Rechazado", variante: "danger" },
   }
 
-  it("cubre los 7 estados con su etiqueta y variante", () => {
+  it("cubre los 8 estados con su etiqueta y variante", () => {
     expect(ESTADOS_TRAMITE).toEqual(esperado)
   })
 
@@ -212,7 +213,7 @@ describe("TEXTOS_EXTRACCION (B1, D7 y brief de T4)", () => {
 
 describe("avisosExtraccion (B1: regla de visibilidad, plurales)", () => {
   const PENDIENTES = ["PENDIENTE_EXTRACCION", "PENDIENTE_REVISION"] as const
-  const NO_PENDIENTES = ["APROBADO", "EN_PROCESO", "EJECUTADO_OVZ", "ERROR_OVZ", "RECHAZADO"] as const
+  const NO_PENDIENTES = ["APROBADO", "HECHO_EN_OVZ", "EN_PROCESO", "EJECUTADO_OVZ", "ERROR_OVZ", "RECHAZADO"] as const
   const CONOCIDOS = ["PENDIENTE", "FALLIDA", "SIN_TEXTO"] as const
 
   for (const estado of PENDIENTES) {

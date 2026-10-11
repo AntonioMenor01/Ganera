@@ -11,15 +11,22 @@ import com.ganera.core.ganadero.Ganadero;
 import com.ganera.core.ganadero.GanaderoRepository;
 import com.ganera.core.gestoria.Gestoria;
 import com.ganera.core.gestoria.GestoriaRepository;
+import com.ganera.core.gestoria.Usuario;
+import com.ganera.core.gestoria.UsuarioRepository;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -27,14 +34,27 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase.Replace.NONE;
 
 /**
- * Reglas de TramiteRevisionService (PATCH, aprobar, rechazar) sin HTTP. Aqui solo se comprueban
+ * Reglas de TramiteRevisionService (PATCH, aprobar, rechazar, marcar/desmarcar hecho en OVZ) sin
+ * HTTP. Aqui solo se comprueban
  * las decisiones y los motivos; que un 409/400 no deja nada escrito (rollback real) se comprueba
  * en TramiteRevisionEndToEndTest, porque en @DataJpaTest todo el test es UNA transaccion.
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = NONE)
-@Import({TramiteRevisionService.class, TramiteCrotalService.class})
+@Import({TramiteRevisionService.class, TramiteCrotalService.class, TramiteRevisionServiceTest.RelojFijo.class})
 class TramiteRevisionServiceTest {
+
+    /** "Ahora" del Clock con el que se marca un tramite como hecho en OVZ (con nanosegundos: se guarda
+     * truncado a microsegundos, la precision de TIMESTAMP). */
+    static final Instant AHORA = Instant.parse("2026-10-07T10:30:00.123456789Z");
+
+    @TestConfiguration
+    static class RelojFijo {
+        @Bean
+        Clock reloj() {
+            return Clock.fixed(AHORA, ZoneOffset.UTC);
+        }
+    }
 
     @Autowired
     private TramiteRevisionService servicio;
@@ -58,6 +78,8 @@ class TramiteRevisionServiceTest {
     private TramiteCrotalRepository tramiteCrotalRepository;
     @Autowired
     private JdbcTemplate jdbcTemplate;
+    @Autowired
+    private UsuarioRepository usuarioRepository;
 
     private Gestoria gestoriaA;
     private Gestoria gestoriaB;
@@ -66,6 +88,9 @@ class TramiteRevisionServiceTest {
     private Explotacion explotacionB;
     private Animal animalA1;
     private Contacto contactoA;
+    private Usuario usuarioA;
+    private Usuario usuarioA2;
+    private Usuario usuarioB;
 
     @BeforeEach
     void preparar() {
@@ -80,6 +105,9 @@ class TramiteRevisionServiceTest {
         nuevoAnimal(gestoriaA, explotacionA2, "ES970000031234");
         nuevoAnimal(gestoriaB, explotacionB, "ES970000049999");
         contactoA = nuevoContacto(gestoriaA, "+34600970001");
+        usuarioA = nuevoUsuario(gestoriaA, "ana@revision.test", "Ana Pérez");
+        usuarioA2 = nuevoUsuario(gestoriaA, "bruno@revision.test", "Bruno Gil");
+        usuarioB = nuevoUsuario(gestoriaB, "carla@revision.test", "Carla Ruiz");
     }
 
     // --- PATCH ---
@@ -670,6 +698,205 @@ class TramiteRevisionServiceTest {
                 .hasMessage(TramiteRevisionService.MOTIVO_EDITAR_SOLO_PENDIENTE);
     }
 
+    // --- hecho en OVZ ---
+
+    @Test
+    void marcarHechoEnOvzGuardaElUsuarioYLaHoraDelRelojEIncrementaLaVersion() {
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.APROBADO);
+        long v0 = version(tramite);
+
+        TramiteResponse respuesta = servicio.marcarHechoEnOvz(gestoriaA.getId(), usuarioA.getId(), tramite.getId(), v0);
+
+        assertThat(respuesta.estado()).isEqualTo("HECHO_EN_OVZ");
+        assertThat(respuesta.hechoEnOvzEn()).isEqualTo(Instant.parse("2026-10-07T10:30:00.123456Z"));
+        assertThat(respuesta.hechoEnOvzPorNombre()).isEqualTo("Ana Pérez");
+        assertThat(respuesta.version()).isEqualTo(v0 + 1);
+        assertThat(version(tramite)).isEqualTo(v0 + 1);
+        assertThat(tramite.getEstado()).isEqualTo(EstadoTramite.HECHO_EN_OVZ);
+        assertThat(tramite.getHechoEnOvzPor().getId()).isEqualTo(usuarioA.getId());
+        assertThat(tramite.getHechoEnOvzEn()).isEqualTo(Instant.parse("2026-10-07T10:30:00.123456Z"));
+    }
+
+    /** Dos usuarios de la misma gestoria: consta el que se pasa (el del JWT en el controlador). */
+    @Test
+    void marcarHechoEnOvzGuardaJustoElUsuarioIndicado() {
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.APROBADO);
+
+        TramiteResponse respuesta = servicio.marcarHechoEnOvz(
+                gestoriaA.getId(), usuarioA2.getId(), tramite.getId(), version(tramite));
+
+        assertThat(respuesta.hechoEnOvzPorNombre()).isEqualTo("Bruno Gil");
+        assertThat(tramite.getHechoEnOvzPor().getId()).isEqualTo(usuarioA2.getId());
+    }
+
+    @Test
+    void marcarHechoEnOvzFueraDeAprobadoEsConflictoConSuMotivo() {
+        for (EstadoTramite estado : List.of(EstadoTramite.PENDIENTE_EXTRACCION, EstadoTramite.PENDIENTE_REVISION,
+                EstadoTramite.RECHAZADO, EstadoTramite.EN_PROCESO, EstadoTramite.EJECUTADO_OVZ, EstadoTramite.ERROR_OVZ)) {
+            Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, estado);
+            long v0 = version(tramite);
+
+            // El estado va antes que la version: con una version desfasada, el mismo motivo.
+            for (Long cualquiera : java.util.Arrays.asList(v0, v0 + 5, null)) {
+                assertThatThrownBy(() -> servicio.marcarHechoEnOvz(
+                        gestoriaA.getId(), usuarioA.getId(), tramite.getId(), cualquiera))
+                        .as(estado + " version " + cualquiera)
+                        .isInstanceOf(TramiteConflictoException.class)
+                        .hasMessage(TramiteRevisionService.MOTIVO_MARCAR_SOLO_APROBADO);
+            }
+            assertThat(tramite.getEstado()).isEqualTo(estado);
+            assertThat(tramite.getHechoEnOvzPor()).isNull();
+            assertThat(version(tramite)).isEqualTo(v0);
+        }
+    }
+
+    @Test
+    void marcarUnTramiteYaHechoEnOvzEsConflictoConSuPropioMotivo() {
+        Tramite tramite = nuevoTramiteHechoEnOvz(usuarioA2);
+        long v0 = version(tramite);
+
+        assertThatThrownBy(() -> servicio.marcarHechoEnOvz(gestoriaA.getId(), usuarioA.getId(), tramite.getId(), v0))
+                .isInstanceOf(TramiteConflictoException.class)
+                .hasMessage(TramiteRevisionService.MOTIVO_YA_HECHO_EN_OVZ);
+        assertThat(tramite.getHechoEnOvzPor().getId()).isEqualTo(usuarioA2.getId());
+        assertThat(version(tramite)).isEqualTo(v0);
+    }
+
+    @Test
+    void marcarHechoEnOvzConVersionDesfasadaEsConflictoSinCambiar() {
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.APROBADO);
+        long v0 = version(tramite);
+
+        for (Long otra : java.util.Arrays.asList(v0 + 1, v0 - 1, null)) {
+            assertThatThrownBy(() -> servicio.marcarHechoEnOvz(gestoriaA.getId(), usuarioA.getId(), tramite.getId(), otra))
+                    .as("version " + otra)
+                    .isInstanceOf(TramiteConflictoException.class)
+                    .hasMessage(TramiteRevisionService.MOTIVO_VERSION_DESFASADA);
+        }
+        assertThat(tramite.getEstado()).isEqualTo(EstadoTramite.APROBADO);
+        assertThat(tramite.getHechoEnOvzPor()).isNull();
+        assertThat(version(tramite)).isEqualTo(v0);
+    }
+
+    @Test
+    void marcarYDesmarcarUnTramiteDeOtraGestoriaOInexistenteEsNoEncontrado() {
+        Tramite aprobado = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.APROBADO);
+        Tramite hecho = nuevoTramiteHechoEnOvz(usuarioA);
+        long va = version(aprobado);
+        long vh = version(hecho);
+
+        assertThatThrownBy(() -> servicio.marcarHechoEnOvz(gestoriaB.getId(), usuarioB.getId(), aprobado.getId(), va))
+                .isInstanceOf(RecursoNoEncontradoException.class);
+        assertThatThrownBy(() -> servicio.desmarcarHechoEnOvz(gestoriaB.getId(), usuarioB.getId(), hecho.getId(), vh))
+                .isInstanceOf(RecursoNoEncontradoException.class);
+        assertThatThrownBy(() -> servicio.marcarHechoEnOvz(gestoriaA.getId(), usuarioA.getId(), 999999L, 0L))
+                .isInstanceOf(RecursoNoEncontradoException.class);
+        assertThatThrownBy(() -> servicio.desmarcarHechoEnOvz(gestoriaA.getId(), usuarioA.getId(), 999999L, 0L))
+                .isInstanceOf(RecursoNoEncontradoException.class);
+        assertThat(aprobado.getEstado()).isEqualTo(EstadoTramite.APROBADO);
+        assertThat(hecho.getEstado()).isEqualTo(EstadoTramite.HECHO_EN_OVZ);
+        assertThat(version(aprobado)).isEqualTo(va);
+        assertThat(version(hecho)).isEqualTo(vh);
+    }
+
+    /** El usuario se carga con el gestoriaId explicito: uno de otra gestoria nunca consta. */
+    @Test
+    void marcarConUnUsuarioDeOtraGestoriaEsNoEncontrado() {
+        Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.APROBADO);
+
+        assertThatThrownBy(() -> servicio.marcarHechoEnOvz(gestoriaA.getId(), usuarioB.getId(), tramite.getId(), version(tramite)))
+                .isInstanceOf(RecursoNoEncontradoException.class);
+    }
+
+    @Test
+    void desmarcarVuelveAAprobadoVaciaQuienYCuandoEIncrementaLaVersion() {
+        Tramite tramite = nuevoTramiteHechoEnOvz(usuarioA2);
+        long v0 = version(tramite);
+
+        TramiteResponse respuesta = servicio.desmarcarHechoEnOvz(gestoriaA.getId(), usuarioA.getId(), tramite.getId(), v0);
+
+        assertThat(respuesta.estado()).isEqualTo("APROBADO");
+        assertThat(respuesta.hechoEnOvzEn()).isNull();
+        assertThat(respuesta.hechoEnOvzPorNombre()).isNull();
+        assertThat(respuesta.version()).isEqualTo(v0 + 1);
+        assertThat(version(tramite)).isEqualTo(v0 + 1);
+        assertThat(tramite.getEstado()).isEqualTo(EstadoTramite.APROBADO);
+        assertThat(tramite.getHechoEnOvzPor()).isNull();
+        assertThat(tramite.getHechoEnOvzEn()).isNull();
+    }
+
+    @Test
+    void desmarcarFueraDeHechoEnOvzEsConflictoConSuMotivo() {
+        for (EstadoTramite estado : List.of(EstadoTramite.PENDIENTE_EXTRACCION, EstadoTramite.PENDIENTE_REVISION,
+                EstadoTramite.APROBADO, EstadoTramite.RECHAZADO, EstadoTramite.EN_PROCESO,
+                EstadoTramite.EJECUTADO_OVZ, EstadoTramite.ERROR_OVZ)) {
+            Tramite tramite = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, estado);
+            long v0 = version(tramite);
+
+            for (Long cualquiera : java.util.Arrays.asList(v0, v0 + 5, null)) {
+                assertThatThrownBy(() -> servicio.desmarcarHechoEnOvz(
+                        gestoriaA.getId(), usuarioA.getId(), tramite.getId(), cualquiera))
+                        .as(estado + " version " + cualquiera)
+                        .isInstanceOf(TramiteConflictoException.class)
+                        .hasMessage(TramiteRevisionService.MOTIVO_DESMARCAR_SOLO_HECHO_EN_OVZ);
+            }
+            assertThat(tramite.getEstado()).isEqualTo(estado);
+            assertThat(version(tramite)).isEqualTo(v0);
+        }
+    }
+
+    @Test
+    void desmarcarConVersionDesfasadaEsConflictoSinCambiar() {
+        Tramite tramite = nuevoTramiteHechoEnOvz(usuarioA);
+        long v0 = version(tramite);
+
+        for (Long otra : java.util.Arrays.asList(v0 + 1, v0 - 1, null)) {
+            assertThatThrownBy(() -> servicio.desmarcarHechoEnOvz(gestoriaA.getId(), usuarioA.getId(), tramite.getId(), otra))
+                    .as("version " + otra)
+                    .isInstanceOf(TramiteConflictoException.class)
+                    .hasMessage(TramiteRevisionService.MOTIVO_VERSION_DESFASADA);
+        }
+        assertThat(tramite.getEstado()).isEqualTo(EstadoTramite.HECHO_EN_OVZ);
+        assertThat(tramite.getHechoEnOvzPor().getId()).isEqualTo(usuarioA.getId());
+        assertThat(version(tramite)).isEqualTo(v0);
+    }
+
+    @Test
+    void editarAprobarYRechazarUnTramiteHechoEnOvzEsConflicto() {
+        Tramite tramite = nuevoTramiteHechoEnOvz(usuarioA);
+        long v0 = version(tramite);
+
+        assertThatThrownBy(() -> servicio.actualizar(gestoriaA.getId(), tramite.getId(), v0, null, TipoTramite.BAJA_MUERTE, null))
+                .isInstanceOf(TramiteConflictoException.class)
+                .hasMessage(TramiteRevisionService.MOTIVO_EDITAR_HECHO_EN_OVZ)
+                .hasMessage("Este trámite está marcado como hecho en OVZ. Quita la marca para editarlo.");
+        // Con una version desfasada, el mismo motivo (estado antes que version).
+        assertThatThrownBy(() -> servicio.actualizar(gestoriaA.getId(), tramite.getId(), v0 + 3, null, null, null))
+                .isInstanceOf(TramiteConflictoException.class)
+                .hasMessage(TramiteRevisionService.MOTIVO_EDITAR_HECHO_EN_OVZ);
+        assertThatThrownBy(() -> servicio.aprobar(gestoriaA.getId(), tramite.getId(), v0))
+                .isInstanceOf(TramiteConflictoException.class)
+                .hasMessage(TramiteRevisionService.MOTIVO_APROBAR_SOLO_PENDIENTE);
+        assertThatThrownBy(() -> servicio.rechazar(gestoriaA.getId(), tramite.getId(), v0))
+                .isInstanceOf(TramiteConflictoException.class)
+                .hasMessage(TramiteRevisionService.MOTIVO_RECHAZAR_SOLO_PENDIENTE);
+        assertThat(tramite.getEstado()).isEqualTo(EstadoTramite.HECHO_EN_OVZ);
+        assertThat(tramite.getTipoTramite()).isEqualTo(TipoTramite.ALTA_NACIMIENTO);
+        assertThat(version(tramite)).isEqualTo(v0);
+    }
+
+    /** Ningun texto nuevo sugiere que Ganera hizo algo en OVZ: la persona es el sujeto. */
+    @Test
+    void losMotivosNuevosNoDicenQueGaneraHagaNadaEnOvz() {
+        for (String motivo : List.of(TramiteRevisionService.MOTIVO_MARCAR_SOLO_APROBADO,
+                TramiteRevisionService.MOTIVO_YA_HECHO_EN_OVZ,
+                TramiteRevisionService.MOTIVO_DESMARCAR_SOLO_HECHO_EN_OVZ,
+                TramiteRevisionService.MOTIVO_EDITAR_HECHO_EN_OVZ)) {
+            assertThat(motivo.toLowerCase(java.util.Locale.ROOT))
+                    .doesNotContain("registr").doesNotContain("envi").doesNotContain("ejecut").doesNotContain("proces");
+        }
+    }
+
     // --- utilidades ---
 
     /** Version actual en BD (tras volcar lo pendiente del contexto de persistencia). */
@@ -721,6 +948,28 @@ class TramiteRevisionServiceTest {
         tramite.setExplotacion(explotacion);
         tramite.setTipoTramite(tipo);
         tramite.setEstado(estado);
+        return tramiteRepository.save(tramite);
+    }
+
+    private Usuario nuevoUsuario(Gestoria gestoria, String email, String nombre) {
+        Usuario usuario = new Usuario();
+        usuario.setGestoria(gestoria);
+        usuario.setEmail(email);
+        usuario.setPasswordHash("x");
+        usuario.setNombre(nombre);
+        return usuarioRepository.save(usuario);
+    }
+
+    /** Un tramite que alguien ya marco como hecho en OVZ (con quien y cuando, por el CHECK de V21). */
+    private Tramite nuevoTramiteHechoEnOvz(Usuario quien) {
+        Tramite tramite = new Tramite();
+        tramite.setGestoria(gestoriaA);
+        tramite.setContacto(contactoA);
+        tramite.setExplotacion(explotacionA1);
+        tramite.setTipoTramite(TipoTramite.ALTA_NACIMIENTO);
+        tramite.setEstado(EstadoTramite.HECHO_EN_OVZ);
+        tramite.setHechoEnOvzPor(quien);
+        tramite.setHechoEnOvzEn(Instant.parse("2026-10-01T08:00:00Z"));
         return tramiteRepository.save(tramite);
     }
 }

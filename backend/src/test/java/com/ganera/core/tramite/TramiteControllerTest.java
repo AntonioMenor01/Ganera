@@ -14,6 +14,9 @@ import com.ganera.core.ganadero.Ganadero;
 import com.ganera.core.ganadero.GanaderoRepository;
 import com.ganera.core.gestoria.Gestoria;
 import com.ganera.core.gestoria.GestoriaRepository;
+import com.ganera.core.gestoria.Usuario;
+import com.ganera.core.gestoria.UsuarioRepository;
+import com.ganera.core.shared.tiempo.RelojConfig;
 import com.ganera.core.shared.security.GaneraUserPrincipal;
 import com.ganera.core.shared.web.MotivoErrorResponse;
 import com.ganera.core.whatsapp.MensajeCampo;
@@ -35,7 +38,7 @@ import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTest
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = NONE)
-@Import({TramiteCrotalService.class, TramiteRevisionService.class})
+@Import({TramiteCrotalService.class, TramiteRevisionService.class, RelojConfig.class})
 class TramiteControllerTest {
 
     @Autowired
@@ -60,6 +63,8 @@ class TramiteControllerTest {
     private TramiteRevisionService tramiteRevisionService;
     @Autowired
     private jakarta.persistence.EntityManager entityManager;
+    @Autowired
+    private UsuarioRepository usuarioRepository;
 
     @Test
     void listarFiltraPorEstadoCuandoSeIndica() {
@@ -703,6 +708,157 @@ class TramiteControllerTest {
         assertThat(tramite.getTipoTramite()).isEqualTo(TipoTramite.BAJA_MUERTE);
         assertThat(tramite.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
         assertThat(version(tramite)).isEqualTo(vieja + 1);
+    }
+
+    // --- hecho en OVZ ---
+
+    /** Sin version (sin cuerpo o version null) -> 400 con motivo ANTES de buscar el Tramite: la misma
+     * respuesta para uno propio, uno ajeno o uno inexistente, en los dos endpoints, y nada cambia. */
+    @Test
+    void marcarYDesmarcarSinVersionDevuelven400ConMotivoSinTocarNada() {
+        Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria marcar sin version"));
+        Gestoria ajena = gestoriaRepository.save(new Gestoria("Gestoria ajena marcar sin version"));
+        Usuario usuario = nuevoUsuario(gestoria, "marcar-sin-version@test.com", "Ana Pérez");
+        Tramite tramite = guardarTramite(gestoria, nuevoContacto(gestoria, "+34600111280"), EstadoTramite.APROBADO);
+        Tramite tramiteAjeno = guardarTramite(ajena, nuevoContacto(ajena, "+34600111281"), EstadoTramite.APROBADO);
+        long versionAntes = version(tramite);
+        long versionAjenoAntes = version(tramiteAjeno);
+        GaneraUserPrincipal principal = new GaneraUserPrincipal(usuario.getId(), gestoria.getId(), "e@test.com");
+
+        for (Long id : List.of(tramite.getId(), tramiteAjeno.getId(), 999999L)) {
+            for (TramiteHechoEnOvzRequest cuerpo : java.util.Arrays.asList(null, new TramiteHechoEnOvzRequest(null))) {
+                for (ResponseEntity<?> respuesta : List.of(
+                        nuevoController().marcarHechoEnOvz(principal, id, cuerpo),
+                        nuevoController().desmarcarHechoEnOvz(principal, id, cuerpo))) {
+                    assertThat(respuesta.getStatusCode().value()).as("id " + id).isEqualTo(400);
+                    assertThat(respuesta.getBody()).isEqualTo(new MotivoErrorResponse(TramiteController.MOTIVO_FALTA_VERSION));
+                }
+            }
+        }
+        assertThat(tramite.getEstado()).isEqualTo(EstadoTramite.APROBADO);
+        assertThat(version(tramite)).isEqualTo(versionAntes);
+        assertThat(tramiteAjeno.getEstado()).isEqualTo(EstadoTramite.APROBADO);
+        assertThat(version(tramiteAjeno)).isEqualTo(versionAjenoAntes);
+    }
+
+    /** El usuario que consta es el del principal (JWT), y el detalle lo devuelve con la fecha. */
+    @Test
+    void marcarGuardaAlUsuarioDelPrincipalYElDetalleLoDevuelve() {
+        Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria marcar"));
+        suscripcionActiva(gestoria);
+        nuevoUsuario(gestoria, "otro-marcar@test.com", "Otro Usuario");
+        Usuario usuario = nuevoUsuario(gestoria, "marcar@test.com", "Ana Pérez");
+        Tramite tramite = guardarTramite(gestoria, nuevoContacto(gestoria, "+34600111282"), EstadoTramite.APROBADO);
+        long v0 = version(tramite);
+        GaneraUserPrincipal principal = new GaneraUserPrincipal(usuario.getId(), gestoria.getId(), "marcar@test.com");
+
+        ResponseEntity<?> respuesta = nuevoController().marcarHechoEnOvz(principal, tramite.getId(),
+                new TramiteHechoEnOvzRequest(v0));
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
+        TramiteResponse cuerpo = (TramiteResponse) respuesta.getBody();
+        assertThat(cuerpo.estado()).isEqualTo("HECHO_EN_OVZ");
+        assertThat(cuerpo.hechoEnOvzPorNombre()).isEqualTo("Ana Pérez");
+        assertThat(cuerpo.hechoEnOvzEn()).isNotNull();
+        assertThat(cuerpo.version()).isEqualTo(v0 + 1);
+        assertThat(tramite.getHechoEnOvzPor().getId()).isEqualTo(usuario.getId());
+
+        TramiteDetalleResponse detalle = nuevoController().detalle(principal, tramite.getId()).getBody();
+        assertThat(detalle.estado()).isEqualTo("HECHO_EN_OVZ");
+        assertThat(detalle.hechoEnOvzPorNombre()).isEqualTo("Ana Pérez");
+        assertThat(detalle.hechoEnOvzEn()).isEqualTo(cuerpo.hechoEnOvzEn());
+
+        ResponseEntity<?> desmarcado = nuevoController().desmarcarHechoEnOvz(principal, tramite.getId(),
+                new TramiteHechoEnOvzRequest(v0 + 1));
+        assertThat(desmarcado.getStatusCode().value()).isEqualTo(200);
+        assertThat(((TramiteResponse) desmarcado.getBody()).estado()).isEqualTo("APROBADO");
+        assertThat(((TramiteResponse) desmarcado.getBody()).hechoEnOvzPorNombre()).isNull();
+    }
+
+    @Test
+    void marcarYDesmarcarDevuelven404SinCuerpoYConflictosCon409() {
+        Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria marcar errores"));
+        Gestoria ajena = gestoriaRepository.save(new Gestoria("Gestoria ajena marcar errores"));
+        Usuario usuario = nuevoUsuario(gestoria, "marcar-errores@test.com", "Ana Pérez");
+        Tramite pendiente = guardarTramite(gestoria, nuevoContacto(gestoria, "+34600111283"), EstadoTramite.PENDIENTE_REVISION);
+        Tramite ajeno = guardarTramite(ajena, nuevoContacto(ajena, "+34600111284"), EstadoTramite.APROBADO);
+        GaneraUserPrincipal principal = new GaneraUserPrincipal(usuario.getId(), gestoria.getId(), "e@test.com");
+
+        ResponseEntity<?> marcarAjeno = nuevoController().marcarHechoEnOvz(principal, ajeno.getId(),
+                new TramiteHechoEnOvzRequest(version(ajeno)));
+        assertThat(marcarAjeno.getStatusCode().value()).isEqualTo(404);
+        assertThat(marcarAjeno.getBody()).isNull();
+        ResponseEntity<?> desmarcarInexistente = nuevoController().desmarcarHechoEnOvz(principal, 999999L,
+                new TramiteHechoEnOvzRequest(0L));
+        assertThat(desmarcarInexistente.getStatusCode().value()).isEqualTo(404);
+        assertThat(desmarcarInexistente.getBody()).isNull();
+
+        ResponseEntity<?> marcarPendiente = nuevoController().marcarHechoEnOvz(principal, pendiente.getId(),
+                new TramiteHechoEnOvzRequest(version(pendiente)));
+        assertThat(marcarPendiente.getStatusCode().value()).isEqualTo(409);
+        assertThat(marcarPendiente.getBody()).isEqualTo(
+                new MotivoErrorResponse(TramiteRevisionService.MOTIVO_MARCAR_SOLO_APROBADO));
+        ResponseEntity<?> desmarcarPendiente = nuevoController().desmarcarHechoEnOvz(principal, pendiente.getId(),
+                new TramiteHechoEnOvzRequest(version(pendiente)));
+        assertThat(desmarcarPendiente.getStatusCode().value()).isEqualTo(409);
+        assertThat(desmarcarPendiente.getBody()).isEqualTo(
+                new MotivoErrorResponse(TramiteRevisionService.MOTIVO_DESMARCAR_SOLO_HECHO_EN_OVZ));
+        assertThat(pendiente.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+        assertThat(ajeno.getEstado()).isEqualTo(EstadoTramite.APROBADO);
+    }
+
+    /** Sin comprobacion de suscripcion: una gestoria SUSPENDIDA marca (y no puede aprobar). */
+    @Test
+    void marcarNoDependeDeLaSuscripcion() {
+        Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria marcar suspendida"));
+        Suscripcion suscripcion = new Suscripcion();
+        suscripcion.setGestoria(gestoria);
+        suscripcion.setEstado(EstadoSuscripcion.SUSPENDIDA);
+        suscripcionRepository.save(suscripcion);
+        Usuario usuario = nuevoUsuario(gestoria, "marcar-suspendida@test.com", "Ana Pérez");
+        Tramite tramite = guardarTramite(gestoria, nuevoContacto(gestoria, "+34600111285"), EstadoTramite.APROBADO);
+
+        ResponseEntity<?> respuesta = nuevoController().marcarHechoEnOvz(
+                new GaneraUserPrincipal(usuario.getId(), gestoria.getId(), "e@test.com"), tramite.getId(),
+                new TramiteHechoEnOvzRequest(version(tramite)));
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
+    }
+
+    /** El mensaje del detalle se lee con el gestoriaId: uno de otra gestoria enlazado (datos
+     * inconsistentes) al Tramite, aunque sea mas reciente, nunca aparece. */
+    @Test
+    void detalleNoMuestraUnMensajeDeOtraGestoriaEnlazadoAlTramite() {
+        Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria mensaje propio"));
+        Gestoria ajena = gestoriaRepository.save(new Gestoria("Gestoria mensaje ajeno"));
+        Contacto contacto = nuevoContacto(gestoria, "+34600111286");
+        Tramite tramite = guardarTramite(gestoria, contacto, EstadoTramite.PENDIENTE_REVISION);
+        nuevoMensaje("SM-propio-1", gestoria, tramite, "Texto de A", java.time.Instant.parse("2026-10-01T08:00:00Z"));
+        nuevoMensaje("SM-ajeno-1", ajena, tramite, "Texto de B", java.time.Instant.parse("2026-10-02T08:00:00Z"));
+
+        TramiteDetalleResponse detalle = nuevoController().detalle(principal(gestoria), tramite.getId()).getBody();
+
+        assertThat(detalle.mensajeOriginal()).isEqualTo("Texto de A");
+    }
+
+    private void nuevoMensaje(String sid, Gestoria gestoria, Tramite tramite, String cuerpo, java.time.Instant cuando) {
+        MensajeCampo mensaje = new MensajeCampo();
+        mensaje.setMessageSid(sid);
+        mensaje.setTelefonoOrigen("+34600111299");
+        mensaje.setCuerpo(cuerpo);
+        mensaje.setGestoria(gestoria);
+        mensaje.setTramite(tramite);
+        mensaje.setCreatedAt(cuando);
+        mensajeCampoRepository.save(mensaje);
+    }
+
+    private Usuario nuevoUsuario(Gestoria gestoria, String email, String nombre) {
+        Usuario usuario = new Usuario();
+        usuario.setGestoria(gestoria);
+        usuario.setEmail(email);
+        usuario.setPasswordHash("x");
+        usuario.setNombre(nombre);
+        return usuarioRepository.save(usuario);
     }
 
     private static GaneraUserPrincipal principal(Gestoria gestoria) {

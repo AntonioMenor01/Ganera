@@ -168,6 +168,8 @@ export type ContextoError =
   | "aprobar-tramite"
   | "rechazar-tramite"
   | "guardar-tramite"
+  | "marcar-hecho-ovz"
+  | "desmarcar-hecho-ovz"
   | "listar-ganaderos"
   | "detalle-ganadero"
   | "animales-explotacion";
@@ -232,6 +234,16 @@ const TEXTOS: Record<ContextoError, TextosContexto> = {
   // responde igual); se da el del trámite, que es el caso normal.
   "guardar-tramite": {
     generico: "No se han podido guardar los cambios del trámite. Inténtalo de nuevo.",
+    noEncontrado: TEXTO_TRAMITE_NO_ENCONTRADO,
+  },
+  // Hecho en OVZ: solo deja constancia en Ganera de lo que hizo la persona; el texto no dice que
+  // Ganera haga nada en OVZ. Sin 403: marcar no depende de la suscripción.
+  "marcar-hecho-ovz": {
+    generico: "No se ha podido marcar el trámite como hecho en OVZ. Inténtalo de nuevo.",
+    noEncontrado: TEXTO_TRAMITE_NO_ENCONTRADO,
+  },
+  "desmarcar-hecho-ovz": {
+    generico: "No se ha podido quitar la marca. Inténtalo de nuevo.",
     noEncontrado: TEXTO_TRAMITE_NO_ENCONTRADO,
   },
   "listar-ganaderos": {

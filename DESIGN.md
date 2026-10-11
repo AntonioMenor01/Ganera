@@ -202,10 +202,10 @@ the app: it would be a third red, almost indistinguishable from the brand one.
 
 ### Semantic (trámite state)
 - **Éxito** (`--success` / `--success-foreground`, unchanged): resolved favorably, meaning
-  `APROBADO` and `EJECUTADO_OVZ`.
+  `HECHO_EN_OVZ` and `EJECUTADO_OVZ`.
 - **Aviso** (`--warning` / `--warning-foreground`, unchanged): not resolved yet, meaning
-  `PENDIENTE_EXTRACCION`, `PENDIENTE_REVISION` and `EN_PROCESO`. The amber stays clearly apart from
-  both reds.
+  `PENDIENTE_EXTRACCION`, `PENDIENTE_REVISION`, `APROBADO` (data reviewed, the gestor still has to
+  type it into OVZ) and `EN_PROCESO`. The amber stays clearly apart from both reds.
 - **Peligro** (`--danger` / `--danger-foreground`): resolved unfavorably, meaning `ERROR_OVZ` and
   `RECHAZADO`, in Rojo Problema on Rojo Tinte, so there is a single "problem red".
 
@@ -355,8 +355,13 @@ The signature component, since state is the main thing the queue communicates.
 - **Always a label:** a badge shows the Spanish label from `features/tramites/etiquetas.ts`, never
   the raw enum, and is rendered through `BadgeEstadoTramite`, `BadgeResolucionCrotal` or
   `BadgeRolContacto`. Meaning is never carried by color alone.
-- **Trámite state:** aviso for `PENDIENTE_EXTRACCION`, `PENDIENTE_REVISION` and `EN_PROCESO`;
-  éxito for `APROBADO` and `EJECUTADO_OVZ`; peligro for `ERROR_OVZ` and `RECHAZADO`.
+- **Trámite state:** aviso for `PENDIENTE_EXTRACCION`, `PENDIENTE_REVISION`, `APROBADO` ("Aprobado ·
+  falta OVZ") and `EN_PROCESO`; éxito for `HECHO_EN_OVZ` ("Hecho en OVZ": the gestor says they typed it
+  into OVZ themselves) and `EJECUTADO_OVZ`; peligro for `ERROR_OVZ` and `RECHAZADO`. In the queue the
+  badge is all there is: who marked it and when live in the dialog and the ficha, never in the row.
+  The queue's state filter offers Todos, the two pending states, "Aprobado · falta OVZ", "Hecho en OVZ"
+  and "Rechazado"; the automation states (`EN_PROCESO`, `EJECUTADO_OVZ`, `ERROR_OVZ`, Prompt 3c) keep
+  their labels but stay out of the filter until they can happen.
 - **Crotal resolution:** "En inventario" success; "Varios animales coinciden" and "Falta la
   explotación" warning; "No está en el inventario" `outline`, since it can still be approvable (the
   backend decides). A `NO_ENCONTRADO` crotal whose written value is incomplete (`completo: false`
@@ -553,13 +558,19 @@ in the UI. The favicon is `favicon-64.png`.
 - **Crotal rows:** one row per crotal with its input, the resolution badge (or "Sin guardar"), the
   resolved full crotal on its own line when it differs, and a remove button, plus "Añadir crotal".
   The badge column has a fixed minimum width so the rows don't shift.
-- **Editable only in `PENDIENTE_REVISION`;** any other state is read-only with no action buttons.
+- **Editable only in `PENDIENTE_REVISION`;** any other state is read-only with no review actions.
+  `APROBADO` keeps a footer with "Abrir ficha para OVZ" and "Marcar como hecho en OVZ" (with its hint);
+  `HECHO_EN_OVZ` shows the "Hecho en OVZ" strip in the body and a footer with "Quitar la marca" and
+  "Abrir ficha para OVZ" (see Ficha para OVZ for both patterns). The only mentions of OVZ in the
+  dialog are those buttons, the hint, the state badge and the strip; the success notices after marking
+  ("Marca guardada.", "Marca quitada.") don't name OVZ.
   With unsaved changes, Aprobar and Rechazar are disabled with "Guarda antes de aprobar". While a
   request is in flight, every action is disabled and the active button reads "Guardando…",
-  "Aprobando…" or "Rechazando…". Nothing in the dialog implies anything happens in OVZ.net.
+  "Aprobando…", "Rechazando…", "Marcando…" or "Quitando la marca…". Nothing in the dialog implies
+  anything happens in OVZ.net.
 - **Inline confirmation:** the action bar swaps for a named `role="group"` with the question first,
-  then [safe option, focused] [destructive-tint option]. Esc cancels. Used for Rechazar and for
-  closing with unsaved changes. Never a second modal.
+  then [safe option, focused] [destructive-tint option]. Esc cancels. Used for Rechazar, for "Quitar
+  la marca" and for closing with unsaved changes. Never a second modal.
 - **Action notices:** an error is a destructive Alert with a per-action title and the backend's
   `motivo` verbatim, persistent and dismissible. Success is the exact `success` pair with a check
   icon inside an always-mounted `role="status"`. A follow-up reload failure is a secondary muted
@@ -596,12 +607,41 @@ in the UI. The favicon is `favicon-64.png`.
   A copied row keeps a small ink check before its label until reload (memory only, nothing saved).
   Without the Clipboard API the value appears in a read-only `Input`, selected and focused, with
   "Selecciona el texto y cópialo (Ctrl+C o ⌘C)".
-- **States (D4):** only `APROBADO` copies. `PENDIENTE_REVISION` is a preview: a neutral Superficie
+- **States (D4):** only `APROBADO` and `HECHO_EN_OVZ` copy. `PENDIENTE_REVISION` is a preview: a neutral Superficie
   strip (Eye icon) "Vista previa: aprueba el trámite antes de pasarlo a OVZ." and no Copiar buttons.
   Rejected, extracting, no type, unknown type, censo and 404 use the "Not found" pattern (title, one
-  sentence, "Volver a trámites").
+  sentence, "Volver a trámites"). `HECHO_EN_OVZ` is the same ficha in consultation mode: Copiar stays
+  (to check what is in OVZ) under the "Hecho en OVZ" strip.
+- **"Hecho en OVZ" strip:** the record that the person already did it in OVZ, so nobody types it twice.
+  The exact success pair (`bg-success` / `text-success-foreground`), `rounded-lg`, 14px/600 text with a
+  decorative `CircleCheckIcon`: "Hecho en OVZ por {nombre} el {dd/mm/aaaa, hh:mm}" (Madrid time,
+  `fechaHechoEnOvz` in `features/tramites/hechoEnOvz.ts`; without a name, "Hecho en OVZ el …").
+  Never red, never an `Alert`, no live `role` (it is a fact of the data). In the ficha it sits at the
+  top, before the form title, with "Quitar la marca" (outline `sm`) inside the strip; in the dialog it
+  opens the body, above the two columns. The person is always the subject: never "registrado",
+  "enviado", "ejecutado" or "procesado".
+- **"Marcar como hecho en OVZ":** primary button, no confirmation (it only records what the person
+  did, and it can be undone). In the ficha it closes the form (after the last section, above a top
+  border), in `APROBADO` only; in the dialog it is the primary action of the `APROBADO` footer, right of
+  "Abrir ficha para OVZ". Its hint, always visible and tied with `aria-describedby`, reads "Púlsalo
+  cuando lo hayas terminado tú en OVZ. Ganera no envía nada." While the request runs it reads
+  "Marcando…" and everything is disabled. A failure is a destructive Alert with the backend's `motivo`
+  (or the context's generic text): in the ficha it sits next to the action, titled "No se ha podido
+  marcar el trámite" / "No se ha podido quitar la marca"; in the dialog it is the usual action notice,
+  titled per action like the others ("No se ha marcado el trámite" / "No se ha quitado la marca"). No
+  title names OVZ. A 409 reloads the trámite first, and so does a network error or 5xx (if the reload
+  shows the requested state, it counts as done); a 404 becomes "Trámite no encontrado".
+- **Focus and announcement in the ficha:** the result is announced in an always-mounted polite
+  `role="status"` (sr-only: "Marca guardada." / "Marca quitada."). Focus never drops to the `body`:
+  after marking it moves to the strip (`tabIndex={-1}`); on "Sí, quitar la marca" it moves to the strip
+  while the request runs, then to "Marcar como hecho en OVZ"; after a failure it moves to the error
+  Alert (`tabIndex={-1}`). In the dialog, after marking or removing the mark focus goes to the title, as
+  after Aprobar.
+- **"Quitar la marca":** outline, confirmed inline like Rechazar: a named `role="group"` with "¿Quitar
+  la marca de hecho en OVZ? En OVZ no cambia nada.", then [Cancelar, focused] ["Sí, quitar la marca",
+  destructive tint]. Esc and Cancelar return focus to "Quitar la marca".
 - **Entry:** from the review dialog footer, "Abrir ficha para OVZ" (outline, external-link icon) when
-  approved, and "Vista previa de la ficha" (ghost) next to Rechazar while pending. Both call
+  approved or done in OVZ, and "Vista previa de la ficha" (ghost) next to Rechazar while pending. Both call
   `window.open` with a fixed window name and no `noopener`, so the window inherits the session; their
   accessible name adds "(se abre en otra ventana)". The preview is disabled while there are unsaved
   edits (it would show what is saved), like Aprobar.

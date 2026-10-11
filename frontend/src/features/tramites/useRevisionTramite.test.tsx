@@ -53,6 +53,8 @@ function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
     origen: null,
     estadoExtraccion: null,
     crotalesDescartados: 0,
+    hechoEnOvzEn: null,
+    hechoEnOvzPorNombre: null,
     ...parcial,
   }
 }
@@ -73,6 +75,8 @@ function respuestaLista(d: TramiteDetalle) {
     origen: d.origen,
     estadoExtraccion: d.estadoExtraccion,
     crotalesDescartados: d.crotalesDescartados,
+    hechoEnOvzEn: d.hechoEnOvzEn,
+    hechoEnOvzPorNombre: d.hechoEnOvzPorNombre,
   } satisfies Tramite
 }
 
@@ -247,6 +251,7 @@ describe("useRevisionTramite: editable por estado", () => {
     "PENDIENTE_EXTRACCION",
     "PENDIENTE_REVISION",
     "APROBADO",
+    "HECHO_EN_OVZ",
     "EN_PROCESO",
     "EJECUTADO_OVZ",
     "ERROR_OVZ",
@@ -1526,4 +1531,223 @@ describe("useRevisionTramite: campos de B1 en la respuesta de aprobar/rechazar (
       })
     },
   )
+})
+
+// ---------------------------------------------------------------------------------------------
+// Hecho en OVZ (2026-10-07): marcar y quitar la marca, con la misma mecánica que aprobar/rechazar.
+
+const MARCA = { hechoEnOvzEn: "2026-10-07T10:30:00Z", hechoEnOvzPorNombre: "Ana Pérez" }
+
+describe("useRevisionTramite: hecho en OVZ", () => {
+  it("puedeMarcar solo en APROBADO y puedeDesmarcar solo en HECHO_EN_OVZ", async () => {
+    for (const [estado, marcar, desmarcar] of [
+      ["PENDIENTE_REVISION", false, false],
+      ["APROBADO", true, false],
+      ["HECHO_EN_OVZ", false, true],
+      ["RECHAZADO", false, false],
+    ] as const) {
+      detallesEnOrden(() => HttpResponse.json(detalle({ estado })))
+      const { result, unmount } = await montar()
+      expect(result.current.puedeMarcarHechoEnOvz, estado).toBe(marcar)
+      expect(result.current.puedeDesmarcarHechoEnOvz, estado).toBe(desmarcar)
+      expect(result.current.editable, estado).toBe(estado === "PENDIENTE_REVISION")
+      unmount()
+    }
+  })
+
+  it("marcar envía {version}; tras el 200 se ve la marca, se recarga y avisa a la cola", async () => {
+    const cuerpos: unknown[] = []
+    const get = detallesEnOrden(
+      () => HttpResponse.json(detalle({ estado: "APROBADO", version: 4 })),
+      () => HttpResponse.json(detalle({ estado: "HECHO_EN_OVZ", version: 5, ...MARCA })),
+    )
+    server.use(
+      http.post(apiUrl("/tramites/7/marcar-hecho-ovz"), async ({ request }) => {
+        cuerpos.push(await request.json())
+        return HttpResponse.json(respuestaLista(detalle({ estado: "HECHO_EN_OVZ", version: 5, ...MARCA })))
+      }),
+    )
+    const { result, onCambiado } = await montar()
+    await act(async () => {
+      await result.current.marcarHechoEnOvz()
+    })
+    expect(cuerpos).toEqual([{ version: 4 }])
+    expect(get.llamadas()).toBe(2)
+    expect(result.current.detalle?.estado).toBe("HECHO_EN_OVZ")
+    expect(result.current.detalle?.hechoEnOvzPorNombre).toBe("Ana Pérez")
+    expect(result.current.detalle?.hechoEnOvzEn).toBe("2026-10-07T10:30:00Z")
+    expect(result.current.puedeMarcarHechoEnOvz).toBe(false)
+    expect(result.current.puedeDesmarcarHechoEnOvz).toBe(true)
+    expect(result.current.editable).toBe(false)
+    expect(result.current.enviando).toBeNull()
+    expect(result.current.aviso).toEqual({ tipo: "exito", accion: "marcar", mensaje: "Marca guardada." })
+    expect(onCambiado).toHaveBeenCalledTimes(1)
+  })
+
+  it("mientras la recarga tras marcar está en curso, ya se ve la marca de la respuesta", async () => {
+    const espera = diferido()
+    let get = 0
+    server.use(
+      http.get(apiUrl("/tramites/7"), async () => {
+        get += 1
+        if (get === 1) return HttpResponse.json(detalle({ estado: "APROBADO" }))
+        await espera.promesa
+        return HttpResponse.json(detalle({ estado: "HECHO_EN_OVZ", version: 5, ...MARCA }))
+      }),
+      http.post(apiUrl("/tramites/7/marcar-hecho-ovz"), () =>
+        HttpResponse.json(respuestaLista(detalle({ estado: "HECHO_EN_OVZ", version: 5, ...MARCA }))),
+      ),
+    )
+    const { result } = await montar()
+    let promesa!: Promise<void>
+    act(() => {
+      promesa = result.current.marcarHechoEnOvz()
+    })
+    await waitFor(() => expect(result.current.detalle?.hechoEnOvzPorNombre).toBe("Ana Pérez"))
+    expect(result.current.enviando).toBe("marcar")
+    espera.liberar()
+    await act(async () => {
+      await promesa
+    })
+    expect(result.current.enviando).toBeNull()
+  })
+
+  it("quitar la marca envía {version}; tras el 200 vuelve a APROBADO sin quién ni cuándo", async () => {
+    let crudo: string | null = null
+    detallesEnOrden(
+      () => HttpResponse.json(detalle({ estado: "HECHO_EN_OVZ", version: 6, ...MARCA })),
+      () => HttpResponse.json(detalle({ estado: "APROBADO", version: 7 })),
+    )
+    server.use(
+      http.post(apiUrl("/tramites/7/desmarcar-hecho-ovz"), async ({ request }) => {
+        crudo = await request.text()
+        return HttpResponse.json(respuestaLista(detalle({ estado: "APROBADO", version: 7 })))
+      }),
+    )
+    const { result, onCambiado } = await montar()
+    await act(async () => {
+      await result.current.desmarcarHechoEnOvz()
+    })
+    expect(crudo).toBe('{"version":6}')
+    expect(result.current.detalle?.estado).toBe("APROBADO")
+    expect(result.current.detalle?.hechoEnOvzEn).toBeNull()
+    expect(result.current.detalle?.hechoEnOvzPorNombre).toBeNull()
+    expect(result.current.puedeMarcarHechoEnOvz).toBe(true)
+    expect(result.current.aviso).toEqual({ tipo: "exito", accion: "desmarcar", mensaje: "Marca quitada." })
+    expect(onCambiado).toHaveBeenCalledTimes(1)
+  })
+
+  it("fuera de su estado no envían nada", async () => {
+    let posts = 0
+    detallesEnOrden(() => HttpResponse.json(detalle({ estado: "PENDIENTE_REVISION" })))
+    server.use(
+      http.post(apiUrl("/tramites/7/marcar-hecho-ovz"), () => {
+        posts += 1
+        return HttpResponse.json({})
+      }),
+      http.post(apiUrl("/tramites/7/desmarcar-hecho-ovz"), () => {
+        posts += 1
+        return HttpResponse.json({})
+      }),
+    )
+    const { result } = await montar()
+    await act(async () => {
+      await result.current.marcarHechoEnOvz()
+      await result.current.desmarcarHechoEnOvz()
+    })
+    expect(posts).toBe(0)
+  })
+
+  it("dos marcar seguidos en el mismo render envían una sola petición", async () => {
+    let posts = 0
+    detallesEnOrden(
+      () => HttpResponse.json(detalle({ estado: "APROBADO" })),
+      () => HttpResponse.json(detalle({ estado: "HECHO_EN_OVZ", version: 5, ...MARCA })),
+    )
+    server.use(
+      http.post(apiUrl("/tramites/7/marcar-hecho-ovz"), () => {
+        posts += 1
+        return HttpResponse.json(respuestaLista(detalle({ estado: "HECHO_EN_OVZ", version: 5, ...MARCA })))
+      }),
+    )
+    const { result } = await montar()
+    await act(async () => {
+      await Promise.all([result.current.marcarHechoEnOvz(), result.current.marcarHechoEnOvz()])
+    })
+    expect(posts).toBe(1)
+  })
+
+  it("marcar 409: recarga, motivo tal cual, sin reintento, avisa a la cola", async () => {
+    const cuerpos: unknown[] = []
+    detallesEnOrden(
+      () => HttpResponse.json(detalle({ estado: "APROBADO", version: 4 })),
+      () => HttpResponse.json(detalle({ estado: "HECHO_EN_OVZ", version: 5, ...MARCA })),
+    )
+    server.use(
+      http.post(apiUrl("/tramites/7/marcar-hecho-ovz"), async ({ request }) => {
+        cuerpos.push(await request.json())
+        return HttpResponse.json({ motivo: "Este trámite ya está marcado como hecho en OVZ." }, { status: 409 })
+      }),
+    )
+    const { result, onCambiado } = await montar()
+    await act(async () => {
+      await result.current.marcarHechoEnOvz()
+    })
+    expect(cuerpos).toEqual([{ version: 4 }])
+    expect(result.current.aviso).toEqual({
+      tipo: "conflicto",
+      accion: "marcar",
+      mensaje: "Este trámite ya está marcado como hecho en OVZ.",
+    })
+    expect(result.current.detalle?.estado).toBe("HECHO_EN_OVZ")
+    expect(result.current.detalle?.version).toBe(5)
+    expect(onCambiado).toHaveBeenCalledTimes(1)
+  })
+
+  it("quitar la marca 404 y la recarga también 404: no-encontrado", async () => {
+    detallesEnOrden(
+      () => HttpResponse.json(detalle({ estado: "HECHO_EN_OVZ", ...MARCA })),
+      () => new HttpResponse(null, { status: 404 }),
+    )
+    server.use(http.post(apiUrl("/tramites/7/desmarcar-hecho-ovz"), () => new HttpResponse(null, { status: 404 })))
+    const { result, onCambiado } = await montar()
+    await act(async () => {
+      await result.current.desmarcarHechoEnOvz()
+    })
+    expect(result.current.carga).toEqual({ estado: "no-encontrado", mensaje: TEXTO_NO_EXISTE })
+    expect(result.current.puedeDesmarcarHechoEnOvz).toBe(false)
+    expect(onCambiado).toHaveBeenCalled()
+  })
+
+  it("red al marcar y la recarga lo muestra marcado: se dice lo que consta", async () => {
+    detallesEnOrden(
+      () => HttpResponse.json(detalle({ estado: "APROBADO" })),
+      () => HttpResponse.json(detalle({ estado: "HECHO_EN_OVZ", version: 5, ...MARCA })),
+    )
+    server.use(http.post(apiUrl("/tramites/7/marcar-hecho-ovz"), () => HttpResponse.error()))
+    const { result, onCambiado } = await montar()
+    await act(async () => {
+      await result.current.marcarHechoEnOvz()
+    })
+    expect(result.current.aviso).toEqual({
+      tipo: "exito",
+      accion: "marcar",
+      mensaje: "No hubo respuesta a tiempo, pero el trámite consta como hecho en OVZ.",
+    })
+    expect(onCambiado).toHaveBeenCalledTimes(1)
+  })
+
+  it("5xx al marcar y la recarga lo muestra igual: el error, con el botón otra vez disponible", async () => {
+    detallesEnOrden(
+      () => HttpResponse.json(detalle({ estado: "APROBADO" })),
+      () => HttpResponse.json(detalle({ estado: "APROBADO" })),
+    )
+    server.use(http.post(apiUrl("/tramites/7/marcar-hecho-ovz"), () => new HttpResponse(null, { status: 500 })))
+    const { result } = await montar()
+    await act(async () => {
+      await result.current.marcarHechoEnOvz()
+    })
+    expect(result.current.aviso).toEqual({ tipo: "error", accion: "marcar", mensaje: TEXTO_ERROR_SERVIDOR })
+    expect(result.current.puedeMarcarHechoEnOvz).toBe(true)
+  })
 })

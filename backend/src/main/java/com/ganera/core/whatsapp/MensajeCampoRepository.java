@@ -12,12 +12,12 @@ import java.util.Optional;
 public interface MensajeCampoRepository extends JpaRepository<MensajeCampo, Long> {
     boolean existsByMessageSid(String messageSid);
 
-    Optional<MensajeCampo> findFirstByTramiteIdOrderByCreatedAtDesc(Long tramiteId);
-
     /**
      * Mensaje de un Tramite con el gestoriaId explicito (el del Tramite). Lo usa la extraccion en
      * segundo plano (B1, T2), que corre sin peticion ni gestoriaFilter: un mensaje enlazado al
-     * Tramite pero con otra gestoria_id (datos inconsistentes) nunca se envia a la IA.
+     * Tramite pero con otra gestoria_id (datos inconsistentes) nunca se envia a la IA. Desde «hecho en
+     * OVZ» (2026-10-07) tambien GET /tramites/{id} y PATCH: es la unica lectura del mensaje de un Tramite
+     * (la variante sin gestoriaId se borro).
      */
     Optional<MensajeCampo> findFirstByTramiteIdAndGestoriaIdOrderByCreatedAtDesc(Long tramiteId, Long gestoriaId);
 

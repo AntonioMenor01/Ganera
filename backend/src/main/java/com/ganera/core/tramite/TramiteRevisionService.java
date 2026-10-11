@@ -3,15 +3,22 @@ package com.ganera.core.tramite;
 import com.ganera.core.contacto.RecursoNoEncontradoException;
 import com.ganera.core.explotacion.Explotacion;
 import com.ganera.core.explotacion.ExplotacionRepository;
+import com.ganera.core.gestoria.Usuario;
+import com.ganera.core.gestoria.UsuarioRepository;
 import com.ganera.core.tramite.CrotalNormalizador.TipoCrotal;
 import com.ganera.core.whatsapp.MensajeCampo;
 import com.ganera.core.whatsapp.MensajeCampoRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,7 +33,9 @@ import java.util.regex.Pattern;
  * Cada metodo publico es UNA transaccion que:
  * - carga el Tramite con bloqueo de fila (PESSIMISTIC_WRITE) y gestoriaId explicito -- nunca
  *   findById a secas; si no existe o es de otra Gestoria -> RecursoNoEncontradoException (404);
- * - solo actua sobre un Tramite en PENDIENTE_REVISION (decision 12) -> si no, 409;
+ * - PATCH, aprobar y rechazar solo actuan sobre un Tramite en PENDIENTE_REVISION (decision 12) ->
+ *   si no, 409 (PATCH en HECHO_EN_OVZ con su propio motivo: «quita la marca»); marcar como hecho en
+ *   OVZ solo desde APROBADO y desmarcar solo desde HECHO_EN_OVZ (2026-10-07);
  * - PATCH, aprobar y rechazar (este desde el mini-prompt tras A2) exigen la version que mostraba
  *   la pantalla (decision 27): distinta de la
  *   actual -> 409 MOTIVO_VERSION_DESFASADA sin cambios. Se comprueba DESPUES del estado (un
@@ -52,12 +61,24 @@ public class TramiteRevisionService {
     static final String MOTIVO_FALTA_TIPO = "Falta el tipo de trámite.";
     static final String MOTIVO_VERSION_DESFASADA =
             "El trámite ha cambiado desde que lo abriste. Vuelve a cargarlo y revísalo antes de continuar.";
+    // «Hecho en OVZ» (2026-10-07): la persona es siempre el sujeto; Ganera no hace nada en OVZ.
+    static final String MOTIVO_EDITAR_HECHO_EN_OVZ =
+            "Este trámite está marcado como hecho en OVZ. Quita la marca para editarlo.";
+    static final String MOTIVO_MARCAR_SOLO_APROBADO =
+            "Solo se puede marcar como hecho en OVZ un trámite aprobado.";
+    static final String MOTIVO_YA_HECHO_EN_OVZ = "Este trámite ya está marcado como hecho en OVZ.";
+    static final String MOTIVO_DESMARCAR_SOLO_HECHO_EN_OVZ =
+            "Solo se puede quitar la marca de un trámite marcado como hecho en OVZ.";
+
+    private static final Logger log = LoggerFactory.getLogger(TramiteRevisionService.class);
 
     private final TramiteRepository tramiteRepository;
     private final ExplotacionRepository explotacionRepository;
     private final TramiteCrotalService tramiteCrotalService;
     private final TramiteCrotalRepository tramiteCrotalRepository;
     private final MensajeCampoRepository mensajeCampoRepository;
+    private final UsuarioRepository usuarioRepository;
+    private final Clock clock;
 
     /** Proxy compartido: dentro de la transaccion es el EntityManager de la peticion (OSIV). */
     @PersistenceContext
@@ -68,12 +89,16 @@ public class TramiteRevisionService {
             ExplotacionRepository explotacionRepository,
             TramiteCrotalService tramiteCrotalService,
             TramiteCrotalRepository tramiteCrotalRepository,
-            MensajeCampoRepository mensajeCampoRepository) {
+            MensajeCampoRepository mensajeCampoRepository,
+            UsuarioRepository usuarioRepository,
+            Clock clock) {
         this.tramiteRepository = tramiteRepository;
         this.explotacionRepository = explotacionRepository;
         this.tramiteCrotalService = tramiteCrotalService;
         this.tramiteCrotalRepository = tramiteCrotalRepository;
         this.mensajeCampoRepository = mensajeCampoRepository;
+        this.usuarioRepository = usuarioRepository;
+        this.clock = clock;
     }
 
     /**
@@ -85,6 +110,10 @@ public class TramiteRevisionService {
     public TramiteDetalleResponse actualizar(Long gestoriaId, Long tramiteId, Long versionVista,
                                              Long explotacionId, TipoTramite tipoTramite, List<String> crotales) {
         Tramite tramite = cargarConBloqueo(gestoriaId, tramiteId);
+        if (tramite.getEstado() == EstadoTramite.HECHO_EN_OVZ) {
+            // Motivo propio: el gestor debe saber que hay que quitar la marca primero.
+            throw new TramiteConflictoException(MOTIVO_EDITAR_HECHO_EN_OVZ);
+        }
         exigirPendienteRevision(tramite, MOTIVO_EDITAR_SOLO_PENDIENTE);
         exigirVersion(tramite, versionVista);
         long versionLeida = tramite.getVersion();
@@ -114,7 +143,9 @@ public class TramiteRevisionService {
         tramiteRepository.save(tramite);
         incrementarVersion(tramite, versionLeida);
 
-        String mensajeOriginal = mensajeCampoRepository.findFirstByTramiteIdOrderByCreatedAtDesc(tramite.getId())
+        // gestoriaId explicito: un mensaje enlazado al Tramite pero de otra gestoria nunca se muestra.
+        String mensajeOriginal = mensajeCampoRepository
+                .findFirstByTramiteIdAndGestoriaIdOrderByCreatedAtDesc(tramite.getId(), gestoriaId)
                 .map(MensajeCampo::getCuerpo)
                 .orElse(null);
         return TramiteDetalleResponse.from(tramite, mensajeOriginal, respuestas(filas));
@@ -201,6 +232,60 @@ public class TramiteRevisionService {
         tramite.setEstado(EstadoTramite.RECHAZADO);
         tramiteRepository.save(tramite);
         incrementarVersion(tramite, versionLeida);
+        return TramiteResponse.from(tramite, respuestas(filasDe(tramite, gestoriaId)));
+    }
+
+    /**
+     * POST /tramites/{id}/marcar-hecho-ovz: el gestor indica que EL ya metio en OVZ este tramite
+     * APROBADO. Ganera solo guarda quien (usuarioId, que el controlador saca SIEMPRE del JWT) y cuando
+     * (Instant del Clock); no envia nada a OVZ. Sin comprobacion de suscripcion (A1 D30: solo aprobar
+     * esta bloqueado). Orden: 404 -> 409 estado (ya marcado tiene su motivo) -> 409 version -> 200,
+     * version + 1. El usuario se carga con el gestoriaId explicito; si no esta en la gestoria del
+     * tramite, 404 (no deberia pasar con un JWT valido).
+     */
+    @Transactional
+    public TramiteResponse marcarHechoEnOvz(Long gestoriaId, Long usuarioId, Long tramiteId, Long versionVista) {
+        Tramite tramite = cargarConBloqueo(gestoriaId, tramiteId);
+        if (tramite.getEstado() == EstadoTramite.HECHO_EN_OVZ) {
+            throw new TramiteConflictoException(MOTIVO_YA_HECHO_EN_OVZ);
+        }
+        if (tramite.getEstado() != EstadoTramite.APROBADO) {
+            throw new TramiteConflictoException(MOTIVO_MARCAR_SOLO_APROBADO);
+        }
+        exigirVersion(tramite, versionVista);
+        long versionLeida = tramite.getVersion();
+        Usuario usuario = usuarioRepository.findByIdAndGestoriaId(usuarioId, gestoriaId)
+                .orElseThrow(RecursoNoEncontradoException::new);
+        tramite.setEstado(EstadoTramite.HECHO_EN_OVZ);
+        tramite.setHechoEnOvzPor(usuario);
+        // Truncado a microsegundos (la precision de TIMESTAMP en PostgreSQL y H2): asi la respuesta de
+        // marcar dice exactamente el instante que se guarda y que despues devuelve el detalle.
+        tramite.setHechoEnOvzEn(Instant.now(clock).truncatedTo(ChronoUnit.MICROS));
+        tramiteRepository.save(tramite);
+        incrementarVersion(tramite, versionLeida);
+        return TramiteResponse.from(tramite, respuestas(filasDe(tramite, gestoriaId)));
+    }
+
+    /**
+     * POST /tramites/{id}/desmarcar-hecho-ovz: deshace la marca (D2), cualquier usuario de la gestoria
+     * y sin limite de tiempo. Vuelve a APROBADO y vacia quien y cuando. En OVZ no cambia nada. Deja un
+     * log INFO solo con tramiteId y usuarioId (ni nombres ni datos del tramite). Orden: 404 -> 409
+     * estado -> 409 version -> 200, version + 1.
+     */
+    @Transactional
+    public TramiteResponse desmarcarHechoEnOvz(Long gestoriaId, Long usuarioId, Long tramiteId, Long versionVista) {
+        Tramite tramite = cargarConBloqueo(gestoriaId, tramiteId);
+        if (tramite.getEstado() != EstadoTramite.HECHO_EN_OVZ) {
+            throw new TramiteConflictoException(MOTIVO_DESMARCAR_SOLO_HECHO_EN_OVZ);
+        }
+        exigirVersion(tramite, versionVista);
+        long versionLeida = tramite.getVersion();
+        tramite.setEstado(EstadoTramite.APROBADO);
+        tramite.setHechoEnOvzPor(null);
+        tramite.setHechoEnOvzEn(null);
+        tramiteRepository.save(tramite);
+        incrementarVersion(tramite, versionLeida);
+        log.info("Marca de hecho en OVZ quitada: tramiteId={} usuarioId={}", tramite.getId(), usuarioId);
         return TramiteResponse.from(tramite, respuestas(filasDe(tramite, gestoriaId)));
     }
 

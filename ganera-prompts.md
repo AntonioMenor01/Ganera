@@ -675,9 +675,13 @@ Plan con las decisiones cerradas: `docs/superpowers/plans/2026-10-03-tarea-front
 `docs/referencias/ovz-tramites-bovino.md`, plan en `docs/superpowers/plans/2026-10-06-ficha-ovz.md`). En un
 trámite aprobado, Ganera enseña sus datos en el orden del formulario de OVZ, con un botón de copiar en cada
 campo, para que el gestor los pegue en OVZ. Incluye el cambio de `TipoTramite` a los tipos de OVZ (`V20`).
-**Siguiente tarea, antes del piloto:** "Marcar como registrado en OVZ" (D5 del plan). Sin ella, la cola no
-distingue un aprobado que ya está en OVZ de uno pendiente. Antes de hacerla hay que decidir el estado:
-`EJECUTADO_OVZ` a mano, o uno nuevo, porque `EJECUTADO_OVZ` estaba pensado para Playwright.
+**Hecho en OVZ (D5 del plan de la ficha), hecho el 2026-10-07, pendiente de commit:** backend 742/742, frontend
+811/811, smoke en navegador real 13/13; plan en `docs/superpowers/plans/2026-10-07-hecho-en-ovz.md`. El gestor
+marca que **él** ya metió en OVZ un trámite aprobado y Ganera guarda quién y cuándo: estado nuevo `HECHO_EN_OVZ`
+(no `EJECUTADO_OVZ`), `V21` con `CHECK`, se puede deshacer, botón en la ficha y en el modal, badges «Aprobado ·
+falta OVZ» y «Hecho en OVZ», filtro sin los tres estados de Playwright. Ganera sigue sin enviar nada a OVZ.
+Posible después: una opción «Por hacer» en el filtro (pendiente de revisión + aprobado), que pide filtrar por
+varios estados en el backend.
 
 ### Sesión de mapeo de OVZ — guion (pendiente)
 
@@ -764,7 +768,9 @@ el webhook de Twilio responde `503` hasta el paso opcional de WhatsApp).
    `clever deploy --alias front`.
 10. **Antes de sembrar (añadido el 2026-10-07, ficha OVZ):** regenerar `ganera-demo/seed-tramites.sql` (y revisar
     `smoke.sh`) con los tipos de OVZ de la `V20` (`BAJA_MUERTE`, `SOLICITUD_MOVIMIENTO`…): hoy usa `'BAJA'` y
-    `'MOVIMIENTO'`, que el backend ya no lee. Datos y smoke según `C:\Users\Antonio\Desktop\ganera-demo\LEEME.md` (fuera del repo): `alta-gestorias.sh` →
+    `'MOVIMIENTO'`, que el backend ya no lee. Desde «Hecho en OVZ» (`V21`), incluir también algún trámite en
+    `HECHO_EN_OVZ` con `hecho_en_ovz_por` y `hecho_en_ovz_en` rellenos (si no, el `CHECK` lo rechaza), y que
+    `smoke.sh` pruebe marcar y quitar la marca. Datos y smoke según `C:\Users\Antonio\Desktop\ganera-demo\LEEME.md` (fuera del repo): `alta-gestorias.sh` →
     importar los dos Excel desde la UI → `seed-tramites.sql` en Adminer → borrar `ONBOARDING_SECRET` y reiniciar
     (comprobar en la consola que ya no está) → `smoke.sh` en la terminal de Antonio (solo PASS/FAIL) → pasada en
     navegador real a 1440 y 375 px.

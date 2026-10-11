@@ -20,14 +20,15 @@ public interface TramiteRepository extends JpaRepository<Tramite, Long> {
      * Listado paginado (GET /tramites) con gestoriaId explicito, sin depender del filtro ambiente.
      * La Explotacion (LAZY) se trae en la misma consulta con un left join (EntityGraph; mini-prompt
      * tras A2, punto 5) para el REGA/nombre de cada fila: nunca una consulta por fila. Spring Data
-     * no aplica el EntityGraph a la consulta de conteo de la paginacion.
+     * no aplica el EntityGraph a la consulta de conteo de la paginacion. Desde «hecho en OVZ»
+     * (2026-10-07) tambien trae al usuario que lo marco (hechoEnOvzPor), por el mismo motivo.
      */
-    @EntityGraph(attributePaths = "explotacion")
+    @EntityGraph(attributePaths = {"explotacion", "hechoEnOvzPor"})
     Page<Tramite> findByGestoriaId(Long gestoriaId, Pageable pageable);
 
     /** Listado paginado filtrado por estado, con gestoriaId explicito. Explotacion en la misma
-     * consulta, como findByGestoriaId. */
-    @EntityGraph(attributePaths = "explotacion")
+     * consulta, como findByGestoriaId, y el usuario que lo marco como hecho en OVZ. */
+    @EntityGraph(attributePaths = {"explotacion", "hechoEnOvzPor"})
     Page<Tramite> findByGestoriaIdAndEstado(Long gestoriaId, EstadoTramite estado, Pageable pageable);
 
     /**

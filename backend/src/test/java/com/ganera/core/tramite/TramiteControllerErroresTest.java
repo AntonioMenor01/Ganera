@@ -26,7 +26,7 @@ class TramiteControllerErroresTest {
     private static final GaneraUserPrincipal PRINCIPAL = new GaneraUserPrincipal(1L, 1L, "e@test.com");
 
     @Test
-    void losFallosDeConcurrenciaEnPatchAprobarYRechazarSon409ConMotivo() {
+    void losFallosDeConcurrenciaEnPatchAprobarRechazarYHechoEnOvzSon409ConMotivo() {
         List<RuntimeException> fallos = List.of(
                 new PessimisticLockingFailureException("bloqueo"),
                 new CannotAcquireLockException("timeout"),
@@ -39,7 +39,9 @@ class TramiteControllerErroresTest {
             for (ResponseEntity<?> respuesta : List.of(
                     controller.actualizar(PRINCIPAL, 1L, new TramitePatchRequest(0L, null, null, List.of("1234"))),
                     controller.aprobar(PRINCIPAL, 1L, new TramiteAprobarRequest(0L)),
-                    controller.rechazar(PRINCIPAL, 1L, new TramiteRechazarRequest(0L)))) {
+                    controller.rechazar(PRINCIPAL, 1L, new TramiteRechazarRequest(0L)),
+                    controller.marcarHechoEnOvz(PRINCIPAL, 1L, new TramiteHechoEnOvzRequest(0L)),
+                    controller.desmarcarHechoEnOvz(PRINCIPAL, 1L, new TramiteHechoEnOvzRequest(0L)))) {
                 assertThat(respuesta.getStatusCode().value()).as(fallo.getClass().getSimpleName()).isEqualTo(409);
                 assertThat(respuesta.getBody()).isEqualTo(new MotivoErrorResponse(TramiteController.MOTIVO_CONCURRENCIA));
             }
@@ -47,7 +49,7 @@ class TramiteControllerErroresTest {
     }
 
     private static TramiteController controllerQueLanza(Supplier<RuntimeException> fallo) {
-        TramiteRevisionService servicio = new TramiteRevisionService(null, null, null, null, null) {
+        TramiteRevisionService servicio = new TramiteRevisionService(null, null, null, null, null, null, null) {
             @Override
             public TramiteDetalleResponse actualizar(Long gestoriaId, Long tramiteId, Long versionVista,
                                                      Long explotacionId, TipoTramite tipoTramite, List<String> crotales) {
@@ -61,6 +63,17 @@ class TramiteControllerErroresTest {
 
             @Override
             public TramiteResponse rechazar(Long gestoriaId, Long tramiteId, Long versionVista) {
+                throw fallo.get();
+            }
+
+            @Override
+            public TramiteResponse marcarHechoEnOvz(Long gestoriaId, Long usuarioId, Long tramiteId, Long versionVista) {
+                throw fallo.get();
+            }
+
+            @Override
+            public TramiteResponse desmarcarHechoEnOvz(Long gestoriaId, Long usuarioId, Long tramiteId,
+                                                       Long versionVista) {
                 throw fallo.get();
             }
         };

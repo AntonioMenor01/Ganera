@@ -2,6 +2,7 @@ package com.ganera.core.tramite;
 
 import com.ganera.core.contacto.Contacto;
 import com.ganera.core.explotacion.Explotacion;
+import com.ganera.core.gestoria.Usuario;
 import com.ganera.core.shared.tenant.GestoriaScopedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -84,4 +85,14 @@ public class Tramite extends GestoriaScopedEntity {
      * se cuentan para avisar en la cola (D5). */
     @Column(name = "crotales_descartados", nullable = false)
     private int crotalesDescartados = 0;
+
+    /** Quien marco el tramite como hecho en OVZ: SIEMPRE el usuario autenticado (JWT), nunca un dato
+     * del cuerpo. Con estado HECHO_EN_OVZ no es null; con cualquier otro, null (CHECK de V21). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "hecho_en_ovz_por")
+    private Usuario hechoEnOvzPor;
+
+    /** Cuando se marco como hecho en OVZ (Instant del Clock). Misma regla de null que hechoEnOvzPor. */
+    @Column(name = "hecho_en_ovz_en")
+    private Instant hechoEnOvzEn;
 }

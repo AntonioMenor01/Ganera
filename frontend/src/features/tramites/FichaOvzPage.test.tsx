@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
@@ -37,6 +37,8 @@ function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
     origen: "WHATSAPP",
     estadoExtraccion: "COMPLETADA",
     crotalesDescartados: 0,
+    hechoEnOvzEn: null,
+    hechoEnOvzPorNombre: null,
     ...parcial,
   };
 }
@@ -95,7 +97,7 @@ describe("FichaOvzPage: ficha copiable (APROBADO)", () => {
     const cabecera = screen.getAllByRole("banner")[0];
     expect(within(cabecera).getByText("Ficha para OVZ")).toBeInTheDocument();
     expect(within(cabecera).getByText("#128")).toBeInTheDocument();
-    expect(within(cabecera).getByText("Aprobado")).toBeInTheDocument();
+    expect(within(cabecera).getByText("Aprobado · falta OVZ")).toBeInTheDocument();
   });
 
   it("no lleva la barra de navegación de la app", async () => {
@@ -344,5 +346,525 @@ describe("FichaOvzPage: carga", () => {
 
     expect(await screen.findByRole("heading", { level: 1, name: "Baja de Bovino" })).toBeInTheDocument();
     expect(llamadas()).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Hecho en OVZ (2026-10-07): el gestor deja constancia de que él ya lo metió en OVZ.
+
+const HECHO = {
+  estado: "HECHO_EN_OVZ" as const,
+  hechoEnOvzEn: "2026-10-07T10:30:00Z",
+  hechoEnOvzPorNombre: "Ana Pérez",
+};
+
+/** Lo que devuelven marcar/desmarcar: el DTO del listado (`TramiteResponse`). */
+function respuestaLista(d: TramiteDetalle) {
+  return {
+    id: d.id,
+    explotacionId: d.explotacionId,
+    explotacionCodigoRega: d.explotacionCodigoRega,
+    explotacionNombre: d.explotacionNombre,
+    tipoTramite: d.tipoTramite,
+    estado: d.estado,
+    motivoError: d.motivoError,
+    crotales: d.crotales,
+    version: d.version,
+    origen: d.origen,
+    estadoExtraccion: d.estadoExtraccion,
+    crotalesDescartados: d.crotalesDescartados,
+    hechoEnOvzEn: d.hechoEnOvzEn,
+    hechoEnOvzPorNombre: d.hechoEnOvzPorNombre,
+  };
+}
+
+/** POST a `ruta` que guarda los cuerpos y responde lo dado (en orden; el último se repite). */
+function postEnOrden(ruta: string, ...respuestas: (() => Response | Promise<Response>)[]) {
+  const cuerpos: unknown[] = [];
+  server.use(
+    http.post(apiUrl(ruta), async ({ request }) => {
+      cuerpos.push(await request.json());
+      return respuestas[Math.min(cuerpos.length - 1, respuestas.length - 1)]();
+    }),
+  );
+  return cuerpos;
+}
+
+function franja(): HTMLElement {
+  return screen.getByText(/^Hecho en OVZ (por|el)/);
+}
+
+describe("FichaOvzPage: marcar como hecho en OVZ (APROBADO)", () => {
+  it("al final del formulario, «Marcar como hecho en OVZ» con su pista, sin franja", async () => {
+    responderCon(() => HttpResponse.json(detalle()));
+    montar();
+    await screen.findByRole("heading", { level: 1, name: "Baja de Bovino" });
+
+    const boton = screen.getByRole("button", { name: "Marcar como hecho en OVZ" });
+    expect(boton).toHaveAccessibleDescription("Púlsalo cuando lo hayas terminado tú en OVZ. Ganera no envía nada.");
+    // Va después de la última sección del formulario.
+    const secciones = screen.getAllByRole("region");
+    expect(secciones[secciones.length - 1].compareDocumentPosition(boton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByText(/^Hecho en OVZ (por|el)/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Quitar la marca" })).not.toBeInTheDocument();
+  });
+
+  it("sin confirmación: envía {version} y la ficha pasa a consulta con la franja y los botones de copiar", async () => {
+    const user = userEvent.setup();
+    const llamadasGet = responderCon(() => HttpResponse.json(detalle()));
+    const cuerpos = postEnOrden("/tramites/128/marcar-hecho-ovz", () =>
+      HttpResponse.json(respuestaLista(detalle({ ...HECHO, version: 4 }))),
+    );
+    montar();
+    await user.click(await screen.findByRole("button", { name: "Marcar como hecho en OVZ" }));
+
+    expect(await screen.findByText("Hecho en OVZ por Ana Pérez el 07/10/2026, 12:30")).toBeInTheDocument();
+    expect(cuerpos).toEqual([{ version: 3 }]);
+    expect(llamadasGet()).toBe(1);
+    const cabecera = screen.getAllByRole("banner")[0];
+    expect(within(cabecera).getByText("Hecho en OVZ")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Marcar como hecho en OVZ" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Quitar la marca" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copiar Crotal" })).toBeInTheDocument();
+  });
+
+  it("una petición a la vez: el botón se desactiva mientras tanto y un segundo clic no envía nada", async () => {
+    const user = userEvent.setup();
+    let abrir!: () => void;
+    const espera = new Promise<void>((r) => {
+      abrir = r;
+    });
+    responderCon(() => HttpResponse.json(detalle()));
+    const cuerpos = postEnOrden("/tramites/128/marcar-hecho-ovz", async () => {
+      await espera;
+      return HttpResponse.json(respuestaLista(detalle({ ...HECHO, version: 4 })));
+    });
+    montar();
+    await user.click(await screen.findByRole("button", { name: "Marcar como hecho en OVZ" }));
+
+    const enCurso = await screen.findByRole("button", { name: "Marcando…" });
+    expect(enCurso).toBeDisabled();
+    await user.click(enCurso);
+    abrir();
+    await screen.findByText(/^Hecho en OVZ por/);
+    expect(cuerpos).toHaveLength(1);
+  });
+
+  it("409: recarga el detalle y enseña el motivo tal cual", async () => {
+    const user = userEvent.setup();
+    let get = 0;
+    server.use(
+      http.get(apiUrl("/tramites/:id"), () => {
+        get += 1;
+        return HttpResponse.json(
+          get === 1 ? detalle() : detalle({ ...HECHO, hechoEnOvzPorNombre: "Luis Gómez", version: 4 }),
+        );
+      }),
+    );
+    postEnOrden("/tramites/128/marcar-hecho-ovz", () =>
+      HttpResponse.json({ motivo: "Este trámite ya está marcado como hecho en OVZ." }, { status: 409 }),
+    );
+    montar();
+    await user.click(await screen.findByRole("button", { name: "Marcar como hecho en OVZ" }));
+
+    expect(await screen.findByText("Hecho en OVZ por Luis Gómez el 07/10/2026, 12:30")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Este trámite ya está marcado como hecho en OVZ.");
+    expect(get).toBe(2);
+  });
+
+  it("404: «Trámite no encontrado»", async () => {
+    const user = userEvent.setup();
+    responderCon(() => HttpResponse.json(detalle()));
+    postEnOrden("/tramites/128/marcar-hecho-ovz", () => new HttpResponse(null, { status: 404 }));
+    montar();
+    await user.click(await screen.findByRole("button", { name: "Marcar como hecho en OVZ" }));
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Trámite no encontrado" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Marcar como hecho en OVZ" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      "5xx",
+      () => new HttpResponse(null, { status: 500 }),
+      "Ha fallado algo en el servidor. Inténtalo de nuevo; si se repite, avísanos.",
+    ],
+    ["red", () => HttpResponse.error(), "No se ha podido conectar con Ganera. Inténtalo de nuevo en unos segundos."],
+  ])("%s: el mensaje, y el botón sigue ahí para reintentar", async (_nombre, respuesta, mensaje) => {
+    const user = userEvent.setup();
+    responderCon(() => HttpResponse.json(detalle()));
+    const cuerpos = postEnOrden("/tramites/128/marcar-hecho-ovz", respuesta, () =>
+      HttpResponse.json(respuestaLista(detalle({ ...HECHO, version: 4 }))),
+    );
+    montar();
+    await user.click(await screen.findByRole("button", { name: "Marcar como hecho en OVZ" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(mensaje);
+    const boton = screen.getByRole("button", { name: "Marcar como hecho en OVZ" });
+    expect(boton).toBeEnabled();
+    await user.click(boton);
+    expect(await screen.findByText(/^Hecho en OVZ por/)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(cuerpos).toHaveLength(2);
+  });
+});
+
+describe("FichaOvzPage: hecho en OVZ (consulta)", () => {
+  it("misma ficha con botones de copiar y la franja arriba, antes del formulario, sin rojo", async () => {
+    responderCon(() => HttpResponse.json(detalle(HECHO)));
+    montar();
+
+    expect(await screen.findByText("Hecho en OVZ por Ana Pérez el 07/10/2026, 12:30")).toBeInTheDocument();
+    const titulo = screen.getByRole("heading", { level: 1, name: "Baja de Bovino" });
+    expect(franja().compareDocumentPosition(titulo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copiar Crotal" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copiar Explotación" })).toBeInTheDocument();
+    expect(screen.queryByText("Vista previa: aprueba el trámite antes de pasarlo a OVZ.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Marcar como hecho en OVZ" })).not.toBeInTheDocument();
+    const contenedor = franja().closest("[data-franja-hecho-en-ovz]") as HTMLElement;
+    expect(contenedor).not.toBeNull();
+    expect(contenedor.className).not.toMatch(/destructive|danger|primary/);
+    expect(contenedor.className).toMatch(/bg-success/);
+  });
+
+  it("sin nombre: «Hecho en OVZ el …»", async () => {
+    responderCon(() => HttpResponse.json(detalle({ ...HECHO, hechoEnOvzPorNombre: null })));
+    montar();
+
+    expect(await screen.findByText("Hecho en OVZ el 07/10/2026, 12:30")).toBeInTheDocument();
+  });
+
+  it("«Quitar la marca» pide confirmación en línea; Cancelar no envía nada y devuelve el foco", async () => {
+    const user = userEvent.setup();
+    responderCon(() => HttpResponse.json(detalle(HECHO)));
+    const cuerpos = postEnOrden("/tramites/128/desmarcar-hecho-ovz", () =>
+      HttpResponse.json(respuestaLista(detalle({ version: 4 }))),
+    );
+    montar();
+    await user.click(await screen.findByRole("button", { name: "Quitar la marca" }));
+
+    const grupo = screen.getByRole("group", { name: "¿Quitar la marca de hecho en OVZ? En OVZ no cambia nada." });
+    expect(within(grupo).getByRole("button", { name: "Cancelar" })).toHaveFocus();
+    await user.click(within(grupo).getByRole("button", { name: "Cancelar" }));
+
+    expect(screen.queryByRole("group")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Quitar la marca" })).toHaveFocus();
+    expect(cuerpos).toHaveLength(0);
+  });
+
+  it("Esc cancela la confirmación", async () => {
+    const user = userEvent.setup();
+    responderCon(() => HttpResponse.json(detalle(HECHO)));
+    montar();
+    await user.click(await screen.findByRole("button", { name: "Quitar la marca" }));
+    expect(screen.getByRole("group")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("group")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Quitar la marca" })).toHaveFocus();
+  });
+
+  it("«Sí, quitar la marca» envía {version} y la ficha vuelve a copiable con el botón de marcar", async () => {
+    const user = userEvent.setup();
+    responderCon(() => HttpResponse.json(detalle({ ...HECHO, version: 5 })));
+    const cuerpos = postEnOrden("/tramites/128/desmarcar-hecho-ovz", () =>
+      HttpResponse.json(respuestaLista(detalle({ version: 6 }))),
+    );
+    montar();
+    await user.click(await screen.findByRole("button", { name: "Quitar la marca" }));
+    await user.click(screen.getByRole("button", { name: "Sí, quitar la marca" }));
+
+    expect(await screen.findByRole("button", { name: "Marcar como hecho en OVZ" })).toBeInTheDocument();
+    expect(cuerpos).toEqual([{ version: 5 }]);
+    expect(screen.queryByText(/^Hecho en OVZ (por|el)/)).not.toBeInTheDocument();
+    expect(within(screen.getAllByRole("banner")[0]).getByText("Aprobado · falta OVZ")).toBeInTheDocument();
+  });
+
+  it("409 al quitar la marca: recarga y enseña el motivo", async () => {
+    const user = userEvent.setup();
+    let get = 0;
+    server.use(
+      http.get(apiUrl("/tramites/:id"), () => {
+        get += 1;
+        return HttpResponse.json(get === 1 ? detalle(HECHO) : detalle({ version: 9 }));
+      }),
+    );
+    postEnOrden("/tramites/128/desmarcar-hecho-ovz", () =>
+      HttpResponse.json(
+        { motivo: "Solo se puede quitar la marca de un trámite marcado como hecho en OVZ." },
+        { status: 409 },
+      ),
+    );
+    montar();
+    await user.click(await screen.findByRole("button", { name: "Quitar la marca" }));
+    await user.click(screen.getByRole("button", { name: "Sí, quitar la marca" }));
+
+    expect(await screen.findByRole("button", { name: "Marcar como hecho en OVZ" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Solo se puede quitar la marca de un trámite marcado como hecho en OVZ.",
+    );
+    expect(get).toBe(2);
+  });
+});
+
+describe("FichaOvzPage: honestidad (nada dice que Ganera haya hecho algo en OVZ)", () => {
+  const PROHIBIDAS = /enviad|ejecutad|registrad|en curso en OVZ|tramitad|completad|procesad|presentad/i;
+
+  /** Textos de la página que mencionan OVZ (nodos de texto), sin repetir y ordenados. */
+  function mencionesOvz(): string[] {
+    const textos = new Set<string>();
+    const recorrer = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let nodo = recorrer.nextNode(); nodo; nodo = recorrer.nextNode()) {
+      const texto = nodo.textContent?.trim() ?? "";
+      if (/OVZ/.test(texto)) textos.add(texto);
+    }
+    return [...textos].sort();
+  }
+
+  // Lo que la ficha ya decía antes de esta tarea (es una ficha «para OVZ»): nada habla de lo hecho.
+  // Las tres últimas son avisos y pistas del formulario de baja (fichaOvz.ts).
+  const FIJAS = [
+    "En OVZ:",
+    "Entrar en OVZ",
+    "Ficha para OVZ",
+    "Para copiar en OVZ. Ganera no envía nada.",
+    "Entrega la copia del ejemplar MER en la OVZ en 15 días",
+    "Falta · Lo rellenas tú en OVZ",
+    "OVZ rellena solo los datos del animal (raza, sexo, fecha de nacimiento…)",
+  ];
+
+  it.each([
+    ["PENDIENTE_REVISION", {}, ["Pendiente de revisión", "Vista previa: aprueba el trámite antes de pasarlo a OVZ."]],
+    [
+      "APROBADO",
+      {},
+      [
+        "Aprobado · falta OVZ",
+        "Marcar como hecho en OVZ",
+        "Púlsalo cuando lo hayas terminado tú en OVZ. Ganera no envía nada.",
+      ],
+    ],
+    ["HECHO_EN_OVZ", HECHO, ["Hecho en OVZ", "Hecho en OVZ por Ana Pérez el 07/10/2026, 12:30"]],
+  ] as const)("%s: ninguna palabra prohibida y solo las menciones de OVZ permitidas", async (estado, extra, nuevas) => {
+    responderCon(() => HttpResponse.json(detalle({ ...extra, estado })));
+    montar();
+    await screen.findByRole("heading", { level: 1, name: "Baja de Bovino" });
+
+    expect(document.body).not.toHaveTextContent(PROHIBIDAS);
+    expect(mencionesOvz()).toEqual([...FIJAS, ...nuevas].filter((t) => /OVZ/.test(t)).sort());
+  });
+
+  it("con la confirmación de quitar la marca abierta, tampoco", async () => {
+    const user = userEvent.setup();
+    responderCon(() => HttpResponse.json(detalle(HECHO)));
+    montar();
+    await user.click(await screen.findByRole("button", { name: "Quitar la marca" }));
+
+    expect(document.body).not.toHaveTextContent(PROHIBIDAS);
+    expect(mencionesOvz()).toEqual(
+      [
+        ...FIJAS,
+        "Hecho en OVZ",
+        "Hecho en OVZ por Ana Pérez el 07/10/2026, 12:30",
+        "¿Quitar la marca de hecho en OVZ? En OVZ no cambia nada.",
+      ].sort(),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Correcciones tras la revisión de la T2 (I1, M1, M2).
+
+const ERROR_SERVIDOR = "Ha fallado algo en el servidor. Inténtalo de nuevo; si se repite, avísanos.";
+const PROHIBIDAS_FICHA = /enviad|ejecutad|registrad|en curso en OVZ|tramitad|completad|procesad|presentad/i;
+
+function regionEstado(): HTMLElement {
+  const region = document.querySelector("[data-anuncio-hecho-en-ovz]");
+  if (!(region instanceof HTMLElement)) throw new Error("Sin región de anuncio");
+  return region;
+}
+
+describe("FichaOvzPage: foco y anuncio tras marcar o quitar la marca (I1)", () => {
+  it("tras marcar (200): el foco va a la franja y se anuncia «Marca guardada.» en una región educada", async () => {
+    const user = userEvent.setup();
+    responderCon(() => HttpResponse.json(detalle()));
+    postEnOrden("/tramites/128/marcar-hecho-ovz", () =>
+      HttpResponse.json(respuestaLista(detalle({ ...HECHO, version: 4 }))),
+    );
+    montar();
+    expect(regionEstado()).toHaveAttribute("role", "status");
+    await user.click(await screen.findByRole("button", { name: "Marcar como hecho en OVZ" }));
+
+    await screen.findByText(/^Hecho en OVZ por/);
+    await waitFor(() => expect(franja().closest("[data-franja-hecho-en-ovz]")).toHaveFocus());
+    expect(regionEstado()).toHaveTextContent("Marca guardada.");
+  });
+
+  it("M5: la petición de foco se atiende una vez: tras marcar, pulsar un «Copiar» deja el foco en ese botón", async () => {
+    const user = userEvent.setup();
+    responderCon(() => HttpResponse.json(detalle()));
+    postEnOrden("/tramites/128/marcar-hecho-ovz", () =>
+      HttpResponse.json(respuestaLista(detalle({ ...HECHO, version: 4 }))),
+    );
+    montar();
+    await user.click(await screen.findByRole("button", { name: "Marcar como hecho en OVZ" }));
+    await waitFor(() => expect(franja().closest("[data-franja-hecho-en-ovz]")).toHaveFocus());
+    const writeText = portapapelesQueFunciona();
+
+    const copiar = screen.getByRole("button", { name: "Copiar Crotal" });
+    await user.click(copiar);
+
+    expect(writeText).toHaveBeenCalledWith("ES010000001234");
+    // Copiar vuelve a pintar la ficha (la fila queda marcada): el foco no vuelve a la franja.
+    await within(fila("Crotal")).findByText("(copiado)");
+    expect(copiar).toHaveFocus();
+  });
+
+  it("al pulsar «Sí, quitar la marca» el foco va a la franja mientras se envía; tras el 200, a «Marcar como hecho en OVZ»", async () => {
+    const user = userEvent.setup();
+    let abrir!: () => void;
+    const espera = new Promise<void>((r) => {
+      abrir = r;
+    });
+    responderCon(() => HttpResponse.json(detalle({ ...HECHO, version: 5 })));
+    postEnOrden("/tramites/128/desmarcar-hecho-ovz", async () => {
+      await espera;
+      return HttpResponse.json(respuestaLista(detalle({ version: 6 })));
+    });
+    montar();
+    await user.click(await screen.findByRole("button", { name: "Quitar la marca" }));
+    await user.click(screen.getByRole("button", { name: "Sí, quitar la marca" }));
+
+    await waitFor(() => expect(franja().closest("[data-franja-hecho-en-ovz]")).toHaveFocus());
+    expect(document.activeElement).not.toBe(document.body);
+    abrir();
+    const marcar = await screen.findByRole("button", { name: "Marcar como hecho en OVZ" });
+    await waitFor(() => expect(marcar).toHaveFocus());
+    expect(regionEstado()).toHaveTextContent("Marca quitada.");
+  });
+
+  it.each([
+    ["5xx", () => new HttpResponse(null, { status: 500 })],
+    ["409", () => HttpResponse.json({ motivo: "El trámite ha cambiado desde que lo abriste." }, { status: 409 })],
+  ])("marcar con %s: el foco va al aviso de error", async (_nombre, respuesta) => {
+    const user = userEvent.setup();
+    responderCon(() => HttpResponse.json(detalle()));
+    postEnOrden("/tramites/128/marcar-hecho-ovz", respuesta);
+    montar();
+    await user.click(await screen.findByRole("button", { name: "Marcar como hecho en OVZ" }));
+
+    const aviso = await screen.findByRole("alert");
+    expect(aviso).toHaveTextContent("No se ha podido marcar el trámite");
+    await waitFor(() => expect(aviso).toHaveFocus());
+    expect(regionEstado()).toHaveTextContent("");
+  });
+
+  it("quitar la marca con 5xx: el foco va al aviso de error, con su título", async () => {
+    const user = userEvent.setup();
+    responderCon(() => HttpResponse.json(detalle(HECHO)));
+    postEnOrden("/tramites/128/desmarcar-hecho-ovz", () => new HttpResponse(null, { status: 500 }));
+    montar();
+    await user.click(await screen.findByRole("button", { name: "Quitar la marca" }));
+    await user.click(screen.getByRole("button", { name: "Sí, quitar la marca" }));
+
+    const aviso = await screen.findByRole("alert");
+    expect(aviso).toHaveTextContent("No se ha podido quitar la marca");
+    expect(aviso).toHaveTextContent(ERROR_SERVIDOR);
+    await waitFor(() => expect(aviso).toHaveFocus());
+    expect(screen.getByRole("button", { name: "Quitar la marca" })).toBeEnabled();
+  });
+});
+
+describe("FichaOvzPage: red o 5xx recargan el detalle (M2)", () => {
+  it("si la recarga muestra la marca puesta, no hay error: la franja, el anuncio y el foco como en un 200", async () => {
+    const user = userEvent.setup();
+    let get = 0;
+    server.use(
+      http.get(apiUrl("/tramites/:id"), () => {
+        get += 1;
+        return HttpResponse.json(get === 1 ? detalle() : detalle({ ...HECHO, version: 4 }));
+      }),
+    );
+    postEnOrden("/tramites/128/marcar-hecho-ovz", () => HttpResponse.error());
+    montar();
+    await user.click(await screen.findByRole("button", { name: "Marcar como hecho en OVZ" }));
+
+    expect(await screen.findByText("Hecho en OVZ por Ana Pérez el 07/10/2026, 12:30")).toBeInTheDocument();
+    expect(get).toBe(2);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(regionEstado()).toHaveTextContent("Marca guardada.");
+    await waitFor(() => expect(franja().closest("[data-franja-hecho-en-ovz]")).toHaveFocus());
+  });
+
+  it("si la recarga tras el 5xx también falla, se conserva la ficha con el error y el botón", async () => {
+    const user = userEvent.setup();
+    let get = 0;
+    server.use(
+      http.get(apiUrl("/tramites/:id"), () => {
+        get += 1;
+        return get === 1 ? HttpResponse.json(detalle()) : new HttpResponse(null, { status: 503 });
+      }),
+    );
+    postEnOrden("/tramites/128/marcar-hecho-ovz", () => new HttpResponse(null, { status: 500 }));
+    montar();
+    await user.click(await screen.findByRole("button", { name: "Marcar como hecho en OVZ" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(ERROR_SERVIDOR);
+    expect(get).toBe(2);
+    expect(screen.getByRole("heading", { level: 1, name: "Baja de Bovino" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Marcar como hecho en OVZ" })).toBeEnabled();
+  });
+});
+
+describe("FichaOvzPage: honestidad tras las acciones y con errores (M1)", () => {
+  it("tras marcar y tras quitar la marca: ninguna palabra prohibida", async () => {
+    const user = userEvent.setup();
+    let get = 0;
+    server.use(
+      http.get(apiUrl("/tramites/:id"), () => {
+        get += 1;
+        return HttpResponse.json(detalle());
+      }),
+    );
+    postEnOrden("/tramites/128/marcar-hecho-ovz", () =>
+      HttpResponse.json(respuestaLista(detalle({ ...HECHO, version: 4 }))),
+    );
+    postEnOrden("/tramites/128/desmarcar-hecho-ovz", () => HttpResponse.json(respuestaLista(detalle({ version: 5 }))));
+    montar();
+    await user.click(await screen.findByRole("button", { name: "Marcar como hecho en OVZ" }));
+    await screen.findByText(/^Hecho en OVZ por/);
+    expect(document.body).not.toHaveTextContent(PROHIBIDAS_FICHA);
+
+    await user.click(screen.getByRole("button", { name: "Quitar la marca" }));
+    await user.click(screen.getByRole("button", { name: "Sí, quitar la marca" }));
+    await screen.findByRole("button", { name: "Marcar como hecho en OVZ" });
+    expect(document.body).not.toHaveTextContent(PROHIBIDAS_FICHA);
+    expect(get).toBe(1);
+  });
+
+  it.each([
+    ["marcar", "409", detalle(), "/tramites/128/marcar-hecho-ovz", "No se ha podido marcar el trámite"],
+    ["marcar", "5xx", detalle(), "/tramites/128/marcar-hecho-ovz", "No se ha podido marcar el trámite"],
+    ["quitar la marca", "409", detalle(HECHO), "/tramites/128/desmarcar-hecho-ovz", "No se ha podido quitar la marca"],
+    ["quitar la marca", "5xx", detalle(HECHO), "/tramites/128/desmarcar-hecho-ovz", "No se ha podido quitar la marca"],
+  ] as const)("%s con %s: el aviso de error, con su título, no dice nada prohibido", async (accion, error, inicial, ruta, titulo) => {
+    const user = userEvent.setup();
+    responderCon(() => HttpResponse.json(inicial));
+    postEnOrden(ruta, () =>
+      error === "409"
+        ? HttpResponse.json({ status: 409 }, { status: 409 })
+        : new HttpResponse(null, { status: 500 }),
+    );
+    montar();
+    if (accion === "marcar") {
+      await user.click(await screen.findByRole("button", { name: "Marcar como hecho en OVZ" }));
+    } else {
+      await user.click(await screen.findByRole("button", { name: "Quitar la marca" }));
+      await user.click(screen.getByRole("button", { name: "Sí, quitar la marca" }));
+    }
+
+    const aviso = await screen.findByRole("alert");
+    expect(within(aviso).getByText(titulo)).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(PROHIBIDAS_FICHA);
   });
 });

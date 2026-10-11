@@ -6,7 +6,14 @@ import {
   type ContextoError,
   type ErrorApi,
 } from "@/shared/api/errores";
-import { actualizarTramite, aprobarTramite, obtenerDetalleTramite, rechazarTramite } from "./api";
+import {
+  actualizarTramite,
+  aprobarTramite,
+  desmarcarHechoEnOvz,
+  marcarHechoEnOvz,
+  obtenerDetalleTramite,
+  rechazarTramite,
+} from "./api";
 import { presentacionEstado, type TipoTramite } from "./etiquetas";
 import {
   AVISO_CAMBIOS_SIN_GUARDAR,
@@ -30,13 +37,21 @@ import type { Tramite, TramiteDetalle } from "./types";
  * predice si un trámite es aprobable. Aprobar y rechazar solo cambian el estado en Ganera (BD);
  * nada se ejecuta en OVZ.net (Prompt 3c).
  *
+ * Hecho en OVZ (2026-10-07): marcar (desde `APROBADO`) y quitar la marca (desde `HECHO_EN_OVZ`) siguen
+ * la misma mecánica que aprobar/rechazar: `{version}`, envío único, 409 → recarga y motivo sin
+ * reintentar, 200 → se aplica la respuesta, se recarga y se avisa a la cola. Solo dejan constancia
+ * en Ganera de lo que hizo la persona; Ganera no envía nada a OVZ.
+ *
  * Las explotaciones para el selector NO se cargan aquí: las busca el propio combobox
  * (CampoExplotacion + useBuscarExplotaciones, `GET /explotaciones?q=`, T4 de la tarea antes del
  * piloto) solo con el desplegable abierto. Aquí solo vive el `explotacionId` elegido y la etiqueta
  * de la guardada (`explotacionAsignada`).
  */
 
-export type AccionRevision = "guardar" | "aprobar" | "rechazar";
+export type AccionRevision = "guardar" | "aprobar" | "rechazar" | "marcar" | "desmarcar";
+
+/** Acciones que cambian el estado y responden con `TramiteResponse` (todas menos guardar). */
+type AccionEstado = Exclude<AccionRevision, "guardar">;
 
 export type CargaRevision =
   /** Sin trámite (`tramiteId` null: modal cerrado). */
@@ -55,7 +70,7 @@ export type TipoAvisoRevision =
   | "no-encontrado" // 404
   | "error" // red, 5xx, inesperado
   | "estado-cambiado" // sin respuesta, y la recarga lo muestra en otro estado cerrado (m4 de 9b)
-  | "exito"; // aprobado o rechazado
+  | "exito"; // aprobado, rechazado, marcado o desmarcado
 
 /** Resultado de la última acción. Persiste hasta la siguiente acción o `descartarAviso`. */
 export interface AvisoRevision {
@@ -116,10 +131,16 @@ export interface RevisionTramite {
   puedeRechazar: boolean;
   /** "Guarda antes de aprobar" con cambios sin guardar (decisión 24); si no, null. */
   avisoCambiosSinGuardar: string | null;
+  /** Solo en `APROBADO`, sin otra acción en curso. */
+  puedeMarcarHechoEnOvz: boolean;
+  /** Solo en `HECHO_EN_OVZ`, sin otra acción en curso. */
+  puedeDesmarcarHechoEnOvz: boolean;
   /** Nunca lanzan: todo resultado acaba en `aviso` o en `carga`. Si no se puede, no hacen nada. */
   guardar: () => Promise<void>;
   aprobar: () => Promise<void>;
   rechazar: () => Promise<void>;
+  marcarHechoEnOvz: () => Promise<void>;
+  desmarcarHechoEnOvz: () => Promise<void>;
 
   aviso: AvisoRevision | null;
   descartarAviso: () => void;
@@ -306,6 +327,9 @@ function reducer(estado: Estado, evento: Evento): Estado {
         origen: tramite.origen ?? null,
         estadoExtraccion: tramite.estadoExtraccion ?? null,
         crotalesDescartados: tramite.crotalesDescartados ?? 0,
+        // Hecho en OVZ: quién y cuándo, también en `TramiteResponse` (null si no está marcado).
+        hechoEnOvzEn: tramite.hechoEnOvzEn ?? null,
+        hechoEnOvzPorNombre: tramite.hechoEnOvzPorNombre ?? null,
       };
       return { ...estado, detalle, formulario: formularioDesdeDetalle(detalle), aviso: evento.aviso };
     }
@@ -325,11 +349,17 @@ const CONTEXTO_DE_ACCION: Record<AccionRevision, ContextoError> = {
   guardar: "guardar-tramite",
   aprobar: "aprobar-tramite",
   rechazar: "rechazar-tramite",
+  marcar: "marcar-hecho-ovz",
+  desmarcar: "desmarcar-hecho-ovz",
 };
 
-const TEXTO_EXITO: Record<"aprobar" | "rechazar", string> = {
+/** Sin «OVZ» en los de la marca: la franja y el badge ya lo dicen (honestidad: nada habla de que
+ * Ganera haga algo en OVZ). */
+const TEXTO_EXITO: Record<AccionEstado, string> = {
   aprobar: "Trámite aprobado.",
   rechazar: "Trámite rechazado.",
+  marcar: "Marca guardada.",
+  desmarcar: "Marca quitada.",
 };
 
 /** PATCH 404 y el trámite sí existe: el backend responde igual para una explotación ajena o que ya
@@ -342,20 +372,38 @@ const TEXTO_EXPLOTACION_NO_DISPONIBLE = "La explotación elegida ya no está dis
 const TEXTO_TRAMITE_CAMBIADO =
   "El trámite ha cambiado mientras lo editabas. Se han descartado tus cambios; revisa los datos actuales.";
 
+/** Petición de cada acción que cambia el estado. */
+const LLAMADA: Record<AccionEstado, (id: number, version: number) => Promise<Tramite>> = {
+  aprobar: aprobarTramite,
+  rechazar: rechazarTramite,
+  marcar: marcarHechoEnOvz,
+  desmarcar: desmarcarHechoEnOvz,
+};
+
 /** Estado al que lleva cada acción: si la recarga tras un fallo incierto ya lo muestra, se aplicó. */
-const ESTADO_TRAS: Record<"aprobar" | "rechazar", string> = {
+const ESTADO_TRAS: Record<AccionEstado, string> = {
   aprobar: "APROBADO",
   rechazar: "RECHAZADO",
+  marcar: "HECHO_EN_OVZ",
+  desmarcar: "APROBADO",
+};
+
+/** Cómo se dice el estado dentro de una frase cuando la etiqueta del badge no encaja («consta como
+ * aprobado», no «consta como aprobado · falta OVZ»). El resto, la etiqueta en minúscula. */
+const ESTADO_EN_FRASE: Readonly<Record<string, string>> = {
+  APROBADO: "aprobado",
+  HECHO_EN_OVZ: "hecho en OVZ",
 };
 
 /** N2 de la revisión 9a: red o 5xx al aprobar/rechazar, y la recarga muestra el trámite ya cerrado.
  * Decir "Inténtalo de nuevo" contradiría lo que se ve: se dice lo que consta. */
 function etiquetaEnFrase(estado: string): string {
+  if (Object.prototype.hasOwnProperty.call(ESTADO_EN_FRASE, estado)) return ESTADO_EN_FRASE[estado];
   const etiqueta = presentacionEstado(estado).etiqueta;
   return `${etiqueta.charAt(0).toLowerCase()}${etiqueta.slice(1)}`;
 }
 
-function avisoResultadoIncierto(accion: "aprobar" | "rechazar", estado: string): AvisoRevision {
+function avisoResultadoIncierto(accion: AccionEstado, estado: string): AvisoRevision {
   // Justo lo pedido: se aplicó, aunque no llegara la respuesta.
   if (estado === ESTADO_TRAS[accion]) {
     return {
@@ -456,6 +504,9 @@ export function useRevisionTramite(
   const puedeGuardar = editable && sucio && libre;
   const puedeAprobar = editable && !sucio && libre;
   const puedeRechazar = puedeAprobar;
+  const listo = detalle !== null && carga.estado === "listo";
+  const puedeMarcarHechoEnOvz = listo && detalle.estado === "APROBADO" && libre;
+  const puedeDesmarcarHechoEnOvz = listo && detalle.estado === "HECHO_EN_OVZ" && libre;
 
   /**
    * Pide el detalle dentro de la sesión (la recarga se aborta si la sesión se cierra). null si la
@@ -591,9 +642,16 @@ export function useRevisionTramite(
     dispatch({ tipo: "aviso", aviso: { tipo, accion, mensaje } });
     if (tipo !== "conflicto" && !incierto) return;
     const resultado = await recargarEstricto(sesion, id);
-    if (incierto && resultado?.ok && !esEditable(resultado.detalle.estado)) {
+    // `incierto` ya excluye guardar.
+    if (!incierto || !resultado?.ok) return;
+    const estadoFinal = resultado.detalle.estado;
+    if (accion === "aprobar" || accion === "rechazar") {
       // N2: ya no está pendiente, así que no se invita a reintentar.
-      dispatch({ tipo: "aviso", aviso: avisoResultadoIncierto(accion, resultado.detalle.estado) });
+      if (!esEditable(estadoFinal)) dispatch({ tipo: "aviso", aviso: avisoResultadoIncierto(accion, estadoFinal) });
+    } else if (estadoFinal === ESTADO_TRAS[accion]) {
+      // Marcar/quitar la marca: si consta lo pedido, se dice; si sigue igual, queda el error y el
+      // botón vuelve a estar disponible para reintentar.
+      dispatch({ tipo: "aviso", aviso: avisoResultadoIncierto(accion, estadoFinal) });
     }
   }
 
@@ -646,10 +704,11 @@ export function useRevisionTramite(
     );
   }
 
-  function cerrarRevision(accion: "aprobar" | "rechazar", permitido: boolean): Promise<void> {
+  /** Aprobar, rechazar, marcar o quitar la marca: `{version}`, respuesta `TramiteResponse`. */
+  function cambiarEstado(accion: AccionEstado, permitido: boolean): Promise<void> {
     const version = detalle?.version;
     return ejecutar(accion, permitido && version !== undefined, async (sesion, id) => {
-      const tramite = accion === "aprobar" ? await aprobarTramite(id, version!) : await rechazarTramite(id, version!);
+      const tramite = await LLAMADA[accion](id, version!);
       onCambiadoRef.current();
       if (!sesion.activa) return;
       dispatch({
@@ -704,8 +763,12 @@ export function useRevisionTramite(
     puedeRechazar,
     avisoCambiosSinGuardar: editable && sucio ? AVISO_CAMBIOS_SIN_GUARDAR : null,
     guardar,
-    aprobar: () => cerrarRevision("aprobar", puedeAprobar),
-    rechazar: () => cerrarRevision("rechazar", puedeRechazar),
+    aprobar: () => cambiarEstado("aprobar", puedeAprobar),
+    rechazar: () => cambiarEstado("rechazar", puedeRechazar),
+    puedeMarcarHechoEnOvz,
+    puedeDesmarcarHechoEnOvz,
+    marcarHechoEnOvz: () => cambiarEstado("marcar", puedeMarcarHechoEnOvz),
+    desmarcarHechoEnOvz: () => cambiarEstado("desmarcar", puedeDesmarcarHechoEnOvz),
 
     aviso,
     descartarAviso: () => dispatch({ tipo: "descartar-aviso" }),

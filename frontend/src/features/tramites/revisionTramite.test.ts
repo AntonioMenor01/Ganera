@@ -37,6 +37,8 @@ function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
     origen: null,
     estadoExtraccion: null,
     crotalesDescartados: 0,
+    hechoEnOvzEn: null,
+    hechoEnOvzPorNombre: null,
     ...parcial,
   }
 }

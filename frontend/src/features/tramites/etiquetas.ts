@@ -52,11 +52,16 @@ export function etiquetaTipoTramite(tipo: string): string {
 
 // ---------------------------------------------------------------------------------------------
 // Estado del trámite. Aún sin resolver → aviso; resuelto a favor → éxito; en contra → peligro.
+// Hecho en OVZ (2026-10-07): APROBADO solo es «datos revisados» y aún falta que el gestor lo meta
+// en OVZ, así que es un aviso; HECHO_EN_OVZ (el gestor dice que ya lo hizo él) es el éxito.
+// EN_PROCESO/EJECUTADO_OVZ/ERROR_OVZ son de la automatización (3c), hoy no se dan: siguen aquí para
+// etiquetarlos si llegan, pero no salen en el filtro de la cola.
 
 export const ESTADOS_TRAMITE = {
   PENDIENTE_EXTRACCION: { etiqueta: "Pendiente de extracción", variante: "warning" },
   PENDIENTE_REVISION: { etiqueta: "Pendiente de revisión", variante: "warning" },
-  APROBADO: { etiqueta: "Aprobado", variante: "success" },
+  APROBADO: { etiqueta: "Aprobado · falta OVZ", variante: "warning" },
+  HECHO_EN_OVZ: { etiqueta: "Hecho en OVZ", variante: "success" },
   EN_PROCESO: { etiqueta: "En proceso", variante: "warning" },
   EJECUTADO_OVZ: { etiqueta: "Ejecutado en OVZ.net", variante: "success" },
   ERROR_OVZ: { etiqueta: "Error en OVZ.net", variante: "danger" },

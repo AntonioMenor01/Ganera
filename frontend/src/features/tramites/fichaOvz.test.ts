@@ -50,6 +50,8 @@ function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
     origen: "WHATSAPP",
     estadoExtraccion: "COMPLETADA",
     crotalesDescartados: 0,
+    hechoEnOvzEn: null,
+    hechoEnOvzPorNombre: null,
     ...parcial,
   }
 }
@@ -86,6 +88,7 @@ const TIPOS_CON_FICHA = [
 describe("modoFicha (D4)", () => {
   it.each<[EstadoTramite, string]>([
     ["APROBADO", "copiable"],
+    ["HECHO_EN_OVZ", "hecho"],
     ["PENDIENTE_REVISION", "vista-previa"],
     ["RECHAZADO", "rechazado"],
     ["PENDIENTE_EXTRACCION", "extraccion"],
@@ -96,8 +99,8 @@ describe("modoFicha (D4)", () => {
     expect(modoFicha(estado)).toBe(modo)
   })
 
-  it("cubre los 7 estados", () => {
-    expect(Object.keys(ESTADOS_TRAMITE)).toHaveLength(7)
+  it("cubre los 8 estados", () => {
+    expect(Object.keys(ESTADOS_TRAMITE)).toHaveLength(8)
   })
 
   it("un estado desconocido no permite copiar", () => {

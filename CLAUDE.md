@@ -82,7 +82,9 @@ approval step before anything is written to OVZ.net.
    that resolve to the same Animal.)
 6. An employee reviews the Tramite, corrects it if needed (`PATCH /tramites/{id}`: Explotación,
    tipo, crotales), and clicks "Aprobar" → `APROBADO`, subject to the approval rule in the
-   "Prompt A1" bullet.
+   "Prompt A1" bullet. Then they paste the approved data into OVZ by hand (ficha OVZ, escalón 1) and
+   click "Marcar como hecho en OVZ" → `HECHO_EN_OVZ`, recording who and when (reversible; see the
+   "Hecho en OVZ" bullet under Technical decisions). Ganera sends nothing.
 7. Playwright executes the trámite against OVZ.net using the **Ganadero's** encrypted credentials.
    One immediate automatic retry on failure; if it fails again, `ERROR_OVZ` with the reason
    recorded — never silent. The same Playwright service is also used read-only to sync a newly
@@ -124,10 +126,12 @@ approval step before anything is written to OVZ.net.
 - **The frontend never implies a trámite is executed against OVZ.net when "Aprobar" is clicked** —
   `OvzAutomationService.ejecutarTramite()` is unimplemented (Prompt 3c), so the button only changes
   `EstadoTramite` in DB, matching the backend exactly. Don't add wording, spinners, or toasts that
-  suggest anything happens in OVZ.net until 3c is real. The one OVZ reference allowed after approving
-  is the manual hand-off of the ficha OVZ escalón 1 ("Abrir ficha para OVZ", which opens the data to
-  copy by hand; Ganera sends nothing). `TramiteReviewDialog.test.tsx` checks it is the only mention and
-  that nothing says sent/executed/registered/processed. (Since Prompt A2 the review dialog sends
+  suggest anything happens in OVZ.net until 3c is real. The OVZ references allowed after approving
+  are the manual hand-off of the ficha OVZ escalón 1 ("Abrir ficha para OVZ", which opens the data to
+  copy by hand; Ganera sends nothing) and, since "Hecho en OVZ", the state badge, the "Marcar como hecho
+  en OVZ" button with its hint and the "Hecho en OVZ por … el …" band — always with the person as the
+  subject. `TramiteReviewDialog.test.tsx` and `FichaOvzPage.test.tsx` check the exact list of mentions
+  in every state and that nothing says sent/executed/registered/processed/presented/completed. (Since Prompt A2 the review dialog sends
   the trámite's `version` with `PATCH` and `aprobar`, so approving from the UI works again — the
   breakage A1 introduced is closed.)
 - **No manual "alta de Ganadero" form in the frontend, no OVZ-credentials-onboarding screen.** The
@@ -413,7 +417,8 @@ approval step before anything is written to OVZ.net.
   `Suscripcion` — fail-closed, a `GET` must never create one as a side effect; only the
   registration's checkout → `obtenerOCrearSuscripcion` does) and `GET /tramites/{id}`
   (`TramiteDetalleResponse`, adds the raw WhatsApp message body via
-  `MensajeCampoRepository.findFirstByTramiteIdOrderByCreatedAtDesc` plus the resolved Explotación's
+  `MensajeCampoRepository.findFirstByTramiteIdAndGestoriaIdOrderByCreatedAtDesc` — with the
+  `gestoriaId` since "Hecho en OVZ"; the unscoped finder was removed — plus the resolved Explotación's
   `codigoRega`/`nombre` — kept out of the paginated `GET /tramites` list to avoid N+1 there).
   **CORS** (`SecurityConfig.corsConfigurationSource`, origin from `ganera.frontend.origen` /
   `FRONTEND_ORIGEN` env var, default `http://localhost:5173`): found by *actually driving the app in
@@ -759,8 +764,44 @@ approval step before anything is written to OVZ.net.
     `window.opener = null`). A tab opened without opener (middle click, pasted URL) goes to login and back.
     Verified in real Chromium and Firefox. `shared/ui/BotonCopiar` (Clipboard API, read-only `Input`
     fallback, polite live region, always reads "Copiar" for WCAG 2.5.3). See `DESIGN.md` → "Ficha para OVZ".
-  - **Next, before the pilot:** "Marcar como registrado en OVZ" (D5; state to decide), and the "sesión de
-    mapeo de OVZ" in `ganera-prompts.md` (OVZ value lists and gestoría preferences) before B2.
+  - **Next, before the pilot:** the "sesión de mapeo de OVZ" in `ganera-prompts.md` (OVZ value lists and
+    gestoría preferences) before B2. (D5, marking a trámite as done in OVZ, became "Hecho en OVZ", below.)
+- **Hecho en OVZ — D5 of the ficha OVZ** (2026-10-07; plan `docs/superpowers/plans/2026-10-07-hecho-en-ovz.md`,
+  decisions closed with Antonio). `APROBADO` only means "data reviewed"; the gestor now records that **they**
+  entered it in OVZ by hand. Ganera sends nothing.
+  - **State `HECHO_EN_OVZ`** (after `APROBADO`) + `tramite.hecho_en_ovz_por` (FK to `usuario`) and
+    `tramite.hecho_en_ovz_en` (`TIMESTAMP`, `Instant` from the `Clock`, truncated to microseconds so the
+    response matches what is stored). Migration `V21` (SQL) with the named `CHECK ck_tramite_hecho_en_ovz`:
+    both columns set iff `estado = 'HECHO_EN_OVZ'`. `EJECUTADO_OVZ` was not reused (its label implies
+    Ganera did it); `EN_PROCESO`/`EJECUTADO_OVZ`/`ERROR_OVZ` stay in the enum, reserved, but the queue
+    filter no longer offers them. **Any hand-written SQL that inserts a `HECHO_EN_OVZ` row must fill both
+    columns** (demo seed).
+  - **Endpoints** `POST /tramites/{id}/marcar-hecho-ovz` and `POST /tramites/{id}/desmarcar-hecho-ovz`,
+    body `{version}` (`TramiteHechoEnOvzRequest`) → `TramiteResponse`. Order: `400` without `version` (in
+    the controller, before any DB access) → `404` with no body → `409` wrong state (mark only from
+    `APROBADO`, with a distinct motivo if already marked; unmark only from `HECHO_EN_OVZ`) → `409` stale
+    `version` → `200`, `version + 1`. Unmarking goes back to `APROBADO`, clears both columns and logs
+    `tramiteId`/`usuarioId` at `INFO`. **Who marks always comes from the JWT** (`GaneraUserPrincipal`,
+    loaded with `UsuarioRepository.findByIdAndGestoriaId`), never from the body. **No subscription gate**
+    (A1 decision 30: only approving is gated). `PATCH` on a `HECHO_EN_OVZ` trámite → `409` "Este trámite
+    está marcado como hecho en OVZ. Quita la marca para editarlo."
+  - **Responses:** `TramiteResponse`/`TramiteDetalleResponse` gained `hechoEnOvzEn` (ISO-8601 UTC with `Z`)
+    and `hechoEnOvzPorNombre` (`Usuario.nombre`, never email or id), both `null` when not marked. The list
+    loads the usuario with `@EntityGraph(attributePaths = {"explotacion", "hechoEnOvzPor"})`, guarded by a
+    statement-counting test.
+  - **Frontend:** badges "Aprobado · falta OVZ" (`warning`) and "Hecho en OVZ" (`success`); the queue shows
+    only the badge. `modoFicha("HECHO_EN_OVZ")` = `hecho`: the ficha still copies, with the band "Hecho en
+    OVZ por {nombre} el dd/mm/aaaa, hh:mm" (`features/tramites/hechoEnOvz.ts`, always **Europe/Madrid**,
+    independent of the system zone). Marking is in the ficha (end of the form, no confirmation) and in
+    the review dialog footer; "Quitar la marca" (inline confirmation, "En OVZ no cambia nada") in both. A
+    `409` reloads and shows the `motivo`; the ficha also reloads after a network/5xx error. See `DESIGN.md`.
+  - **Known limitations:** a ficha window that kept an older session (someone else logged in later in the
+    main window) marks with the previous Usuario — same Gestoría, nothing leaks. The FK does not enforce
+    that the Usuario belongs to the Tramite's Gestoría (only the service does; hand-seeded data could show
+    a foreign name or a `500`). A `CHECK` violation would surface as the generic concurrency `409`
+    (unreachable today). The FK has no `ON DELETE`: deleting a Usuario who marked something would fail
+    (there is no way to delete Usuarios today). An inactive Usuario with a still-valid JWT can mark, like
+    every other endpoint.
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)
@@ -771,9 +812,10 @@ Package layout under `backend/src/main/java/com/ganera/core/`: `gestoria`, `gana
 `OrdenacionPermitida` — and `shared/texto` — `NormalizadorBusqueda`). Java Flyway migrations live in
 `backend/src/main/java/db/migration/` (V18 is the first one).
 
-- `Tramite.estado` (`EstadoTramite`) has exactly 7 values:
-  `PENDIENTE_EXTRACCION, PENDIENTE_REVISION, APROBADO, EN_PROCESO, EJECUTADO_OVZ, ERROR_OVZ,
-  RECHAZADO`. There is no separate "ambiguous explotación" state — that case is
+- `Tramite.estado` (`EstadoTramite`) has exactly 8 values:
+  `PENDIENTE_EXTRACCION, PENDIENTE_REVISION, APROBADO, HECHO_EN_OVZ, EN_PROCESO, EJECUTADO_OVZ,
+  ERROR_OVZ, RECHAZADO` (`HECHO_EN_OVZ` since "Hecho en OVZ"; the three OVZ-automation states are
+  reserved and nothing assigns them). There is no separate "ambiguous explotación" state — that case is
   `PENDIENTE_REVISION` with `explotacion = null`.
 - `MensajeCampo` deliberately does **not** extend `GestoriaScopedEntity` — at webhook-receipt time
   the Gestoría isn't known yet. `gestoria_id`/`contacto`/`tramite` are nullable and populated once
@@ -968,7 +1010,7 @@ reference for every frontend decision below.
   handler fails the test (`onUnhandledRequest: "error"`), and session state is cleared after each
   test. `npm test` ran **475 tests in 36 files** at the end of A2 (476 after the mini-prompt's
   Rechazar change; **506 in 36 files** after the frontend task before the pilot; **508 in 36** after billing left the app;
-  **513 in 37** after the brand colours and typography; **558 in 37** after Prompt B1; **557 in 36** after C mínimo removed the registration screen; **720 in 40** after the ficha OVZ). Layout can't be checked in
+  **513 in 37** after the brand colours and typography; **558 in 37** after Prompt B1; **557 in 36** after C mínimo removed the registration screen; **720 in 40** after the ficha OVZ; **811 in 41** after "Hecho en OVZ"). Layout can't be checked in
   jsdom: for visual changes, also drive the real app in a browser (Playwright from npm installed
   **outside the repo**, as in Prompts 4 and A2).
 
@@ -990,7 +1032,7 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw clean test` — runs the test suite (706 tests after the ficha OVZ, including the embedded-PostgreSQL ones); **always with `clean`**
+- `./mvnw clean test` — runs the test suite (742 tests after "Hecho en OVZ", including the embedded-PostgreSQL ones); **always with `clean`**
   (see the VS Code/ECJ note under Architecture notes). A single test:
   `./mvnw clean test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
@@ -1317,6 +1359,17 @@ type and state, cross-gestoría `404`, no page-level horizontal scroll at 375/42
 for a tab without opener. The OVZ-password test was mutation-checked before the commit: exposing the
 plain password in `TramiteDetalleResponse` fails it at the body check, and exposing the stored
 ciphertext (a raw read-only mapping of the column) fails it too; both restored with `cp` + `cmp`.
+
+**Hecho en OVZ (D5 of the ficha OVZ) — complete, pending commit** (2026-10-07), following
+`docs/superpowers/plans/2026-10-07-hecho-en-ovz.md` with the Superpowers flow (T1 backend, T2 frontend, one
+implementer + one independent reviewer each: T1 **Approved with minors**, T2 **Changes requested** → fixed →
+**Approved with minors**, minors fixed; T3 smoke delegated; reports in `.superpowers/sdd/ho-*`, not
+committed). No Impeccable pass by Antonio's decision: existing visual patterns, reviewed on the smoke
+screenshots. See the "Hecho en OVZ" bullet under Technical decisions. Migration `V21`. Verified with
+`./mvnw clean test` **742/742**, `npm test` **811/811** (41 files), `npm run build` and `npm run lint`
+(known warnings only), and a real-browser smoke (H2 file DB, two invented gestorías, A `ACTIVA` with three
+usuarios, B `SUSPENDIDA`; Chromium and Firefox) with 13/13 scenarios PASS; screenshots outside the repo in
+`C:\Users\Antonio\Desktop\capturas-ganera-hecho-ovz\`.
 
 **Still blocked: Prompts 3a and 3c (OVZ.net read sync and write-mode automation).** They need real
 OVZ.net credentials so the actual site structure and trámite catalog can be explored live (the

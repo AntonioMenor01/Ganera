@@ -63,3 +63,17 @@ export async function rechazarTramite(id: number, version: number): Promise<Tram
   const { data } = await httpClient.post<Tramite>(`/tramites/${id}/rechazar`, { version });
   return data;
 }
+
+/** Hecho en OVZ: deja constancia de que el gestor ya metió el trámite en OVZ, a mano. Ganera no
+ * envía nada a OVZ: solo guarda quién (sale del JWT, nunca del cuerpo) y cuándo. `version` es la
+ * que mostraba la pantalla: si no es la actual, 409. Sin bloqueo de suscripción. */
+export async function marcarHechoEnOvz(id: number, version: number): Promise<Tramite> {
+  const { data } = await httpClient.post<Tramite>(`/tramites/${id}/marcar-hecho-ovz`, { version });
+  return data;
+}
+
+/** Quita la marca de hecho en OVZ (vuelve a «Aprobado · falta OVZ»). En OVZ no cambia nada. */
+export async function desmarcarHechoEnOvz(id: number, version: number): Promise<Tramite> {
+  const { data } = await httpClient.post<Tramite>(`/tramites/${id}/desmarcar-hecho-ovz`, { version });
+  return data;
+}

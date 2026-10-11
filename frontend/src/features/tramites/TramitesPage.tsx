@@ -39,23 +39,38 @@ type FiltroEstado = EstadoTramite | "TODOS";
 /** Decisión 28: la cola se abre en lo que hay que revisar. "Todos" sigue en el filtro. */
 const FILTRO_INICIAL: FiltroEstado = "PENDIENTE_REVISION";
 
+/** Estados que se pueden filtrar (Hecho en OVZ, D5): sin EN_PROCESO/EJECUTADO_OVZ/ERROR_OVZ, que son
+ * de la automatización (3c) y hoy no se dan. Siguen en ESTADOS_TRAMITE para etiquetarlos si llegan. */
+const ESTADOS_FILTRABLES: readonly EstadoTramite[] = [
+  "PENDIENTE_EXTRACCION",
+  "PENDIENTE_REVISION",
+  "APROBADO",
+  "HECHO_EN_OVZ",
+  "RECHAZADO",
+];
+
 // Las etiquetas del filtro salen de ESTADOS_TRAMITE: las mismas que los badges de la tabla.
 const ESTADOS: { value: FiltroEstado; label: string }[] = [
   { value: "TODOS", label: "Todos los estados" },
-  ...(Object.keys(ESTADOS_TRAMITE) as EstadoTramite[]).map((estado) => ({
+  ...ESTADOS_FILTRABLES.map((estado) => ({
     value: estado,
     label: ESTADOS_TRAMITE[estado].etiqueta,
   })),
 ];
+
+/** Vacío con frase propia; el resto, «No hay trámites en «{etiqueta}».». */
+const TEXTOS_VACIO: Partial<Record<EstadoTramite, string>> = {
+  APROBADO: "No hay trámites aprobados pendientes de hacer en OVZ.",
+  HECHO_EN_OVZ: "No hay trámites marcados como hechos en OVZ.",
+};
 
 function textoRecuento(total: number): string {
   return `${total} ${total === 1 ? "trámite" : "trámites"}`;
 }
 
 function textoVacio(filtro: FiltroEstado): string {
-  return filtro === "TODOS"
-    ? "No hay trámites que mostrar."
-    : `No hay trámites en «${ESTADOS_TRAMITE[filtro].etiqueta}».`;
+  if (filtro === "TODOS") return "No hay trámites que mostrar.";
+  return TEXTOS_VACIO[filtro] ?? `No hay trámites en «${ESTADOS_TRAMITE[filtro].etiqueta}».`;
 }
 
 export function TramitesPage() {

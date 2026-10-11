@@ -2,6 +2,7 @@ package com.ganera.core.tramite;
 
 import com.ganera.core.ganadero.Ganadero;
 
+import java.time.Instant;
 import java.util.List;
 
 /** Respuesta de GET /tramites/{id} y de PATCH /tramites/{id} -- el listado (TramiteResponse) se
@@ -13,7 +14,8 @@ import java.util.List;
  * ganaderoNombre y ganaderoNif (ficha OVZ, T2): el titular de la explotacion del tramite, la cuenta
  * con la que el gestor entra en OVZ; null sin explotacion, y ganaderoNif tambien null si el ganadero
  * no tiene NIF. Se cargan por tramite.getExplotacion().getGanadero() dentro de la peticion (OSIV): un
- * solo tramite, sin N+1. Nunca se exponen ovzUsuario ni ovzPasswordCifrada. */
+ * solo tramite, sin N+1. Nunca se exponen ovzUsuario ni ovzPasswordCifrada.
+ * hechoEnOvzEn y hechoEnOvzPorNombre («hecho en OVZ»): mismos valores que en TramiteResponse. */
 public record TramiteDetalleResponse(
         Long id,
         String tipoTramite,
@@ -29,7 +31,9 @@ public record TramiteDetalleResponse(
         Long version,
         String origen,
         String estadoExtraccion,
-        int crotalesDescartados) {
+        int crotalesDescartados,
+        Instant hechoEnOvzEn,
+        String hechoEnOvzPorNombre) {
 
     public static TramiteDetalleResponse from(
             Tramite tramite, String mensajeOriginal, List<TramiteCrotalResponse> crotales) {
@@ -50,6 +54,8 @@ public record TramiteDetalleResponse(
                 tramite.getVersion(),
                 tramite.getOrigen() != null ? tramite.getOrigen().name() : null,
                 tramite.getEstadoExtraccion() != null ? tramite.getEstadoExtraccion().name() : null,
-                tramite.getCrotalesDescartados());
+                tramite.getCrotalesDescartados(),
+                tramite.getHechoEnOvzEn(),
+                tramite.getHechoEnOvzPor() != null ? tramite.getHechoEnOvzPor().getNombre() : null);
     }
 }

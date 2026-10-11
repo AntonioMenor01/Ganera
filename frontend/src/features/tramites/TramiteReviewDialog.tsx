@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
-import { CircleAlertIcon, ExternalLinkIcon, XIcon } from "lucide-react";
+import { CircleAlertIcon, CircleCheckIcon, ExternalLinkIcon, XIcon } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,18 @@ import { AvisosRevision } from "./AvisosRevision";
 import { CampoExplotacion, TextoExplotacion } from "./CampoExplotacion";
 import { BadgeSinGuardar, CrotalesSoloLectura, ListaCrotalesEditable } from "./ListaCrotales";
 import { abrirFichaOvz } from "./abrirFichaOvz";
+import {
+  PISTA_MARCAR_HECHO_EN_OVZ,
+  PREGUNTA_QUITAR_MARCA,
+  TEXTO_BOTON_MARCANDO,
+  TEXTO_BOTON_MARCAR,
+  TEXTO_BOTON_QUITANDO_MARCA,
+  TEXTO_BOTON_QUITAR_MARCA,
+  TEXTO_CONFIRMAR_QUITAR_MARCA,
+  textoHechoEnOvz,
+} from "./hechoEnOvz";
 import { useRevisionTramite, type AccionRevision, type RevisionTramite } from "./useRevisionTramite";
+import type { TramiteDetalle } from "./types";
 
 /**
  * Modal de revisión de un trámite (Task 9b; contrato en
@@ -26,6 +37,11 @@ import { useRevisionTramite, type AccionRevision, type RevisionTramite } from ".
  * Toda la lógica (qué se envía, cuándo, qué pasa con cada error) vive en useRevisionTramite; aquí
  * solo se pinta. "Aprobar" solo cambia el estado del trámite en Ganera: nada de lo que se ve aquí
  * sugiere que ocurra algo en OVZ.net (Prompt 3c).
+ *
+ * Hecho en OVZ (2026-10-07): en `APROBADO` el pie ofrece «Marcar como hecho en OVZ» (sin confirmación)
+ * junto a la ficha; en `HECHO_EN_OVZ` el cuerpo lleva la franja de quién y cuándo, y el pie «Quitar la
+ * marca» (confirmación en línea, como Rechazar). Los dos solo dejan constancia de lo que hizo la
+ * persona: Ganera no envía nada a OVZ.
  */
 
 interface TramiteReviewDialogProps {
@@ -35,12 +51,14 @@ interface TramiteReviewDialogProps {
 }
 
 /** Confirmación en línea en la barra de acciones (decisión 31): nunca un segundo modal. */
-type Confirmacion = "rechazar" | "cerrar" | null;
+type Confirmacion = "rechazar" | "cerrar" | "quitar-marca" | null;
 
 const TEXTO_EN_CURSO: Record<AccionRevision, string> = {
   guardar: "Guardando…",
   aprobar: "Aprobando…",
   rechazar: "Rechazando…",
+  marcar: TEXTO_BOTON_MARCANDO,
+  desmarcar: TEXTO_BOTON_QUITANDO_MARCA,
 };
 
 const TEXTO_SIN_TIPO = "Sin determinar todavía";
@@ -68,12 +86,15 @@ export function TramiteReviewDialog({
   //   no enviaría nada nunca se ofrece). Se prefirió a bloquear los campos: no añade un segundo
   //   modo de "desactivado" y la barra ya explica por qué no se puede rechazar.
   // - "cerrar", mientras hay cambios sin guardar y nada en curso.
+  // - "quitar-marca", mientras se puede quitar la marca.
   const confirmacionVisible: Confirmacion =
     confirmacion === "rechazar" && revision.puedeRechazar
       ? "rechazar"
       : confirmacion === "cerrar" && editable && sucio && enviando === null
         ? "cerrar"
-        : null;
+        : confirmacion === "quitar-marca" && revision.puedeDesmarcarHechoEnOvz
+          ? "quitar-marca"
+          : null;
   // I1: si deja de verse, se olvida (no queda armada para reaparecer y robar el foco después).
   if (confirmacion !== null && confirmacionVisible === null) setConfirmacion(null);
 
@@ -84,6 +105,7 @@ export function TramiteReviewDialog({
     crotales: useId(),
     avisoSucio: useId(),
     pregunta: useId(),
+    pistaMarcar: useId(),
   };
 
   const tituloRef = useRef<HTMLHeadingElement | null>(null);
@@ -91,6 +113,7 @@ export function TramiteReviewDialog({
   const rechazarRef = useRef<HTMLButtonElement | null>(null);
   const guardarRef = useRef<HTMLButtonElement | null>(null);
   const aprobarRef = useRef<HTMLButtonElement | null>(null);
+  const quitarMarcaRef = useRef<HTMLButtonElement | null>(null);
   const primeraDeConfirmacionRef = useRef<HTMLButtonElement | null>(null);
   /** A dónde va el foco tras el próximo render (al cancelar una confirmación). */
   const focoPendiente = useRef<RefObject<HTMLElement | null> | null>(null);
@@ -109,7 +132,8 @@ export function TramiteReviewDialog({
 
   // Al terminar una acción, el foco no se queda perdido en un botón que se desactivó o
   // desapareció (tras aprobar, la barra de acciones ya no existe). Tras Guardar o Rechazar vuelve a
-  // ese botón si sigue activo; tras cualquier intento de Aprobar va SIEMPRE al título: si falló
+  // ese botón si sigue activo; tras cualquier intento de Aprobar (y de marcar o quitar la marca, cuyo
+  // botón desaparece al cambiar el estado) va SIEMPRE al título: si falló
   // (p. ej. un 409 que acaba de cambiar la resolución de los crotales), un segundo Enter no debe
   // aprobar lo que aún no se ha leído. El motivo lo anuncia el role="alert" del aviso.
   const enviandoPrevio = useRef(enviando);
@@ -120,7 +144,7 @@ export function TramiteReviewDialog({
     const activo = document.activeElement;
     const perdido = !activo || activo === document.body || pieRef.current?.contains(activo);
     if (!perdido) return;
-    const boton = antes === "aprobar" ? null : { guardar: guardarRef, rechazar: rechazarRef }[antes].current;
+    const boton = antes === "guardar" ? guardarRef.current : antes === "rechazar" ? rechazarRef.current : null;
     (boton && !boton.disabled ? boton : tituloRef.current)?.focus();
   }, [enviando]);
 
@@ -138,8 +162,16 @@ export function TramiteReviewDialog({
   }
 
   function cancelarConfirmacion() {
-    focoPendiente.current = confirmacion === "rechazar" ? rechazarRef : tituloRef;
+    focoPendiente.current =
+      confirmacion === "rechazar" ? rechazarRef : confirmacion === "quitar-marca" ? quitarMarcaRef : tituloRef;
     setConfirmacion(null);
+  }
+
+  function confirmarQuitarMarca() {
+    // El botón que tenía el foco desaparece: el foco va al título mientras se quita la marca.
+    focoPendiente.current = tituloRef;
+    setConfirmacion(null);
+    void revision.desmarcarHechoEnOvz();
   }
 
   function confirmarRechazo() {
@@ -240,17 +272,57 @@ export function TramiteReviewDialog({
           </div>
         )}
 
-        {/* Ficha OVZ (T5): un trámite aprobado se pasa a OVZ a mano desde su ficha, en otra ventana. */}
+        {/* Ficha OVZ (T5): un trámite aprobado se pasa a OVZ a mano desde su ficha, en otra ventana.
+            Hecho en OVZ: cuando la persona lo ha terminado allí, lo marca aquí (o quita la marca). */}
         {!editable && carga.estado === "listo" && detalle?.estado === "APROBADO" && (
-          <div className="flex justify-end border-t bg-muted/50 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-            <Button
-              variant="outline"
-              aria-label="Abrir ficha para OVZ (se abre en otra ventana)"
-              onClick={() => abrirFichaOvz(detalle.id)}
-            >
-              Abrir ficha para OVZ
-              <ExternalLinkIcon aria-hidden />
-            </Button>
+          <div
+            ref={pieRef}
+            className="flex flex-col gap-2 border-t bg-muted/50 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+          >
+            <p id={ids.pistaMarcar} className="text-sm text-muted-foreground sm:text-right">
+              {PISTA_MARCAR_HECHO_EN_OVZ}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <BotonAbrirFicha onClick={() => abrirFichaOvz(detalle.id)} />
+              <Button
+                className="ml-auto"
+                onClick={() => void revision.marcarHechoEnOvz()}
+                disabled={!revision.puedeMarcarHechoEnOvz}
+                aria-describedby={ids.pistaMarcar}
+              >
+                {enviando === "marcar" ? TEXTO_EN_CURSO.marcar : TEXTO_BOTON_MARCAR}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {!editable && carga.estado === "listo" && detalle?.estado === "HECHO_EN_OVZ" && (
+          <div
+            ref={pieRef}
+            className="border-t bg-muted/50 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+          >
+            {confirmacionVisible === "quitar-marca" ? (
+              <BarraConfirmacion idPregunta={ids.pregunta} pregunta={PREGUNTA_QUITAR_MARCA}>
+                <Button ref={primeraDeConfirmacionRef} variant="outline" onClick={cancelarConfirmacion}>
+                  Cancelar
+                </Button>
+                <Button variant="destructive" onClick={confirmarQuitarMarca}>
+                  {TEXTO_CONFIRMAR_QUITAR_MARCA}
+                </Button>
+              </BarraConfirmacion>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  ref={quitarMarcaRef}
+                  variant="outline"
+                  onClick={() => setConfirmacion("quitar-marca")}
+                  disabled={!revision.puedeDesmarcarHechoEnOvz}
+                >
+                  {enviando === "desmarcar" ? TEXTO_EN_CURSO.desmarcar : TEXTO_BOTON_QUITAR_MARCA}
+                </Button>
+                <BotonAbrirFicha className="ml-auto" onClick={() => abrirFichaOvz(detalle.id)} />
+              </div>
+            )}
           </div>
         )}
 
@@ -311,43 +383,74 @@ function Cuerpo({ revision, ids }: { revision: RevisionTramite; ids: IdsRevision
     case "listo":
       if (!detalle) return null;
       return (
-        <div
-          data-columnas-revision
-          className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]"
-        >
-          {/* Izquierda (arriba en móvil): lo que escribió el ganadero. En escritorio se queda a la
-              vista mientras se recorren los crotales, para cotejar. */}
-          <section aria-labelledby={ids.mensaje} className="flex min-w-0 flex-col gap-2 md:sticky md:top-0 md:self-start">
-            <h3 id={ids.mensaje} className="text-sm font-semibold text-muted-foreground">
-              Mensaje de WhatsApp
-            </h3>
-            {detalle.mensajeOriginal ? (
-              <blockquote className="rounded-lg bg-muted px-3 py-2.5 whitespace-pre-wrap wrap-anywhere">
-                {detalle.mensajeOriginal}
-              </blockquote>
-            ) : (
-              <p className="text-muted-foreground">Aún no hay mensaje: este trámite no llegó por WhatsApp.</p>
-            )}
-          </section>
-
-          {/* Derecha: lo que Ganera entendió. */}
-          <section aria-label="Datos del trámite" className="flex min-w-0 flex-col gap-5">
-            {detalle.motivoError && (
-              <Alert variant="destructive">
-                <CircleAlertIcon />
-                <AlertTitle>Motivo del error</AlertTitle>
-                <AlertDescription>{detalle.motivoError}</AlertDescription>
-              </Alert>
-            )}
-            {revision.editable ? (
-              <DatosEditables revision={revision} ids={ids} />
-            ) : (
-              <DatosSoloLectura revision={revision} />
-            )}
-          </section>
-        </div>
+        <>
+          {detalle.estado === "HECHO_EN_OVZ" && <FranjaHechoEnOvz detalle={detalle} />}
+          <div
+            data-columnas-revision
+            className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]"
+          >
+            {/* Izquierda (arriba en móvil): lo que escribió el ganadero. En escritorio se queda a la
+                vista mientras se recorren los crotales, para cotejar. */}
+            <section aria-labelledby={ids.mensaje} className="flex min-w-0 flex-col gap-2 md:sticky md:top-0 md:self-start">
+              <h3 id={ids.mensaje} className="text-sm font-semibold text-muted-foreground">
+                Mensaje de WhatsApp
+              </h3>
+              {detalle.mensajeOriginal ? (
+                <blockquote className="rounded-lg bg-muted px-3 py-2.5 whitespace-pre-wrap wrap-anywhere">
+                  {detalle.mensajeOriginal}
+                </blockquote>
+              ) : (
+                <p className="text-muted-foreground">Aún no hay mensaje: este trámite no llegó por WhatsApp.</p>
+              )}
+            </section>
+  
+            {/* Derecha: lo que Ganera entendió. */}
+            <section aria-label="Datos del trámite" className="flex min-w-0 flex-col gap-5">
+              {detalle.motivoError && (
+                <Alert variant="destructive">
+                  <CircleAlertIcon />
+                  <AlertTitle>Motivo del error</AlertTitle>
+                  <AlertDescription>{detalle.motivoError}</AlertDescription>
+                </Alert>
+              )}
+              {revision.editable ? (
+                <DatosEditables revision={revision} ids={ids} />
+              ) : (
+                <DatosSoloLectura revision={revision} />
+              )}
+            </section>
+          </div>
+        </>
       );
   }
+}
+
+/** Hecho en OVZ: quién y cuándo lo marcó, en el par de éxito (nunca rojo), encima de los datos. */
+function FranjaHechoEnOvz({ detalle }: { detalle: TramiteDetalle }) {
+  return (
+    <p
+      data-franja-hecho-en-ovz
+      className="mb-4 flex items-start gap-2 rounded-lg bg-success px-3 py-2 text-sm text-success-foreground"
+    >
+      <CircleCheckIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+      <span className="font-semibold">{textoHechoEnOvz(detalle)}</span>
+    </p>
+  );
+}
+
+/** «Abrir ficha para OVZ» (ficha OVZ, T5): en APROBADO y en HECHO_EN_OVZ. */
+function BotonAbrirFicha({ onClick, className }: { onClick: () => void; className?: string }) {
+  return (
+    <Button
+      variant="outline"
+      className={className}
+      aria-label="Abrir ficha para OVZ (se abre en otra ventana)"
+      onClick={onClick}
+    >
+      Abrir ficha para OVZ
+      <ExternalLinkIcon aria-hidden />
+    </Button>
+  );
 }
 
 const CLASE_ETIQUETA = "text-sm font-semibold text-muted-foreground";

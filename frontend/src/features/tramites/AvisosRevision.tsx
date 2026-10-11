@@ -23,6 +23,9 @@ const TITULO_ERROR: Record<AccionRevision, string> = {
   guardar: "No se han guardado los cambios",
   aprobar: "No se ha aprobado el trámite",
   rechazar: "No se ha rechazado el trámite",
+  // Sin «OVZ»: la mención la llevan el botón y la franja (honestidad).
+  marcar: "No se ha marcado el trámite",
+  desmarcar: "No se ha quitado la marca",
 };
 
 function BotonCerrarAviso({ onClick }: { onClick: () => void }) {

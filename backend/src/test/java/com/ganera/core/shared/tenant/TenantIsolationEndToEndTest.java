@@ -215,6 +215,43 @@ class TenantIsolationEndToEndTest {
         assertThat(despues.getVersion()).isEqualTo(versionA);
     }
 
+    /** «Hecho en OVZ» (2026-10-07): B, con la version ACTUAL y correcta de los Tramites de A, no puede
+     * marcar uno APROBADO ni desmarcar uno HECHO_EN_OVZ (404 sin cuerpo, nada cambia). */
+    @Test
+    void marcarYDesmarcarHechoEnOvzDeOtraGestoriaDevuelven404YNoCambianNada() {
+        Gestoria gestoriaA = gestoriaRepository.save(new Gestoria("Gestoria E2E hecho OVZ A"));
+        Gestoria gestoriaB = gestoriaRepository.save(new Gestoria("Gestoria E2E hecho OVZ B"));
+        crearUsuario(gestoriaA, "ovzA@test.com");
+        crearUsuario(gestoriaB, "ovzB@test.com");
+        Usuario usuarioA = usuarioRepository.findByEmail("ovzA@test.com").orElseThrow();
+
+        Tramite aprobadoA = nuevoTramite(gestoriaA, "+34600000105");
+        aprobadoA.setEstado(EstadoTramite.APROBADO);
+        aprobadoA = tramiteRepository.save(aprobadoA);
+        Tramite hechoA = nuevoTramite(gestoriaA, "+34600000106");
+        hechoA.setEstado(EstadoTramite.HECHO_EN_OVZ);
+        hechoA.setHechoEnOvzPor(usuarioA);
+        hechoA.setHechoEnOvzEn(java.time.Instant.parse("2026-10-07T10:30:00Z"));
+        hechoA = tramiteRepository.save(hechoA);
+        String tokenB = login("ovzB@test.com");
+
+        ResponseEntity<String> marcar = postJson("/tramites/" + aprobadoA.getId() + "/marcar-hecho-ovz", tokenB,
+                java.util.Map.of("version", aprobadoA.getVersion()));
+        ResponseEntity<String> desmarcar = postJson("/tramites/" + hechoA.getId() + "/desmarcar-hecho-ovz", tokenB,
+                java.util.Map.of("version", hechoA.getVersion()));
+
+        assertThat(marcar.getStatusCode().value()).isEqualTo(404);
+        assertThat(marcar.getBody()).isNullOrEmpty();
+        assertThat(desmarcar.getStatusCode().value()).isEqualTo(404);
+        assertThat(desmarcar.getBody()).isNullOrEmpty();
+        Tramite aprobadoDespues = tramiteRepository.findById(aprobadoA.getId()).orElseThrow();
+        assertThat(aprobadoDespues.getEstado()).isEqualTo(EstadoTramite.APROBADO);
+        assertThat(aprobadoDespues.getVersion()).isEqualTo(aprobadoA.getVersion());
+        Tramite hechoDespues = tramiteRepository.findById(hechoA.getId()).orElseThrow();
+        assertThat(hechoDespues.getEstado()).isEqualTo(EstadoTramite.HECHO_EN_OVZ);
+        assertThat(hechoDespues.getVersion()).isEqualTo(hechoA.getVersion());
+    }
+
     @Test
     void authMeDevuelveSiempreLosDatosDelPropioUsuarioAutenticado() {
         Gestoria gestoriaA = gestoriaRepository.save(new Gestoria("Gestoria E2E me A"));

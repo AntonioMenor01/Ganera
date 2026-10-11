@@ -108,7 +108,9 @@ public class TramiteController {
         if (tramite.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
-        String mensajeOriginal = mensajeCampoRepository.findFirstByTramiteIdOrderByCreatedAtDesc(id)
+        // gestoriaId explicito: un mensaje enlazado al Tramite pero de otra gestoria nunca se muestra.
+        String mensajeOriginal = mensajeCampoRepository
+                .findFirstByTramiteIdAndGestoriaIdOrderByCreatedAtDesc(id, principal.gestoriaId())
                 .map(MensajeCampo::getCuerpo)
                 .orElse(null);
         return ResponseEntity.ok(TramiteDetalleResponse.from(
@@ -191,6 +193,44 @@ public class TramiteController {
             return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_FALTA_VERSION));
         }
         return traducirErrores(() -> ResponseEntity.ok(tramiteRevisionService.rechazar(principal.gestoriaId(), id, version)));
+    }
+
+    /**
+     * «Hecho en OVZ» (2026-10-07): el gestor indica que EL ya metio en OVZ este tramite APROBADO;
+     * Ganera guarda quien y cuando y no envia nada a OVZ. Quien marca es SIEMPRE el usuario del JWT
+     * (principal.usuarioId()), nunca un dato del cuerpo. Sin comprobacion de suscripcion (A1 D30).
+     * Orden: 400 sin version (cuerpo ausente, {} o version null; antes de buscar el Tramite) -> 404
+     * sin cuerpo (otra Gestoria o no existe) -> 409 si no esta APROBADO (ya marcado: su motivo) ->
+     * 409 version desfasada -> 200 TramiteResponse con la version + 1.
+     */
+    @PostMapping("/tramites/{id}/marcar-hecho-ovz")
+    public ResponseEntity<?> marcarHechoEnOvz(
+            @AuthenticationPrincipal GaneraUserPrincipal principal,
+            @PathVariable Long id,
+            @RequestBody(required = false) TramiteHechoEnOvzRequest request) {
+        Long version = request != null ? request.version() : null;
+        if (version == null) {
+            return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_FALTA_VERSION));
+        }
+        return traducirErrores(() -> ResponseEntity.ok(tramiteRevisionService.marcarHechoEnOvz(
+                principal.gestoriaId(), principal.usuarioId(), id, version)));
+    }
+
+    /**
+     * Quita la marca de «hecho en OVZ» (vuelve a APROBADO; en OVZ no cambia nada). Mismo orden que
+     * marcar, con el 409 de estado si no esta HECHO_EN_OVZ. Sin comprobacion de suscripcion.
+     */
+    @PostMapping("/tramites/{id}/desmarcar-hecho-ovz")
+    public ResponseEntity<?> desmarcarHechoEnOvz(
+            @AuthenticationPrincipal GaneraUserPrincipal principal,
+            @PathVariable Long id,
+            @RequestBody(required = false) TramiteHechoEnOvzRequest request) {
+        Long version = request != null ? request.version() : null;
+        if (version == null) {
+            return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_FALTA_VERSION));
+        }
+        return traducirErrores(() -> ResponseEntity.ok(tramiteRevisionService.desmarcarHechoEnOvz(
+                principal.gestoriaId(), principal.usuarioId(), id, version)));
     }
 
     /**

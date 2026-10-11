@@ -96,6 +96,17 @@ describe("mensajeDeError", () => {
     expect(mensajeDeError(error, "aprobar-tramite")).toBe(esperado)
     expect(mensajeDeError(error, "rechazar-tramite")).toBe(esperado)
     expect(mensajeDeError(error, "guardar-tramite")).toBe(esperado)
+    expect(mensajeDeError(error, "marcar-hecho-ovz")).toBe(esperado)
+    expect(mensajeDeError(error, "desmarcar-hecho-ovz")).toBe(esperado)
+  })
+
+  it("hecho en OVZ: genéricos propios, sin decir que Ganera haga nada en OVZ", () => {
+    expect(mensajeDeError(new ErrorApi({ tipo: "desconocido" }), "marcar-hecho-ovz")).toBe(
+      "No se ha podido marcar el trámite como hecho en OVZ. Inténtalo de nuevo.",
+    )
+    expect(mensajeDeError(new ErrorApi({ tipo: "desconocido" }), "desmarcar-hecho-ovz")).toBe(
+      "No se ha podido quitar la marca. Inténtalo de nuevo.",
+    )
   })
 
   it("guardar-tramite: el motivo del backend tal cual y, sin motivo, su genérico", () => {
@@ -200,6 +211,8 @@ describe("mensajeDeError", () => {
       "aprobar-tramite",
       "rechazar-tramite",
       "guardar-tramite",
+      "marcar-hecho-ovz",
+      "desmarcar-hecho-ovz",
       "listar-ganaderos",
       "detalle-ganadero",
       "animales-explotacion",

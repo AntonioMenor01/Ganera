@@ -1,5 +1,6 @@
 package com.ganera.core.tramite;
 
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -13,6 +14,11 @@ import java.util.List;
  * "PENDIENTE", "COMPLETADA", "FALLIDA", "SIN_TEXTO" o null (anteriores a B1); crotalesDescartados
  * cuenta los identificadores que la IA devolvio y no parecian crotales (0 si no hubo). El motivo
  * tecnico de un fallo de la IA nunca se expone: solo va a los logs, sin datos del mensaje.
+ *
+ * <p>hechoEnOvzEn y hechoEnOvzPorNombre («hecho en OVZ», 2026-10-07): cuando y quien (Usuario.nombre)
+ * marco el tramite como hecho en OVZ; los dos null si no esta marcado. hechoEnOvzEn sale en ISO-8601
+ * UTC con «Z». Nunca el email ni el id del usuario. En el listado el usuario llega en la consulta de la
+ * pagina (EntityGraph en TramiteRepository), nunca una consulta por fila.
  */
 public record TramiteResponse(
         Long id,
@@ -26,7 +32,9 @@ public record TramiteResponse(
         Long version,
         String origen,
         String estadoExtraccion,
-        int crotalesDescartados) {
+        int crotalesDescartados,
+        Instant hechoEnOvzEn,
+        String hechoEnOvzPorNombre) {
 
     public static TramiteResponse from(Tramite tramite, List<TramiteCrotalResponse> crotales) {
         boolean tieneExplotacion = tramite.getExplotacion() != null;
@@ -42,6 +50,8 @@ public record TramiteResponse(
                 tramite.getVersion(),
                 tramite.getOrigen() != null ? tramite.getOrigen().name() : null,
                 tramite.getEstadoExtraccion() != null ? tramite.getEstadoExtraccion().name() : null,
-                tramite.getCrotalesDescartados());
+                tramite.getCrotalesDescartados(),
+                tramite.getHechoEnOvzEn(),
+                tramite.getHechoEnOvzPor() != null ? tramite.getHechoEnOvzPor().getNombre() : null);
     }
 }

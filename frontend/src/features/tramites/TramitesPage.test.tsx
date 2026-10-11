@@ -36,6 +36,8 @@ function tramite(id: number, extra: Record<string, unknown> = {}) {
     origen: null,
     estadoExtraccion: null,
     crotalesDescartados: 0,
+    hechoEnOvzEn: null,
+    hechoEnOvzPorNombre: null,
     ...extra,
   }
 }
@@ -81,6 +83,8 @@ describe("TramitesPage: etiquetas legibles", () => {
               origen: null,
               estadoExtraccion: null,
               crotalesDescartados: 0,
+              hechoEnOvzEn: null,
+              hechoEnOvzPorNombre: null,
             },
             {
               id: 2,
@@ -95,6 +99,8 @@ describe("TramitesPage: etiquetas legibles", () => {
               origen: null,
               estadoExtraccion: null,
               crotalesDescartados: 0,
+              hechoEnOvzEn: null,
+              hechoEnOvzPorNombre: null,
             },
           ],
           totalElements: 2,
@@ -137,6 +143,8 @@ describe("TramitesPage: etiquetas legibles", () => {
               origen: null,
               estadoExtraccion: null,
               crotalesDescartados: 0,
+              hechoEnOvzEn: null,
+              hechoEnOvzPorNombre: null,
             },
           ],
           totalElements: 1,
@@ -403,7 +411,7 @@ describe("TramitesPage: crotales visibles en la fila", () => {
 })
 
 describe("TramitesPage: filtro y paginación", () => {
-  it("las opciones del filtro salen de ESTADOS_TRAMITE (M2 de la revisión de Task 5)", async () => {
+  it("las opciones del filtro: las etiquetas de ESTADOS_TRAMITE, sin los tres de la automatización (Hecho en OVZ, D5)", async () => {
     server.use(http.get(apiUrl("/tramites"), () => paginaTramites([], 0, 0)))
     const user = userEvent.setup()
     render(<TramitesPage />)
@@ -414,8 +422,63 @@ describe("TramitesPage: filtro y paginación", () => {
 
     expect(opciones.map((o) => o.textContent)).toEqual([
       "Todos los estados",
-      ...Object.values(ESTADOS_TRAMITE).map((e) => e.etiqueta),
+      ESTADOS_TRAMITE.PENDIENTE_EXTRACCION.etiqueta,
+      ESTADOS_TRAMITE.PENDIENTE_REVISION.etiqueta,
+      "Aprobado · falta OVZ",
+      "Hecho en OVZ",
+      ESTADOS_TRAMITE.RECHAZADO.etiqueta,
     ])
+    for (const fuera of ["En proceso", "Ejecutado en OVZ.net", "Error en OVZ.net"]) {
+      expect(screen.queryByRole("option", { name: fuera })).not.toBeInTheDocument()
+    }
+  })
+
+  it.each([
+    ["Aprobado · falta OVZ", "APROBADO", "No hay trámites aprobados pendientes de hacer en OVZ."],
+    ["Hecho en OVZ", "HECHO_EN_OVZ", "No hay trámites marcados como hechos en OVZ."],
+  ])("filtro «%s»: manda estado=%s y tiene su texto de vacío", async (opcion, estado, vacio) => {
+    const pedidos: (string | null)[] = []
+    server.use(
+      http.get(apiUrl("/tramites"), ({ request }) => {
+        pedidos.push(new URL(request.url).searchParams.get("estado"))
+        return paginaTramites([], 0, 0)
+      }),
+    )
+    const user = userEvent.setup()
+    render(<TramitesPage />)
+    await screen.findByText("No hay trámites en «Pendiente de revisión».")
+
+    await user.click(screen.getByRole("combobox"))
+    await user.click(await screen.findByRole("option", { name: opcion }))
+
+    expect(await screen.findByText(vacio)).toBeInTheDocument()
+    expect(pedidos).toEqual(["PENDIENTE_REVISION", estado])
+    expect(screen.getByRole("combobox", { name: "Filtrar por estado" })).toHaveTextContent(opcion)
+  })
+
+  it("en la cola, un trámite hecho en OVZ solo lleva su badge (ni quién ni cuándo)", async () => {
+    server.use(
+      http.get(apiUrl("/tramites"), () =>
+        paginaTramites(
+          [
+            tramite(1, {
+              estado: "HECHO_EN_OVZ",
+              hechoEnOvzEn: "2026-10-07T10:30:00Z",
+              hechoEnOvzPorNombre: "Ana Pérez",
+            }),
+            tramite(2, { estado: "APROBADO" }),
+          ],
+          2,
+          1,
+        ),
+      ),
+    )
+    render(<TramitesPage />)
+
+    expect(await screen.findByText("Hecho en OVZ")).toHaveClass("bg-success")
+    expect(screen.getByText("Aprobado · falta OVZ")).toHaveClass("bg-warning")
+    expect(screen.queryByText(/Ana Pérez/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/12:30|07\/10\/2026/)).not.toBeInTheDocument()
   })
 
   it("N1: al cambiar de filtro vuelve a la página 1 y no queda a la vista nada del filtro anterior", async () => {

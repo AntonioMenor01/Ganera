@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { Link, useParams } from "react-router-dom";
-import { CheckIcon, ChevronDown, CircleAlertIcon, EyeIcon, InfoIcon } from "lucide-react";
+import { CheckIcon, ChevronDown, CircleAlertIcon, CircleCheckIcon, EyeIcon, InfoIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -15,7 +15,7 @@ import { LogoGanera } from "@/shared/brand/LogoGanera";
 import { BotonCopiar } from "@/shared/ui/BotonCopiar";
 import { CLASE_ENLACE } from "@/shared/ui/enlace";
 import { BadgeEstadoTramite } from "./BadgesTramite";
-import { obtenerDetalleTramite } from "./api";
+import { desmarcarHechoEnOvz, marcarHechoEnOvz, obtenerDetalleTramite } from "./api";
 import {
   PISTA_EXPLOTACION,
   construirFichaOvz,
@@ -23,8 +23,19 @@ import {
   type BloqueFicha,
   type CampoFicha,
   type FichaOvz,
+  type ModoFicha,
 } from "./fichaOvz";
-import type { TramiteDetalle } from "./types";
+import {
+  PISTA_MARCAR_HECHO_EN_OVZ,
+  PREGUNTA_QUITAR_MARCA,
+  TEXTO_BOTON_MARCANDO,
+  TEXTO_BOTON_MARCAR,
+  TEXTO_BOTON_QUITANDO_MARCA,
+  TEXTO_BOTON_QUITAR_MARCA,
+  TEXTO_CONFIRMAR_QUITAR_MARCA,
+  textoHechoEnOvz,
+} from "./hechoEnOvz";
+import type { Tramite, TramiteDetalle } from "./types";
 
 /**
  * Ficha para OVZ (plan de la ficha OVZ, T5; shape aprobado por Antonio el 2026-10-07). Ventana
@@ -32,8 +43,64 @@ import type { TramiteDetalle } from "./types";
  * OVZ, con Copiar en cada campo. Ganera no envía nada a OVZ (3c no existe): solo prepara lo que el
  * gestor pega. Sin la barra de navegación de la app (va fuera de `AppLayout`, dentro de
  * `RequireAuth`). El orden, las etiquetas y las pistas salen de `fichaOvz.ts`; el estado decide si se
- * puede copiar (`modoFicha`, D4): solo `APROBADO`.
+ * puede copiar (`modoFicha`, D4): `APROBADO` y `HECHO_EN_OVZ`.
+ *
+ * Hecho en OVZ (2026-10-07): en `APROBADO`, al final, «Marcar como hecho en OVZ» (sin confirmación)
+ * deja constancia de que el gestor ya lo metió él; en `HECHO_EN_OVZ` la ficha se queda en consulta con
+ * la franja de quién y cuándo, y «Quitar la marca» (con confirmación en línea). Una petición a la vez;
+ * un 409 recarga el detalle y enseña el `motivo`.
  */
+
+type AccionHecho = "marcar" | "desmarcar";
+
+/** Error de la última acción de marcar/quitar la marca, para enseñarlo junto a la acción. */
+interface AvisoAccion {
+  accion: AccionHecho;
+  mensaje: string;
+}
+
+const TITULO_AVISO: Record<AccionHecho, string> = {
+  marcar: "No se ha podido marcar el trámite",
+  desmarcar: "No se ha podido quitar la marca",
+};
+
+/** Anuncio educado del resultado (sin «OVZ»: la franja y el badge ya lo dicen). */
+const TEXTO_EXITO: Record<AccionHecho, string> = {
+  marcar: "Marca guardada.",
+  desmarcar: "Marca quitada.",
+};
+
+/** Estado al que lleva cada acción: si una recarga tras red/5xx ya lo muestra, se aplicó. */
+const ESTADO_TRAS: Record<AccionHecho, string> = {
+  marcar: "HECHO_EN_OVZ",
+  desmarcar: "APROBADO",
+};
+
+/** A dónde va el foco tras una acción (I1 de la revisión): nunca se queda en el `body`. `n` hace que
+ * dos peticiones seguidas al mismo destino sean distintas; quien la atiende la borra. */
+type DestinoFoco = "franja" | "marcar" | "aviso";
+interface PeticionFoco {
+  destino: DestinoFoco;
+  n: number;
+}
+
+/** La respuesta de marcar/desmarcar es la del listado (`TramiteResponse`): se aplica sobre el detalle
+ * (el titular y el mensaje no cambian), sin otra petición. */
+function fusionar(detalle: TramiteDetalle, tramite: Tramite): TramiteDetalle {
+  return {
+    ...detalle,
+    estado: tramite.estado,
+    version: tramite.version,
+    tipoTramite: tramite.tipoTramite,
+    explotacionId: tramite.explotacionId,
+    explotacionCodigoRega: tramite.explotacionCodigoRega ?? null,
+    explotacionNombre: tramite.explotacionNombre ?? null,
+    motivoError: tramite.motivoError,
+    crotales: tramite.crotales,
+    hechoEnOvzEn: tramite.hechoEnOvzEn ?? null,
+    hechoEnOvzPorNombre: tramite.hechoEnOvzPorNombre ?? null,
+  };
+}
 
 type Vista =
   | { estado: "cargando" }
@@ -57,6 +124,24 @@ export function FichaOvzPage() {
   const [carga, setCarga] = useState<Carga | null>(null);
   const [intento, setIntento] = useState(0);
   const reintentar = useCallback(() => setIntento((n) => n + 1), []);
+  const [enviando, setEnviando] = useState<AccionHecho | null>(null);
+  const [avisoAccion, setAvisoAccion] = useState<AvisoAccion | null>(null);
+  const [anuncio, setAnuncio] = useState("");
+  const [foco, setFoco] = useState<PeticionFoco | null>(null);
+  const pedirFoco = useCallback(
+    (destino: DestinoFoco) => setFoco((actual) => ({ destino, n: (actual?.n ?? 0) + 1 })),
+    [],
+  );
+  /** Envío único síncrono: el estado de React llega un render tarde para dos clics seguidos. */
+  const enviandoRef = useRef(false);
+  /** Id que se está viendo: una respuesta que llega tras cambiar de ficha o desmontar no escribe. */
+  const idActualRef = useRef<number | null>(id);
+  useEffect(() => {
+    idActualRef.current = id;
+    return () => {
+      idActualRef.current = null;
+    };
+  }, [id]);
 
   // D3: la ventana se abrió con opener para heredar la sesión; aquí se corta el vínculo.
   useEffect(() => {
@@ -81,6 +166,10 @@ export function FichaOvzPage() {
     if (id === null) return;
     const controlador = new AbortController();
     setCarga({ id, estado: "cargando" });
+    setAvisoAccion(null);
+    setAnuncio("");
+    // N7: una petición de foco que quedó sin atender (p. ej. 409 cuya recarga falló) no sobrevive.
+    setFoco(null);
     obtenerDetalleTramite(id, controlador.signal)
       .then((detalle) => setCarga({ id, estado: "listo", detalle }))
       .catch((err: unknown) => {
@@ -94,6 +183,98 @@ export function FichaOvzPage() {
 
   const vista: Vista =
     id === null ? { estado: "no-encontrado" } : carga && carga.id === id ? carga : { estado: "cargando" };
+
+  /** Tras un 409: el detalle actual (el que se veía está desfasado). Si falla, no queda a la vista. */
+  async function recargar(idTramite: number): Promise<void> {
+    try {
+      const detalle = await obtenerDetalleTramite(idTramite);
+      if (idActualRef.current === idTramite) setCarga({ id: idTramite, estado: "listo", detalle });
+    } catch (err) {
+      if (idActualRef.current !== idTramite || esCancelacion(err)) return;
+      const error = aErrorApi(err);
+      setCarga(
+        error.tipo === "no-encontrado"
+          ? { id: idTramite, estado: "no-encontrado" }
+          : { id: idTramite, estado: "error", error },
+      );
+    }
+  }
+
+  /** Detalle tras una respuesta incierta (red/5xx): el detalle, "no-encontrado", o null si tampoco se
+   * pudo leer (entonces se conserva el que se ve, con el error y el botón). */
+  async function leerTrasIncierto(idTramite: number): Promise<TramiteDetalle | "no-encontrado" | null> {
+    try {
+      return await obtenerDetalleTramite(idTramite);
+    } catch (err) {
+      return aErrorApi(err).tipo === "no-encontrado" ? "no-encontrado" : null;
+    }
+  }
+
+  function exito(accion: AccionHecho) {
+    setAnuncio(TEXTO_EXITO[accion]);
+    pedirFoco(accion === "marcar" ? "franja" : "marcar");
+  }
+
+  async function ejecutarAccion(accion: AccionHecho, detalle: TramiteDetalle): Promise<void> {
+    if (enviandoRef.current) return;
+    enviandoRef.current = true;
+    setEnviando(accion);
+    setAvisoAccion(null);
+    setAnuncio("");
+    const idTramite = detalle.id;
+    try {
+      const tramite =
+        accion === "marcar"
+          ? await marcarHechoEnOvz(idTramite, detalle.version)
+          : await desmarcarHechoEnOvz(idTramite, detalle.version);
+      if (idActualRef.current !== idTramite) return;
+      setCarga((actual) =>
+        actual && actual.id === idTramite && actual.estado === "listo"
+          ? { ...actual, detalle: fusionar(actual.detalle, tramite) }
+          : actual,
+      );
+      exito(accion);
+    } catch (err) {
+      if (idActualRef.current !== idTramite) return;
+      const error = aErrorApi(err);
+      if (error.tipo === "no-encontrado") {
+        setCarga({ id: idTramite, estado: "no-encontrado" });
+        return;
+      }
+      const aviso: AvisoAccion = {
+        accion,
+        mensaje: mensajeDeError(error, accion === "marcar" ? "marcar-hecho-ovz" : "desmarcar-hecho-ovz"),
+      };
+      if (error.tipo === "conflicto") {
+        // 409: el trámite cambió (otra ventana, otra persona): se enseña tal como está, sin reintentar.
+        setAvisoAccion(aviso);
+        await recargar(idTramite);
+        pedirFoco("aviso");
+        return;
+      }
+      if (error.tipo === "red" || error.tipo === "servidor") {
+        // M2: puede que el servidor sí lo aplicara. Se lee el detalle, como hace el modal.
+        const leido = await leerTrasIncierto(idTramite);
+        if (idActualRef.current !== idTramite) return;
+        if (leido === "no-encontrado") {
+          setCarga({ id: idTramite, estado: "no-encontrado" });
+          return;
+        }
+        if (leido) {
+          setCarga({ id: idTramite, estado: "listo", detalle: leido });
+          if (leido.estado === ESTADO_TRAS[accion]) {
+            exito(accion);
+            return;
+          }
+        }
+      }
+      setAvisoAccion(aviso);
+      pedirFoco("aviso");
+    } finally {
+      enviandoRef.current = false;
+      setEnviando(null);
+    }
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
@@ -130,7 +311,24 @@ export function FichaOvzPage() {
           </Alert>
         )}
 
-        {vista.estado === "listo" && <Contenido detalle={vista.detalle} />}
+        {/* I1: el resultado de marcar o quitar la marca se anuncia aquí (siempre montada, educada). */}
+        <p role="status" data-anuncio-hecho-en-ovz className="sr-only">
+          {anuncio}
+        </p>
+
+        {vista.estado === "listo" && (
+          <Contenido
+            detalle={vista.detalle}
+            accion={{
+              enviando,
+              aviso: avisoAccion,
+              foco,
+              onFocoAtendido: () => setFoco(null),
+              onMarcar: () => void ejecutarAccion("marcar", vista.detalle),
+              onQuitarMarca: () => void ejecutarAccion("desmarcar", vista.detalle),
+            }}
+          />
+        )}
       </main>
     </div>
   );
@@ -162,7 +360,19 @@ function SinFicha({ titulo, texto }: { titulo: string; texto: string }) {
   );
 }
 
-function Contenido({ detalle }: { detalle: TramiteDetalle }) {
+/** Lo que la ficha necesita para marcar o quitar la marca (el estado vive en la página). */
+interface PropsAccionHecho {
+  enviando: AccionHecho | null;
+  aviso: AvisoAccion | null;
+  /** Último destino de foco pedido por la página; cada pieza enfoca el suyo cuando le toca. */
+  foco: PeticionFoco | null;
+  /** Una petición de foco atendida se olvida: un remontaje posterior no vuelve a robar el foco. */
+  onFocoAtendido: () => void;
+  onMarcar: () => void;
+  onQuitarMarca: () => void;
+}
+
+function Contenido({ detalle, accion }: { detalle: TramiteDetalle; accion: PropsAccionHecho }) {
   const modo = modoFicha(detalle.estado);
   if (modo === "rechazado") {
     return <SinFicha titulo="Trámite rechazado" texto="Un trámite rechazado no se pasa a OVZ." />;
@@ -204,16 +414,25 @@ function Contenido({ detalle }: { detalle: TramiteDetalle }) {
       );
     case "ficha":
       return (
-        <Ficha
-          ficha={resultado.ficha}
-          copiable={modo === "copiable"}
-          mensaje={detalle.mensajeOriginal}
-        />
+        <Ficha ficha={resultado.ficha} modo={modo} detalle={detalle} accion={accion} />
       );
   }
 }
 
-function Ficha({ ficha, copiable, mensaje }: { ficha: FichaOvz; copiable: boolean; mensaje: string | null }) {
+function Ficha({
+  ficha,
+  modo,
+  detalle,
+  accion,
+}: {
+  ficha: FichaOvz;
+  modo: ModoFicha;
+  detalle: TramiteDetalle;
+  accion: PropsAccionHecho;
+}) {
+  // `hecho` es la misma ficha en consulta: se sigue pudiendo copiar (para comprobar lo que hay en OVZ).
+  const copiable = modo === "copiable" || modo === "hecho";
+  const mensaje = detalle.mensajeOriginal;
   // Filas ya copiadas en esta ventana (solo en memoria: ni se guarda ni cambia el trámite).
   const [copiados, setCopiados] = useState<ReadonlySet<string>>(() => new Set());
   const marcarCopiado = useCallback((id: string) => {
@@ -235,6 +454,8 @@ function Ficha({ ficha, copiable, mensaje }: { ficha: FichaOvz; copiable: boolea
           <span>Vista previa: aprueba el trámite antes de pasarlo a OVZ.</span>
         </p>
       )}
+
+      {modo === "hecho" && <FranjaHecho detalle={detalle} accion={accion} />}
 
       <div className="flex flex-col gap-1">
         <h1 className="text-xl font-extrabold">{ficha.formulario}</h1>
@@ -274,7 +495,152 @@ function Ficha({ ficha, copiable, mensaje }: { ficha: FichaOvz; copiable: boolea
           />
         ))}
       </div>
+
+      {modo === "copiable" && <BloqueMarcar accion={accion} />}
     </>
+  );
+}
+
+/** Error de marcar o quitar la marca, junto a la acción. Desaparece con la siguiente acción. */
+/** Enfoca `ref` cuando la página pide `destino` (una vez por petición). */
+function useFocoPedido(
+  accion: Pick<PropsAccionHecho, "foco" | "onFocoAtendido">,
+  destino: DestinoFoco,
+  ref: RefObject<HTMLElement | null>,
+) {
+  const { foco, onFocoAtendido } = accion;
+  useEffect(() => {
+    if (!foco || foco.destino !== destino || !ref.current) return;
+    ref.current.focus();
+    onFocoAtendido();
+  });
+}
+
+function AvisoAccionHecho({ accion }: { accion: PropsAccionHecho }) {
+  const { aviso } = accion;
+  const ref = useRef<HTMLDivElement | null>(null);
+  useFocoPedido(accion, "aviso", ref);
+  if (!aviso) return null;
+  return (
+    <Alert ref={ref} tabIndex={-1} variant="destructive" className="outline-none focus-visible:ring-3 focus-visible:ring-ring">
+      <CircleAlertIcon />
+      <AlertTitle>{TITULO_AVISO[aviso.accion]}</AlertTitle>
+      <AlertDescription>{aviso.mensaje}</AlertDescription>
+    </Alert>
+  );
+}
+
+/** APROBADO: al final del formulario, para cuando el gestor ya lo ha metido en OVZ. Sin confirmación
+ * (D2): marcar no cambia nada fuera de Ganera y se puede deshacer. */
+function BloqueMarcar({ accion }: { accion: PropsAccionHecho }) {
+  const idPista = useId();
+  const marcarRef = useRef<HTMLButtonElement | null>(null);
+  useFocoPedido(accion, "marcar", marcarRef);
+  return (
+    <div className="flex flex-col gap-3 border-t pt-4">
+      <AvisoAccionHecho accion={accion} />
+      <div className="flex flex-col items-start gap-1.5">
+        <Button ref={marcarRef} onClick={accion.onMarcar} disabled={accion.enviando !== null} aria-describedby={idPista}>
+          {accion.enviando === "marcar" ? TEXTO_BOTON_MARCANDO : TEXTO_BOTON_MARCAR}
+        </Button>
+        <p id={idPista} className="text-sm text-muted-foreground">
+          {PISTA_MARCAR_HECHO_EN_OVZ}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** HECHO_EN_OVZ: quién y cuándo, arriba, para que nadie lo meta dos veces. El par de éxito, nunca rojo.
+ * «Quitar la marca» se confirma en línea (mismo patrón que Rechazar en el modal). */
+function FranjaHecho({ detalle, accion }: { detalle: TramiteDetalle; accion: PropsAccionHecho }) {
+  const [confirmando, setConfirmando] = useState(false);
+  const idPregunta = useId();
+  const quitarRef = useRef<HTMLButtonElement | null>(null);
+  const cancelarRef = useRef<HTMLButtonElement | null>(null);
+  const franjaRef = useRef<HTMLDivElement | null>(null);
+  /** Tras cerrar la confirmación: a «Quitar la marca» (Cancelar/Esc) o a la franja («Sí»: el grupo
+   * desaparece y el botón está desactivado mientras se envía; el foco no puede caer al `body`). */
+  const focoAlCerrar = useRef<"boton" | "franja" | null>(null);
+  useFocoPedido(accion, "franja", franjaRef);
+
+  useEffect(() => {
+    if (confirmando) {
+      cancelarRef.current?.focus();
+      return;
+    }
+    const destino = focoAlCerrar.current;
+    focoAlCerrar.current = null;
+    if (destino === "boton") quitarRef.current?.focus();
+    if (destino === "franja") franjaRef.current?.focus();
+  }, [confirmando]);
+
+  function cancelar() {
+    focoAlCerrar.current = "boton";
+    setConfirmando(false);
+  }
+
+  function alPulsarTecla(evento: KeyboardEvent<HTMLDivElement>) {
+    if (evento.key === "Escape") {
+      evento.preventDefault();
+      cancelar();
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div
+        ref={franjaRef}
+        tabIndex={-1}
+        data-franja-hecho-en-ovz
+        className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-success px-3 py-2 text-sm text-success-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring"
+      >
+        <span className="flex min-w-0 flex-1 basis-56 items-start gap-2">
+          <CircleCheckIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+          <span className="font-semibold">{textoHechoEnOvz(detalle)}</span>
+        </span>
+        {!confirmando && (
+          <Button
+            ref={quitarRef}
+            variant="outline"
+            size="sm"
+            onClick={() => setConfirmando(true)}
+            disabled={accion.enviando !== null}
+          >
+            {accion.enviando === "desmarcar" ? TEXTO_BOTON_QUITANDO_MARCA : TEXTO_BOTON_QUITAR_MARCA}
+          </Button>
+        )}
+      </div>
+      {confirmando && (
+        <div
+          role="group"
+          aria-labelledby={idPregunta}
+          onKeyDown={alPulsarTecla}
+          className="flex flex-wrap items-center gap-2 rounded-lg bg-muted px-3 py-2"
+        >
+          <p id={idPregunta} className="mr-auto text-sm font-semibold">
+            {PREGUNTA_QUITAR_MARCA}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button ref={cancelarRef} variant="outline" size="sm" onClick={cancelar}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                focoAlCerrar.current = "franja";
+                setConfirmando(false);
+                accion.onQuitarMarca();
+              }}
+            >
+              {TEXTO_CONFIRMAR_QUITAR_MARCA}
+            </Button>
+          </div>
+        </div>
+      )}
+      <AvisoAccionHecho accion={accion} />
+    </div>
   );
 }
 

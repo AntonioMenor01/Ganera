@@ -38,6 +38,11 @@ export interface Tramite {
   estadoExtraccion: string | null;
   /** B1: identificadores que la IA devolvió y no parecían crotales; 0 si no hubo. */
   crotalesDescartados: number;
+  /** Hecho en OVZ: cuándo marcó el gestor que ya lo había metido él en OVZ (ISO-8601 UTC con `Z`,
+   * hasta microsegundos), o null si no está marcado. Se enseña con `fechaHechoEnOvz` (Madrid). */
+  hechoEnOvzEn: string | null;
+  /** Hecho en OVZ: nombre del usuario que lo marcó (nunca email ni id), o null. */
+  hechoEnOvzPorNombre: string | null;
 }
 
 export interface TramiteDetalle {
@@ -62,4 +67,9 @@ export interface TramiteDetalle {
   estadoExtraccion: string | null;
   /** B1: identificadores que la IA devolvió y no parecían crotales; 0 si no hubo. */
   crotalesDescartados: number;
+  /** Hecho en OVZ: cuándo marcó el gestor que ya lo había metido él en OVZ (ISO-8601 UTC con `Z`,
+   * hasta microsegundos), o null si no está marcado. Se enseña con `fechaHechoEnOvz` (Madrid). */
+  hechoEnOvzEn: string | null;
+  /** Hecho en OVZ: nombre del usuario que lo marcó (nunca email ni id), o null. */
+  hechoEnOvzPorNombre: string | null;
 }

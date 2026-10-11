@@ -14,12 +14,15 @@ import type { TramiteCrotal, TramiteDetalle } from "./types";
 // ---------------------------------------------------------------------------------------------
 // Modo de la ficha según el estado (D4).
 
-/** D4: qué se puede hacer con la ficha según el estado del trámite. Solo `copiable` lleva botones
- * de copiar: nada que no se haya aprobado se facilita para teclearlo en OVZ. */
-export type ModoFicha = "copiable" | "vista-previa" | "rechazado" | "extraccion" | "no-disponible";
+/** D4: qué se puede hacer con la ficha según el estado del trámite. Solo `copiable` y `hecho` llevan
+ * botones de copiar: nada que no se haya aprobado se facilita para teclearlo en OVZ. `hecho` (Hecho
+ * en OVZ) es la misma ficha en modo consulta, con la franja de quién y cuándo lo hizo, para que nadie
+ * lo meta dos veces. */
+export type ModoFicha = "copiable" | "hecho" | "vista-previa" | "rechazado" | "extraccion" | "no-disponible";
 
 const MODOS: Readonly<Record<EstadoTramite, ModoFicha>> = {
   APROBADO: "copiable",
+  HECHO_EN_OVZ: "hecho",
   PENDIENTE_REVISION: "vista-previa",
   RECHAZADO: "rechazado",
   PENDIENTE_EXTRACCION: "extraccion",

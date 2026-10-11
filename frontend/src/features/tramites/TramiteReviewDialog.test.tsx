@@ -24,6 +24,8 @@ const DETALLE = {
   origen: null as string | null,
   estadoExtraccion: null as string | null,
   crotalesDescartados: 0,
+  hechoEnOvzEn: null as string | null,
+  hechoEnOvzPorNombre: null as string | null,
 }
 
 type Detalle = typeof DETALLE
@@ -68,6 +70,8 @@ function respuestaLista(d: Detalle) {
     origen: d.origen,
     estadoExtraccion: d.estadoExtraccion,
     crotalesDescartados: d.crotalesDescartados,
+    hechoEnOvzEn: d.hechoEnOvzEn,
+    hechoEnOvzPorNombre: d.hechoEnOvzPorNombre,
   } satisfies Tramite
 }
 
@@ -150,6 +154,17 @@ async function dialogoListo() {
   const dialogo = await screen.findByRole("dialog")
   await within(dialogo).findByRole("heading", { name: "Mensaje de WhatsApp" })
   return dialogo
+}
+
+/** Palabras que dirían que Ganera hizo algo en OVZ (CLAUDE.md: el frontend nunca lo da a entender). */
+const PROHIBIDAS = /enviad|ejecutad|registrad|en curso en OVZ|tramitad|completad|procesad|presentad/i
+
+/** Textos del modal que mencionan OVZ (el texto propio de cada elemento), ordenados. */
+function mencionesOvz(dialogo: HTMLElement): string[] {
+  return within(dialogo)
+    .getAllByText(/OVZ/)
+    .map((e) => e.textContent?.trim() ?? "")
+    .sort()
 }
 
 function boton(dialogo: HTMLElement, nombre: string | RegExp) {
@@ -349,6 +364,7 @@ describe("TramiteReviewDialog: solo lectura fuera de PENDIENTE_REVISION (decisi�
   for (const estado of [
     "PENDIENTE_EXTRACCION",
     "APROBADO",
+    "HECHO_EN_OVZ",
     "EN_PROCESO",
     "EJECUTADO_OVZ",
     "ERROR_OVZ",
@@ -374,8 +390,15 @@ describe("TramiteReviewDialog: solo lectura fuera de PENDIENTE_REVISION (decisi�
       expect(within(dialogo).getByText("En inventario")).toBeInTheDocument()
       expect(within(dialogo).queryByRole("textbox")).not.toBeInTheDocument()
       expect(within(dialogo).queryByRole("combobox")).not.toBeInTheDocument()
-      // Sin acciones de revisión: solo cerrar y, en APROBADO, abrir la ficha para OVZ (ficha OVZ, T5).
-      const esperados = estado === "APROBADO" ? ["Abrir ficha para OVZ (se abre en otra ventana)", "Cerrar"] : ["Cerrar"]
+      // Sin acciones de revisión: solo cerrar y, en APROBADO, abrir la ficha para OVZ (ficha OVZ, T5) y
+      // marcarlo como hecho en OVZ; en HECHO_EN_OVZ, quitar la marca y abrir la ficha (Hecho en OVZ).
+      const ABRIR = "Abrir ficha para OVZ (se abre en otra ventana)"
+      const esperados =
+        estado === "APROBADO"
+          ? [ABRIR, "Marcar como hecho en OVZ", "Cerrar"]
+          : estado === "HECHO_EN_OVZ"
+            ? ["Quitar la marca", ABRIR, "Cerrar"]
+            : ["Cerrar"]
       expect(within(dialogo).getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual(esperados)
     })
   }
@@ -897,18 +920,24 @@ describe("TramiteReviewDialog: Aprobar", () => {
 
     const exito = await within(dialogo).findByText("Trámite aprobado.")
     expect(exito.closest("[role=status]")).not.toBeNull()
-    expect(within(dialogo).getByText("Aprobado")).toHaveClass("bg-success")
+    expect(within(dialogo).getByText("Aprobado · falta OVZ")).toHaveClass("bg-warning")
     expect(onCambiado).toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()
     for (const nombre of ["Aprobar", "Rechazar", "Guardar", "Añadir crotal"]) {
       expect(within(dialogo).queryByRole("button", { name: nombre })).not.toBeInTheDocument()
     }
-    // Nada sugiere que algo se haya enviado a OVZ.net: la única mención es la ficha para pasarlo a
-    // mano (ficha OVZ, T5), que es lo que de verdad queda por hacer.
-    expect(dialogo).not.toHaveTextContent(/enviad|ejecutad|registrad|en curso en OVZ|tramitad|completad|procesad|presentad/i)
-    const menciones = within(dialogo).getAllByText(/OVZ/)
-    expect(menciones).toHaveLength(1)
-    expect(menciones[0].closest("button")).toHaveAccessibleName("Abrir ficha para OVZ (se abre en otra ventana)")
+    // Nada sugiere que algo se haya enviado a OVZ.net. Las únicas menciones: el badge («falta OVZ»), la
+    // ficha para pasarlo a mano (ficha OVZ, T5) y el botón de marcarlo cuando la persona lo haya hecho
+    // (con su pista), que es lo que de verdad queda por hacer (Hecho en OVZ).
+    expect(dialogo).not.toHaveTextContent(PROHIBIDAS)
+    expect(mencionesOvz(dialogo)).toEqual(
+      [
+        "Abrir ficha para OVZ",
+        "Aprobado · falta OVZ",
+        "Marcar como hecho en OVZ",
+        "Púlsalo cuando lo hayas terminado tú en OVZ. Ganera no envía nada.",
+      ].sort(),
+    )
     await waitFor(() => expect(within(dialogo).getByRole("heading", { name: "Trámite #7" })).toHaveFocus())
   })
 })
@@ -1537,4 +1566,328 @@ describe("TramiteReviewDialog: avisos de extracción (B1, D8 y brief de T4)", ()
     expect(within(dialogo).queryByText("Falta asignar la explotación.")).not.toBeInTheDocument()
     expect(within(dialogo).getByText(TEXTO_FALLIDA)).toBeInTheDocument()
   })
+})
+
+// ---------------------------------------------------------------------------------------------
+// Hecho en OVZ (2026-10-07): el gestor deja constancia de que él ya lo metió en OVZ.
+
+const MARCA = { hechoEnOvzEn: "2026-10-07T10:30:00Z", hechoEnOvzPorNombre: "Ana Pérez" }
+const FRANJA = "Hecho en OVZ por Ana Pérez el 07/10/2026, 12:30"
+const ABRIR_FICHA = "Abrir ficha para OVZ (se abre en otra ventana)"
+
+describe("TramiteReviewDialog: marcar como hecho en OVZ (APROBADO)", () => {
+  it("pie con «Marcar como hecho en OVZ» (con su pista) y «Abrir ficha para OVZ»", async () => {
+    server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(detalle({ estado: "APROBADO" }))))
+    renderDialog()
+    const dialogo = await dialogoListo()
+
+    expect(boton(dialogo, "Marcar como hecho en OVZ")).toHaveAccessibleDescription(
+      "Púlsalo cuando lo hayas terminado tú en OVZ. Ganera no envía nada.",
+    )
+    expect(boton(dialogo, ABRIR_FICHA)).toBeEnabled()
+    expect(within(dialogo).queryByText(/^Hecho en OVZ (por|el)/)).not.toBeInTheDocument()
+  })
+
+  it("sin confirmación: envía {version}, enseña la franja, avisa a la cola y sigue en solo lectura", async () => {
+    const cuerpos: unknown[] = []
+    detallesEnOrden(
+      () => HttpResponse.json(detalle({ estado: "APROBADO", version: 3 })),
+      () => HttpResponse.json(detalle({ estado: "HECHO_EN_OVZ", version: 4, ...MARCA })),
+    )
+    server.use(
+      http.post(apiUrl("/tramites/7/marcar-hecho-ovz"), async ({ request }) => {
+        cuerpos.push(await request.json())
+        return HttpResponse.json(respuestaLista(detalle({ estado: "HECHO_EN_OVZ", version: 4, ...MARCA })))
+      }),
+    )
+    const onCambiado = vi.fn()
+    const onClose = vi.fn()
+    const user = userEvent.setup()
+    renderDialog({ onCambiado, onClose })
+    const dialogo = await dialogoListo()
+    await user.click(boton(dialogo, "Marcar como hecho en OVZ"))
+
+    expect(await within(dialogo).findByText(FRANJA)).toBeInTheDocument()
+    expect(cuerpos).toEqual([{ version: 3 }])
+    expect(within(dialogo).getByText("Marca guardada.")).toBeInTheDocument()
+    expect(within(dialogo).getByText("Hecho en OVZ")).toHaveClass("bg-success")
+    expect(onCambiado).toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(within(dialogo).queryByRole("button", { name: "Marcar como hecho en OVZ" })).not.toBeInTheDocument()
+    expect(boton(dialogo, "Quitar la marca")).toBeEnabled()
+    expect(within(dialogo).queryByRole("textbox")).not.toBeInTheDocument()
+    await waitFor(() => expect(within(dialogo).getByRole("heading", { name: "Trámite #7" })).toHaveFocus())
+  })
+
+  it("mientras marca, el botón dice «Marcando…» y está desactivado; un segundo clic no envía nada", async () => {
+    const espera = puerta()
+    let posts = 0
+    detallesEnOrden(
+      () => HttpResponse.json(detalle({ estado: "APROBADO" })),
+      () => HttpResponse.json(detalle({ estado: "HECHO_EN_OVZ", version: 1, ...MARCA })),
+    )
+    server.use(
+      http.post(apiUrl("/tramites/7/marcar-hecho-ovz"), async () => {
+        posts += 1
+        await espera.promesa
+        return HttpResponse.json(respuestaLista(detalle({ estado: "HECHO_EN_OVZ", version: 1, ...MARCA })))
+      }),
+    )
+    const user = userEvent.setup()
+    renderDialog()
+    const dialogo = await dialogoListo()
+    await user.click(boton(dialogo, "Marcar como hecho en OVZ"))
+    const enCurso = await within(dialogo).findByRole("button", { name: "Marcando…" })
+    expect(enCurso).toBeDisabled()
+    await user.click(enCurso)
+    espera.abrir()
+    await within(dialogo).findByText(FRANJA)
+    expect(posts).toBe(1)
+  })
+
+  it("409: recarga, descarta y enseña el motivo tal cual, sin reintentar", async () => {
+    let posts = 0
+    detallesEnOrden(
+      () => HttpResponse.json(detalle({ estado: "APROBADO", version: 3 })),
+      () => HttpResponse.json(detalle({ estado: "HECHO_EN_OVZ", version: 4, ...MARCA })),
+    )
+    server.use(
+      http.post(apiUrl("/tramites/7/marcar-hecho-ovz"), () => {
+        posts += 1
+        return HttpResponse.json({ motivo: "Este trámite ya está marcado como hecho en OVZ." }, { status: 409 })
+      }),
+    )
+    const onCambiado = vi.fn()
+    const user = userEvent.setup()
+    renderDialog({ onCambiado })
+    const dialogo = await dialogoListo()
+    await user.click(boton(dialogo, "Marcar como hecho en OVZ"))
+
+    expect(await within(dialogo).findByText(FRANJA)).toBeInTheDocument()
+    expect(within(dialogo).getByText("Este trámite ya está marcado como hecho en OVZ.")).toBeInTheDocument()
+    expect(posts).toBe(1)
+    expect(onCambiado).toHaveBeenCalled()
+  })
+})
+
+describe("TramiteReviewDialog: hecho en OVZ (solo lectura con la franja)", () => {
+  it("la franja en el cuerpo, en el par de éxito; pie con «Quitar la marca» y «Abrir ficha para OVZ»", async () => {
+    server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(detalle({ estado: "HECHO_EN_OVZ", ...MARCA }))))
+    renderDialog()
+    const dialogo = await dialogoListo()
+
+    const franja = within(dialogo).getByText(FRANJA)
+    const contenedor = franja.closest("[data-franja-hecho-en-ovz]") as HTMLElement
+    expect(contenedor).not.toBeNull()
+    expect(contenedor.className).toMatch(/bg-success/)
+    expect(contenedor.className).not.toMatch(/destructive|danger|primary/)
+    expect(contenedor.closest("[data-cuerpo-revision]")).not.toBeNull()
+    expect(boton(dialogo, "Quitar la marca")).toBeEnabled()
+    expect(boton(dialogo, ABRIR_FICHA)).toBeEnabled()
+    expect(within(dialogo).queryByRole("textbox")).not.toBeInTheDocument()
+  })
+
+  it("«Quitar la marca» se confirma en línea; Cancelar vuelve con el foco en el botón y no envía nada", async () => {
+    let posts = 0
+    server.use(
+      http.get(apiUrl("/tramites/7"), () => HttpResponse.json(detalle({ estado: "HECHO_EN_OVZ", ...MARCA }))),
+      http.post(apiUrl("/tramites/7/desmarcar-hecho-ovz"), () => {
+        posts += 1
+        return HttpResponse.json(respuestaLista(detalle({ estado: "APROBADO", version: 1 })))
+      }),
+    )
+    const user = userEvent.setup()
+    renderDialog()
+    const dialogo = await dialogoListo()
+    await user.click(boton(dialogo, "Quitar la marca"))
+
+    const grupo = within(dialogo).getByRole("group", {
+      name: "¿Quitar la marca de hecho en OVZ? En OVZ no cambia nada.",
+    })
+    expect(within(grupo).getByRole("button", { name: "Cancelar" })).toHaveFocus()
+    await user.click(within(grupo).getByRole("button", { name: "Cancelar" }))
+    expect(within(dialogo).queryByRole("group")).not.toBeInTheDocument()
+    expect(boton(dialogo, "Quitar la marca")).toHaveFocus()
+    expect(posts).toBe(0)
+  })
+
+  it("Esc cancela la confirmación sin cerrar el modal", async () => {
+    server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(detalle({ estado: "HECHO_EN_OVZ", ...MARCA }))))
+    const onClose = vi.fn()
+    const user = userEvent.setup()
+    renderDialog({ onClose })
+    const dialogo = await dialogoListo()
+    await user.click(boton(dialogo, "Quitar la marca"))
+    await user.keyboard("{Escape}")
+
+    expect(within(dialogo).queryByRole("group")).not.toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(boton(dialogo, "Quitar la marca")).toHaveFocus()
+  })
+
+  it("«Sí, quitar la marca» envía {version}; vuelve a «Aprobado · falta OVZ» con el botón de marcar", async () => {
+    const cuerpos: string[] = []
+    detallesEnOrden(
+      () => HttpResponse.json(detalle({ estado: "HECHO_EN_OVZ", version: 5, ...MARCA })),
+      () => HttpResponse.json(detalle({ estado: "APROBADO", version: 6 })),
+    )
+    server.use(
+      http.post(apiUrl("/tramites/7/desmarcar-hecho-ovz"), async ({ request }) => {
+        cuerpos.push(await request.text())
+        return HttpResponse.json(respuestaLista(detalle({ estado: "APROBADO", version: 6 })))
+      }),
+    )
+    const onCambiado = vi.fn()
+    const user = userEvent.setup()
+    renderDialog({ onCambiado })
+    const dialogo = await dialogoListo()
+    await user.click(boton(dialogo, "Quitar la marca"))
+    await user.click(boton(dialogo, "Sí, quitar la marca"))
+
+    expect(await within(dialogo).findByText("Marca quitada.")).toBeInTheDocument()
+    expect(cuerpos).toEqual(['{"version":5}'])
+    expect(within(dialogo).getByText("Aprobado · falta OVZ")).toHaveClass("bg-warning")
+    expect(within(dialogo).queryByText(FRANJA)).not.toBeInTheDocument()
+    expect(boton(dialogo, "Marcar como hecho en OVZ")).toBeEnabled()
+    expect(onCambiado).toHaveBeenCalled()
+    // M3 (revisión de T2): el botón que tenía el foco desaparece; el foco se queda en el título.
+    await waitFor(() => expect(within(dialogo).getByRole("heading", { name: "Trámite #7" })).toHaveFocus())
+  })
+
+  it("409 al quitar la marca: recarga y enseña el motivo tal cual", async () => {
+    detallesEnOrden(
+      () => HttpResponse.json(detalle({ estado: "HECHO_EN_OVZ", version: 5, ...MARCA })),
+      () => HttpResponse.json(detalle({ estado: "APROBADO", version: 6 })),
+    )
+    server.use(
+      http.post(apiUrl("/tramites/7/desmarcar-hecho-ovz"), () =>
+        HttpResponse.json(
+          { motivo: "Solo se puede quitar la marca de un trámite marcado como hecho en OVZ." },
+          { status: 409 },
+        ),
+      ),
+    )
+    const user = userEvent.setup()
+    renderDialog()
+    const dialogo = await dialogoListo()
+    await user.click(boton(dialogo, "Quitar la marca"))
+    await user.click(boton(dialogo, "Sí, quitar la marca"))
+
+    expect(
+      await within(dialogo).findByText("Solo se puede quitar la marca de un trámite marcado como hecho en OVZ."),
+    ).toBeInTheDocument()
+    expect(await within(dialogo).findByRole("button", { name: "Marcar como hecho en OVZ" })).toBeEnabled()
+  })
+
+  it("sin nombre: «Hecho en OVZ el …»", async () => {
+    server.use(
+      http.get(apiUrl("/tramites/7"), () =>
+        HttpResponse.json(detalle({ estado: "HECHO_EN_OVZ", ...MARCA, hechoEnOvzPorNombre: null })),
+      ),
+    )
+    renderDialog()
+    const dialogo = await dialogoListo()
+
+    expect(within(dialogo).getByText("Hecho en OVZ el 07/10/2026, 12:30")).toBeInTheDocument()
+  })
+})
+
+describe("TramiteReviewDialog: honestidad en todos los estados (Hecho en OVZ)", () => {
+  const ESTADOS = [
+    "PENDIENTE_EXTRACCION",
+    "PENDIENTE_REVISION",
+    "APROBADO",
+    "HECHO_EN_OVZ",
+    "RECHAZADO",
+  ] as const
+
+  // Menciones de OVZ permitidas: el botón de la ficha, el badge, el botón de marcar (y su pista) y la
+  // franja. Nada más.
+  const PERMITIDAS: Record<(typeof ESTADOS)[number], string[]> = {
+    PENDIENTE_EXTRACCION: [],
+    PENDIENTE_REVISION: [],
+    APROBADO: [
+      "Abrir ficha para OVZ",
+      "Aprobado · falta OVZ",
+      "Marcar como hecho en OVZ",
+      "Púlsalo cuando lo hayas terminado tú en OVZ. Ganera no envía nada.",
+    ],
+    HECHO_EN_OVZ: ["Abrir ficha para OVZ", "Hecho en OVZ", FRANJA],
+    RECHAZADO: [],
+  }
+
+  for (const estado of ESTADOS) {
+    it(`${estado}: sin palabras prohibidas y solo las menciones de OVZ permitidas`, async () => {
+      server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(detalle({ estado, ...(estado === "HECHO_EN_OVZ" ? MARCA : {}) }))))
+      renderDialog()
+      const dialogo = await dialogoListo()
+
+      expect(dialogo).not.toHaveTextContent(PROHIBIDAS)
+      const menciones = within(dialogo).queryAllByText(/OVZ/).map((e) => e.textContent?.trim() ?? "").sort()
+      expect(menciones).toEqual([...PERMITIDAS[estado]].sort())
+    })
+  }
+
+  it("HECHO_EN_OVZ con la confirmación de quitar la marca abierta: tampoco", async () => {
+    server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(detalle({ estado: "HECHO_EN_OVZ", ...MARCA }))))
+    const user = userEvent.setup()
+    renderDialog()
+    const dialogo = await dialogoListo()
+    await user.click(boton(dialogo, "Quitar la marca"))
+
+    expect(dialogo).not.toHaveTextContent(PROHIBIDAS)
+    expect(mencionesOvz(dialogo)).toEqual(
+      ["Hecho en OVZ", FRANJA, "¿Quitar la marca de hecho en OVZ? En OVZ no cambia nada."].sort(),
+    )
+  })
+
+  it("tras marcar: la franja y el aviso de éxito no dicen que Ganera hiciera nada en OVZ", async () => {
+    detallesEnOrden(
+      () => HttpResponse.json(detalle({ estado: "APROBADO" })),
+      () => HttpResponse.json(detalle({ estado: "HECHO_EN_OVZ", version: 1, ...MARCA })),
+    )
+    server.use(
+      http.post(apiUrl("/tramites/7/marcar-hecho-ovz"), () =>
+        HttpResponse.json(respuestaLista(detalle({ estado: "HECHO_EN_OVZ", version: 1, ...MARCA }))),
+      ),
+    )
+    const user = userEvent.setup()
+    renderDialog()
+    const dialogo = await dialogoListo()
+    await user.click(boton(dialogo, "Marcar como hecho en OVZ"))
+    await within(dialogo).findByText("Marca guardada.")
+
+    expect(dialogo).not.toHaveTextContent(PROHIBIDAS)
+    expect(mencionesOvz(dialogo)).toEqual(["Abrir ficha para OVZ", "Hecho en OVZ", FRANJA].sort())
+  })
+})
+
+describe("TramiteReviewDialog: honestidad con el aviso de error de marcar o quitar la marca (M1)", () => {
+  for (const caso of [
+    { accion: "marcar", estado: "APROBADO", ruta: "marcar-hecho-ovz", titulo: "No se ha marcado el trámite", status: 409 },
+    { accion: "marcar", estado: "APROBADO", ruta: "marcar-hecho-ovz", titulo: "No se ha marcado el trámite", status: 500 },
+    { accion: "quitar", estado: "HECHO_EN_OVZ", ruta: "desmarcar-hecho-ovz", titulo: "No se ha quitado la marca", status: 409 },
+    { accion: "quitar", estado: "HECHO_EN_OVZ", ruta: "desmarcar-hecho-ovz", titulo: "No se ha quitado la marca", status: 500 },
+  ] as const) {
+    it(`${caso.accion} con ${caso.status}: el aviso lleva su título y no dice nada prohibido`, async () => {
+      const inicial = detalle({ estado: caso.estado, ...(caso.estado === "HECHO_EN_OVZ" ? MARCA : {}) })
+      server.use(
+        http.get(apiUrl("/tramites/7"), () => HttpResponse.json(inicial)),
+        // Sin `motivo`: se ve el texto genérico del contexto (el que dice «…como hecho en OVZ…»).
+        http.post(apiUrl(`/tramites/7/${caso.ruta}`), () => new HttpResponse(null, { status: caso.status })),
+      )
+      const user = userEvent.setup()
+      renderDialog()
+      const dialogo = await dialogoListo()
+      if (caso.accion === "marcar") {
+        await user.click(boton(dialogo, "Marcar como hecho en OVZ"))
+      } else {
+        await user.click(boton(dialogo, "Quitar la marca"))
+        await user.click(boton(dialogo, "Sí, quitar la marca"))
+      }
+
+      expect(await within(dialogo).findByText(caso.titulo)).toBeInTheDocument()
+      expect(dialogo).not.toHaveTextContent(PROHIBIDAS)
+    })
+  }
 })

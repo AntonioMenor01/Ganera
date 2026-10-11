@@ -3,7 +3,14 @@ import { describe, expect, it } from "vitest"
 import { apiUrl } from "@/test/apiBaseUrl"
 import { server } from "@/test/server"
 import { ErrorApi } from "@/shared/api/errores"
-import { actualizarTramite, aprobarTramite, obtenerDetalleTramite, rechazarTramite } from "./api"
+import {
+  actualizarTramite,
+  aprobarTramite,
+  desmarcarHechoEnOvz,
+  marcarHechoEnOvz,
+  obtenerDetalleTramite,
+  rechazarTramite,
+} from "./api"
 
 const DETALLE = {
   id: 7,
@@ -19,6 +26,8 @@ const DETALLE = {
   origen: null,
   estadoExtraccion: null,
   crotalesDescartados: 0,
+  hechoEnOvzEn: null,
+  hechoEnOvzPorNombre: null,
 }
 
 const RESPUESTA_LISTA = {
@@ -32,6 +41,8 @@ const RESPUESTA_LISTA = {
   origen: null,
   estadoExtraccion: null,
   crotalesDescartados: 0,
+  hechoEnOvzEn: null,
+  hechoEnOvzPorNombre: null,
 }
 
 describe("actualizarTramite (PATCH /tramites/{id})", () => {
@@ -142,6 +153,81 @@ describe("rechazarTramite (POST /tramites/{id}/rechazar)", () => {
       }),
     )
     await rechazarTramite(7, 0)
+    expect(cuerpo).toEqual({ version: 0 })
+  })
+})
+
+describe("marcarHechoEnOvz (POST /tramites/{id}/marcar-hecho-ovz)", () => {
+  it("envía solo {version} (quién marca sale del JWT) y devuelve el trámite con quién y cuándo", async () => {
+    let cuerpo: unknown
+    server.use(
+      http.post(apiUrl("/tramites/7/marcar-hecho-ovz"), async ({ request }) => {
+        cuerpo = await request.json()
+        return HttpResponse.json({
+          ...RESPUESTA_LISTA,
+          estado: "HECHO_EN_OVZ",
+          hechoEnOvzEn: "2026-10-07T10:30:00Z",
+          hechoEnOvzPorNombre: "Ana Pérez",
+        })
+      }),
+    )
+    const tramite = await marcarHechoEnOvz(7, 4)
+    expect(cuerpo).toEqual({ version: 4 })
+    expect(tramite.estado).toBe("HECHO_EN_OVZ")
+    expect(tramite.hechoEnOvzEn).toBe("2026-10-07T10:30:00Z")
+    expect(tramite.hechoEnOvzPorNombre).toBe("Ana Pérez")
+  })
+
+  it("la versión 0 también se envía (no se toma por ausente)", async () => {
+    let cuerpo: unknown
+    server.use(
+      http.post(apiUrl("/tramites/7/marcar-hecho-ovz"), async ({ request }) => {
+        cuerpo = await request.json()
+        return HttpResponse.json({ ...RESPUESTA_LISTA, estado: "HECHO_EN_OVZ" })
+      }),
+    )
+    await marcarHechoEnOvz(7, 0)
+    expect(cuerpo).toEqual({ version: 0 })
+  })
+
+  it("un 409 llega como ErrorApi de conflicto con su motivo", async () => {
+    server.use(
+      http.post(apiUrl("/tramites/7/marcar-hecho-ovz"), () =>
+        HttpResponse.json({ motivo: "Este trámite ya está marcado como hecho en OVZ." }, { status: 409 }),
+      ),
+    )
+    const error = await marcarHechoEnOvz(7, 4).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(ErrorApi)
+    expect((error as ErrorApi).tipo).toBe("conflicto")
+    expect((error as ErrorApi).motivo).toBe("Este trámite ya está marcado como hecho en OVZ.")
+  })
+})
+
+describe("desmarcarHechoEnOvz (POST /tramites/{id}/desmarcar-hecho-ovz)", () => {
+  it("envía {version} y devuelve el trámite otra vez aprobado, sin quién ni cuándo", async () => {
+    let cuerpo: unknown
+    server.use(
+      http.post(apiUrl("/tramites/7/desmarcar-hecho-ovz"), async ({ request }) => {
+        cuerpo = await request.json()
+        return HttpResponse.json(RESPUESTA_LISTA)
+      }),
+    )
+    const tramite = await desmarcarHechoEnOvz(7, 4)
+    expect(cuerpo).toEqual({ version: 4 })
+    expect(tramite.estado).toBe("APROBADO")
+    expect(tramite.hechoEnOvzEn).toBeNull()
+    expect(tramite.hechoEnOvzPorNombre).toBeNull()
+  })
+
+  it("la versión 0 también se envía (no se toma por ausente)", async () => {
+    let cuerpo: unknown
+    server.use(
+      http.post(apiUrl("/tramites/7/desmarcar-hecho-ovz"), async ({ request }) => {
+        cuerpo = await request.json()
+        return HttpResponse.json(RESPUESTA_LISTA)
+      }),
+    )
+    await desmarcarHechoEnOvz(7, 0)
     expect(cuerpo).toEqual({ version: 0 })
   })
 })

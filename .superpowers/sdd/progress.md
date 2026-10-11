@@ -921,3 +921,41 @@ Informes en `.superpowers/sdd/fo-*`.
   H2 y secreto del smoke borrados. `CLAUDE.md`, `DESIGN.md`, `ganera-prompts.md` y el plan al día. **Commit `db0d234`** con el visto
   bueno de Antonio. **Pendiente:** regenerar `ganera-demo/seed-tramites.sql` con los tipos nuevos, que pasa a ser un paso de la tarea de despliegue
   (anotado en `ganera-prompts.md`, "Despliegue en Clever Cloud — pendiente").
+
+## 2026-10-07 — Hecho en OVZ (D5 de la ficha OVZ)
+
+Plan: `docs/superpowers/plans/2026-10-07-hecho-en-ovz.md`. Decisiones de Antonio: D1 estado nuevo `HECHO_EN_OVZ` +
+`hecho_en_ovz_por`/`hecho_en_ovz_en` + `CHECK`; D2 se puede deshacer (marcar sin confirmación, quitar con confirmación
+en línea); botón en la ficha y en el modal; badges «Aprobado · falta OVZ» (warning) y «Hecho en OVZ» (success); filtro
+sin `EN_PROCESO`/`EJECUTADO_OVZ`/`ERROR_OVZ` (el enum no se toca); sin bloqueo de suscripción; quién marca sale del JWT;
+la ficha se abre en `HECHO_EN_OVZ` en modo consulta; PATCH en `HECHO_EN_OVZ` → `409` «quita la marca»; fecha en
+Europe/Madrid; sin pase de Impeccable (patrones existentes, revisión en las capturas). Informes en `.superpowers/sdd/ho-*`.
+
+- **T1** (backend: `V21`, estado, dos endpoints, campos en las respuestas, mensaje con `gestoriaId` en el detalle y el
+  PATCH): 706 → **742**. Cuatro regresiones en rojo (sin `CHECK`, sin asignar el usuario, finder sin `gestoriaId`, sin
+  el `@EntityGraph`). Approved with minors: N1 (comentario de los estados reservados) corregido desde la sesión
+  principal; M1, M2 y N3 anotados en `CLAUDE.md` como limitaciones conocidas.
+- **T2** (frontend + `DESIGN.md`): 720 → 794. Changes requested por I1 (foco y anuncio en la ficha); corregidos I1 y
+  M1–M4 → 810; segunda pasada Approved with minors; M5 (test de que la ficha no roba el foco), N7 y N9 corregidos →
+  **811** (41 ficheros). Sin «Cerrar» visible en el pie de `HECHO_EN_OVZ` (la X ya se llama «Cerrar»).
+- **T3** (smoke delegado; `ho-t3-smoke.md`): H2 en fichero, A `ACTIVA` con tres usuarios y B `SUSPENDIDA`, Chromium y
+  Firefox: **13/13 PASS** (27 comprobaciones). 42 capturas en `C:\Users\Antonio\Desktop\capturas-ganera-hecho-ovz\`.
+  N8 (que el aviso de error enfocable con `role="alert"` se lea dos veces) no se pudo comprobar sin lector de pantalla.
+  Procesos parados por PID y scratchpad borrado.
+- **Para el despliegue demo:** `ganera-demo/seed-tramites.sql` y `smoke.sh` (fuera del repo) deben incluir
+  `HECHO_EN_OVZ` (con las dos columnas rellenas, o el `CHECK` lo rechaza) y probar marcar y quitar la marca (anotado en
+  `ganera-prompts.md`, paso 10 del despliegue).
+- **Revisión de Antonio (2026-10-11):** el rojo de «Sí, quitar la marca» se queda; sin «Cerrar» en el pie de
+  `HECHO_EN_OVZ`; se acepta que la BD no compruebe la gestoría de quien marca; lo de `ON DELETE` se decidirá con el
+  borrado de usuarios y el RGPD.
+- **Commit** con el visto bueno de Antonio, después de un commit `docs:` aparte con la corrección de «pendiente de
+  commit» de la ficha (ya estaba en `db0d234`).
+
+### Pendientes técnicos
+
+- **Lector de pantalla no verificado:** que el aviso de error enfocable de la ficha y del modal (`role="alert"` con
+  `tabIndex={-1}`, que recibe el foco tras un error) no se lea dos veces. Comprobarlo con NVDA (N8 de la revisión de
+  la T2 de «Hecho en OVZ»).
+- **Bloque C:** endurecer el aislamiento en BD con FK compuestas `(id, gestoria_id)` de forma global (hoy, por ejemplo,
+  `tramite.hecho_en_ovz_por` no garantiza en BD que el usuario sea de la gestoría del trámite; solo lo garantiza el
+  servicio).
