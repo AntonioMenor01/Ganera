@@ -670,7 +670,7 @@ Plan con las decisiones cerradas: `docs/superpowers/plans/2026-10-03-tarea-front
    la infraestructura definitiva del C.**
 5. **Prompt C**, después la app de escritorio, el MVP a la gestoría piloto y, tras el piloto, OVZ 3a/3c.
 
-**Añadido el 2026-10-06 — escalón 1 de OVZ:** la **ficha lista para OVZ** (**hecha el 2026-10-07, pendiente de commit**: backend 706/706, frontend 720/720, smoke en navegador real
+**Añadido el 2026-10-06 — escalón 1 de OVZ:** la **ficha lista para OVZ** (**hecha el 2026-10-07, commit `db0d234`**: backend 706/706, frontend 720/720, smoke en navegador real
 36/36 en Chromium y Firefox; análisis en
 `docs/referencias/ovz-tramites-bovino.md`, plan en `docs/superpowers/plans/2026-10-06-ficha-ovz.md`). En un
 trámite aprobado, Ganera enseña sus datos en el orden del formulario de OVZ, con un botón de copiar en cada

@@ -1303,7 +1303,7 @@ dress rehearsal against embedded PostgreSQL 16 (onboarding, both Excel imports, 
 non-UTC session, `smoke.sh` all PASS). Still to do: deploy on Clever (Antonio's account, console and
 secrets), seed, and the smoke against the deployed environment; then optionally the Twilio sandbox.
 
-**Ficha lista para OVZ (escalón 1 de OVZ) — complete, pending commit** (2026-10-06 → 2026-10-07),
+**Ficha lista para OVZ (escalón 1 de OVZ) — complete, committed as `db0d234`** (2026-10-06 → 2026-10-07),
 following `docs/superpowers/plans/2026-10-06-ficha-ovz.md` with the Superpowers flow (T1 OVZ types +
 `V20`, T2 titular in the detail + T2b OVZ-password leak test, T3 the pure ficha catalog, T4 the copy
 button, one implementer + one independent reviewer each, all **Approved with minors**, minors fixed; T5

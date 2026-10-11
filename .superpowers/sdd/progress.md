@@ -918,6 +918,6 @@ Informes en `.superpowers/sdd/fo-*`.
   scratchpad): **36/36 PASS** en dos pasadas (sesión heredada en Chromium y Firefox, copiar y pegar de verdad, todos los tipos y
   estados, `404` cruzado, sin scroll lateral a 375/420/1440, login y vuelta desde una pestaña sin opener). `./mvnw clean test`
   **706/706** sin `postgres.exe` colgado; `npm test` **720/720**, build y lint con los avisos de siempre. Servidores parados por PID;
-  H2 y secreto del smoke borrados. `CLAUDE.md`, `DESIGN.md`, `ganera-prompts.md` y el plan al día. **Pendiente:** el commit (con la
-  aprobación de Antonio) y regenerar `ganera-demo/seed-tramites.sql` con los tipos nuevos, que pasa a ser un paso de la tarea de despliegue
+  H2 y secreto del smoke borrados. `CLAUDE.md`, `DESIGN.md`, `ganera-prompts.md` y el plan al día. **Commit `db0d234`** con el visto
+  bueno de Antonio. **Pendiente:** regenerar `ganera-demo/seed-tramites.sql` con los tipos nuevos, que pasa a ser un paso de la tarea de despliegue
   (anotado en `ganera-prompts.md`, "Despliegue en Clever Cloud — pendiente").
