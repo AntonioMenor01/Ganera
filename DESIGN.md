@@ -586,6 +586,48 @@ in the UI. The favicon is `favicon-64.png`.
   and saves** the trámite: it records that the AI didn't extract it, which is still true. Don't
   "fix" that by hiding it on save.
 
+### Responder por WhatsApp (review dialog)
+- **Where:** only in the review dialog (never in the queue or the ficha), as a "WhatsApp" section under
+  the original message, and only when the detail brings a `whatsapp` block (trámites that arrived by
+  WhatsApp). With the section present, the message column stops being sticky (it could outgrow the
+  dialog). Replying never touches the trámite: it works with unsaved edits and doesn't change the
+  `version`.
+- **Recipient and window:** one line "{nombre} · {teléfono enmascarado}" exactly as the backend sends
+  it. An open window is a muted line "Puedes escribirle hasta el dd/mm/aaaa, hh:mm" (Madrid time); with
+  less than one hour left it becomes the exact warning pair, "La ventana se cierra a las hh:mm". When the
+  backend gives `motivoNoDisponible` (24 h passed, contact inactive, state, not WhatsApp) that text is a
+  fixed warning-pair notice with no live `role` (like the extraction notices) and there is **no**
+  reply button — never a disabled button without an explanation.
+- **Vocabulary:** the honesty word list applies to the whole dialog, this section included, so nothing
+  visible says "enviado/enviada". Response states (`etiquetas.ts`): "Enviando…" and "Aceptado por
+  WhatsApp" neutral `outline`, "Entregado" and "Leído" `success`, "No ha llegado" `danger`, "Sin
+  confirmar" `warning`. Buttons: "Responder por WhatsApp" (outline) and "Enviar por WhatsApp"
+  (primary). Only the `HECHO_EN_OVZ` proposed text mentions OVZ ("ya está hecho en OVZ").
+- **History:** "Respuestas por WhatsApp", chronological; each item is a bordered row with date (Madrid),
+  who, the state badge on the right, the text with its line breaks (breaking anywhere at 375 px) and the
+  `motivoError` muted below. Hidden when empty.
+- **Inline panel:** like the inline confirmations, never a second modal: a 50% Superficie box with the
+  `Textarea` labelled "Respuesta" (same tokens as `Input`, solid `ring-ring` focus), a muted hint (the
+  backend's own 400 texts: "Completa el hueco ___ antes de enviar.", empty, too long) and the "N / 1600"
+  counter, then [Cancelar] [Enviar por WhatsApp]. On open, focus goes to the text with the `___` gap
+  selected (typing replaces it), or to the end. Enviar is disabled while the text has a problem and when
+  the window has closed by the device clock with the panel open (the warning already says so). While a
+  request runs it reads "Enviando…" and is only `aria-disabled` (same look, clicks ignored): a real
+  `disabled` would drop the keyboard focus to `body`. After a request error, focus goes to the panel's
+  error Alert (`tabIndex={-1}`, like the ficha's), which also brings it into view.
+- **Esc and closing:** with the proposal untouched, Esc (or a click outside) closes only the panel and the
+  X closes the dialog. Once the text differs from the proposal, Esc, a click outside and the X all ask
+  inline, in place of the panel's buttons: "Tienes una respuesta sin enviar." [Seguir escribiendo]
+  (focused; back to the text) [Descartar y cerrar] (destructive; closes the dialog, and if the trámite
+  also has unsaved edits their own "Tienes cambios sin guardar." follows). A second Esc withdraws the
+  question. If the trámite turns "no encontrado" the panel no longer counts and the dialog closes as usual.
+- **Results:** accepted → a discreet muted line with a check in an always-mounted `role="status"`
+  ("Respuesta aceptada por WhatsApp."); not delivered (`FALLIDO`) → destructive Alert with
+  `CircleAlertIcon`, "La respuesta no ha llegado" and the backend's reason; `SIN_CONFIRMAR` → warning
+  pair inside the status region. Request errors stay in the panel (text kept) as a destructive Alert; a
+  network error or 5xx without reason says "No se ha podido comprobar si ha salido. Puedes reintentar: no
+  se mandará dos veces." and the retry reuses the same idempotency key.
+
 ### Ficha para OVZ (auxiliary window)
 - **What it is:** `/tramites/:id/ovz`, a companion window the gestor keeps next to OVZ.net
   (360–480 px wide) while typing a trámite there by hand. Ganera sends nothing to OVZ; the page says so

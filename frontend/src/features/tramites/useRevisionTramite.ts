@@ -23,7 +23,7 @@ import {
   formularioDesdeDetalle,
   type FormularioRevision,
 } from "./revisionTramite";
-import type { Tramite, TramiteDetalle } from "./types";
+import type { RespuestaWhatsapp, Tramite, TramiteDetalle } from "./types";
 
 /**
  * Estado y acciones del modal de revisión de un trámite (Task 9a, decisiones 7–13 y 24).
@@ -144,7 +144,19 @@ export interface RevisionTramite {
 
   aviso: AvisoRevision | null;
   descartarAviso: () => void;
+
+  /**
+   * B2 reducido: responder por WhatsApp no toca el trámite (ni su `version` ni el formulario). Solo
+   * cambia el bloque `detalle.whatsapp`:
+   * - `insertarRespuestaWhatsapp` añade (o sustituye por id) la respuesta que devolvió el POST;
+   * - `recargarWhatsapp` pide el detalle y aplica SOLO su bloque `whatsapp` (el resto del trámite
+   *   sigue protegido por su `version`). Un 404 deja el modal en «no encontrado». Nunca lanza.
+   */
+  insertarRespuestaWhatsapp: (respuesta: RespuestaWhatsapp) => void;
+  recargarWhatsapp: () => Promise<ResultadoRecargaWhatsapp>;
 }
+
+export type ResultadoRecargaWhatsapp = "ok" | "no-encontrado" | "error";
 
 // ---------------------------------------------------------------------------------------------
 // Reducer
@@ -182,7 +194,9 @@ type Evento =
   | { tipo: "respuesta-accion"; tramite: Tramite; aviso: AvisoRevision }
   | { tipo: "aviso"; aviso: AvisoRevision }
   | { tipo: "fin-envio" }
-  | { tipo: "descartar-aviso" };
+  | { tipo: "descartar-aviso" }
+  | { tipo: "whatsapp"; whatsapp: TramiteDetalle["whatsapp"] }
+  | { tipo: "respuesta-whatsapp"; respuesta: RespuestaWhatsapp };
 
 const FORMULARIO_VACIO: FormularioRevision = { explotacionId: null, tipoTramite: null, crotales: [] };
 
@@ -339,6 +353,19 @@ function reducer(estado: Estado, evento: Evento): Estado {
       return { ...estado, enviando: null };
     case "descartar-aviso":
       return { ...estado, aviso: null };
+    case "whatsapp":
+      // Solo el bloque de WhatsApp: ni la versión ni el formulario cambian (B2 reducido, D7).
+      return estado.detalle ? { ...estado, detalle: { ...estado.detalle, whatsapp: evento.whatsapp } } : estado;
+    case "respuesta-whatsapp": {
+      const whatsapp = estado.detalle?.whatsapp;
+      if (!estado.detalle || !whatsapp) return estado;
+      const { respuesta } = evento;
+      const yaEsta = whatsapp.respuestas.some((r) => r.id === respuesta.id);
+      const respuestas = yaEsta
+        ? whatsapp.respuestas.map((r) => (r.id === respuesta.id ? respuesta : r))
+        : [...whatsapp.respuestas, respuesta];
+      return { ...estado, detalle: { ...estado.detalle, whatsapp: { ...whatsapp, respuestas } } };
+    }
   }
 }
 
@@ -720,6 +747,24 @@ export function useRevisionTramite(
     });
   }
 
+  /** B2 reducido: recarga solo el bloque de WhatsApp (ver `RevisionTramite.recargarWhatsapp`). */
+  async function recargarWhatsapp(): Promise<ResultadoRecargaWhatsapp> {
+    const sesion = sesionRef.current;
+    if (tramiteId === null || !sesion || !sesion.activa || sesion.tramiteId !== tramiteId) return "error";
+    const resultado = await pedirDetalle(sesion, tramiteId);
+    if (!resultado) return "error";
+    if (resultado.ok) {
+      dispatch({ tipo: "whatsapp", whatsapp: resultado.detalle.whatsapp ?? null });
+      return "ok";
+    }
+    if (resultado.error.tipo === "no-encontrado") {
+      onCambiadoRef.current();
+      dispatch({ tipo: "carga-fallida", carga: cargaFallida(resultado.error) });
+      return "no-encontrado";
+    }
+    return "error";
+  }
+
   function editar(cambio: Cambio): ResultadoCambio {
     const motivo = rechazoDeCambio(actual, cambio);
     if (motivo !== null) return { aceptado: false, motivo };
@@ -772,5 +817,8 @@ export function useRevisionTramite(
 
     aviso,
     descartarAviso: () => dispatch({ tipo: "descartar-aviso" }),
+
+    insertarRespuestaWhatsapp: (respuesta) => dispatch({ tipo: "respuesta-whatsapp", respuesta }),
+    recargarWhatsapp,
   };
 }

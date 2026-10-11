@@ -52,6 +52,7 @@ function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
     crotalesDescartados: 0,
     hechoEnOvzEn: null,
     hechoEnOvzPorNombre: null,
+    whatsapp: null,
     ...parcial,
   }
 }

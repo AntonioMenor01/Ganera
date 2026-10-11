@@ -1,6 +1,7 @@
 import { httpClient } from "@/shared/api/httpClient";
 import type { Pagina } from "@/shared/api/types";
-import type { EstadoTramite, Tramite, TramiteDetalle } from "./types";
+import { ErrorApi } from "@/shared/api/errores";
+import type { EstadoTramite, RespuestaWhatsapp, Tramite, TramiteDetalle } from "./types";
 
 export async function listarTramites(
   page: number,
@@ -76,4 +77,38 @@ export async function marcarHechoEnOvz(id: number, version: number): Promise<Tra
 export async function desmarcarHechoEnOvz(id: number, version: number): Promise<Tramite> {
   const { data } = await httpClient.post<Tramite>(`/tramites/${id}/desmarcar-hecho-ovz`, { version });
   return data;
+}
+
+/**
+ * B2 reducido: responde al contacto que escribió el trámite, por WhatsApp. El destinatario lo decide
+ * el servidor (el contacto del trámite); aquí solo viajan el texto y la clave de idempotencia, que se
+ * genera al abrir el panel y se repite en los reintentos: con la misma clave el servidor devuelve la
+ * respuesta guardada (`200`) sin volver a mandarla. `201` (nueva) y `200` son éxito, también cuando
+ * la respuesta vuelve en `FALLIDO` o `SIN_CONFIRMAR`. Responder no cambia el trámite ni su `version`.
+ *
+ * El `503` de «no configurado» trae `{motivo}` y no guarda nada: es el único 5xx cuyo motivo se lee,
+ * y solo en este endpoint (el modelo general nunca lee el cuerpo de un 5xx, M1). Un `503` sin
+ * `{motivo}` (un gateway) sigue siendo un fallo incierto, como cualquier otro 5xx.
+ */
+export async function responderPorWhatsapp(
+  tramiteId: number,
+  texto: string,
+  claveIdempotencia: string,
+): Promise<RespuestaWhatsapp> {
+  const respuesta = await httpClient.post<unknown>(
+    `/tramites/${tramiteId}/respuestas-whatsapp`,
+    { texto, claveIdempotencia },
+    { validateStatus: (status) => (status >= 200 && status < 300) || status === 503 },
+  );
+  if (respuesta.status === 503) {
+    throw new ErrorApi({ tipo: "servidor", status: 503, motivo: motivoDeObjeto(respuesta.data) });
+  }
+  return respuesta.data as RespuestaWhatsapp;
+}
+
+/** `{motivo}` de un cuerpo JSON; nunca el de un texto plano (un gateway o un proxy). */
+function motivoDeObjeto(data: unknown): string | undefined {
+  if (data === null || typeof data !== "object") return undefined;
+  const motivo = (data as Record<string, unknown>).motivo;
+  return typeof motivo === "string" ? motivo : undefined;
 }

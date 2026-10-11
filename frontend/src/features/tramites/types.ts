@@ -72,4 +72,37 @@ export interface TramiteDetalle {
   hechoEnOvzEn: string | null;
   /** Hecho en OVZ: nombre del usuario que lo marcó (nunca email ni id), o null. */
   hechoEnOvzPorNombre: string | null;
+  /** B2 reducido: la conversación de WhatsApp del trámite (destinatario, ventana de 24 h y
+   * respuestas). null si el trámite no llegó por WhatsApp. La traen el GET del detalle y el PATCH. */
+  whatsapp: WhatsappTramite | null;
+}
+
+/** B2 reducido: una respuesta de la gestoría al contacto por WhatsApp (`RespuestaWhatsappResponse`).
+ * Sin teléfono ni SID. `estado` es el efectivo y es string: uno desconocido se etiqueta tal cual
+ * (`presentacionRespuestaWhatsapp`). `motivoError` es el texto de Ganera, nunca el de Twilio. */
+export interface RespuestaWhatsapp {
+  id: number;
+  texto: string;
+  estado: string;
+  enviadoPorNombre: string | null;
+  /** ISO-8601 UTC con `Z`. Se enseña en hora de Madrid. */
+  enviadoEn: string;
+  codigoError: number | null;
+  motivoError: string | null;
+}
+
+/** B2 reducido: bloque `whatsapp` del detalle. El servidor decide si se puede responder
+ * (`motivoNoDisponible`, con el mismo texto que su 409, o null); el frontend solo lo refleja. */
+export interface WhatsappTramite {
+  destinatarioNombre: string;
+  /** Tal como llega (`+34******001`): nunca el teléfono entero. */
+  telefonoEnmascarado: string;
+  contactoActivo: boolean;
+  /** Último mensaje del contacto + 24 h (ISO UTC), o null si no tiene mensajes. */
+  ventanaAbiertaHasta: string | null;
+  /** Nombre de la gestoría: firma del texto propuesto (el número de WhatsApp es compartido). */
+  firmaGestoria: string;
+  motivoNoDisponible: string | null;
+  /** En orden cronológico. */
+  respuestas: RespuestaWhatsapp[];
 }

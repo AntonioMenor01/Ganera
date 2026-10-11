@@ -3,31 +3,13 @@
  * el sujeto («hecho en OVZ», «marcado por…»), nunca «registrado», «enviado» ni «procesado».
  * Lógica pura: sin React ni red. */
 
-/** La hora se enseña siempre en Madrid (donde trabajan las gestorías), sea cual sea la zona del
- * equipo. `hourCycle: "h23"`: nunca «a. m./p. m.». En la hora repetida de octubre las dos 02:30 se
- * ven igual: es lo que marca el reloj de pared. Se crea en cada llamada (es barato y se usa poco):
- * así nada depende de la zona que tuviera el proceso al cargar el módulo. */
-const OPCIONES_MADRID: Intl.DateTimeFormatOptions = {
-  timeZone: "Europe/Madrid",
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-};
+import { fechaHoraMadrid } from "./fechaMadrid";
 
-/** «07/10/2026, 12:30» (hora de Madrid) a partir del ISO del backend. Un valor ausente o que no es
- * una fecha da null: nunca lanza ni enseña «Invalid Date». */
+/** «07/10/2026, 12:30» (hora de Madrid, sea cual sea la zona del equipo) a partir del ISO del
+ * backend. Un valor ausente o que no es una fecha da null: nunca lanza ni enseña «Invalid Date». El
+ * formateo vive en fechaMadrid.ts (B2 reducido lo comparte con las respuestas por WhatsApp). */
 export function fechaHechoEnOvz(iso: string | null | undefined): string | null {
-  if (typeof iso !== "string" || iso.trim() === "") return null;
-  const fecha = new Date(iso);
-  if (Number.isNaN(fecha.getTime())) return null;
-  try {
-    return new Intl.DateTimeFormat("es-ES", OPCIONES_MADRID).format(fecha);
-  } catch {
-    return null;
-  }
+  return fechaHoraMadrid(iso);
 }
 
 /** La franja: «Hecho en OVZ por Ana Pérez el 07/10/2026, 12:30». Sin nombre, sin «por…»; sin fecha

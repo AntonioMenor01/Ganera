@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  ESTADOS_RESPUESTA_WHATSAPP,
   ESTADOS_TRAMITE,
   ORIGENES_TRAMITE,
   RESOLUCIONES_CROTAL,
@@ -14,6 +15,7 @@ import {
   presentacionEstado,
   presentacionCrotal,
   presentacionResolucion,
+  presentacionRespuestaWhatsapp,
   presentacionRolContacto,
 } from "./etiquetas"
 import { badgeVarianteDeEstado as badgeVarianteDeEstadoReexportado } from "./types"
@@ -295,5 +297,26 @@ describe("avisosExtraccion (B1: regla de visibilidad, plurales)", () => {
     })
     expect(avisos.extraccion).toEqual(TEXTOS_EXTRACCION.FALLIDA)
     expect(avisos.descartados?.cola).toBe("2 descartados")
+  })
+})
+
+describe("presentacionRespuestaWhatsapp (B2 reducido)", () => {
+  const PROHIBIDAS = /enviad|ejecutad|registrad|en curso en OVZ|tramitad|completad|procesad|presentad/i
+
+  it("etiquetas y variantes fijadas", () => {
+    expect(presentacionRespuestaWhatsapp("ENVIANDO")).toEqual({ etiqueta: "Enviando…", variante: "outline" })
+    expect(presentacionRespuestaWhatsapp("ENVIADO")).toEqual({ etiqueta: "Aceptado por WhatsApp", variante: "outline" })
+    expect(presentacionRespuestaWhatsapp("ENTREGADO")).toEqual({ etiqueta: "Entregado", variante: "success" })
+    expect(presentacionRespuestaWhatsapp("LEIDO")).toEqual({ etiqueta: "Leído", variante: "success" })
+    expect(presentacionRespuestaWhatsapp("FALLIDO")).toEqual({ etiqueta: "No ha llegado", variante: "danger" })
+    expect(presentacionRespuestaWhatsapp("SIN_CONFIRMAR")).toEqual({ etiqueta: "Sin confirmar", variante: "warning" })
+  })
+
+  it("ninguna etiqueta dice «enviado» ni nada de la lista prohibida", () => {
+    for (const { etiqueta } of Object.values(ESTADOS_RESPUESTA_WHATSAPP)) expect(etiqueta).not.toMatch(PROHIBIDAS)
+  })
+
+  it("desconocido: tal cual y neutro", () => {
+    expect(presentacionRespuestaWhatsapp("NUEVO")).toEqual({ etiqueta: "NUEVO", variante: "outline" })
   })
 })

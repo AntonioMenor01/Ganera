@@ -7,6 +7,7 @@ import com.ganera.core.shared.web.MotivoErrorResponse;
 import com.ganera.core.shared.web.OrdenacionPermitida;
 import com.ganera.core.whatsapp.MensajeCampo;
 import com.ganera.core.whatsapp.MensajeCampoRepository;
+import com.ganera.core.whatsapp.WhatsappDetalleService;
 import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -53,18 +54,21 @@ public class TramiteController {
     private final MensajeCampoRepository mensajeCampoRepository;
     private final TramiteCrotalService tramiteCrotalService;
     private final TramiteRevisionService tramiteRevisionService;
+    private final WhatsappDetalleService whatsappDetalleService;
 
     public TramiteController(
             TramiteRepository tramiteRepository,
             SuscripcionService suscripcionService,
             MensajeCampoRepository mensajeCampoRepository,
             TramiteCrotalService tramiteCrotalService,
-            TramiteRevisionService tramiteRevisionService) {
+            TramiteRevisionService tramiteRevisionService,
+            WhatsappDetalleService whatsappDetalleService) {
         this.tramiteRepository = tramiteRepository;
         this.suscripcionService = suscripcionService;
         this.mensajeCampoRepository = mensajeCampoRepository;
         this.tramiteCrotalService = tramiteCrotalService;
         this.tramiteRevisionService = tramiteRevisionService;
+        this.whatsappDetalleService = whatsappDetalleService;
     }
 
     /** Decision 21: solo se puede ordenar por estos campos (nunca por el Contacto, la
@@ -114,7 +118,8 @@ public class TramiteController {
                 .map(MensajeCampo::getCuerpo)
                 .orElse(null);
         return ResponseEntity.ok(TramiteDetalleResponse.from(
-                tramite.get(), mensajeOriginal, crotalesDe(tramite.get(), principal.gestoriaId())));
+                tramite.get(), mensajeOriginal, crotalesDe(tramite.get(), principal.gestoriaId()),
+                whatsappDetalleService.bloque(tramite.get(), principal.gestoriaId())));
     }
 
     /**

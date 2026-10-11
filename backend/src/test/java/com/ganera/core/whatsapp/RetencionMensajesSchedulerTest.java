@@ -66,12 +66,26 @@ class RetencionMensajesSchedulerTest {
                 });
     }
 
+    /** Repositorio falso de respuestas (B2 reducido): su sentencia de retencion devuelve 4 filas. */
+    private static RespuestaWhatsappRepository respuestas() {
+        return (RespuestaWhatsappRepository) Proxy.newProxyInstance(
+                RespuestaWhatsappRepository.class.getClassLoader(), new Class<?>[]{RespuestaWhatsappRepository.class},
+                (proxy, metodo, args) -> switch (metodo.getName()) {
+                    case "vaciarTextoYTelefonoEnviadasAntesDe" -> 4;
+                    case "toString" -> "respuestas de prueba";
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "equals" -> proxy == args[0];
+                    default -> throw new UnsupportedOperationException(metodo.getName());
+                });
+    }
+
     private ApplicationContextRunner contexto() {
         return new ApplicationContextRunner()
                 // Lo mismo que hace SpringApplication: convierte "P30D"/"P12M" a Period en @Value.
                 .withInitializer(ctx -> ctx.getBeanFactory()
                         .setConversionService(ApplicationConversionService.getSharedInstance()))
                 .withBean(MensajeCampoRepository.class, () -> repositorio(false, false, new AtomicInteger()))
+                .withBean(RespuestaWhatsappRepository.class, RetencionMensajesSchedulerTest::respuestas)
                 .withBean(Clock.class, () -> Clock.fixed(Instant.parse("2031-03-10T09:00:00Z"), ZoneOffset.UTC))
                 .withUserConfiguration(RetencionMensajesService.class, RetencionMensajesScheduler.class);
     }
@@ -147,13 +161,13 @@ class RetencionMensajesSchedulerTest {
     @Test
     void unFalloEnUnaSentenciaSeRegistraSinDatosYLaOtraSeEjecutaIgual(CapturedOutput salida) {
         AtomicInteger llamadas = new AtomicInteger();
-        RetencionMensajesService servicio = new RetencionMensajesService(repositorio(true, false, llamadas),
+        RetencionMensajesService servicio = new RetencionMensajesService(repositorio(true, false, llamadas), respuestas(),
                 Clock.systemUTC(), Period.ofDays(30), Period.ofMonths(12));
 
         RetencionMensajesService.Resultado resultado = servicio.aplicar();
 
         assertThat(llamadas.get()).isEqualTo(2);
-        assertThat(resultado).isEqualTo(new RetencionMensajesService.Resultado(-1, 2));
+        assertThat(resultado).isEqualTo(new RetencionMensajesService.Resultado(-1, 2, 4));
         assertThat(salida.getAll()).contains("java.lang.IllegalStateException")
                 .contains("borrados=-1, vaciados=2")
                 .doesNotContain("600123456").doesNotContain("baja del");
@@ -162,7 +176,7 @@ class RetencionMensajesSchedulerTest {
     @Test
     void siFallanLasDosElJobNoPropagaNiRegistraDatos(CapturedOutput salida) {
         AtomicInteger llamadas = new AtomicInteger();
-        RetencionMensajesService servicio = new RetencionMensajesService(repositorio(true, true, llamadas),
+        RetencionMensajesService servicio = new RetencionMensajesService(repositorio(true, true, llamadas), respuestas(),
                 Clock.systemUTC(), Period.ofDays(30), Period.ofMonths(12));
         RetencionMensajesScheduler job = new RetencionMensajesScheduler(servicio);
 
@@ -177,9 +191,9 @@ class RetencionMensajesSchedulerTest {
     @Test
     void unaPasadaCorrectaRegistraLasFilasBorradasYVaciadas(CapturedOutput salida) {
         RetencionMensajesService servicio = new RetencionMensajesService(
-                repositorio(false, false, new AtomicInteger()), Clock.systemUTC(), Period.ofDays(30), Period.ofMonths(12));
+                repositorio(false, false, new AtomicInteger()), respuestas(), Clock.systemUTC(), Period.ofDays(30), Period.ofMonths(12));
 
-        assertThat(servicio.aplicar()).isEqualTo(new RetencionMensajesService.Resultado(3, 2));
-        assertThat(salida.getAll()).contains("Retencion de mensajes: borrados=3, vaciados=2");
+        assertThat(servicio.aplicar()).isEqualTo(new RetencionMensajesService.Resultado(3, 2, 4));
+        assertThat(salida.getAll()).contains("Retencion de mensajes: borrados=3, vaciados=2, respuestasVaciadas=4");
     }
 }

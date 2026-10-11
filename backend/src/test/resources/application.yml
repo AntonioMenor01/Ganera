@@ -24,6 +24,7 @@ ganera:
     origen: http://localhost:5173
   twilio:
     webhook-url: ""
+    whatsapp-from: ""
   anthropic:
     api-key: ""
   extraccion:

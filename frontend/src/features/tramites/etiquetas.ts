@@ -229,3 +229,23 @@ export function avisosExtraccion(tramite: {
       : null;
   return { extraccion, descartados };
 }
+
+// ---------------------------------------------------------------------------------------------
+// Estado de una respuesta de la gestoría por WhatsApp (B2 reducido). Vocabulario sin «enviado» ni
+// derivados (la lista de palabras prohibidas del test de honestidad aplica a todo el modal):
+// `ENVIADO` solo significa que WhatsApp (Twilio) lo aceptó. Desconocido → tal cual, neutro.
+
+export const ESTADOS_RESPUESTA_WHATSAPP = {
+  ENVIANDO: { etiqueta: "Enviando…", variante: "outline" },
+  ENVIADO: { etiqueta: "Aceptado por WhatsApp", variante: "outline" },
+  ENTREGADO: { etiqueta: "Entregado", variante: "success" },
+  LEIDO: { etiqueta: "Leído", variante: "success" },
+  FALLIDO: { etiqueta: "No ha llegado", variante: "danger" },
+  SIN_CONFIRMAR: { etiqueta: "Sin confirmar", variante: "warning" },
+} as const satisfies Record<string, Presentacion>;
+
+export type EstadoRespuestaWhatsapp = keyof typeof ESTADOS_RESPUESTA_WHATSAPP;
+
+export function presentacionRespuestaWhatsapp(estado: string): Presentacion {
+  return presentacionDe(ESTADOS_RESPUESTA_WHATSAPP, estado);
+}

@@ -47,6 +47,10 @@ class RetencionMensajesServiceTest {
     @Autowired
     private MensajeCampoRepository mensajeCampoRepository;
     @Autowired
+    private RespuestaWhatsappRepository respuestaWhatsappRepository;
+    @Autowired
+    private com.ganera.core.gestoria.UsuarioRepository usuarioRepository;
+    @Autowired
     private TramiteRepository tramiteRepository;
     @Autowired
     private ContactoRepository contactoRepository;
@@ -68,7 +72,7 @@ class RetencionMensajesServiceTest {
     }
 
     private RetencionMensajesService servicio(Instant ahora, Period sinTramite, Period conTramite) {
-        return new RetencionMensajesService(mensajeCampoRepository, Clock.fixed(ahora, ZoneOffset.UTC),
+        return new RetencionMensajesService(mensajeCampoRepository, respuestaWhatsappRepository, Clock.fixed(ahora, ZoneOffset.UTC),
                 sinTramite, conTramite);
     }
 
@@ -174,8 +178,8 @@ class RetencionMensajesServiceTest {
         RetencionMensajesService.Resultado primera = servicio.aplicar();
         RetencionMensajesService.Resultado segunda = servicio.aplicar();
 
-        assertThat(primera).isEqualTo(new RetencionMensajesService.Resultado(1, 1));
-        assertThat(segunda).isEqualTo(new RetencionMensajesService.Resultado(0, 0));
+        assertThat(primera).isEqualTo(new RetencionMensajesService.Resultado(1, 1, 0));
+        assertThat(segunda).isEqualTo(new RetencionMensajesService.Resultado(0, 0, 0));
         assertThat(cuerpos()).containsExactly(Map.entry("viejo-con-tramite", RetencionMensajesService.TEXTO_ELIMINADO));
     }
 
@@ -193,7 +197,7 @@ class RetencionMensajesServiceTest {
         RetencionMensajesService.Resultado resultado =
                 servicio(AHORA, Period.ofDays(10), Period.ofMonths(2)).aplicar();
 
-        assertThat(resultado).isEqualTo(new RetencionMensajesService.Resultado(1, 1));
+        assertThat(resultado).isEqualTo(new RetencionMensajesService.Resultado(1, 1, 0));
         Map<String, String> cuerpos = cuerpos();
         assertThat(cuerpos).doesNotContainKey("sin-tramite-11-dias").containsKey("sin-tramite-9-dias");
         assertThat(cuerpos.get("con-tramite-3-meses")).isEqualTo(RetencionMensajesService.TEXTO_ELIMINADO);
@@ -246,6 +250,96 @@ class RetencionMensajesServiceTest {
 
         assertThat(servicio.limiteBorrado(AHORA)).isEqualTo(LIMITE_BORRADO);
         assertThat(servicio.limiteVaciado(AHORA)).isEqualTo(LIMITE_VACIADO);
+    }
+
+    // ------------------------------------------------------------ respuestas enviadas (B2 reducido, D8)
+
+    @Test
+    void vaciaElTextoYElTelefonoDeLasRespuestasAnterioresAlLimiteYNoLasDelLimiteNiPosteriores() {
+        Tramite tramiteA = tramite(contactoA);
+        Tramite tramiteB = tramite(contactoB);
+        respuesta("antes-A", tramiteA, LIMITE_VACIADO.minus(UN_SEGUNDO));
+        respuesta("antes-B", tramiteB, LIMITE_VACIADO.minus(UN_SEGUNDO));
+        respuesta("limite", tramiteA, LIMITE_VACIADO);
+        respuesta("despues", tramiteA, LIMITE_VACIADO.plus(UN_SEGUNDO));
+        // Un mensaje ENTRANTE reciente no se toca por la sentencia de respuestas.
+        mensaje("entrante-reciente", ResultadoMensaje.TRAMITE_CREADO, tramiteA, AHORA.minus(Duration.ofDays(1)));
+        Long versionA = tramiteRepository.findById(tramiteA.getId()).orElseThrow().getVersion();
+
+        RetencionMensajesService.Resultado resultado = porDefecto().aplicar();
+
+        assertThat(resultado).isEqualTo(new RetencionMensajesService.Resultado(0, 0, 2));
+        Map<String, RespuestaWhatsapp> respuestas = respuestas();
+        for (String clave : java.util.List.of("antes-A", "antes-B")) {
+            assertThat(respuestas.get(clave).getCuerpo()).isEqualTo(RetencionMensajesService.TEXTO_ELIMINADO);
+            assertThat(respuestas.get(clave).getTelefonoDestino()).isNull();
+            assertThat(respuestas.get(clave).isTextoVaciado()).isTrue();
+            // Los metadatos se quedan.
+            assertThat(respuestas.get(clave).getEstado()).isEqualTo(EstadoRespuestaWhatsapp.ENVIADO);
+            assertThat(respuestas.get(clave).getTwilioMessageSid()).isEqualTo("SID-" + clave);
+        }
+        for (String clave : java.util.List.of("limite", "despues")) {
+            assertThat(respuestas.get(clave).getCuerpo()).isEqualTo("texto de " + clave);
+            assertThat(respuestas.get(clave).getTelefonoDestino()).isEqualTo("+34600970001");
+            assertThat(respuestas.get(clave).isTextoVaciado()).isFalse();
+        }
+        assertThat(cuerpos().get("entrante-reciente")).isEqualTo("texto de entrante-reciente");
+        assertThat(tramiteRepository.findById(tramiteA.getId()).orElseThrow().getVersion()).isEqualTo(versionA);
+    }
+
+    @Test
+    void elVaciadoDeRespuestasEsIdempotente() {
+        Tramite tramite = tramite(contactoA);
+        respuesta("vieja", tramite, LIMITE_VACIADO.minus(Duration.ofDays(3)));
+        RetencionMensajesService servicio = porDefecto();
+
+        assertThat(servicio.aplicar()).isEqualTo(new RetencionMensajesService.Resultado(0, 0, 1));
+        assertThat(servicio.aplicar()).isEqualTo(new RetencionMensajesService.Resultado(0, 0, 0));
+        assertThat(respuestas().get("vieja").getCuerpo()).isEqualTo(RetencionMensajesService.TEXTO_ELIMINADO);
+        assertThat(respuestas().get("vieja").getTelefonoDestino()).isNull();
+    }
+
+    @Test
+    void elPlazoDeLasRespuestasEsElDeTextoConTramite() {
+        Tramite tramite = tramite(contactoA);
+        respuesta("tres-meses", tramite, Instant.parse("2030-12-10T09:00:00Z"));
+        respuesta("un-mes", tramite, Instant.parse("2031-02-10T09:00:00Z"));
+
+        assertThat(servicio(AHORA, Period.ofDays(10), Period.ofMonths(2)).aplicar().respuestasVaciadas()).isEqualTo(1);
+        assertThat(respuestas().get("tres-meses").getTelefonoDestino()).isNull();
+        assertThat(respuestas().get("un-mes").getTelefonoDestino()).isEqualTo("+34600970001");
+    }
+
+    private Map<String, RespuestaWhatsapp> respuestas() {
+        entityManager.clear();
+        return respuestaWhatsappRepository.findAll().stream()
+                .collect(Collectors.toMap(RespuestaWhatsapp::getClaveIdempotencia, r -> r));
+    }
+
+    private void respuesta(String clave, Tramite tramite, Instant creadoEn) {
+        com.ganera.core.gestoria.Usuario usuario = usuarioRepository.findAll().stream()
+                .filter(u -> u.getGestoria().getId().equals(tramite.getGestoria().getId())).findFirst()
+                .orElseGet(() -> {
+                    com.ganera.core.gestoria.Usuario nuevo = new com.ganera.core.gestoria.Usuario();
+                    nuevo.setGestoria(tramite.getGestoria());
+                    nuevo.setEmail("retencion" + (++secuencia) + "@test.com");
+                    nuevo.setPasswordHash("x");
+                    nuevo.setNombre("Usuario retencion");
+                    return usuarioRepository.save(nuevo);
+                });
+        RespuestaWhatsapp respuesta = new RespuestaWhatsapp();
+        respuesta.setGestoria(tramite.getGestoria());
+        respuesta.setTramite(tramite);
+        respuesta.setContacto(tramite.getContacto());
+        respuesta.setTelefonoDestino("+34600970001");
+        respuesta.setCuerpo("texto de " + clave);
+        respuesta.setEnviadoPor(usuario);
+        respuesta.setCreatedAt(creadoEn);
+        respuesta.setActualizadoEn(creadoEn);
+        respuesta.setEstado(EstadoRespuestaWhatsapp.ENVIADO);
+        respuesta.setTwilioMessageSid("SID-" + clave);
+        respuesta.setClaveIdempotencia(clave);
+        respuestaWhatsappRepository.saveAndFlush(respuesta);
     }
 
     // ------------------------------------------------------------ ayudas

@@ -1,6 +1,7 @@
 package com.ganera.core.tramite;
 
 import com.ganera.core.ganadero.Ganadero;
+import com.ganera.core.whatsapp.WhatsappTramiteResponse;
 
 import java.time.Instant;
 import java.util.List;
@@ -15,7 +16,10 @@ import java.util.List;
  * con la que el gestor entra en OVZ; null sin explotacion, y ganaderoNif tambien null si el ganadero
  * no tiene NIF. Se cargan por tramite.getExplotacion().getGanadero() dentro de la peticion (OSIV): un
  * solo tramite, sin N+1. Nunca se exponen ovzUsuario ni ovzPasswordCifrada.
- * hechoEnOvzEn y hechoEnOvzPorNombre («hecho en OVZ»): mismos valores que en TramiteResponse. */
+ * hechoEnOvzEn y hechoEnOvzPorNombre («hecho en OVZ»): mismos valores que en TramiteResponse.
+ * whatsapp (B2 reducido, D14): destinatario, ventana de 24 h, firma y respuestas enviadas; null si el
+ * tramite no llego por WhatsApp. Lo arma WhatsappDetalleService con el gestoriaId explicito. El listado
+ * (TramiteResponse) no lo lleva. */
 public record TramiteDetalleResponse(
         Long id,
         String tipoTramite,
@@ -33,10 +37,12 @@ public record TramiteDetalleResponse(
         String estadoExtraccion,
         int crotalesDescartados,
         Instant hechoEnOvzEn,
-        String hechoEnOvzPorNombre) {
+        String hechoEnOvzPorNombre,
+        WhatsappTramiteResponse whatsapp) {
 
     public static TramiteDetalleResponse from(
-            Tramite tramite, String mensajeOriginal, List<TramiteCrotalResponse> crotales) {
+            Tramite tramite, String mensajeOriginal, List<TramiteCrotalResponse> crotales,
+            WhatsappTramiteResponse whatsapp) {
         boolean tieneExplotacion = tramite.getExplotacion() != null;
         Ganadero ganadero = tieneExplotacion ? tramite.getExplotacion().getGanadero() : null;
         return new TramiteDetalleResponse(
@@ -56,6 +62,7 @@ public record TramiteDetalleResponse(
                 tramite.getEstadoExtraccion() != null ? tramite.getEstadoExtraccion().name() : null,
                 tramite.getCrotalesDescartados(),
                 tramite.getHechoEnOvzEn(),
-                tramite.getHechoEnOvzPor() != null ? tramite.getHechoEnOvzPor().getNombre() : null);
+                tramite.getHechoEnOvzPor() != null ? tramite.getHechoEnOvzPor().getNombre() : null,
+                whatsapp);
     }
 }

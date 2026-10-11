@@ -52,6 +52,7 @@ function detalle(id: number) {
     explotacionCodigoRega: null,
     explotacionNombre: null,
     mensajeOriginal: "alta del 1234",
+    whatsapp: null,
   }
 }
 

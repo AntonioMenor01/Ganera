@@ -38,8 +38,12 @@ import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTest
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = NONE)
-@Import({TramiteCrotalService.class, TramiteRevisionService.class, RelojConfig.class})
+@Import({TramiteCrotalService.class, TramiteRevisionService.class, RelojConfig.class,
+        com.ganera.core.whatsapp.WhatsappDetalleService.class})
 class TramiteControllerTest {
+
+    @Autowired
+    private com.ganera.core.whatsapp.WhatsappDetalleService whatsappDetalleService;
 
     @Autowired
     private TramiteRepository tramiteRepository;
@@ -914,7 +918,8 @@ class TramiteControllerTest {
                 new SuscripcionService(suscripcionRepository, gestoriaRepository),
                 mensajeCampoRepository,
                 tramiteCrotalService,
-                tramiteRevisionService);
+                tramiteRevisionService,
+                whatsappDetalleService);
     }
 
     private void suscripcionActiva(Gestoria gestoria) {

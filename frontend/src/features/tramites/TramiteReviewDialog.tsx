@@ -3,6 +3,7 @@ import { CircleAlertIcon, CircleCheckIcon, ExternalLinkIcon, XIcon } from "lucid
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -27,6 +28,8 @@ import {
   textoHechoEnOvz,
 } from "./hechoEnOvz";
 import { useRevisionTramite, type AccionRevision, type RevisionTramite } from "./useRevisionTramite";
+import { useRespuestaWhatsapp, type RespuestaWhatsappPanel } from "./useRespuestaWhatsapp";
+import { SeccionWhatsapp, type DescarteRespuesta } from "./SeccionWhatsapp";
 import type { TramiteDetalle } from "./types";
 
 /**
@@ -51,7 +54,7 @@ interface TramiteReviewDialogProps {
 }
 
 /** Confirmación en línea en la barra de acciones (decisión 31): nunca un segundo modal. */
-type Confirmacion = "rechazar" | "cerrar" | "quitar-marca" | null;
+type Confirmacion = "rechazar" | "cerrar" | "quitar-marca" | "descartar-respuesta" | null;
 
 const TEXTO_EN_CURSO: Record<AccionRevision, string> = {
   guardar: "Guardando…",
@@ -70,8 +73,13 @@ export function TramiteReviewDialog({
 }: TramiteReviewDialogProps) {
   const revision = useRevisionTramite(tramiteId, { onCambiado });
   const { carga, detalle, editable, sucio, enviando } = revision;
+  // B2 reducido: el panel de respuesta por WhatsApp es independiente del formulario del trámite.
+  const respuesta = useRespuestaWhatsapp(tramiteId, carga.estado === "listo" ? detalle : null, revision);
 
   const [confirmacion, setConfirmacion] = useState<Confirmacion>(null);
+  // El panel de WhatsApp solo cuenta mientras se ve: si el trámite pasa a «no encontrado» (p. ej. un
+  // 404 al guardar con el panel abierto), el modal se cierra como siempre (M1b de la revisión).
+  const panelVisible = carga.estado === "listo" && respuesta.abierto;
   // El número que se ve en el título: se conserva durante la animación de cierre (id ya null).
   const [idVisible, setIdVisible] = useState(tramiteId);
   const [idPrevio, setIdPrevio] = useState(tramiteId);
@@ -87,6 +95,8 @@ export function TramiteReviewDialog({
   //   modo de "desactivado" y la barra ya explica por qué no se puede rechazar.
   // - "cerrar", mientras hay cambios sin guardar y nada en curso.
   // - "quitar-marca", mientras se puede quitar la marca.
+  // - "descartar-respuesta" (N8), mientras el panel de WhatsApp sigue abierto, con texto editado y
+  //   sin una respuesta en vuelo.
   const confirmacionVisible: Confirmacion =
     confirmacion === "rechazar" && revision.puedeRechazar
       ? "rechazar"
@@ -94,7 +104,9 @@ export function TramiteReviewDialog({
         ? "cerrar"
         : confirmacion === "quitar-marca" && revision.puedeDesmarcarHechoEnOvz
           ? "quitar-marca"
-          : null;
+          : confirmacion === "descartar-respuesta" && panelVisible && respuesta.editado && !respuesta.enviando
+            ? "descartar-respuesta"
+            : null;
   // I1: si deja de verse, se olvida (no queda armada para reaparecer y robar el foco después).
   if (confirmacion !== null && confirmacionVisible === null) setConfirmacion(null);
 
@@ -149,6 +161,16 @@ export function TramiteReviewDialog({
   }, [enviando]);
 
   function pedirCierre() {
+    // Una respuesta de WhatsApp escrita y sin mandar también pregunta antes (N8), en el propio panel.
+    // Si el texto es el propuesto tal cual, no hay nada que perder y se cierra sin preguntar.
+    if (panelVisible && respuesta.editado && !respuesta.enviando) {
+      setConfirmacion("descartar-respuesta");
+      return;
+    }
+    cerrarSinPreguntarPorRespuesta();
+  }
+
+  function cerrarSinPreguntarPorRespuesta() {
     // Cerrar con cambios sin guardar pregunta antes (en línea): descartarlos en silencio perdería
     // trabajo con un Esc o un clic fuera, y guardarlos solos cambiaría el trámite sin querer.
     // Con una petición en curso y cambios sin guardar no se hace nada (ni se deja la pregunta
@@ -162,9 +184,23 @@ export function TramiteReviewDialog({
   }
 
   function cancelarConfirmacion() {
+    // La de la respuesta devuelve el foco al texto desde el propio panel.
     focoPendiente.current =
-      confirmacion === "rechazar" ? rechazarRef : confirmacion === "quitar-marca" ? quitarMarcaRef : tituloRef;
+      confirmacion === "descartar-respuesta"
+        ? null
+        : confirmacion === "rechazar"
+          ? rechazarRef
+          : confirmacion === "quitar-marca"
+            ? quitarMarcaRef
+            : tituloRef;
     setConfirmacion(null);
+  }
+
+  function descartarRespuestaYCerrar() {
+    respuesta.cancelar();
+    setConfirmacion(null);
+    // Si además hay cambios sin guardar en el trámite, sigue su propia pregunta.
+    cerrarSinPreguntarPorRespuesta();
   }
 
   function confirmarQuitarMarca() {
@@ -196,6 +232,14 @@ export function TramiteReviewDialog({
         if (confirmacionVisible) {
           detalles.cancel();
           cancelarConfirmacion();
+          return;
+        }
+        // Igual con el panel de respuesta por WhatsApp abierto: se cierra el panel, no el modal (con
+        // una respuesta en vuelo no se hace nada). Con texto editado, antes se pregunta (N8).
+        if (panelVisible) {
+          detalles.cancel();
+          if (respuesta.editado && !respuesta.enviando) setConfirmacion("descartar-respuesta");
+          else respuesta.cancelar();
           return;
         }
         if (editable && sucio) detalles.cancel();
@@ -230,7 +274,16 @@ export function TramiteReviewDialog({
               recargaFallida={revision.recargaFallida}
               onReintentarRecarga={revision.reintentarRecarga}
             />
-            <Cuerpo revision={revision} ids={ids} />
+            <Cuerpo
+              revision={revision}
+              ids={ids}
+              respuesta={respuesta}
+              descarte={{
+                visible: confirmacionVisible === "descartar-respuesta",
+                onSeguirEscribiendo: cancelarConfirmacion,
+                onDescartarYCerrar: descartarRespuestaYCerrar,
+              }}
+            />
           </div>
         </div>
 
@@ -351,7 +404,17 @@ interface IdsRevision {
   crotales: string;
 }
 
-function Cuerpo({ revision, ids }: { revision: RevisionTramite; ids: IdsRevision }) {
+function Cuerpo({
+  revision,
+  ids,
+  respuesta,
+  descarte,
+}: {
+  revision: RevisionTramite;
+  ids: IdsRevision;
+  respuesta: RespuestaWhatsappPanel;
+  descarte: DescarteRespuesta;
+}) {
   const { carga, detalle } = revision;
   switch (carga.estado) {
     case "inactivo":
@@ -391,18 +454,21 @@ function Cuerpo({ revision, ids }: { revision: RevisionTramite; ids: IdsRevision
           >
             {/* Izquierda (arriba en móvil): lo que escribió el ganadero. En escritorio se queda a la
                 vista mientras se recorren los crotales, para cotejar. */}
-            <section aria-labelledby={ids.mensaje} className="flex min-w-0 flex-col gap-2 md:sticky md:top-0 md:self-start">
-              <h3 id={ids.mensaje} className="text-sm font-semibold text-muted-foreground">
-                Mensaje de WhatsApp
-              </h3>
-              {detalle.mensajeOriginal ? (
-                <blockquote className="rounded-lg bg-muted px-3 py-2.5 whitespace-pre-wrap wrap-anywhere">
-                  {detalle.mensajeOriginal}
-                </blockquote>
-              ) : (
-                <p className="text-muted-foreground">Aún no hay mensaje: este trámite no llegó por WhatsApp.</p>
-              )}
-            </section>
+            {/* B2 reducido: con la sección de WhatsApp debajo del mensaje, la columna deja de ser fija
+                (podría ser más alta que el modal y su final quedaría fuera de la vista). Sin ella, el
+                mensaje sigue siendo la columna, fija en escritorio para cotejar. */}
+            {detalle.whatsapp ? (
+              <div data-columna-mensaje className="flex min-w-0 flex-col gap-6 md:self-start">
+                <MensajeOriginal detalle={detalle} idTitulo={ids.mensaje} />
+                <SeccionWhatsapp whatsapp={detalle.whatsapp} panel={respuesta} descarte={descarte} />
+              </div>
+            ) : (
+              <MensajeOriginal
+                detalle={detalle}
+                idTitulo={ids.mensaje}
+                className="md:sticky md:top-0 md:self-start"
+              />
+            )}
   
             {/* Derecha: lo que Ganera entendió. */}
             <section aria-label="Datos del trámite" className="flex min-w-0 flex-col gap-5">
@@ -423,6 +489,32 @@ function Cuerpo({ revision, ids }: { revision: RevisionTramite; ids: IdsRevision
         </>
       );
   }
+}
+
+/** Lo que escribió el ganadero (columna izquierda, arriba en móvil). */
+function MensajeOriginal({
+  detalle,
+  idTitulo,
+  className,
+}: {
+  detalle: TramiteDetalle;
+  idTitulo: string;
+  className?: string;
+}) {
+  return (
+    <section aria-labelledby={idTitulo} className={cn("flex min-w-0 flex-col gap-2", className)}>
+      <h3 id={idTitulo} className="text-sm font-semibold text-muted-foreground">
+        Mensaje de WhatsApp
+      </h3>
+      {detalle.mensajeOriginal ? (
+        <blockquote className="rounded-lg bg-muted px-3 py-2.5 whitespace-pre-wrap wrap-anywhere">
+          {detalle.mensajeOriginal}
+        </blockquote>
+      ) : (
+        <p className="text-muted-foreground">Aún no hay mensaje: este trámite no llegó por WhatsApp.</p>
+      )}
+    </section>
+  );
 }
 
 /** Hecho en OVZ: quién y cuándo lo marcó, en el par de éxito (nunca rojo), encima de los datos. */

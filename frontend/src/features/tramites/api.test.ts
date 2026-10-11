@@ -10,6 +10,7 @@ import {
   marcarHechoEnOvz,
   obtenerDetalleTramite,
   rechazarTramite,
+  responderPorWhatsapp,
 } from "./api"
 
 const DETALLE = {
@@ -28,6 +29,7 @@ const DETALLE = {
   crotalesDescartados: 0,
   hechoEnOvzEn: null,
   hechoEnOvzPorNombre: null,
+  whatsapp: null,
 }
 
 const RESPUESTA_LISTA = {
@@ -240,5 +242,76 @@ describe("obtenerDetalleTramite", () => {
     const error = await obtenerDetalleTramite(7, controlador.signal).catch((e: unknown) => e)
     expect(error).toBeInstanceOf(ErrorApi)
     expect((error as ErrorApi).cancelado).toBe(true)
+  })
+})
+
+describe("responderPorWhatsapp (POST /tramites/{id}/respuestas-whatsapp, B2 reducido)", () => {
+  const RESPUESTA = {
+    id: 41,
+    texto: "Hola, Juan.\n— Gestoría X",
+    estado: "ENVIADO",
+    enviadoPorNombre: "Ana Pérez",
+    enviadoEn: "2031-03-10T09:00:00Z",
+    codigoError: null,
+    motivoError: null,
+  }
+  const CLAVE = "3f1c2a9e-1b2c-4d5e-8f90-123456789abc"
+
+  it.each([201, 200])("envía {texto, claveIdempotencia} y un %s es éxito", async (status) => {
+    let cuerpo: unknown
+    server.use(
+      http.post(apiUrl("/tramites/7/respuestas-whatsapp"), async ({ request }) => {
+        cuerpo = await request.json()
+        return HttpResponse.json(RESPUESTA, { status })
+      }),
+    )
+    const respuesta = await responderPorWhatsapp(7, "Hola, Juan.\n— Gestoría X", CLAVE)
+    expect(cuerpo).toEqual({ texto: "Hola, Juan.\n— Gestoría X", claveIdempotencia: CLAVE })
+    expect(Object.keys(cuerpo as object)).toEqual(["texto", "claveIdempotencia"])
+    expect(respuesta).toEqual(RESPUESTA)
+  })
+
+  it("el 503 de «no configurado» trae su motivo (solo en este endpoint: el servidor no guardó nada)", async () => {
+    const motivo = "El envío por WhatsApp no está configurado. Ponte en contacto con Ganera."
+    server.use(
+      http.post(apiUrl("/tramites/7/respuestas-whatsapp"), () => HttpResponse.json({ motivo }, { status: 503 })),
+    )
+    const error = await responderPorWhatsapp(7, "x", CLAVE).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(ErrorApi)
+    expect(error).toMatchObject({ tipo: "servidor", status: 503, motivo })
+  })
+
+  it("un 503 de un gateway (texto plano) o sin cuerpo no trae motivo: es un fallo incierto", async () => {
+    for (const respuesta of [
+      () => HttpResponse.text("no healthy upstream", { status: 503 }),
+      () => new HttpResponse(null, { status: 503 }),
+    ]) {
+      server.use(http.post(apiUrl("/tramites/7/respuestas-whatsapp"), respuesta))
+      const error = (await responderPorWhatsapp(7, "x", CLAVE).catch((e: unknown) => e)) as ErrorApi
+      expect(error).toBeInstanceOf(ErrorApi)
+      expect(error.tipo).toBe("servidor")
+      expect(error.motivo).toBeUndefined()
+    }
+  })
+
+  it("un 500 con {motivo} sigue sin enseñarlo (M1)", async () => {
+    server.use(
+      http.post(apiUrl("/tramites/7/respuestas-whatsapp"), () =>
+        HttpResponse.json({ motivo: "detalle interno" }, { status: 500 }),
+      ),
+    )
+    const error = (await responderPorWhatsapp(7, "x", CLAVE).catch((e: unknown) => e)) as ErrorApi
+    expect(error.tipo).toBe("servidor")
+    expect(error.motivo).toBeUndefined()
+  })
+
+  it("un 409 llega como conflicto con el motivo", async () => {
+    server.use(
+      http.post(apiUrl("/tramites/7/respuestas-whatsapp"), () =>
+        HttpResponse.json({ motivo: "En este estado no se puede responder por WhatsApp." }, { status: 409 }),
+      ),
+    )
+    const error = (await responderPorWhatsapp(7, "x", CLAVE).catch((e: unknown) => e)) as ErrorApi
+    expect(error).toMatchObject({ tipo: "conflicto", motivo: "En este estado no se puede responder por WhatsApp." })
   })
 })

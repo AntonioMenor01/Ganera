@@ -661,7 +661,10 @@ Plan con las decisiones cerradas: `docs/superpowers/plans/2026-10-03-tarea-front
      reintentos). También el acuse por TwiML, la retención y el aviso en la cola y en el modal.
    - **B2 reducido** (redefinido el 2026-10-11; plan
      `docs/superpowers/plans/2026-10-11-promptB2-reducido-responder-whatsapp.md`): la gestoría **responde al
-     ganadero por WhatsApp** desde el trámite, siempre a mano. Los tipos de OVZ y el tipo de alta por
+     ganadero por WhatsApp** desde el trámite, siempre a mano. **Envío hecho el 2026-10-11, pendiente de
+     commit** (backend 796/796, frontend 912/912, `V22`, smoke en navegador real con Twilio simulado). Faltan el
+     **callback de estado de Twilio** (commit propio, solo backend) y el envío real al sandbox, que hace Antonio
+     desde su terminal a su propio móvil. Los tipos de OVZ y el tipo de alta por
      nacimiento ya están hechos con la `V20`. **Antes del piloto, tras la sesión de mapeo:** la fecha del
      hecho, junto con los campos propios del alta por nacimiento (crotal de la madre, sexo y fecha de
      nacimiento). **Después de B2 y antes del piloto:** `SIN_TRAMITE` en la extracción (ver «Pendientes
@@ -771,7 +774,7 @@ el webhook de Twilio responde `503` hasta el paso opcional de WhatsApp).
    comprobar que `SHOW timezone;` devuelve `UTC`.
 8. `npm i -g clever-tools`; `clever login` en la terminal de Antonio; desde la raíz del repo
    `clever link <id-api> --alias api` y `clever link <id-front> --alias front` (`.clever.json` está ignorado).
-9. `clever deploy --alias api`, revisar en `clever logs --alias api` que Flyway aplica V1–V21 y que arranca; luego
+9. `clever deploy --alias api`, revisar en `clever logs --alias api` que Flyway aplica V1–V22 y que arranca; luego
    `clever deploy --alias front`.
 10. **Antes de sembrar (añadido el 2026-10-07, ficha OVZ):** regenerar `ganera-demo/seed-tramites.sql` (y revisar
     `smoke.sh`) con los tipos de OVZ de la `V20` (`BAJA_MUERTE`, `SOLICITUD_MOVIMIENTO`…): hoy usa `'BAJA'` y
@@ -782,6 +785,8 @@ el webhook de Twilio responde `503` hasta el paso opcional de WhatsApp).
     (comprobar en la consola que ya no está) → `smoke.sh` en la terminal de Antonio (solo PASS/FAIL) → pasada en
     navegador real a 1440 y 375 px.
 11. Opcional: sandbox de Twilio con una clave de Anthropic aparte, en su propio workspace con límite de gasto.
+    Para responder desde el trámite (B2 reducido) hacen falta además `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` y
+    `TWILIO_WHATSAPP_FROM` (el número del sandbox); sin ellos el botón responde «no está configurado» (`503`).
 12. Entre demos: parar las apps desde la consola o con `clever stop --alias api` / `--alias front` (la instancia no
     factura parada; el add-on de PostgreSQL sí, unos 5 € al mes) y `clever restart` para volver a arrancarlas.
 
@@ -842,6 +847,8 @@ Además del catálogo real de tipos de trámite (ver los pendientes heredados en
   Datos que la retención de B1 **no** cubre, para que el abogado diga si hace falta plazo: el teléfono y el
   contacto de los mensajes con trámite (se quedan tras vaciar el texto), `tramite_crotal.crotal_indicado`,
   las copias de seguridad de la BD y la retención propia de Twilio (logs de mensajes) y de Anthropic.
+  Desde B2 reducido (2026-10-11), también las **respuestas de la gestoría** (`respuesta_whatsapp`): texto y
+  teléfono de destino vaciados a los 12 meses; se quedan quién, cuándo, el estado, el SID y el código de error.
 - **Retención por lotes (2026-10-05, B1 revisión T3 n2):** el `DELETE`/`UPDATE` de `RetencionMensajesService`
   van en bloque, en una transacción cada uno; con mucho volumen, trocearlos por lotes.
 - **Alerta de mensajes `ERROR_RECEPCION` (2026-10-05, B1):** si falla la creación del trámite, el mensaje

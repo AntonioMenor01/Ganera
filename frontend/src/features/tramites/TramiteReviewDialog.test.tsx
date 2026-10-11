@@ -7,7 +7,7 @@ import { setUnauthorizedHandler } from "@/shared/api/authSession"
 import { apiUrl } from "@/test/apiBaseUrl"
 import { server } from "@/test/server"
 import type { Explotacion } from "@/features/explotaciones/types"
-import type { EstadoTramite, Tramite, TramiteCrotal } from "./types"
+import type { EstadoTramite, Tramite, TramiteCrotal, WhatsappTramite } from "./types"
 import { TramiteReviewDialog } from "./TramiteReviewDialog"
 
 const DETALLE = {
@@ -26,6 +26,7 @@ const DETALLE = {
   crotalesDescartados: 0,
   hechoEnOvzEn: null as string | null,
   hechoEnOvzPorNombre: null as string | null,
+  whatsapp: null as WhatsappTramite | null,
 }
 
 type Detalle = typeof DETALLE
@@ -1792,30 +1793,31 @@ describe("TramiteReviewDialog: hecho en OVZ (solo lectura con la franja)", () =>
   })
 })
 
+// Hoisted (B2 reducido): los usan también los tests de honestidad con la sección de WhatsApp.
+const ESTADOS = [
+  "PENDIENTE_EXTRACCION",
+  "PENDIENTE_REVISION",
+  "APROBADO",
+  "HECHO_EN_OVZ",
+  "RECHAZADO",
+] as const
+
+// Menciones de OVZ permitidas: el botón de la ficha, el badge, el botón de marcar (y su pista) y la
+// franja. Nada más.
+const PERMITIDAS: Record<(typeof ESTADOS)[number], string[]> = {
+  PENDIENTE_EXTRACCION: [],
+  PENDIENTE_REVISION: [],
+  APROBADO: [
+    "Abrir ficha para OVZ",
+    "Aprobado · falta OVZ",
+    "Marcar como hecho en OVZ",
+    "Púlsalo cuando lo hayas terminado tú en OVZ. Ganera no envía nada.",
+  ],
+  HECHO_EN_OVZ: ["Abrir ficha para OVZ", "Hecho en OVZ", FRANJA],
+  RECHAZADO: [],
+}
+
 describe("TramiteReviewDialog: honestidad en todos los estados (Hecho en OVZ)", () => {
-  const ESTADOS = [
-    "PENDIENTE_EXTRACCION",
-    "PENDIENTE_REVISION",
-    "APROBADO",
-    "HECHO_EN_OVZ",
-    "RECHAZADO",
-  ] as const
-
-  // Menciones de OVZ permitidas: el botón de la ficha, el badge, el botón de marcar (y su pista) y la
-  // franja. Nada más.
-  const PERMITIDAS: Record<(typeof ESTADOS)[number], string[]> = {
-    PENDIENTE_EXTRACCION: [],
-    PENDIENTE_REVISION: [],
-    APROBADO: [
-      "Abrir ficha para OVZ",
-      "Aprobado · falta OVZ",
-      "Marcar como hecho en OVZ",
-      "Púlsalo cuando lo hayas terminado tú en OVZ. Ganera no envía nada.",
-    ],
-    HECHO_EN_OVZ: ["Abrir ficha para OVZ", "Hecho en OVZ", FRANJA],
-    RECHAZADO: [],
-  }
-
   for (const estado of ESTADOS) {
     it(`${estado}: sin palabras prohibidas y solo las menciones de OVZ permitidas`, async () => {
       server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(detalle({ estado, ...(estado === "HECHO_EN_OVZ" ? MARCA : {}) }))))
@@ -1888,6 +1890,74 @@ describe("TramiteReviewDialog: honestidad con el aviso de error de marcar o quit
 
       expect(await within(dialogo).findByText(caso.titulo)).toBeInTheDocument()
       expect(dialogo).not.toHaveTextContent(PROHIBIDAS)
+    })
+  }
+})
+
+describe("TramiteReviewDialog: honestidad con la sección de WhatsApp (B2 reducido)", () => {
+  // Respuestas en todos los estados, con sus motivos reales del backend: la lista de palabras
+  // prohibidas se aplica también a la sección (por eso ningún texto dice «enviado»).
+  function conWhatsapp(estado: (typeof ESTADOS)[number]) {
+    const whatsapp: WhatsappTramite = {
+      destinatarioNombre: "Juan Ganadero",
+      telefonoEnmascarado: "+34******001",
+      contactoActivo: true,
+      ventanaAbiertaHasta: new Date(Date.now() + 5 * 3_600_000).toISOString(),
+      firmaGestoria: "Gestoría Norte",
+      motivoNoDisponible: null,
+      respuestas: [
+        { estado: "ENVIANDO", motivoError: null },
+        { estado: "ENVIADO", motivoError: null },
+        { estado: "ENTREGADO", motivoError: null },
+        { estado: "LEIDO", motivoError: null },
+        { estado: "FALLIDO", motivoError: "WhatsApp no ha aceptado el mensaje (código 30008)." },
+        { estado: "SIN_CONFIRMAR", motivoError: "No sabemos si ha llegado. Compruébalo antes de volver a enviarlo." },
+      ].map((r, i) => ({
+        id: i + 1,
+        texto: `Respuesta ${i + 1}\n— Gestoría Norte`,
+        enviadoPorNombre: "Ana Pérez",
+        enviadoEn: "2026-10-07T10:30:00Z",
+        codigoError: null,
+        ...r,
+      })),
+    }
+    return detalle({ estado, origen: "WHATSAPP", ...(estado === "HECHO_EN_OVZ" ? MARCA : {}), whatsapp })
+  }
+
+  for (const estado of ESTADOS) {
+    it(`${estado}, panel cerrado: sin palabras prohibidas y ninguna mención nueva de OVZ`, async () => {
+      server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(conWhatsapp(estado))))
+      renderDialog()
+      const dialogo = await dialogoListo()
+      expect(within(dialogo).getByRole("heading", { name: "Respuestas por WhatsApp" })).toBeInTheDocument()
+
+      expect(dialogo).not.toHaveTextContent(PROHIBIDAS)
+      expect(within(dialogo).queryAllByText(/OVZ/).map((e) => e.textContent?.trim() ?? "").sort()).toEqual(
+        [...PERMITIDAS[estado]].sort(),
+      )
+    })
+  }
+
+  for (const estado of ["PENDIENTE_REVISION", "APROBADO", "HECHO_EN_OVZ", "RECHAZADO"] as const) {
+    it(`${estado}, panel abierto: el texto propuesto solo dice OVZ en HECHO_EN_OVZ y nada prohibido`, async () => {
+      server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(conWhatsapp(estado))))
+      const user = userEvent.setup()
+      renderDialog()
+      const dialogo = await dialogoListo()
+      await user.click(boton(dialogo, "Responder por WhatsApp"))
+      const campo = within(dialogo).getByRole("textbox", { name: "Respuesta" }) as HTMLTextAreaElement
+
+      // textContent no incluye el valor del textarea: se comprueba aparte.
+      expect(campo.value).not.toBe("")
+      expect(campo.value).not.toMatch(PROHIBIDAS)
+      expect(/OVZ/.test(campo.value)).toBe(estado === "HECHO_EN_OVZ")
+      expect(dialogo).not.toHaveTextContent(PROHIBIDAS)
+      // React deja el valor inicial del textarea también como su texto, así que getAllByText lo
+      // encuentra: es la única mención nueva, y solo en HECHO_EN_OVZ («ya está hecho en OVZ»).
+      const nuevas = estado === "HECHO_EN_OVZ" ? [campo.value] : []
+      expect(within(dialogo).queryAllByText(/OVZ/).map((e) => e.textContent?.trim() ?? "").sort()).toEqual(
+        [...PERMITIDAS[estado], ...nuevas].sort(),
+      )
     })
   }
 })

@@ -733,7 +733,7 @@ approval step before anything is written to OVZ.net.
     the registration).
   - **Tests against real PostgreSQL 16** (`com.ganera.core.postgres`, `io.zonky.test:embedded-postgres`
     2.2.2 + binaries BOM 16.15.0, test scope only, no Docker; `PostgresEmbebido` shares one server per
-    JVM, UTF8, a fresh database per test): Flyway V1–V21 + `ddl-auto=validate`, V18 on existing rows,
+    JVM, UTF8, a fresh database per test): Flyway V1–V22 + `ddl-auto=validate`, V18 on existing rows,
     the `clever` profile end to end, and `InstantTimestampPostgresTest`. **Finding (D8):** with
     Hibernate 6.6 + pgjdbc 42.7.4 an `Instant` round-trips through a `TIMESTAMP` (without time zone)
     column with no shift even with the JVM in `Europe/Madrid`, and the extraction queue and
@@ -807,6 +807,56 @@ approval step before anything is written to OVZ.net.
     (unreachable today). The FK has no `ON DELETE`: deleting a Usuario who marked something would fail
     (there is no way to delete Usuarios today). An inactive Usuario with a still-valid JWT can mark, like
     every other endpoint.
+- **B2 reducido — the gestoría replies to the Contacto by WhatsApp** (2026-10-11; plan
+  `docs/superpowers/plans/2026-10-11-promptB2-reducido-responder-whatsapp.md`, "Decisiones de Antonio" at the top
+  prevails). Always manual: the gestor sees and edits the text, nothing is ever sent by itself. The Twilio
+  status callback (delivered/read/failed later) is **not** here: it is its own commit after this one (D10).
+  - **Entity `RespuestaWhatsapp`** (`whatsapp` package, `GestoriaScopedEntity`, migration `V22`, table
+    `respuesta_whatsapp`): tramite, contacto, `telefono_destino` (copy at send time, nullable), `cuerpo`,
+    `enviado_por` (from the JWT), `creado_en`/`actualizado_en`, `estado` (`ENVIANDO`, `ENVIADO` = accepted by
+    Twilio, `ENTREGADO`, `LEIDO`, `FALLIDO`, `SIN_CONFIRMAR`), `twilio_message_sid` (`UNIQUE`), `codigo_error_twilio`,
+    `clave_idempotencia` (`UNIQUE(gestoria_id, clave_idempotencia)`). An `ENVIANDO` row older than 2 minutes is
+    exposed as `SIN_CONFIRMAR` (not rewritten). Never stores Twilio's English error text or its response body.
+  - **Endpoint** `POST /tramites/{id}/respuestas-whatsapp` `{texto, claveIdempotencia}` (extra JSON fields ignored;
+    the recipient is **always** `tramite.contacto`, loaded with the JWT's `gestoriaId`, and must be of the same
+    Gestoría). Order: `400 {motivo}` in the controller before any DB access (missing/non-UUID key, blank text,
+    over 1600 UTF-16 units, contains `___`) → `503 {motivo}` if Twilio isn't configured (nothing created) → `404`
+    no body (another Gestoría's, nonexistent, or a contact of another Gestoría) → same key again → `200` with the
+    stored row, **never resent** → `409 {motivo}` (key reused with another text/trámite; origen not `WHATSAPP`;
+    estado not in `PENDIENTE_REVISION`/`APROBADO`/`HECHO_EN_OVZ`/`RECHAZADO`; contacto inactive; 24 h window
+    closed) → send → `201`. A Twilio failure is **not** an HTTP error: `201` with `FALLIDO` (+ code and a Spanish
+    motivo decided by Ganera: 63016 window, 63015 sandbox not joined, 21610 blocked) or `SIN_CONFIRMAR`. No
+    subscription gate (D11). Never changes the trámite's estado or `version`.
+  - **Idempotency and transactions (D7):** short transaction inserting the row in `ENVIANDO` (the `UNIQUE` settles
+    a race; the loser re-reads and returns the stored row) → Twilio call **outside any transaction and without
+    locking the trámite** → short transaction with SID/state. Ganera **never retries** a send.
+  - **Twilio adapter** (`EnvioWhatsapp` port, `TwilioEnvioWhatsapp`): lazy client, 10 s timeouts, configured only
+    with `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and the new `TWILIO_WHATSAPP_FROM` (`ganera.twilio.whatsapp-from`,
+    normalized to `whatsapp:+…`); the app starts with all of them blank. **Footgun:** twilio-java 10.6.4's
+    `HttpClient.reliableRequest` retries any 5xx up to 3 times, which would duplicate a message —
+    `HttpClientSinReintentos` (a `NetworkHttpClient` whose `shouldRetry` returns `false`) prevents it, and a 5xx (or
+    no status) is classified `SIN_CONFIRMAR`, never `FALLIDO`. Classification is a pure function
+    (`ClasificadorEnvioWhatsapp`, skill `test-sin-mocks-externos`); every test uses `EnvioWhatsappFalso`.
+  - **24 h window:** last `MensajeCampo` of that Contacto **in that Gestoría** + 24 h, with the `Clock`. Templates
+    for outside the window need an own verified number (Prompt C).
+  - **Detail:** `TramiteDetalleResponse.whatsapp` (GET and PATCH; `null` if not from WhatsApp or the contact is of
+    another Gestoría): `{destinatarioNombre, telefonoEnmascarado, contactoActivo, ventanaAbiertaHasta, firmaGestoria,
+    motivoNoDisponible, respuestas[]}` — one query for the replies with their usuario. `TramiteResponse` unchanged.
+  - **Retention (D8):** the nightly job also empties the reply text **and** sets `telefono_destino` to null after
+    `ganera.retencion.texto-con-tramite` (P12M), idempotent, own transaction. Logs carry only ids, SID and code.
+  - **Frontend** (review dialog only, `SeccionWhatsapp` + `useRespuestaWhatsapp` + pure `respuestaWhatsapp.ts`):
+    proposed text per state, always editable, signed "— {gestoría}"; a `___` gap is mandatory in
+    `PENDIENTE_REVISION`/`RECHAZADO`; **only the `HECHO_EN_OVZ` template mentions OVZ ("ya está hecho en OVZ")**.
+    The honesty word list is unchanged and applies to the whole dialog, so no visible text says "enviado": states
+    read "Enviando…", "Aceptado por WhatsApp", "Entregado", "Leído", "No ha llegado", "Sin confirmar". The key is
+    generated on opening the panel (`claveIdempotencia()`, with a `getRandomValues` fallback for non-secure
+    contexts), kept on network/5xx retries, renewed after success or a `409`. Closing the dialog with an edited
+    reply asks inline ("Tienes una respuesta sin enviar."). See `DESIGN.md` → "Responder por WhatsApp".
+  - **Known limitations:** the window is per Contacto, not per phone number (changing a contact's phone could give
+    a 63016 `FALLIDO`); a DB failure right after Twilio accepted gives `500` and leaves `ENVIANDO` (shown as
+    `SIN_CONFIRMAR` after 2 minutes; the same key never resends) — and since the Twilio SID was never stored, the
+    status callback (next commit) cannot reconcile that row: it stays `SIN_CONFIRMAR`; a farmer's reply ("vale, gracias") still creates a
+    trámite (the `SIN_TRAMITE` task is pending, `progress.md`).
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)
@@ -1016,7 +1066,7 @@ reference for every frontend decision below.
   handler fails the test (`onUnhandledRequest: "error"`), and session state is cleared after each
   test. `npm test` ran **475 tests in 36 files** at the end of A2 (476 after the mini-prompt's
   Rechazar change; **506 in 36 files** after the frontend task before the pilot; **508 in 36** after billing left the app;
-  **513 in 37** after the brand colours and typography; **558 in 37** after Prompt B1; **557 in 36** after C mínimo removed the registration screen; **720 in 40** after the ficha OVZ; **811 in 41** after "Hecho en OVZ"). Layout can't be checked in
+  **513 in 37** after the brand colours and typography; **558 in 37** after Prompt B1; **557 in 36** after C mínimo removed the registration screen; **720 in 40** after the ficha OVZ; **811 in 41** after "Hecho en OVZ"; **912 in 43** after B2 reducido). Layout can't be checked in
   jsdom: for visual changes, also drive the real app in a browser (Playwright from npm installed
   **outside the repo**, as in Prompts 4 and A2).
 
@@ -1038,7 +1088,7 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw clean test` — runs the test suite (742 tests after "Hecho en OVZ", including the embedded-PostgreSQL ones); **always with `clean`**
+- `./mvnw clean test` — runs the test suite (796 tests after B2 reducido, including the embedded-PostgreSQL ones); **always with `clean`**
   (see the VS Code/ECJ note under Architecture notes). A single test:
   `./mvnw clean test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
@@ -1376,6 +1426,17 @@ screenshots. See the "Hecho en OVZ" bullet under Technical decisions. Migration 
 (known warnings only), and a real-browser smoke (H2 file DB, two invented gestorías, A `ACTIVA` with three
 usuarios, B `SUSPENDIDA`; Chromium and Firefox) with 13/13 scenarios PASS; screenshots outside the repo in
 `C:\Users\Antonio\Desktop\capturas-ganera-hecho-ovz\`.
+
+**B2 reducido — replying to the Contacto by WhatsApp — complete, pending commit** (2026-10-11), following
+`docs/superpowers/plans/2026-10-11-promptB2-reducido-responder-whatsapp.md` with the Superpowers flow (T1 backend:
+**Changes requested** (the Twilio SDK's 5xx retries) → fixed → **Approved with minors**; T2 frontend: **Approved
+with minors**; the correction rounds after a usage-limit cut were done from the main session with TDD and
+reviewed independently, **Approved with minors**, minors fixed; reports in `.superpowers/sdd/b2-*`, not committed).
+See the "B2 reducido" bullet under Technical decisions. Migration `V22`. Verified with `./mvnw clean test`
+**796/796**, `npm test` **912/912** (43 files), `npm run build` and `npm run lint` (known warnings only), and a
+real-browser smoke with two Gestorías and Twilio faked by a bean compiled outside the repo; screenshots outside the
+repo in `C:\Users\Antonio\Desktop\capturas-ganera-b2\`. Next: the Twilio status callback (its own commit), then the
+real sandbox send that Antonio runs from his own terminal to his own phone.
 
 **Still blocked: Prompts 3a and 3c (OVZ.net read sync and the assisted mode — Ganera fills in, the
 gestor submits; never autonomous).** They need real

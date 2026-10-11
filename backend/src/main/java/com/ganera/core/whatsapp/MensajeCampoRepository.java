@@ -22,6 +22,15 @@ public interface MensajeCampoRepository extends JpaRepository<MensajeCampo, Long
     Optional<MensajeCampo> findFirstByTramiteIdAndGestoriaIdOrderByCreatedAtDesc(Long tramiteId, Long gestoriaId);
 
     /**
+     * Instante del ultimo mensaje entrante de un Contacto EN SU GESTORIA (B2 reducido, D5): de aqui sale la
+     * ventana de 24 h de WhatsApp. Cuenta cualquier mensaje del contacto en esa gestoria, no solo los del
+     * tramite. gestoriaId explicito: un mensaje de otra gestoria con el mismo contacto_id (datos
+     * inconsistentes) nunca abre la ventana. Null si no hay ninguno.
+     */
+    @Query("select max(m.createdAt) from MensajeCampo m where m.contacto.id = :contactoId and m.gestoria.id = :gestoriaId")
+    Instant ultimoMensajeDelContacto(@Param("contactoId") Long contactoId, @Param("gestoriaId") Long gestoriaId);
+
+    /**
      * Retencion (B1, T3, D6): borra en bloque los mensajes SIN Tramite (numero desconocido, contacto
      * inactivo, error de recepcion o filas anteriores a B1) recibidos estrictamente antes de
      * {@code limite}. Cross-tenant a proposito: solo la usa RetencionMensajesService, desde el job

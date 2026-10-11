@@ -951,8 +951,34 @@ Europe/Madrid; sin pase de Impeccable (patrones existentes, revisión en las cap
 - **Commit** con el visto bueno de Antonio, después de un commit `docs:` aparte con la corrección de «pendiente de
   commit» de la ficha (ya estaba en `db0d234`).
 
+## 2026-10-11 — B2 reducido: la gestoría responde al ganadero por WhatsApp
+
+Plan: `docs/superpowers/plans/2026-10-11-promptB2-reducido-responder-whatsapp.md` (aprobado con las «Decisiones de
+Antonio» de arriba del plan). Antes, commit `docs:` `e7aa8a3` (alcance de B2, OVZ siempre asistido, correcciones).
+Orden de commits: docs → envío (backend + frontend, `V22`) → callback de estado (solo backend). Informes en
+`.superpowers/sdd/b2-*`.
+
+- **T1** (backend del envío): 742 → 787. **Changes requested** por I1: el SDK de Twilio 10.6.4 reintenta los 5xx
+  (`reliableRequest`) y un 5xx se guardaba `FALLIDO`; corregido con `HttpClientSinReintentos` y 5xx → `SIN_CONFIRMAR`,
+  más M1 (clave repetida gana a los 409), N3 (contacto de otra gestoría → 404) y N4 (503 igual para ajeno) → **796**.
+  Segunda pasada **Approved with minors** (N1, N2, N5 como notas).
+- **T2** (frontend): 811 → 884 (43 ficheros). **Approved with minors** (M1, N1–N8). Vocabulario sin «enviado» por el
+  test de honestidad (la lista no se toca): «Aceptado por WhatsApp», «No ha llegado», «Sin confirmar»…
+- **Corte por límite de sesión** con las correcciones en paralelo sin empezar (comprobado: ningún fichero cambió
+  tras la revisión). Hechas desde la sesión principal con TDD: N4 (texto del 409 «…Escribe otra.»), M1, N1, N5, N7
+  y N8 (decisión de Antonio: preguntar al cerrar con la respuesta editada) → 903. Revisión independiente **Approved
+  with minors**: M1b/N-d (el modal no se cerraba si acababa en «no encontrado» con el panel abierto), corregido.
+- **T3** (smoke, Twilio falso compilado fuera del repo, H2 en fichero, trámites por el webhook real con firma): 11/12
+  PASS; falló el 9 (N2: el foco caía en `body` al desactivarse «Enviar» y tras un 409). Corregido («Enviando…» solo
+  `aria-disabled`; foco a la alerta tras un error) → 910. Re-smoke del foco (T3b) 5/5 PASS en Chromium y Firefox; Firefox no desplazaba el modal hasta la alerta enfocada: `scrollIntoView({ block: "nearest" })` tras el foco → 911; test de un segundo clic sobre «Enviando…» (en rojo sin la guarda) → frontend **912/912**; comprobación del desplazamiento en navegador (T3c) 8/8 PASS (Chromium y Firefox, 1440 y 375 px). Nota: el anillo de foco de la alerta queda bajo el pie por abajo (posible `scroll-mb-3`), a decidir. Doble clic con «Enviando…» como `aria-disabled` (T3d): 12/12 PASS en Chromium y Firefox a 1440 y 375 px (ratón, clics forzados y por JS, teclado): una sola llamada al Twilio falso en cada pasada.
+- Decisiones de Antonio en esta tarea: N3 y N6 quedan como notas; callback de estado en el commit 3.
+
 ### Pendientes técnicos
 
+- **Anillo de foco de la alerta del panel de WhatsApp tapado por abajo** (T3c de B2 reducido): con
+  `scrollIntoView({ block: "nearest" })` el borde de la alerta queda pegado al pie del modal y el `ring-3` no se ve
+  por abajo. Posible `scroll-mb-3` en la alerta; va con la pasada de tokens del diseño (decisión de Antonio,
+  2026-10-11).
 - **Lector de pantalla no verificado:** que el aviso de error enfocable de la ficha y del modal (`role="alert"` con
   `tabIndex={-1}`, que recibe el foco tras un error) no se lea dos veces. Comprobarlo con NVDA (N8 de la revisión de
   la T2 de «Hecho en OVZ»).

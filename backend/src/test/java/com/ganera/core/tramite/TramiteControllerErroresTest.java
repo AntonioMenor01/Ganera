@@ -49,7 +49,7 @@ class TramiteControllerErroresTest {
     }
 
     private static TramiteController controllerQueLanza(Supplier<RuntimeException> fallo) {
-        TramiteRevisionService servicio = new TramiteRevisionService(null, null, null, null, null, null, null) {
+        TramiteRevisionService servicio = new TramiteRevisionService(null, null, null, null, null, null, null, null) {
             @Override
             public TramiteDetalleResponse actualizar(Long gestoriaId, Long tramiteId, Long versionVista,
                                                      Long explotacionId, TipoTramite tipoTramite, List<String> crotales) {
@@ -83,6 +83,6 @@ class TramiteControllerErroresTest {
                 return true;
             }
         };
-        return new TramiteController(null, suscripcionActiva, null, null, servicio);
+        return new TramiteController(null, suscripcionActiva, null, null, servicio, null);
     }
 }

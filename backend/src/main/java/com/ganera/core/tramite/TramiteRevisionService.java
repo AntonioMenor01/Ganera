@@ -8,6 +8,7 @@ import com.ganera.core.gestoria.UsuarioRepository;
 import com.ganera.core.tramite.CrotalNormalizador.TipoCrotal;
 import com.ganera.core.whatsapp.MensajeCampo;
 import com.ganera.core.whatsapp.MensajeCampoRepository;
+import com.ganera.core.whatsapp.WhatsappDetalleService;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.slf4j.Logger;
@@ -79,6 +80,7 @@ public class TramiteRevisionService {
     private final MensajeCampoRepository mensajeCampoRepository;
     private final UsuarioRepository usuarioRepository;
     private final Clock clock;
+    private final WhatsappDetalleService whatsappDetalleService;
 
     /** Proxy compartido: dentro de la transaccion es el EntityManager de la peticion (OSIV). */
     @PersistenceContext
@@ -91,7 +93,8 @@ public class TramiteRevisionService {
             TramiteCrotalRepository tramiteCrotalRepository,
             MensajeCampoRepository mensajeCampoRepository,
             UsuarioRepository usuarioRepository,
-            Clock clock) {
+            Clock clock,
+            WhatsappDetalleService whatsappDetalleService) {
         this.tramiteRepository = tramiteRepository;
         this.explotacionRepository = explotacionRepository;
         this.tramiteCrotalService = tramiteCrotalService;
@@ -99,6 +102,7 @@ public class TramiteRevisionService {
         this.mensajeCampoRepository = mensajeCampoRepository;
         this.usuarioRepository = usuarioRepository;
         this.clock = clock;
+        this.whatsappDetalleService = whatsappDetalleService;
     }
 
     /**
@@ -148,7 +152,8 @@ public class TramiteRevisionService {
                 .findFirstByTramiteIdAndGestoriaIdOrderByCreatedAtDesc(tramite.getId(), gestoriaId)
                 .map(MensajeCampo::getCuerpo)
                 .orElse(null);
-        return TramiteDetalleResponse.from(tramite, mensajeOriginal, respuestas(filas));
+        return TramiteDetalleResponse.from(tramite, mensajeOriginal, respuestas(filas),
+                whatsappDetalleService.bloque(tramite, gestoriaId));
     }
 
     /**

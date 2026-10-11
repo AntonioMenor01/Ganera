@@ -43,6 +43,10 @@ ganera:
     # URL publica exacta que Twilio llama (la del sandbox/numero); la firma se valida contra ella.
     # Vacia -> el webhook responde 503 y no guarda nada (fail-closed).
     webhook-url: ${TWILIO_WEBHOOK_URL:}
+    # Remitente de las respuestas por WhatsApp (B2 reducido), p. ej. el del sandbox: whatsapp:+... o +...
+    # Vacio (o sin TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN) -> POST /tramites/{id}/respuestas-whatsapp da 503
+    # y no crea nada. La app arranca igual: el cliente de Twilio se crea en el primer envio.
+    whatsapp-from: ${TWILIO_WHATSAPP_FROM:}
   anthropic:
     # Vacia -> la app arranca igual; cada extraccion falla con ExtraccionFallidaException.
     api-key: ${ANTHROPIC_API_KEY:}

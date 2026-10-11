@@ -170,6 +170,7 @@ export type ContextoError =
   | "guardar-tramite"
   | "marcar-hecho-ovz"
   | "desmarcar-hecho-ovz"
+  | "responder-whatsapp"
   | "listar-ganaderos"
   | "detalle-ganadero"
   | "animales-explotacion";
@@ -244,6 +245,12 @@ const TEXTOS: Record<ContextoError, TextosContexto> = {
   },
   "desmarcar-hecho-ovz": {
     generico: "No se ha podido quitar la marca. Inténtalo de nuevo.",
+    noEncontrado: TEXTO_TRAMITE_NO_ENCONTRADO,
+  },
+  // B2 reducido: POST /tramites/{id}/respuestas-whatsapp. Sus 400/409/503 traen `{motivo}`, que es
+  // lo que se enseña; la red y los 5xx sin motivo los trata el propio panel (puede que sí saliera).
+  "responder-whatsapp": {
+    generico: "No se ha podido mandar la respuesta. Inténtalo de nuevo.",
     noEncontrado: TEXTO_TRAMITE_NO_ENCONTRADO,
   },
   "listar-ganaderos": {

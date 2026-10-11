@@ -41,7 +41,8 @@ import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTest
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = NONE)
-@Import({TramiteRevisionService.class, TramiteCrotalService.class, TramiteRevisionServiceTest.RelojFijo.class})
+@Import({TramiteRevisionService.class, TramiteCrotalService.class, TramiteRevisionServiceTest.RelojFijo.class,
+        com.ganera.core.whatsapp.WhatsappDetalleService.class})
 class TramiteRevisionServiceTest {
 
     /** "Ahora" del Clock con el que se marca un tramite como hecho en OVZ (con nanosegundos: se guarda
