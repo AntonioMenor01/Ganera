@@ -1464,12 +1464,14 @@ See the "B2 reducido" bullet under Technical decisions. Migration `V22`. Verifie
 real-browser smoke with two Gestorías and Twilio faked by a bean compiled outside the repo; screenshots outside the
 repo in `C:\Users\Antonio\Desktop\capturas-ganera-b2\`.
 
-**B2 reducido — Twilio status callback — complete, pending commit** (2026-10-11), following
+**B2 reducido — Twilio status callback — complete, committed as `5eeb39e`** (2026-10-11), following
 `docs/superpowers/plans/2026-10-11-b2-callback-estado-twilio.md` (backend only; one implementer + one independent
 reviewer, **Approved with minors**, minors accepted as notes; reports `.superpowers/sdd/b2-t4-*`, not committed). See
 the "Status callback" sub-bullet under "B2 reducido". No migration. Verified with `./mvnw clean test` **906/906**
-(frontend untouched, `npm test` **912/912**). Next: the real sandbox send that Antonio runs from his own terminal to
-his own phone (callbacks need a public URL, e.g. a tunnel as in B1).
+(frontend untouched, `npm test` **912/912**). **B2 reducido is closed** after Antonio's real sandbox test on
+2026-10-12 (his terminal, his own phone, Cloudflare Quick Tunnel): reply accepted, then `ENTREGADO` and `LEIDO` callbacks
+with the same SID and no error code, no phone or text in the log (details and notes in `progress.md`). Next:
+`SIN_TRAMITE` in the extraction (see "Pendientes técnicos" in `progress.md`).
 
 **Still blocked: Prompts 3a and 3c (OVZ.net read sync and the assisted mode — Ganera fills in, the
 gestor submits; never autonomous).** They need real

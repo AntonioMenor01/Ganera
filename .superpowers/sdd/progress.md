@@ -1009,8 +1009,54 @@ Orden de commits: docs → envío (backend + frontend, `V22`) → callback de es
   `whatsapp/WhatsappFiltrosConfig.java`, tests `postgres/CallbackEstadoConcurrenciaPostgresTest.java`,
   `shared/security/WebhooksPublicosEndToEndTest.java`, `whatsapp/CallbackEstadoWhatsappTest.java`,
   `whatsapp/TwilioEstadoWebhookEndToEndTest.java`, `whatsapp/TwilioEstadoWebhookSinConfiguracionEndToEndTest.java`.
+- **Commit `5eeb39e`** (callback de estado, 21 ficheros) con el visto bueno de Antonio el 2026-10-12, tras `npm test`
+  912/912 (43 ficheros; la referencia de 911 de Antonio era anterior al test del segundo clic, que ya está en
+  `f816f6e`) y `git diff --cached` idéntico a la lista de 21.
+
+### B2 reducido cerrado: prueba real con el sandbox de Twilio (2026-10-12)
+
+**B2 reducido queda cerrado** (envío `f816f6e` + callback de estado `5eeb39e`). Prueba real de Antonio, desde su terminal
+y a su propio móvil, con Cloudflare Quick Tunnel, H2 en fichero fuera del repo
+(`C:\Users\Antonio\Desktop\ganera-prueba-b2\`), una gestoría creada por el onboarding interno y un Excel inventado con su
+móvil como `TITULAR`: respuesta enviada desde el modal → **«Aceptado por WhatsApp»**; callbacks con el **mismo SID** →
+**`ENTREGADO`** y después **`LEIDO`**, con `codigo=null`; en el log **ni teléfono ni texto**. Claude no ejecutó nada de la
+prueba (solo preparó los comandos y el Excel). **Incidencia de secretos:** durante la prueba, el Auth Token de Twilio
+apareció por error en el chat del asesor (no en la sesión de Claude Code); Antonio lo rotó en la consola de Twilio
+(secondary → promote) antes de seguir.
+
+**Correcciones a los comandos que se prepararon, para la próxima prueba real:**
+- **Onboarding:** necesita el backend arrancado, así que se hace desde **otra** terminal. Por eso `ONBOARDING_SECRET` **no
+  se genera al azar**: se introduce a mano con `Read-Host` (con `-AsSecureString` y el paso a texto de 5.1) **con el mismo
+  valor en las dos terminales** (la del backend y la del `Invoke-RestMethod`).
+- **Frontend:** si la política de ejecución de PowerShell bloquea `npm.ps1`, usar **`npm.cmd run dev`**.
+- **`Read-Host`:** las respuestas se pegan **línea a línea**, una por pregunta (pegar varias líneas de golpe las reparte
+  mal entre las preguntas).
+- **Nunca escribir un valor dentro de un comando; los datos solo se escriben cuando `Read-Host` los pide.**
 
 ### Pendientes técnicos
+
+- **Antes de la demo — quitar el `UserDetailsService` por defecto** (visto en la prueba real de B2): al arrancar, Spring
+  Boot imprime «Using generated security password: …» porque no hay ningún bean `UserDetailsService`/
+  `AuthenticationProvider` y su `UserDetailsServiceAutoConfiguration` crea un `InMemoryUserDetailsManager` con un usuario
+  `user` y una contraseña aleatoria. No se usa (la app es JWT sin `httpBasic` ni `formLogin`), pero deja una contraseña en
+  el log y un usuario que no debería existir. **Propuesta (sin implementar):** excluir
+  `org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration` en
+  `@SpringBootApplication(exclude = …)` de la clase principal. **Test:** un `@SpringBootTest` con `OutputCaptureExtension`
+  que compruebe que la salida del arranque no contiene «Using generated security password» y que el contexto no tiene
+  ningún bean `UserDetailsService`; regresión: quitar el `exclude` → rojo. Revisar que los E2E de login y de rutas públicas
+  siguen en verde.
+- **Aviso de Flyway con H2 2.3.232 (solo local):** al arrancar contra H2, Flyway avisa de que esa versión de H2 es más
+  nueva que las que tiene probadas. Solo afecta a los tests y al smoke local (H2 es de ámbito `test`); en Clever es
+  PostgreSQL 16. Revisarlo si se sube Flyway o H2.
+- **Resumen de importación con el género mal:** dice «Animales: 2 creadas» y debería ser «creados» (y «actualizados»).
+  `ImportarExcelSection.tsx` usa las mismas palabras femeninas para las tres hojas, pero solo «Explotaciones» es
+  femenino: «Animales» y «Contactos» son masculinos. Pasar el género por hoja (tarjeta y frase anunciada), con su test.
+  **Entra en el diseño fase 1** (decisión de Antonio, 2026-10-12): texto «creados».
+- **Columna «Animales» de la lista de Explotaciones:** en la prueba pareció vacía. Según el código no muestra ningún
+  recuento: es la columna del botón «Ver animales», sin título visible (`ID_CABECERA_ANIMALES` en
+  `ExplotacionesPage.tsx`), y `ExplotacionResponse` no trae número de animales. **Entra en el diseño fase 1** (decisión de
+  Antonio, 2026-10-12): cabecera visible o accesible para la columna del botón «Ver animales»; **sin recuento de
+  animales**.
 
 - **Anillo de foco de la alerta del panel de WhatsApp tapado por abajo** (T3c de B2 reducido): con
   `scrollIntoView({ block: "nearest" })` el borde de la alerta queda pegado al pie del modal y el `ring-3` no se ve
