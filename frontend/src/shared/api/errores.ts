@@ -170,6 +170,8 @@ export type ContextoError =
   | "guardar-tramite"
   | "marcar-hecho-ovz"
   | "desmarcar-hecho-ovz"
+  | "descartar-tramite"
+  | "deshacer-descarte"
   | "responder-whatsapp"
   | "listar-ganaderos"
   | "detalle-ganadero"
@@ -245,6 +247,16 @@ const TEXTOS: Record<ContextoError, TextosContexto> = {
   },
   "desmarcar-hecho-ovz": {
     generico: "No se ha podido quitar la marca. Inténtalo de nuevo.",
+    noEncontrado: TEXTO_TRAMITE_NO_ENCONTRADO,
+  },
+  // SIN_TRAMITE: POST /tramites/{id}/descartar y /deshacer-descarte. Sus 400/409 traen `{motivo}`, que
+  // es lo que se enseña; esto es la reserva. Sin 403: no dependen de la suscripción.
+  "descartar-tramite": {
+    generico: "No se ha podido descartar el mensaje. Inténtalo de nuevo.",
+    noEncontrado: TEXTO_TRAMITE_NO_ENCONTRADO,
+  },
+  "deshacer-descarte": {
+    generico: "No se ha podido deshacer el descarte. Inténtalo de nuevo.",
     noEncontrado: TEXTO_TRAMITE_NO_ENCONTRADO,
   },
   // B2 reducido: POST /tramites/{id}/respuestas-whatsapp. Sus 400/409/503 traen `{motivo}`, que es

@@ -74,6 +74,34 @@ export function presentacionEstado(estado: string): Presentacion {
   return presentacionDe(ESTADOS_TRAMITE, estado);
 }
 
+/** Motivos de rechazo (SIN_TRAMITE, 2026-10-12): el backend guarda un CÓDIGO, nunca texto; el texto
+ * sale de aquí. Un código desconocido se presenta como el `RECHAZADO` de siempre. */
+export const MOTIVOS_RECHAZO = {
+  /** «Descartar» del modal: un mensaje sin trámite. Neutro: no es un error ni un rechazo del gestor. */
+  SIN_TRAMITE: { etiqueta: "Descartado", variante: "outline" },
+} as const satisfies Record<string, Presentacion>;
+
+/** Lo que hace falta para presentar el estado de un trámite (lista, detalle o ficha). */
+export interface EstadoConMotivo {
+  estado: string;
+  motivoRechazo?: string | null;
+}
+
+/** Descartado como mensaje sin trámite: `RECHAZADO` + `motivoRechazo = SIN_TRAMITE`. */
+export function esDescartado(tramite: EstadoConMotivo): boolean {
+  return tramite.estado === "RECHAZADO" && tramite.motivoRechazo === "SIN_TRAMITE";
+}
+
+/** Presentación del estado teniendo en cuenta el motivo de rechazo. ÚNICA fuente para el badge de la
+ * cola, el modal y la ficha: un descartado se ve «Descartado» en los tres. */
+export function presentacionEstadoTramite(tramite: EstadoConMotivo): Presentacion {
+  if (tramite.estado === "RECHAZADO" && tramite.motivoRechazo) {
+    const motivo = buscar<Presentacion>(MOTIVOS_RECHAZO, tramite.motivoRechazo);
+    if (motivo) return motivo;
+  }
+  return presentacionEstado(tramite.estado);
+}
+
 /** Variante de `Badge` para un estado (DESIGN.md la nombra). Desconocido → `outline`. */
 export function badgeVarianteDeEstado(estado: string): VarianteBadge {
   return presentacionEstado(estado).variante;
@@ -183,6 +211,14 @@ export const TEXTOS_EXTRACCION = {
     modal: "El mensaje no tiene texto; puede traer una foto o un audio, que todavía no se procesan.",
     tono: "aviso",
   },
+  /** SIN_TRAMITE (2026-10-12): la IA cree que no pide ningún trámite. Neutro: no es un fallo. Solo se
+   * enseña si el backend dice que es `descartable` (ver `avisosExtraccion`). */
+  SIN_TRAMITE: {
+    cola: "Parece un mensaje sin trámite",
+    modal:
+      "Parece un mensaje sin trámite: un saludo, un agradecimiento o una pregunta. Si hay que contestar, responde antes de descartar.",
+    tono: "neutro",
+  },
 } as const satisfies Record<string, TextoExtraccion>;
 
 export interface AvisoDescartados {
@@ -212,17 +248,22 @@ function avisoDescartados(n: number): AvisoDescartados {
 }
 
 /** Qué avisos de extracción tocan para un trámite. Un `estadoExtraccion` desconocido no da aviso;
- * un `crotalesDescartados` ausente, no entero o ≤ 0, tampoco. Nunca lanza. */
+ * un `crotalesDescartados` ausente, no entero o ≤ 0, tampoco. `SIN_TRAMITE` solo da aviso si el
+ * backend lo marca `descartable` (D3: si el gestor ya le puso tipo o crotales, deja de serlo); el
+ * frontend no recalcula esa regla. Nunca lanza. */
 export function avisosExtraccion(tramite: {
   estado: string;
   estadoExtraccion?: string | null;
   crotalesDescartados?: number | null;
+  descartable?: boolean | null;
 }): AvisosExtraccion {
   if (!ESTADOS_CON_AVISOS_EXTRACCION.has(tramite.estado)) return { extraccion: null, descartados: null };
   const { estadoExtraccion, crotalesDescartados } = tramite;
-  const extraccion = estadoExtraccion
-    ? (buscar<TextoExtraccion>(TEXTOS_EXTRACCION, estadoExtraccion) ?? null)
-    : null;
+  const sinTramiteNoDescartable = estadoExtraccion === "SIN_TRAMITE" && tramite.descartable !== true;
+  const extraccion =
+    estadoExtraccion && !sinTramiteNoDescartable
+      ? (buscar<TextoExtraccion>(TEXTOS_EXTRACCION, estadoExtraccion) ?? null)
+      : null;
   const descartados =
     typeof crotalesDescartados === "number" && Number.isInteger(crotalesDescartados) && crotalesDescartados > 0
       ? avisoDescartados(crotalesDescartados)

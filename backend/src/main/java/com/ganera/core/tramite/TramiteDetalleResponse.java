@@ -19,7 +19,10 @@ import java.util.List;
  * hechoEnOvzEn y hechoEnOvzPorNombre («hecho en OVZ»): mismos valores que en TramiteResponse.
  * whatsapp (B2 reducido, D14): destinatario, ventana de 24 h, firma y respuestas enviadas; null si el
  * tramite no llego por WhatsApp. Lo arma WhatsappDetalleService con el gestoriaId explicito. El listado
- * (TramiteResponse) no lo lleva. */
+ * (TramiteResponse) no lo lleva.
+ * motivoRechazo y descartable: mismos valores que en TramiteResponse. historialDescarte (A6): quien descarto o
+ * deshizo el descarte y cuando, en orden cronologico; lista vacia si no hay (nunca null). La carga
+ * TramiteRevisionService.historialDescarte en UNA consulta con el usuario. */
 public record TramiteDetalleResponse(
         Long id,
         String tipoTramite,
@@ -38,11 +41,14 @@ public record TramiteDetalleResponse(
         int crotalesDescartados,
         Instant hechoEnOvzEn,
         String hechoEnOvzPorNombre,
-        WhatsappTramiteResponse whatsapp) {
+        WhatsappTramiteResponse whatsapp,
+        String motivoRechazo,
+        boolean descartable,
+        List<EventoDescarteResponse> historialDescarte) {
 
     public static TramiteDetalleResponse from(
             Tramite tramite, String mensajeOriginal, List<TramiteCrotalResponse> crotales,
-            WhatsappTramiteResponse whatsapp) {
+            WhatsappTramiteResponse whatsapp, List<EventoDescarteResponse> historialDescarte) {
         boolean tieneExplotacion = tramite.getExplotacion() != null;
         Ganadero ganadero = tieneExplotacion ? tramite.getExplotacion().getGanadero() : null;
         return new TramiteDetalleResponse(
@@ -63,6 +69,9 @@ public record TramiteDetalleResponse(
                 tramite.getCrotalesDescartados(),
                 tramite.getHechoEnOvzEn(),
                 tramite.getHechoEnOvzPor() != null ? tramite.getHechoEnOvzPor().getNombre() : null,
-                whatsapp);
+                whatsapp,
+                tramite.getMotivoRechazo() != null ? tramite.getMotivoRechazo().name() : null,
+                DescarteTramite.esDescartable(tramite, crotales != null ? crotales.size() : 0),
+                historialDescarte != null ? historialDescarte : List.of());
     }
 }

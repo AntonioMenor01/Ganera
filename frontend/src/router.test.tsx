@@ -110,6 +110,9 @@ describe("rutas: ficha para OVZ (ficha OVZ, T5)", () => {
     hechoEnOvzEn: null,
     hechoEnOvzPorNombre: null,
     whatsapp: null,
+    motivoRechazo: null,
+    descartable: false,
+    historialDescarte: [],
   }
 
   it("con sesión, /tramites/5/ovz es la ficha, fuera del layout (sin la barra de la app)", async () => {

@@ -33,7 +33,8 @@ export interface Tramite {
   version: number;
   /** B1: `"WHATSAPP"`, o null en trámites anteriores a B1. Se etiqueta con `etiquetaOrigen`. */
   origen: string | null;
-  /** B1: `PENDIENTE`, `COMPLETADA`, `FALLIDA`, `SIN_TEXTO`, o null en trámites anteriores a B1.
+  /** B1: `PENDIENTE`, `COMPLETADA`, `FALLIDA`, `SIN_TEXTO` (y `SIN_TRAMITE` desde 2026-10-12), o null
+   * en trámites anteriores a B1.
    * Es string: un valor que el frontend no conozca no muestra aviso (`avisosExtraccion`). */
   estadoExtraccion: string | null;
   /** B1: identificadores que la IA devolvió y no parecían crotales; 0 si no hubo. */
@@ -43,6 +44,22 @@ export interface Tramite {
   hechoEnOvzEn: string | null;
   /** Hecho en OVZ: nombre del usuario que lo marcó (nunca email ni id), o null. */
   hechoEnOvzPorNombre: string | null;
+  /** SIN_TRAMITE: código del motivo de un `RECHAZADO` (`"SIN_TRAMITE"` = descartado), o null en un
+   * rechazo normal o en otro estado. Es string: un código desconocido se presenta como «Rechazado». */
+  motivoRechazo: string | null;
+  /** SIN_TRAMITE (D3): lo decide el backend (pendiente, `SIN_TRAMITE`, sin tipo ni crotales). El
+   * frontend nunca recalcula la regla: solo enseña el aviso y «Descartar» si es `true`. */
+  descartable: boolean;
+}
+
+/** SIN_TRAMITE (A6): una acción de descartar o deshacer el descarte, con quién y cuándo. */
+export interface EventoDescarte {
+  /** `DESCARTADO` o `DESCARTE_DESHECHO`; string: uno desconocido no se enseña. */
+  tipo: string;
+  /** `Usuario.nombre` (nunca email ni id). */
+  usuarioNombre: string | null;
+  /** ISO-8601 UTC con `Z`. Se enseña en hora de Madrid. */
+  en: string | null;
 }
 
 export interface TramiteDetalle {
@@ -62,7 +79,8 @@ export interface TramiteDetalle {
   version: number;
   /** B1: `"WHATSAPP"`, o null en trámites anteriores a B1. Se etiqueta con `etiquetaOrigen`. */
   origen: string | null;
-  /** B1: `PENDIENTE`, `COMPLETADA`, `FALLIDA`, `SIN_TEXTO`, o null en trámites anteriores a B1.
+  /** B1: `PENDIENTE`, `COMPLETADA`, `FALLIDA`, `SIN_TEXTO` (y `SIN_TRAMITE` desde 2026-10-12), o null
+   * en trámites anteriores a B1.
    * Es string: un valor que el frontend no conozca no muestra aviso (`avisosExtraccion`). */
   estadoExtraccion: string | null;
   /** B1: identificadores que la IA devolvió y no parecían crotales; 0 si no hubo. */
@@ -75,6 +93,11 @@ export interface TramiteDetalle {
   /** B2 reducido: la conversación de WhatsApp del trámite (destinatario, ventana de 24 h y
    * respuestas). null si el trámite no llegó por WhatsApp. La traen el GET del detalle y el PATCH. */
   whatsapp: WhatsappTramite | null;
+  /** SIN_TRAMITE: como en `Tramite`. */
+  motivoRechazo: string | null;
+  descartable: boolean;
+  /** SIN_TRAMITE (A6): descartes y deshacer, en orden cronológico; `[]` si no hay. Solo en el detalle. */
+  historialDescarte: EventoDescarte[];
 }
 
 /** B2 reducido: una respuesta de la gestoría al contacto por WhatsApp (`RespuestaWhatsappResponse`).

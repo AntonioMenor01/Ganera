@@ -1,6 +1,7 @@
 package com.ganera.core.whatsapp;
 
 import com.ganera.core.tramite.EstadoTramite;
+import com.ganera.core.tramite.MotivoRechazo;
 import com.ganera.core.tramite.OrigenTramite;
 import org.junit.jupiter.api.Test;
 
@@ -45,7 +46,7 @@ class ReglasRespuestaWhatsappTest {
         Instant hasta = ULTIMO.plus(VEINTICUATRO_HORAS);
         for (EstadoTramite estado : EnumSet.of(EstadoTramite.PENDIENTE_REVISION, EstadoTramite.APROBADO,
                 EstadoTramite.HECHO_EN_OVZ, EstadoTramite.RECHAZADO)) {
-            assertThat(ReglasRespuestaWhatsapp.motivoNoDisponible(OrigenTramite.WHATSAPP, estado, true, hasta, ULTIMO))
+            assertThat(ReglasRespuestaWhatsapp.motivoNoDisponible(OrigenTramite.WHATSAPP, estado, null, true, hasta, ULTIMO))
                     .as(estado.name()).isNull();
         }
     }
@@ -57,7 +58,7 @@ class ReglasRespuestaWhatsappTest {
                 EstadoTramite.EJECUTADO_OVZ, EstadoTramite.ERROR_OVZ);
         assertThat(noPermitidos).hasSize(EstadoTramite.values().length - 4);
         for (EstadoTramite estado : noPermitidos) {
-            assertThat(ReglasRespuestaWhatsapp.motivoNoDisponible(OrigenTramite.WHATSAPP, estado, true, hasta, ULTIMO))
+            assertThat(ReglasRespuestaWhatsapp.motivoNoDisponible(OrigenTramite.WHATSAPP, estado, null, true, hasta, ULTIMO))
                     .as(estado.name()).isEqualTo(ReglasRespuestaWhatsapp.MOTIVO_ESTADO_NO_PERMITIDO);
         }
     }
@@ -65,20 +66,44 @@ class ReglasRespuestaWhatsappTest {
     @Test
     void elOrdenEsOrigenEstadoContactoYVentana() {
         Instant cerrada = ULTIMO.minus(UN_SEGUNDO);
-        assertThat(ReglasRespuestaWhatsapp.motivoNoDisponible(null, EstadoTramite.PENDIENTE_EXTRACCION, false, cerrada, ULTIMO))
+        assertThat(ReglasRespuestaWhatsapp.motivoNoDisponible(null, EstadoTramite.PENDIENTE_EXTRACCION, null, false, cerrada, ULTIMO))
                 .isEqualTo("Este trámite no llegó por WhatsApp; no hay a quién responder.");
-        assertThat(ReglasRespuestaWhatsapp.motivoNoDisponible(OrigenTramite.WHATSAPP, EstadoTramite.PENDIENTE_EXTRACCION,
+        assertThat(ReglasRespuestaWhatsapp.motivoNoDisponible(OrigenTramite.WHATSAPP, EstadoTramite.PENDIENTE_EXTRACCION, null,
                 false, cerrada, ULTIMO))
                 .isEqualTo("En este estado no se puede responder por WhatsApp.");
-        assertThat(ReglasRespuestaWhatsapp.motivoNoDisponible(OrigenTramite.WHATSAPP, EstadoTramite.APROBADO,
+        assertThat(ReglasRespuestaWhatsapp.motivoNoDisponible(OrigenTramite.WHATSAPP, EstadoTramite.APROBADO, null,
                 false, cerrada, ULTIMO))
                 .isEqualTo("El contacto está dado de baja; no se le puede escribir.");
-        assertThat(ReglasRespuestaWhatsapp.motivoNoDisponible(OrigenTramite.WHATSAPP, EstadoTramite.APROBADO,
+        assertThat(ReglasRespuestaWhatsapp.motivoNoDisponible(OrigenTramite.WHATSAPP, EstadoTramite.APROBADO, null,
                 true, cerrada, ULTIMO))
                 .isEqualTo(ReglasRespuestaWhatsapp.MOTIVO_FUERA_DE_VENTANA);
-        assertThat(ReglasRespuestaWhatsapp.motivoNoDisponible(OrigenTramite.WHATSAPP, EstadoTramite.APROBADO,
+        assertThat(ReglasRespuestaWhatsapp.motivoNoDisponible(OrigenTramite.WHATSAPP, EstadoTramite.APROBADO, null,
                 true, null, ULTIMO))
                 .isEqualTo(ReglasRespuestaWhatsapp.MOTIVO_FUERA_DE_VENTANA);
+    }
+
+    /** SIN_TRAMITE (D9): un descartado no se responde, aunque el contacto este activo y la ventana abierta;
+     * va antes que el contacto y la ventana (es una decision del gestor, no un limite de WhatsApp). */
+    @Test
+    void unDescartadoComoSinTramiteNoSeRespondeConSuPropioMotivo() {
+        Instant hasta = ULTIMO.plus(VEINTICUATRO_HORAS);
+        assertThat(ReglasRespuestaWhatsapp.motivoNoDisponible(OrigenTramite.WHATSAPP, EstadoTramite.RECHAZADO,
+                MotivoRechazo.SIN_TRAMITE, true, hasta, ULTIMO))
+                .isEqualTo(ReglasRespuestaWhatsapp.MOTIVO_DESCARTADO)
+                .isEqualTo("Este mensaje se descartó como sin trámite; no se responde desde Ganera.");
+        assertThat(ReglasRespuestaWhatsapp.motivoNoDisponible(OrigenTramite.WHATSAPP, EstadoTramite.RECHAZADO,
+                MotivoRechazo.SIN_TRAMITE, false, ULTIMO.minus(UN_SEGUNDO), ULTIMO))
+                .isEqualTo(ReglasRespuestaWhatsapp.MOTIVO_DESCARTADO);
+    }
+
+    /** Un rechazo normal (sin motivo) se sigue pudiendo responder, como hasta ahora. */
+    @Test
+    void unRechazoNormalSeSigueRespondiendo() {
+        Instant hasta = ULTIMO.plus(VEINTICUATRO_HORAS);
+        assertThat(ReglasRespuestaWhatsapp.motivoNoDisponible(OrigenTramite.WHATSAPP, EstadoTramite.RECHAZADO,
+                null, true, hasta, ULTIMO)).isNull();
+        assertThat(ReglasRespuestaWhatsapp.motivoNoDisponible(OrigenTramite.WHATSAPP, EstadoTramite.PENDIENTE_REVISION,
+                null, true, hasta, ULTIMO)).isNull();
     }
 
     @Test

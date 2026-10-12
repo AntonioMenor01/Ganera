@@ -8,6 +8,8 @@ import {
   esEditable,
   estaSucio,
   formularioDesdeDetalle,
+  puedeDescartar,
+  puedeDeshacerDescarte,
 } from "./revisionTramite"
 
 function crotal(crotalIndicado: string): TramiteCrotal {
@@ -40,6 +42,9 @@ function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
     hechoEnOvzEn: null,
     hechoEnOvzPorNombre: null,
     whatsapp: null,
+    motivoRechazo: null,
+    descartable: false,
+    historialDescarte: [],
     ...parcial,
   }
 }
@@ -183,5 +188,38 @@ describe("construirPatch", () => {
     const d = detalle()
     const patch = construirPatch(d, { explotacionId: null, tipoTramite: null, crotales: ["1234", "ES010000005678"] })
     expect(patch).toBeNull()
+  })
+})
+
+describe("puedeDescartar (SIN_TRAMITE: lo decide `descartable` del backend)", () => {
+  const SIN_TRAMITE = { estadoExtraccion: "SIN_TRAMITE", tipoTramite: null, crotales: [] }
+
+  it("con `descartable` y sin cambios sin guardar, sí", () => {
+    const d = detalle({ ...SIN_TRAMITE, descartable: true })
+    expect(puedeDescartar(d, formularioDesdeDetalle(d))).toBe(true)
+  })
+
+  it("sin `descartable` NO, aunque la extracción diga SIN_TRAMITE y no tenga tipo ni crotales (el frontend no recalcula)", () => {
+    const d = detalle({ ...SIN_TRAMITE, descartable: false })
+    expect(puedeDescartar(d, formularioDesdeDetalle(d))).toBe(false)
+    const sinCampo = { ...d } as Partial<TramiteDetalle>
+    delete sinCampo.descartable
+    expect(puedeDescartar(sinCampo as TramiteDetalle, formularioDesdeDetalle(d))).toBe(false)
+  })
+
+  it("con cambios sin guardar, o fuera de PENDIENTE_REVISION, no", () => {
+    const d = detalle({ ...SIN_TRAMITE, descartable: true })
+    expect(puedeDescartar(d, { ...formularioDesdeDetalle(d), crotales: ["1234"] })).toBe(false)
+    const rechazado = detalle({ ...SIN_TRAMITE, descartable: true, estado: "RECHAZADO" })
+    expect(puedeDescartar(rechazado, formularioDesdeDetalle(rechazado))).toBe(false)
+  })
+})
+
+describe("puedeDeshacerDescarte", () => {
+  it("solo un RECHAZADO con motivo SIN_TRAMITE (un rechazo normal no se deshace)", () => {
+    expect(puedeDeshacerDescarte(detalle({ estado: "RECHAZADO", motivoRechazo: "SIN_TRAMITE" }))).toBe(true)
+    expect(puedeDeshacerDescarte(detalle({ estado: "RECHAZADO", motivoRechazo: null }))).toBe(false)
+    expect(puedeDeshacerDescarte(detalle({ estado: "RECHAZADO", motivoRechazo: "OTRO" }))).toBe(false)
+    expect(puedeDeshacerDescarte(detalle({ estado: "PENDIENTE_REVISION", motivoRechazo: "SIN_TRAMITE" }))).toBe(false)
   })
 })

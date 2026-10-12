@@ -228,6 +228,34 @@ class WhatsAppExtraccionEndToEndTest {
                 .doesNotContain("el modelo dijo");
     }
 
+    /** La IA dice SIN_TRAMITE: el tramite queda pendiente de revision con ese estado de extraccion, solo para A. */
+    @Test
+    void unValeGraciasQuedaPendienteDeRevisionConExtraccionSinTramiteSoloParaA(CapturedOutput salida) throws IOException {
+        ia.devolverSinTramite();
+        assertThat(enviar(parametros("SM-ext-gracias", TEL_A, "vale, gracias")).getStatusCode().value()).isEqualTo(200);
+
+        extraccionTramiteService.procesarPendientes();
+
+        JsonNode listado = contenido(get("/tramites?estado=PENDIENTE_REVISION", tokenA));
+        assertThat(listado).hasSize(1);
+        long tramiteId = listado.get(0).get("id").asLong();
+        assertThat(listado.get(0).get("estado").asText()).isEqualTo("PENDIENTE_REVISION");
+        assertThat(listado.get(0).get("estadoExtraccion").asText()).isEqualTo("SIN_TRAMITE");
+        assertThat(listado.get(0).get("tipoTramite").isNull()).isTrue();
+        assertThat(listado.get(0).get("crotales")).isEmpty();
+        JsonNode detalle = detalle(tramiteId, tokenA);
+        assertThat(detalle.get("estado").asText()).isEqualTo("PENDIENTE_REVISION");
+        assertThat(detalle.get("estadoExtraccion").asText()).isEqualTo("SIN_TRAMITE");
+        assertThat(detalle.get("mensajeOriginal").asText()).isEqualTo("vale, gracias");
+
+        assertThat(contenido(get("/tramites", tokenB))).isEmpty();
+        ResponseEntity<String> deB = get("/tramites/" + tramiteId, tokenB);
+        assertThat(deB.getStatusCode().value()).isEqualTo(404);
+        assertThat(deB.getBody()).isNullOrEmpty();
+        assertThat(tramiteEnBd(tramiteId).get("estado_extraccion")).isEqualTo("SIN_TRAMITE");
+        assertThat(salida.getAll()).doesNotContain("vale, gracias").doesNotContain("600980001");
+    }
+
     @Test
     void unMensajeSinTextoSaleConEstadoDeExtraccionSinTextoYBRecibe404() throws IOException {
         assertThat(enviar(parametros("SM-ext-vacio", TEL_A, "")).getStatusCode().value()).isEqualTo(200);

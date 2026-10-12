@@ -40,6 +40,9 @@ function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
     hechoEnOvzEn: null,
     hechoEnOvzPorNombre: null,
     whatsapp: null,
+    motivoRechazo: null,
+    descartable: false,
+    historialDescarte: [],
     ...parcial,
   };
 }
@@ -291,6 +294,38 @@ describe("FichaOvzPage: modos según el estado (D4)", () => {
     expect(screen.getByRole("link", { name: "Volver a trámites" })).toHaveAttribute("href", "/tramites");
   });
 
+  it("un descartado (SIN_TRAMITE) lleva el mismo badge que la cola y el modal: «Descartado», neutro", async () => {
+    responderCon(() => HttpResponse.json(detalle({ estado: "RECHAZADO", motivoRechazo: "SIN_TRAMITE" })));
+    montar();
+
+    const badge = await screen.findByText("Descartado");
+    expect(badge).toHaveClass("border-border");
+    expect(badge).not.toHaveClass("bg-danger");
+    expect(screen.queryByText("Rechazado")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Copiar/ })).not.toBeInTheDocument();
+  });
+
+  it("un descartado (SIN_TRAMITE) dice «Descartado como mensaje sin trámite», no «Trámite rechazado»", async () => {
+    responderCon(() => HttpResponse.json(detalle({ estado: "RECHAZADO", motivoRechazo: "SIN_TRAMITE" })));
+    montar();
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Descartado como mensaje sin trámite" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Un mensaje descartado no se pasa a OVZ.")).toBeInTheDocument();
+    expect(screen.queryByText("Trámite rechazado")).not.toBeInTheDocument();
+    expect(screen.queryByText("Un trámite rechazado no se pasa a OVZ.")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Volver a trámites" })).toHaveAttribute("href", "/tramites");
+  });
+
+  it("un rechazo normal sigue diciendo «Trámite rechazado»", async () => {
+    responderCon(() => HttpResponse.json(detalle({ estado: "RECHAZADO", motivoRechazo: null })));
+    montar();
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Trámite rechazado" })).toBeInTheDocument();
+    expect(screen.queryByText("Descartado como mensaje sin trámite")).not.toBeInTheDocument();
+  });
+
   it("sin tipo: pide asignarlo en la revisión", async () => {
     responderCon(() => HttpResponse.json(detalle({ tipoTramite: null })));
     montar();
@@ -376,6 +411,8 @@ function respuestaLista(d: TramiteDetalle) {
     crotalesDescartados: d.crotalesDescartados,
     hechoEnOvzEn: d.hechoEnOvzEn,
     hechoEnOvzPorNombre: d.hechoEnOvzPorNombre,
+    motivoRechazo: d.motivoRechazo ?? null,
+    descartable: d.descartable ?? false,
   };
 }
 
@@ -653,6 +690,19 @@ describe("FichaOvzPage: honestidad (nada dice que Ganera haya hecho algo en OVZ)
 
     expect(document.body).not.toHaveTextContent(PROHIBIDAS);
     expect(mencionesOvz()).toEqual([...FIJAS, ...nuevas].filter((t) => /OVZ/.test(t)).sort());
+  });
+
+  // Revisión de T3 (hallazgo 3): también los estados sin ficha, rechazado y descartado.
+  it.each([
+    ["RECHAZADO sin motivo", null, "Trámite rechazado", "Un trámite rechazado no se pasa a OVZ."],
+    ["RECHAZADO descartado", "SIN_TRAMITE", "Descartado como mensaje sin trámite", "Un mensaje descartado no se pasa a OVZ."],
+  ] as const)("%s: ninguna palabra prohibida; OVZ solo en la cabecera y en su frase", async (_caso, motivoRechazo, titulo, frase) => {
+    responderCon(() => HttpResponse.json(detalle({ estado: "RECHAZADO", motivoRechazo })));
+    montar();
+    await screen.findByRole("heading", { level: 1, name: titulo });
+
+    expect(document.body).not.toHaveTextContent(PROHIBIDAS);
+    expect(mencionesOvz()).toEqual(["Ficha para OVZ", frase].sort());
   });
 
   it("con la confirmación de quitar la marca abierta, tampoco", async () => {

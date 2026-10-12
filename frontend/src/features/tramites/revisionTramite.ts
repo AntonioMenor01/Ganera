@@ -1,4 +1,5 @@
 import type { ActualizacionTramite } from "./api";
+import { esDescartado } from "./etiquetas";
 import type { EstadoTramite, TramiteDetalle } from "./types";
 
 /**
@@ -78,4 +79,17 @@ export function construirPatch(
 /** Hay cambios sin guardar: exactamente cuando habría algo que enviar en el PATCH. */
 export function estaSucio(detalle: TramiteDetalle, formulario: FormularioRevision): boolean {
   return construirPatch(detalle, formulario) !== null;
+}
+
+/** SIN_TRAMITE: «Descartar» se ofrece si el BACKEND dice `descartable` (D3: pendiente, `SIN_TRAMITE`,
+ * sin tipo ni crotales) y no hay cambios sin guardar (descartaría lo guardado, no lo de pantalla).
+ * El frontend nunca recalcula la regla por su cuenta (p. ej. mirando `estadoExtraccion`). */
+export function puedeDescartar(detalle: TramiteDetalle, formulario: FormularioRevision): boolean {
+  return esEditable(detalle.estado) && detalle.descartable === true && !estaSucio(detalle, formulario);
+}
+
+/** SIN_TRAMITE: «Deshacer» solo en un descartado (`RECHAZADO` + `SIN_TRAMITE`), nunca en un rechazo
+ * normal (que no tiene vuelta atrás). */
+export function puedeDeshacerDescarte(detalle: TramiteDetalle): boolean {
+  return esDescartado(detalle);
 }

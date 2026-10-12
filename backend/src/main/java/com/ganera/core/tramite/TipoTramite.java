@@ -8,6 +8,8 @@ package com.ganera.core.tramite;
  * <p>Si se anade un valor, hay que anadirlo tambien a
  * {@link AnthropicTramiteExtractionService.TipoExtraido}, describirlo en su prompt y en
  * {@code TIPOS_TRAMITE} del frontend; la columna {@code tramite.tipo_tramite} admite 30 caracteres.
+ * TipoExtraido tiene ademas NO_IDENTIFICADO y SIN_TRAMITE, que no son tipos de tramite (nunca se
+ * guardan aqui: los dos dan tipo null).
  */
 public enum TipoTramite {
     /** Alta individual: nacimiento de un ternero en la explotacion. */

@@ -26,6 +26,8 @@ const TITULO_ERROR: Record<AccionRevision, string> = {
   // Sin «OVZ»: la mención la llevan el botón y la franja (honestidad).
   marcar: "No se ha marcado el trámite",
   desmarcar: "No se ha quitado la marca",
+  descartar: "No se ha descartado el mensaje",
+  deshacer: "No se ha deshecho el descarte",
 };
 
 function BotonCerrarAviso({ onClick }: { onClick: () => void }) {

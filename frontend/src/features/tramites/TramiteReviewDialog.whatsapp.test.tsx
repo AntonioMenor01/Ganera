@@ -50,6 +50,9 @@ function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
     hechoEnOvzEn: null,
     hechoEnOvzPorNombre: null,
     whatsapp: whatsapp(),
+    motivoRechazo: null,
+    descartable: false,
+    historialDescarte: [],
     ...parcial,
   }
 }
@@ -988,6 +991,63 @@ describe("Sección WhatsApp: el modal se cierra aunque acabe en «no encontrado�
     await within(dialogo).findByText("Trámite no disponible")
     await user.keyboard("{Escape}")
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("Sección WhatsApp: un mensaje descartado como sin trámite (SIN_TRAMITE, D9)", () => {
+  const MOTIVO_DESCARTADO = "Este mensaje se descartó como sin trámite; no se responde desde Ganera."
+  const SIN_TRAMITE: Partial<TramiteDetalle> = {
+    mensajeOriginal: "¿abrís el lunes?",
+    tipoTramite: null,
+    estadoExtraccion: "SIN_TRAMITE",
+    descartable: true,
+  }
+  const DESCARTADO: Partial<TramiteDetalle> = {
+    ...SIN_TRAMITE,
+    estado: "RECHAZADO",
+    motivoRechazo: "SIN_TRAMITE",
+    descartable: false,
+    historialDescarte: [{ tipo: "DESCARTADO", usuarioNombre: "Ana Pérez", en: "2026-10-12T08:00:00Z" }],
+    whatsapp: whatsapp({ motivoNoDisponible: MOTIVO_DESCARTADO }),
+  }
+
+  it("descartado: el motivo del backend como aviso fijo y ningún «Responder»", async () => {
+    detalles(() => HttpResponse.json(detalle(DESCARTADO)))
+    renderDialog()
+    const s = seccion(await dialogoListo())
+    const aviso = within(s).getByText(MOTIVO_DESCARTADO)
+    expect(aviso.closest("[data-aviso-whatsapp]")).not.toBeNull()
+    expect(within(s).queryByRole("button", { name: /Responder/ })).toBeNull()
+    expect(within(s).queryByRole("textbox")).toBeNull()
+  })
+
+  it("antes de descartar se puede responder; al descartar desaparece «Responder» y sale el motivo", async () => {
+    detalles(() => HttpResponse.json(detalle(SIN_TRAMITE)))
+    server.use(http.post(apiUrl("/tramites/7/descartar"), () => HttpResponse.json(detalle({ ...DESCARTADO, version: 1 }))))
+    const user = userEvent.setup()
+    renderDialog()
+    const dialogo = await dialogoListo()
+    expect(boton(seccion(dialogo), "Responder por WhatsApp")).toBeEnabled()
+
+    await user.click(boton(dialogo, "Descartar"))
+    expect(await within(seccion(dialogo)).findByText(MOTIVO_DESCARTADO)).toBeInTheDocument()
+    expect(within(seccion(dialogo)).queryByRole("button", { name: "Responder por WhatsApp" })).toBeNull()
+  })
+
+  it("tras deshacer el descarte vuelve «Responder por WhatsApp»", async () => {
+    detalles(() => HttpResponse.json(detalle(DESCARTADO)))
+    server.use(
+      http.post(apiUrl("/tramites/7/deshacer-descarte"), () =>
+        HttpResponse.json(detalle({ ...SIN_TRAMITE, version: 1 })),
+      ),
+    )
+    const user = userEvent.setup()
+    renderDialog()
+    const dialogo = await dialogoListo()
+    await user.click(boton(dialogo, "Deshacer"))
+
+    expect(await within(seccion(dialogo)).findByRole("button", { name: "Responder por WhatsApp" })).toBeEnabled()
+    expect(within(seccion(dialogo)).queryByText(MOTIVO_DESCARTADO)).toBeNull()
   })
 })
 

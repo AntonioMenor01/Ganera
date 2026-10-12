@@ -243,7 +243,7 @@ export function TramitesPage() {
                   )}
                 </TableCell>
                 <TableCell>
-                  <BadgeEstadoTramite estado={tramite.estado} />
+                  <BadgeEstadoTramite estado={tramite.estado} motivoRechazo={tramite.motivoRechazo} />
                   <LineaExtraccion tramite={tramite} />
                 </TableCell>
                 <TableCell>

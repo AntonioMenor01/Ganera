@@ -13,6 +13,8 @@ import {
   etiquetaRolContacto,
   etiquetaTipoTramite,
   presentacionEstado,
+  presentacionEstadoTramite,
+  esDescartado,
   presentacionCrotal,
   presentacionResolucion,
   presentacionRespuestaWhatsapp,
@@ -209,13 +211,33 @@ describe("TEXTOS_EXTRACCION (B1, D7 y brief de T4)", () => {
         modal: "El mensaje no tiene texto; puede traer una foto o un audio, que todavía no se procesan.",
         tono: "aviso",
       },
+      SIN_TRAMITE: {
+        cola: "Parece un mensaje sin trámite",
+        modal:
+          "Parece un mensaje sin trámite: un saludo, un agradecimiento o una pregunta. Si hay que contestar, responde antes de descartar.",
+        tono: "neutro",
+      },
     })
+  })
+})
+
+describe("aviso SIN_TRAMITE: honestidad del texto", () => {
+  // La misma lista que el test de honestidad del modal (CLAUDE.md: nada insinúa que Ganera hizo algo fuera).
+  const PROHIBIDAS = /enviad|ejecutad|registrad|en curso en OVZ|tramitad|completad|procesad|presentad/i
+
+  it("ni la línea de la cola ni el aviso del modal dicen nada prohibido ni mencionan OVZ", () => {
+    const { cola, modal } = TEXTOS_EXTRACCION.SIN_TRAMITE
+    for (const texto of [cola, modal]) {
+      expect(texto).not.toMatch(PROHIBIDAS)
+      expect(texto).not.toMatch(/OVZ/)
+    }
   })
 })
 
 describe("avisosExtraccion (B1: regla de visibilidad, plurales)", () => {
   const PENDIENTES = ["PENDIENTE_EXTRACCION", "PENDIENTE_REVISION"] as const
   const NO_PENDIENTES = ["APROBADO", "HECHO_EN_OVZ", "EN_PROCESO", "EJECUTADO_OVZ", "ERROR_OVZ", "RECHAZADO"] as const
+  // SIN_TRAMITE tiene su propia regla (solo con `descartable`): ver el describe de SIN_TRAMITE.
   const CONOCIDOS = ["PENDIENTE", "FALLIDA", "SIN_TEXTO"] as const
 
   for (const estado of PENDIENTES) {
@@ -318,5 +340,76 @@ describe("presentacionRespuestaWhatsapp (B2 reducido)", () => {
 
   it("desconocido: tal cual y neutro", () => {
     expect(presentacionRespuestaWhatsapp("NUEVO")).toEqual({ etiqueta: "NUEVO", variante: "outline" })
+  })
+})
+
+describe("SIN_TRAMITE: el aviso depende de `descartable`, que decide el backend (D3)", () => {
+  it("PENDIENTE_REVISION + SIN_TRAMITE + descartable: el aviso neutro", () => {
+    expect(
+      avisosExtraccion({
+        estado: "PENDIENTE_REVISION",
+        estadoExtraccion: "SIN_TRAMITE",
+        crotalesDescartados: 0,
+        descartable: true,
+      }),
+    ).toEqual({ extraccion: TEXTOS_EXTRACCION.SIN_TRAMITE, descartados: null })
+  })
+
+  it("SIN_TRAMITE sin `descartable` (el gestor ya le puso tipo o crotales, o falta el campo): sin aviso", () => {
+    for (const descartable of [false, undefined, null]) {
+      expect(
+        avisosExtraccion({
+          estado: "PENDIENTE_REVISION",
+          estadoExtraccion: "SIN_TRAMITE",
+          crotalesDescartados: 0,
+          descartable: descartable as boolean | undefined,
+        }).extraccion,
+      ).toBeNull()
+    }
+  })
+
+  it("`descartable` no hace aparecer el aviso con otra extracción ni cambia los demás avisos", () => {
+    expect(
+      avisosExtraccion({ estado: "PENDIENTE_REVISION", estadoExtraccion: "FALLIDA", crotalesDescartados: 0, descartable: true })
+        .extraccion,
+    ).toEqual(TEXTOS_EXTRACCION.FALLIDA)
+    expect(
+      avisosExtraccion({ estado: "PENDIENTE_REVISION", estadoExtraccion: "COMPLETADA", crotalesDescartados: 0, descartable: true })
+        .extraccion,
+    ).toBeNull()
+  })
+
+  it("descartado (RECHAZADO): sin aviso aunque siga SIN_TRAMITE", () => {
+    expect(
+      avisosExtraccion({ estado: "RECHAZADO", estadoExtraccion: "SIN_TRAMITE", crotalesDescartados: 0, descartable: true }),
+    ).toEqual({ extraccion: null, descartados: null })
+  })
+})
+
+describe("presentacionEstadoTramite: «Descartado» (SIN_TRAMITE)", () => {
+  it("RECHAZADO + motivoRechazo SIN_TRAMITE → «Descartado», neutro (no danger)", () => {
+    expect(presentacionEstadoTramite({ estado: "RECHAZADO", motivoRechazo: "SIN_TRAMITE" })).toEqual({
+      etiqueta: "Descartado",
+      variante: "outline",
+    })
+    expect(esDescartado({ estado: "RECHAZADO", motivoRechazo: "SIN_TRAMITE" })).toBe(true)
+  })
+
+  it("RECHAZADO sin motivo, o con un código desconocido → «Rechazado» como siempre", () => {
+    for (const motivoRechazo of [null, undefined, "OTRO_MOTIVO", "", "toString"]) {
+      expect(presentacionEstadoTramite({ estado: "RECHAZADO", motivoRechazo })).toEqual(ESTADOS_TRAMITE.RECHAZADO)
+      expect(esDescartado({ estado: "RECHAZADO", motivoRechazo })).toBe(false)
+    }
+  })
+
+  it("el motivo solo cuenta en RECHAZADO: otro estado se presenta como siempre", () => {
+    expect(presentacionEstadoTramite({ estado: "PENDIENTE_REVISION", motivoRechazo: "SIN_TRAMITE" })).toEqual(
+      ESTADOS_TRAMITE.PENDIENTE_REVISION,
+    )
+    expect(esDescartado({ estado: "PENDIENTE_REVISION", motivoRechazo: "SIN_TRAMITE" })).toBe(false)
+    expect(presentacionEstadoTramite({ estado: "PAUSADO", motivoRechazo: null })).toEqual({
+      etiqueta: "PAUSADO",
+      variante: "outline",
+    })
   })
 })

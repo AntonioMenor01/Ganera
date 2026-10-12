@@ -2,6 +2,7 @@ package com.ganera.core.whatsapp;
 
 import com.ganera.core.contacto.Contacto;
 import com.ganera.core.tramite.EstadoTramite;
+import com.ganera.core.tramite.MotivoRechazo;
 import com.ganera.core.tramite.OrigenTramite;
 
 import java.time.Duration;
@@ -27,6 +28,9 @@ public final class ReglasRespuestaWhatsapp {
 
     public static final String MOTIVO_NO_ES_WHATSAPP = "Este trámite no llegó por WhatsApp; no hay a quién responder.";
     public static final String MOTIVO_ESTADO_NO_PERMITIDO = "En este estado no se puede responder por WhatsApp.";
+    /** Un tramite descartado como mensaje sin tramite (plan 2026-10-12, D9) no se responde desde Ganera. */
+    public static final String MOTIVO_DESCARTADO =
+            "Este mensaje se descartó como sin trámite; no se responde desde Ganera.";
     public static final String MOTIVO_CONTACTO_INACTIVO = "El contacto está dado de baja; no se le puede escribir.";
     /** Ventana cerrada y codigo 63016 de Twilio: el mismo texto en los dos sitios. */
     public static final String MOTIVO_FUERA_DE_VENTANA =
@@ -56,16 +60,21 @@ public final class ReglasRespuestaWhatsapp {
     }
 
     /**
-     * Por que no se puede responder, o null si se puede. Orden: origen, estado, contacto, ventana. No
+     * Por que no se puede responder, o null si se puede. Orden: origen, estado, descartado como sin tramite
+     * (D9 de SIN_TRAMITE; un rechazo normal sigue pudiendo responderse), contacto, ventana. No
      * incluye la configuracion de Twilio (eso es un 503, no una regla del tramite).
      */
-    public static String motivoNoDisponible(OrigenTramite origen, EstadoTramite estado, boolean contactoActivo,
+    public static String motivoNoDisponible(OrigenTramite origen, EstadoTramite estado, MotivoRechazo motivoRechazo,
+                                            boolean contactoActivo,
                                             Instant ventanaAbiertaHasta, Instant ahora) {
         if (origen != OrigenTramite.WHATSAPP) {
             return MOTIVO_NO_ES_WHATSAPP;
         }
         if (!ESTADOS_PERMITIDOS.contains(estado)) {
             return MOTIVO_ESTADO_NO_PERMITIDO;
+        }
+        if (motivoRechazo == MotivoRechazo.SIN_TRAMITE) {
+            return MOTIVO_DESCARTADO;
         }
         if (!contactoActivo) {
             return MOTIVO_CONTACTO_INACTIVO;

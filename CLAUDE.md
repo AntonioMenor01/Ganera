@@ -22,11 +22,11 @@ approval step before anything is written to OVZ.net.
   since C mínimo**, see that bullet) or by hand through
   the internal onboarding endpoint (`POST /internal/onboarding/gestoria`, pilots/support) — see
   Technical decisions and Architecture notes.
-- **Ganadero** — a Gestoría's client. **Never logs in.** Holds the OVZ.net credentials
-  (`ovzUsuario` / `ovzPasswordCifrada`) — one login per Ganadero, shared across all their
-  Explotaciones (not per-Explotación). `nif` (added in `V14`, globally unique like `codigoRega`
-  and `crotal`) is the real-world business key used by the Excel importer (Prompt 3d) to upsert a
-  Ganadero without duplicating on name variations.
+- **Ganadero** — a Gestoría's client. **Never logs in.** Has `ovzUsuario` / `ovzPasswordCifrada`
+  columns (from `V3`). Whose OVZ account the assisted mode uses — the gestoría’s or each ganadero’s —
+  is open until the OVZ mapping session; these columns may move or go. `nif` (added in `V14`, globally
+  unique like `codigoRega` and `crotal`) is the real-world business key used by the Excel importer
+  (Prompt 3d) to upsert a Ganadero without duplicating on name variations.
 - **Explotación** — a farm belonging to a Ganadero, identified by `codigoRega`.
 - **Animal** — identified by a full crotal (`ES123456789012`); `crotalUltimosDigitos` is indexed
   separately because that's what Contactos actually type in WhatsApp. The crotales a Tramite
@@ -82,21 +82,26 @@ approval step before anything is written to OVZ.net.
    that resolve to the same Animal.)
 6. An employee reviews the Tramite, corrects it if needed (`PATCH /tramites/{id}`: Explotación,
    tipo, crotales), and clicks "Aprobar" → `APROBADO`, subject to the approval rule in the
-   "Prompt A1" bullet. Then they paste the approved data into OVZ by hand (ficha OVZ, escalón 1) and
-   click "Marcar como hecho en OVZ" → `HECHO_EN_OVZ`, recording who and when (reversible; see the
-   "Hecho en OVZ" bullet under Technical decisions). Ganera sends nothing.
+   "Prompt A1" bullet. "Aprobar" executes nothing in OVZ. Today (escalón 1) they paste the approved
+   data into OVZ by hand (ficha OVZ) and click "Marcar como hecho en OVZ" → `HECHO_EN_OVZ`, recording
+   who and when (reversible; see the "Hecho en OVZ" bullet under Technical decisions). In escalón 1
+   Ganera sends nothing; escalón 2 is step 7.
 7. **OVZ is always assisted, never automatic** (partners' decision of 2026-10-06,
-   `docs/referencias/decisiones-ovz-y-piloto.md`): Ganera **never** submits a trámite to OVZ.net
-   by itself. Escalón 1 (done) is the ficha to copy by hand; escalón 2 (pending the OVZ mapping
-   session) is an assisted mode where Ganera fills in the OVZ form and **the gestor reviews it and
-   clicks submit**. There is no escalón 3, so no autonomous Playwright execution and no automatic
-   retry. A read-only Playwright sync of a newly onboarded Ganadero's inventory is still possible
-   (Prompt 3a).
+   `docs/referencias/decisiones-ovz-y-piloto.md`; scope clarified by Antonio on 2026-10-12): Ganera
+   **never** submits a trámite to OVZ.net by itself. Escalón 1 (done) is the ficha to copy by hand.
+   **Escalón 2 (modo asistido)**, pending the OVZ mapping session: Ganera fills in the OVZ form and the
+   gestor reviews it — **one trámite at a time, after the gestor’s “Enviar”; Ganera downloads the
+   justificante**. Nothing is ever sent without that click. The "Enviar a OVZ" button and the send
+   states (Álvaro's design) belong to escalón 2; they don't appear in design phase 1. There is no
+   escalón 3, so no autonomous Playwright execution, no batch sending and no automatic retry. A
+   read-only Playwright sync of a newly onboarded Ganadero's inventory is still possible (Prompt 3a).
 
 ## Non-negotiable rules
 
-- **No trámite is ever executed against OVZ.net without an employee explicitly clicking
-  "Aprobar."** No AI confidence threshold ever skips this step.
+- **Nothing is ever sent to OVZ.net without the gestor's explicit click on "Enviar"** in the form
+  Ganera filled in (escalón 2 (modo asistido)), after reviewing it, **one trámite at a time**.
+  "Aprobar" executes nothing in OVZ; it only marks the data as reviewed, and only an approved trámite
+  can reach that form. No AI confidence threshold ever skips either step.
 - OVZ.net credentials are encrypted at rest (AES-256-GCM, `EncryptedStringConverter`), key from
   `ENCRYPTION_KEY` env var only — never hardcoded, never a silent insecure default (the app fails
   to start if it's unset).
@@ -127,9 +132,11 @@ approval step before anything is written to OVZ.net.
 - `POST /auth/login` never reveals *why* it rejected a login (unknown email, wrong password, or
   inactive Usuario all return a plain 401) — don't add a more specific error message.
 - **The frontend never implies a trámite is executed against OVZ.net when "Aprobar" is clicked** —
-  `OvzAutomationService.ejecutarTramite()` is unimplemented (Prompt 3c), so the button only changes
-  `EstadoTramite` in DB, matching the backend exactly. Don't add wording, spinners, or toasts that
-  suggest anything happens in OVZ.net until 3c is real. The OVZ references allowed after approving
+  the button only changes `EstadoTramite` in DB, matching the backend exactly, and that stays true in
+  escalón 2 (modo asistido): there only the gestor's "Enviar" sends. Don't add wording, spinners, or
+  toasts that suggest anything happens in OVZ.net. The "Enviar a OVZ" button and the send states belong
+  to escalón 2 and don't appear in design phase 1 (`OvzAutomationService` is still an unimplemented
+  skeleton). The OVZ references allowed after approving
   are the manual hand-off of the ficha OVZ escalón 1 ("Abrir ficha para OVZ", which opens the data to
   copy by hand; Ganera sends nothing) and, since "Hecho en OVZ", the state badge, the "Marcar como hecho
   en OVZ" button with its hint and the "Hecho en OVZ por … el …" band — always with the person as the
@@ -144,8 +151,8 @@ approval step before anything is written to OVZ.net.
   optional "Contactos" sheet **or** from the `/contactos` CRUD endpoints — backend only, no UI yet.)
   The Ganaderos screens added in Prompt A2 are **read-only** (list, detail, animales); they don't
   change this rule.
-  The OVZ-credentials screen is deliberately deferred until a real Ganadero is ready to hand over
-  credentials for that explicit purpose (see Prompt 3a/3b/3c blocker).
+  The OVZ-credentials screen is the screen to store OVZ credentials (encrypted), deferred to escalón
+  2; whether they belong to the gestoría or to each ganadero is decided after the OVZ mapping.
 
 ## Technical decisions already made
 
@@ -217,9 +224,10 @@ approval step before anything is written to OVZ.net.
   (`output_config.format`, JSON Schema with `additionalProperties: false`) enforces the JSON shape,
   and the server validates it again. See the "Prompt B1" bullet for the rest.
 - **WhatsApp**: Twilio, one shared number across all Gestorías (see Operational flow above).
-- **Automation**: Playwright (Java) for OVZ.net: read-only sync and, in the future, the assisted
-  mode that fills in the OVZ form for the gestor to submit (never a submission by Ganera itself;
-  see Operational flow step 7).
+- **Automation**: Playwright (Java) for OVZ.net: read-only sync and, in the future, escalón 2 (modo
+  asistido): Ganera fills in the OVZ form for the gestor to review — one trámite at a time, after the
+  gestor’s “Enviar”; Ganera downloads the justificante (never a submission by Ganera itself; see
+  Operational flow step 7).
 - **Billing**: Stripe, priced by number of contracted active Explotaciones, 15-day trial.
   `EstadoSuscripcion` has exactly 6 values: `TRIAL` (full access), `TRIAL_EXPIRADO_SIN_PAGO`
   (no approvals), `ACTIVA` (full access), `IMPAGO_GRACIA` (full access, but the
@@ -410,7 +418,8 @@ approval step before anything is written to OVZ.net.
   explicit parameter (`findByGestoriaId…`), not only the ambient `gestoriaFilter`, and validate
   `?sort=` against a whitelist (see the "Prompt A1" bullet). `POST /tramites/{id}/aprobar` gates on
   `SuscripcionService.puedeAprobarTramites` (`403` if false) — the first real caller of that method.
-  Neither `/aprobar` nor `/rechazar` calls `OvzAutomationService` yet (that's Prompt 3c); since A1
+  Neither `/aprobar` nor `/rechazar` calls `OvzAutomationService`, and approving never will: sending
+  is a separate step of escalón 2 (modo asistido), on the gestor's own "Enviar"; since A1
   both go through `TramiteRevisionService` (see the "Prompt A1" bullet). A tramite id from another
   Gestoría or that doesn't exist returns `404` (an expected, common case, not a "should never
   happen" one).
@@ -510,7 +519,8 @@ approval step before anything is written to OVZ.net.
   the same text the frontend shows — that says nothing about the trámite) → `400` no body /
   `{}` / `version: null` (body is `@RequestBody(required = false)` precisely so the `403` still
   comes first) → `404` → `409` not in `PENDIENTE_REVISION` (**approve and reject only from
-  `PENDIENTE_REVISION`**, decision 12 — with 3c, re-approving would resend to OVZ.net) → `409`
+  `PENDIENTE_REVISION`**, decision 12 — an approved trámite is what escalón 2 (modo asistido) will
+  offer to send, so it must not be re-approved or reopened silently) → `409`
   stale `version` → re-resolve every crotal against the current inventory: if **any** resolution
   changed (another Animal, now ambiguous, gone…) → `ResolucionCrotalesCambiadaException`, a `409`
   that **commits** the new resolution and increments the version (`noRollbackFor`, only on
@@ -552,9 +562,10 @@ approval step before anything is written to OVZ.net.
   Tramite no longer pending gets its specific motivo, true with any version). Caveat (7a review M2):
   those raw `EntityManager` calls bypass Spring's exception translation, so a failure there would
   be a `500`, not a `409` — unreachable while the row lock is held.
-  **Risks to respect in 3c (Task 6 review M2):** never run Playwright/OVZ.net inside the
-  transaction that holds this row lock (other editors/approvers would block for the whole OVZ
-  session, each holding a pooled connection) — approve and commit, then execute asynchronously.
+  **Risks to respect in escalón 2 (modo asistido) (Task 6 review M2):** never open the OVZ.net
+  (Playwright) session inside the transaction that holds this row lock (other editors/approvers would
+  block for the whole OVZ session, each holding a pooled connection). In escalón 2 the gestor's
+  "Enviar" starts one submission at a time, outside that lock.
   On PostgreSQL, if a `statement_timeout` is ever configured, SQLState `57014` becomes Spring's
   `QueryTimeoutException` (not a `ConcurrencyFailureException`) → `500`; a `lock_timeout`
   (`55P03`) does map to `CannotAcquireLock` → `409`. (The lock-timeout `500` seen on H2 is an
@@ -709,7 +720,7 @@ approval step before anything is written to OVZ.net.
     client), but a future SDK could require pinning `jackson-bom.version` and would fail on the first
     call, not at startup.
   - **Responses:** `TramiteResponse`/`TramiteDetalleResponse` gained `origen` (`"WHATSAPP"`/null),
-    `estadoExtraccion` (`PENDIENTE`/`COMPLETADA`/`FALLIDA`/`SIN_TEXTO`/null) and
+    `estadoExtraccion` (`PENDIENTE`/`COMPLETADA`/`FALLIDA`/`SIN_TEXTO`/null; `SIN_TRAMITE` since that task) and
     `crotalesDescartados`. The AI's technical failure reason is never exposed.
   - **Retention** (`RetencionMensajesScheduler`, 03:30 Madrid): deletes messages **without** a
     Tramite after `P30D` and empties the text of those **with** one after `P12M` (not an empty
@@ -748,7 +759,8 @@ approval step before anything is written to OVZ.net.
   `docs/referencias/ovz-tramites-bovino.md`, the PDF itself is git-ignored; plan
   `docs/superpowers/plans/2026-10-06-ficha-ovz.md`, decisions D1–D8 and the approved T5 shape). Ganera
   shows an approved trámite's data in the order of the OVZ form, with Copiar on each field, so the gestor
-  pastes it into OVZ by hand. Ganera still writes nothing to OVZ (3c).
+  pastes it into OVZ by hand. Ganera still writes nothing to OVZ (until escalón 2 (modo asistido), see
+  Operational flow step 7).
   - **`TipoTramite` = the OVZ forms** (`V20`, SQL): `ALTA_NACIMIENTO`, `BAJA_MUERTE`,
     `SOLICITUD_MOVIMIENTO`, `CONFIRMACION_MOVIMIENTO`, `DECLARACION_CENSO`, `DEMORA_CROTALIZACION`
     (supersedes A1 decision 18's list). `tipo_tramite` widened to `VARCHAR(30)`; every old `MOVIMIENTO`
@@ -857,7 +869,7 @@ approval step before anything is written to OVZ.net.
     a 63016 `FALLIDO`); a DB failure right after Twilio accepted gives `500` and leaves `ENVIANDO` (shown as
     `SIN_CONFIRMAR` after 2 minutes; the same key never resends) — and since the Twilio SID was never stored, the
     status callback cannot reconcile that row: it stays `SIN_CONFIRMAR`; a farmer's reply ("vale, gracias") still creates a
-    trámite (the `SIN_TRAMITE` task is pending, `progress.md`).
+    trámite (since SIN_TRAMITE it can be discarded with one click; see that bullet).
   - **Status callback** (2026-10-11, its own commit; plan `docs/superpowers/plans/2026-10-11-b2-callback-estado-twilio.md`,
     backend only). If `TWILIO_STATUS_CALLBACK_URL` (`ganera.twilio.status-callback-url`) is a valid http(s) URL with a
     host and no user, query or fragment (**use `https` in production**), every send asks Twilio to report there;
@@ -882,6 +894,50 @@ approval step before anything is written to OVZ.net.
     already in that or a later state, nor give the exact previous state (it logs the set of possible ones);
     `SIN_CONFIRMAR`/`ENVIANDO` rows with a SID don't exist with today's code (those transitions are tested on
     seeded rows); a repeated form parameter is signed with its first value (same as the inbound webhook).
+- **SIN_TRAMITE — messages that ask for nothing, and «Descartar»** (2026-10-12; plan
+  `docs/superpowers/plans/2026-10-12-sin-tramite.md`, Antonio's decisions A1–A6 at the top prevail). Since B1 every
+  message of an active Contacto creates a Tramite, so a «vale, gracias» reached the queue.
+  - **AI:** `TipoExtraido.SIN_TRAMITE` (distinct from `NO_IDENTIFICADO`: «asks for something, unclear what»); prompt
+    with an asymmetric rule («ante la duda, NO_IDENTIFICADO»; a message that mentions an animal, crotal, calf, death,
+    sale, move, purchase or the census, or asks the gestoría to note/do something, is never SIN_TRAMITE). It is **not**
+    a `TipoTramite`: it becomes `EstadoExtraccion.SIN_TRAMITE` (no migration: `estado_extraccion` has no `CHECK`), and
+    the Tramite stays `PENDIENTE_REVISION` with `tipo = null` — **nothing is ever discarded by itself**. Server safety
+    net in `ExtraccionValidador`: SIN_TRAMITE with **any** raw crotal (even an invalid one) or with a tipo → treated as
+    a normal result (`COMPLETADA`).
+  - **Evaluation against the real Haiku:** `ExtraccionSinTramiteEvalTest`, skipped unless `GANERA_EVAL_IA=true` **and**
+    `ANTHROPIC_API_KEY` are set (never in CI or a normal `./mvnw clean test`); 13 invented messages × 3 passes, report in
+    `backend/target/eval-sin-tramite.md`; fails on any false SIN_TRAMITE **or any FALLO** (an all-FALLO run used to look
+    green). **Only Antonio runs it**, in his own terminal.
+  - **`descartable`** (`DescarteTramite`, the single rule): `PENDIENTE_REVISION` ∧ `SIN_TRAMITE` ∧ no tipo ∧ no
+    crotales — computed by the backend and exposed in `TramiteResponse`/`TramiteDetalleResponse` (no new query); the
+    frontend never recomputes it. Also `motivoRechazo` (`"SIN_TRAMITE"`/null).
+  - **Endpoints** `POST /tramites/{id}/descartar` and `POST /tramites/{id}/deshacer-descarte`, body `{version}` →
+    `TramiteDetalleResponse`. Order: `400` without version (controller, before any DB access) → `404` no body → `409`
+    state (descartar only from `PENDIENTE_REVISION`; deshacer **only** a discarded one — a normal `RECHAZADO` stays
+    irreversible) → `409` stale version → (descartar) `409` not descartable → `200`, version + 1. User from the JWT
+    (`findByIdAndGestoriaId`). No subscription gate. Nothing external is ever called.
+  - **Migration `V23__descarte_sin_tramite.sql`:** `tramite.motivo_rechazo` (a **code**, never text; the text the user
+    sees comes from the frontend) with `ck_tramite_motivo_rechazo` (`IS NULL OR (estado = 'RECHAZADO' AND motivo_rechazo
+    IN ('SIN_TRAMITE'))`), and the history table **`tramite_evento`** (`GestoriaScopedEntity`: `tipo`
+    `DESCARTADO`/`DESCARTE_DESHECHO` with a `CHECK`, `usuario_id` FK, `creado_en` from the `Clock` truncated to
+    micros). One row per action, no new personal data (a user id and a time). Exposed as `historialDescarte: [{tipo,
+    usuarioNombre, en}]` in the detail only (one query). **Any test that migrates "to the latest" must expect V1–V23.**
+  - **WhatsApp:** a discarded Tramite can't be answered — `ReglasRespuestaWhatsapp.motivoNoDisponible` (origen → estado
+    → **descartado** → contacto → ventana) and `POST /tramites/{id}/respuestas-whatsapp` `409`; after «Deshacer», yes.
+  - **Frontend:** queue line «Parece un mensaje sin trámite» (neutral, only with `descartable`, **no button in the
+    row**); in the dialog the notice, «Descartar» with **one click, no confirmation** (disabled with unsaved changes:
+    «Para descartar el mensaje, quita antes los cambios con “Descartar cambios”.»), then the badge «Descartado»
+    (`outline`), the band «Descartado como mensaje sin trámite por {nombre} el dd/mm/aaaa, hh:mm.» (Europe/Madrid,
+    `descarte.ts`), «Deshacer» with no expiry, and the history lines. The ficha OVZ of a discarded one says «Descartado
+    como mensaje sin trámite» / «Un mensaje descartado no se pasa a OVZ.».
+  - **Shared contract:** `frontend/src/test/contrato/descarte-sin-tramite.json` holds **real** backend responses;
+    `TramiteDescarteEndToEndTest.lasRespuestasRealesCumplenElContratoQueUsaElFrontend` checks the real responses
+    against it (exact fields, JSON types, nulls, list sizes) and `contratoDescarte.test.tsx` drives the UI with it. If
+    the contract changes on purpose, regenerate it from `backend/target/contrato-real/`.
+  - **Known:** the B1 acknowledgement («Recibido, tu gestoría lo revisará.») still goes out for a «vale, gracias» (the
+    AI decides after answering Twilio); the text of a discarded message is kept 12 months like any other — question for
+    Ganera's lawyer (`progress.md`); a reply being sent while someone discards the Tramite isn't locked against it (B2
+    design; tiny window).
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)
@@ -1093,7 +1149,7 @@ reference for every frontend decision below.
   handler fails the test (`onUnhandledRequest: "error"`), and session state is cleared after each
   test. `npm test` ran **475 tests in 36 files** at the end of A2 (476 after the mini-prompt's
   Rechazar change; **506 in 36 files** after the frontend task before the pilot; **508 in 36** after billing left the app;
-  **513 in 37** after the brand colours and typography; **558 in 37** after Prompt B1; **557 in 36** after C mínimo removed the registration screen; **720 in 40** after the ficha OVZ; **811 in 41** after "Hecho en OVZ"; **912 in 43** after B2 reducido). Layout can't be checked in
+  **513 in 37** after the brand colours and typography; **558 in 37** after Prompt B1; **557 in 36** after C mínimo removed the registration screen; **720 in 40** after the ficha OVZ; **811 in 41** after "Hecho en OVZ"; **912 in 43** after B2 reducido; **976 in 45** after SIN_TRAMITE). Layout can't be checked in
   jsdom: for visual changes, also drive the real app in a browser (Playwright from npm installed
   **outside the repo**, as in Prompts 4 and A2).
 
@@ -1115,7 +1171,7 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw clean test` — runs the test suite (906 tests after the B2 status callback, including the embedded-PostgreSQL ones); **always with `clean`**
+- `./mvnw clean test` — runs the test suite (968 tests after SIN_TRAMITE — 967 run plus the skipped Haiku evaluation —, including the embedded-PostgreSQL ones); **always with `clean`**
   (see the VS Code/ECJ note under Architecture notes). A single test:
   `./mvnw clean test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
@@ -1199,8 +1255,9 @@ few upfront clarifying questions on schema gaps, served as the spec): migration 
 `GET /tramites`, `POST /tramites/{id}/aprobar`, `POST /tramites/{id}/rechazar` (see the Excel
 importer bullet under Technical decisions for the full design). This is the **first real caller of
 `SuscripcionService.puedeAprobarTramites`** (via `/aprobar`, `403` if it returns false) — though
-`/aprobar` and `/rechazar` still only flip `EstadoTramite` in the DB, no `OvzAutomationService` call
-yet (Prompt 3c). Full backend suite green at 91 tests (79 + 12 new); real end-to-end HTTP smoke test
+`/aprobar` and `/rechazar` only flip `EstadoTramite` in the DB, with no `OvzAutomationService` call
+(approving never sends: that's the gestor's "Enviar" in escalón 2 (modo asistido)). Full backend suite
+green at 91 tests (79 + 12 new); real end-to-end HTTP smoke test
 (H2 + all 14 migrations, onboarding → login → import a real fixture `.xlsx` → list → re-import same
 file and confirm no duplication → 401 without JWT → 404 on an unknown trámite id) — not just the
 `@DataJpaTest`-level suite.
@@ -1211,7 +1268,8 @@ importer given real UI prominence, Trámites queue with estado filter + review m
 WhatsApp message/unresolved Explotación without looking broken, since 3b hasn't shipped yet) +
 Aprobar/Rechazar (a `403` on Aprobar shows the real "tu suscripción no permite aprobar trámites"
 reason, never a generic error), and a Facturación status page. Deliberately **not** built (per
-explicit scope): the OVZ-credentials-onboarding screen for a new Ganadero, and any manual
+explicit scope): the screen to store OVZ credentials (encrypted), deferred to escalón 2; whether they
+belong to the gestoría or to each ganadero is decided after the OVZ mapping — and any manual
 Ganadero/Explotación creation form — both would either need real OVZ.net access or open a second,
 divergent data-entry path around the Excel importer. Two backend additions this required
 (`GET /facturacion/suscripcion`, `GET /tramites/{id}`) — see the Prompt 4 bullet under Technical
@@ -1470,17 +1528,35 @@ reviewer, **Approved with minors**, minors accepted as notes; reports `.superpow
 the "Status callback" sub-bullet under "B2 reducido". No migration. Verified with `./mvnw clean test` **906/906**
 (frontend untouched, `npm test` **912/912**). **B2 reducido is closed** after Antonio's real sandbox test on
 2026-10-12 (his terminal, his own phone, Cloudflare Quick Tunnel): reply accepted, then `ENTREGADO` and `LEIDO` callbacks
-with the same SID and no error code, no phone or text in the log (details and notes in `progress.md`). Next:
-`SIN_TRAMITE` in the extraction (see "Pendientes técnicos" in `progress.md`).
+with the same SID and no error code, no phone or text in the log (details and notes in `progress.md`).
 
-**Still blocked: Prompts 3a and 3c (OVZ.net read sync and the assisted mode — Ganera fills in, the
-gestor submits; never autonomous).** They need real
+**SIN_TRAMITE — complete** (2026-10-12), following
+`docs/superpowers/plans/2026-10-12-sin-tramite.md` with the Superpowers flow (T1 AI and extraction, T2 discard/undo +
+`V23` + history, T3 frontend; one implementer + one independent reviewer each, all **Approved with minors**, minors
+fixed by the main session with TDD and mutation checks; Antonio's four T3 adjustments and the shared contract test done
+by the main session; reports `.superpowers/sdd/st-*`, not committed). See the "SIN_TRAMITE" bullet under Technical
+decisions. Migration `V23`. Verified with `./mvnw clean test` **968** (967 run, 1 skipped: the evaluation), `npm test`
+**976 in 45**, `npm run build` and `npm run lint` (known warnings only). The prompt was measured against the real Haiku
+by the main session before Antonio's rule (three runs; the first found one false SIN_TRAMITE, «ok, apunta el censo»,
+the prompt was adjusted, the next two had 0); from now on only Antonio runs it. **Antonio's own run** (his terminal):
+0 false SIN_TRAMITE, chat 18/18, 0 failures. **His real smoke with the Twilio sandbox**, steps 1–9 PASS (queue notice,
+«Descartar» with its hint, one-click discard with nothing sent to the phone, `404` from the other Gestoría on discard
+and undo, the ficha OVZ of a discarded one, «Deshacer» with history, «gracias, se ha muerto la 4521» as a death with
+`ES990000004521`). Instructions live outside the repo, in
+`C:\Users\Antonio\Desktop\ganera-prueba-sin-tramite\INSTRUCCIONES.md` (lesson about PowerShell JSON bodies in
+`progress.md`).
+
+**Still blocked: Prompt 3a and escalón 2 (modo asistido)** — the OVZ.net read sync, and the mode where
+Ganera fills in the OVZ form for the gestor to review — one trámite at a time, after the gestor’s
+“Enviar”; Ganera downloads the justificante (never without that click, never autonomous). They need real
 OVZ.net credentials so the actual site structure and trámite catalog can be explored live (the
 Playwright MCP is set up for exactly this — driving the real site with Antonio steering, not
 guessing at its structure from assumptions). Until then `OvzAutomationService` stays an
 unimplemented skeleton — don't write scraping logic against assumptions about OVZ.net's structure.
-The OVZ-credentials onboarding screen and the rest of Prompt 4's originally-scoped items are
-deferred alongside it. (3b's webhook + AI part was done without OVZ.net as Prompt B1.)
+The screen to store OVZ credentials (encrypted), deferred to escalón 2 — whether they belong to the
+gestoría or to each ganadero is decided after the OVZ mapping — and the rest of Prompt 4's
+originally-scoped items are deferred alongside it.
+(3b's webhook + AI part was done without OVZ.net as Prompt B1.)
 
 `ganera-prompts.md` at the repo root tracks the full sequence of prompts used to
 build this out, in order — check it for the detailed history/rationale behind any given step.

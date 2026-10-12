@@ -16,6 +16,8 @@ import { BotonCopiar } from "@/shared/ui/BotonCopiar";
 import { CLASE_ENLACE } from "@/shared/ui/enlace";
 import { BadgeEstadoTramite } from "./BadgesTramite";
 import { desmarcarHechoEnOvz, marcarHechoEnOvz, obtenerDetalleTramite } from "./api";
+import { TEXTO_FICHA_DESCARTADO, TITULO_FICHA_DESCARTADO } from "./descarte";
+import { esDescartado } from "./etiquetas";
 import {
   PISTA_EXPLOTACION,
   construirFichaOvz,
@@ -285,7 +287,7 @@ export function FichaOvzPage() {
           {id !== null && (
             <span className="ml-auto flex items-center gap-2">
               <span className="text-sm text-muted-foreground tabular-nums">{`#${id}`}</span>
-              {vista.estado === "listo" && <BadgeEstadoTramite estado={vista.detalle.estado} />}
+              {vista.estado === "listo" && <BadgeEstadoTramite estado={vista.detalle.estado} motivoRechazo={vista.detalle.motivoRechazo} />}
             </span>
           )}
         </div>
@@ -375,6 +377,9 @@ interface PropsAccionHecho {
 function Contenido({ detalle, accion }: { detalle: TramiteDetalle; accion: PropsAccionHecho }) {
   const modo = modoFicha(detalle.estado);
   if (modo === "rechazado") {
+    if (esDescartado(detalle)) {
+      return <SinFicha titulo={TITULO_FICHA_DESCARTADO} texto={TEXTO_FICHA_DESCARTADO} />;
+    }
     return <SinFicha titulo="Trámite rechazado" texto="Un trámite rechazado no se pasa a OVZ." />;
   }
   if (modo === "extraccion") {

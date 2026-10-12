@@ -95,4 +95,10 @@ public class Tramite extends GestoriaScopedEntity {
     /** Cuando se marco como hecho en OVZ (Instant del Clock). Misma regla de null que hechoEnOvzPor. */
     @Column(name = "hecho_en_ovz_en")
     private Instant hechoEnOvzEn;
+
+    /** Codigo del motivo de rechazo (V23, plan 2026-10-12): SIN_TRAMITE si se descarto como mensaje sin
+     * tramite; null en un rechazo normal y en cualquier otro estado (CHECK ck_tramite_motivo_rechazo). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "motivo_rechazo", length = 30)
+    private MotivoRechazo motivoRechazo;
 }

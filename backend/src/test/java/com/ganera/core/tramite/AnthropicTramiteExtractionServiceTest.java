@@ -108,7 +108,11 @@ class AnthropicTramiteExtractionServiceTest {
         assertThat(textos(esquema.path("required"))).containsExactlyInAnyOrder("tipoTramite", "crotales");
         assertThat(textos(esquema.path("properties").path("tipoTramite").path("enum")))
                 .containsExactlyInAnyOrder("ALTA_NACIMIENTO", "BAJA_MUERTE", "SOLICITUD_MOVIMIENTO",
-                        "CONFIRMACION_MOVIMIENTO", "DECLARACION_CENSO", "DEMORA_CROTALIZACION", "NO_IDENTIFICADO");
+                        "CONFIRMACION_MOVIMIENTO", "DECLARACION_CENSO", "DEMORA_CROTALIZACION", "NO_IDENTIFICADO",
+                        "SIN_TRAMITE");
+        assertThat(esquema.path("properties").path("tipoTramite").path("description").asText())
+                .isEqualTo("Tipo de trámite pedido; NO_IDENTIFICADO si no está claro; SIN_TRAMITE solo si el "
+                        + "mensaje seguro que no pide ningún trámite.");
         JsonNode crotales = esquema.path("properties").path("crotales");
         assertThat(crotales.path("type").asText()).isEqualTo("array");
         assertThat(crotales.path("items").path("type").asText()).isEqualTo("string");
@@ -157,6 +161,31 @@ class AnthropicTramiteExtractionServiceTest {
 
         assertThat(extraido.tipoTramite()).isNull();
         assertThat(extraido.crotales()).isEmpty();
+        assertThat(extraido.sinTramite()).isFalse();
+    }
+
+    /** SIN_TRAMITE no es un TipoTramite (D1): tipo nulo como NO_IDENTIFICADO, distinguido por sinTramite. */
+    @Test
+    void sinTramiteSeTraduceATipoNuloConSinTramite() throws Exception {
+        responderMensaje("{\"tipoTramite\":\"SIN_TRAMITE\",\"crotales\":[]}", "end_turn");
+
+        TramiteExtraido extraido = servicio().extraer("vale, gracias");
+
+        assertThat(extraido.tipoTramite()).isNull();
+        assertThat(extraido.crotales()).isEmpty();
+        assertThat(extraido.sinTramite()).isTrue();
+    }
+
+    /** El servicio entrega los crotales crudos aunque diga SIN_TRAMITE: la red de seguridad (D2) es del validador. */
+    @Test
+    void sinTramiteConCrotalesLosEntregaTalCual() throws Exception {
+        responderMensaje("{\"tipoTramite\":\"SIN_TRAMITE\",\"crotales\":[\"4521\"]}", "end_turn");
+
+        TramiteExtraido extraido = servicio().extraer("gracias, la 4521");
+
+        assertThat(extraido.tipoTramite()).isNull();
+        assertThat(extraido.crotales()).containsExactly("4521");
+        assertThat(extraido.sinTramite()).isTrue();
     }
 
     @Test
@@ -258,7 +287,7 @@ class AnthropicTramiteExtractionServiceTest {
      * o la IA no pueda devolver un tipo nuevo.
      */
     @Test
-    void tipoExtraidoTieneLosMismosValoresQueTipoTramiteMasNoIdentificado() {
+    void tipoExtraidoTieneLosMismosValoresQueTipoTramiteMasNoIdentificadoYSinTramite() {
         List<String> extraidos = new ArrayList<>();
         for (AnthropicTramiteExtractionService.TipoExtraido t : AnthropicTramiteExtractionService.TipoExtraido.values()) {
             extraidos.add(t.name());
@@ -268,6 +297,7 @@ class AnthropicTramiteExtractionServiceTest {
             esperados.add(t.name());
         }
         esperados.add("NO_IDENTIFICADO");
+        esperados.add("SIN_TRAMITE");
 
         assertThat(extraidos).containsExactlyInAnyOrderElementsOf(esperados);
     }
@@ -300,8 +330,32 @@ class AnthropicTramiteExtractionServiceTest {
                   DECLARACION_CENSO: declaración del censo de la explotación.
                   DEMORA_CROTALIZACION: poner los crotales a animales dados de alta con demora en la
                   crotalización.
-                  Si el tipo no está claro, o el mensaje no pide ningún trámite, usa NO_IDENTIFICADO.
+                  SIN_TRAMITE: el mensaje entero no pide ni comunica ningún trámite: es solo un saludo, un
+                  agradecimiento, una confirmación («vale», «ok», «gracias», «recibido») o una pregunta a la
+                  gestoría que no es sobre animales (horario, facturas, una cita).
+                  NO_IDENTIFICADO: el mensaje pide o comunica algo sobre animales o la explotación, pero no
+                  está claro qué trámite es.
+                - Usa SIN_TRAMITE solo si estás seguro. Si el mensaje menciona un animal, un crotal, un
+                  ternero, una muerte, una venta, un traslado, una compra o el censo, o pide a la gestoría
+                  que apunte, anote o haga algo, nunca es SIN_TRAMITE, aunque empiece por «vale» u «ok»,
+                  salude o dé las gracias: usa su tipo, o NO_IDENTIFICADO si no está claro.
+                  Ante la duda entre SIN_TRAMITE y NO_IDENTIFICADO, usa NO_IDENTIFICADO.
                 """);
+        assertThat(AnthropicTramiteExtractionService.PROMPT_SISTEMA)
+                .doesNotContain("o el mensaje no pide ningún trámite, usa NO_IDENTIFICADO");
+    }
+
+    /** La regla asimetrica que evita falsos SIN_TRAMITE llega en el system de la peticion real. */
+    @Test
+    void laPeticionLlevaLaReglaAnteLaDudaNoIdentificado() throws Exception {
+        responderMensaje("{\"tipoTramite\":\"SIN_TRAMITE\",\"crotales\":[]}", "end_turn");
+
+        servicio().extraer("ok");
+
+        JsonNode peticion = json.readTree(cuerposRecibidos.get(0));
+        assertThat(peticion.path("system").toString())
+                .contains("Ante la duda entre SIN_TRAMITE y NO_IDENTIFICADO, usa NO_IDENTIFICADO.")
+                .contains("SIN_TRAMITE: el mensaje entero no pide ni comunica ningún trámite");
     }
 
     /** Cada tipo que puede contestar la IA llega al dominio con el mismo nombre. */
@@ -310,7 +364,9 @@ class AnthropicTramiteExtractionServiceTest {
         for (TipoTramite tipo : TipoTramite.values()) {
             responderMensaje("{\"tipoTramite\":\"" + tipo.name() + "\",\"crotales\":[]}", "end_turn");
 
-            assertThat(servicio().extraer(MENSAJE).tipoTramite()).isEqualTo(tipo);
+            TramiteExtraido extraido = servicio().extraer(MENSAJE);
+            assertThat(extraido.tipoTramite()).isEqualTo(tipo);
+            assertThat(extraido.sinTramite()).isFalse();
         }
     }
 

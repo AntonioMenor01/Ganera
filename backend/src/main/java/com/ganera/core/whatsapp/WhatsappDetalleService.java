@@ -43,6 +43,7 @@ public class WhatsappDetalleService {
         Instant ventanaAbiertaHasta = ReglasRespuestaWhatsapp.ventanaAbiertaHasta(
                 mensajeCampoRepository.ultimoMensajeDelContacto(contacto.getId(), gestoriaId));
         String motivo = ReglasRespuestaWhatsapp.motivoNoDisponible(tramite.getOrigen(), tramite.getEstado(),
+                tramite.getMotivoRechazo(),
                 contacto.isActivo(), ventanaAbiertaHasta, ahora);
         List<RespuestaWhatsappResponse> respuestas = respuestaWhatsappRepository
                 .findByTramiteIdAndGestoriaIdOrderByCreatedAtAscIdAsc(tramite.getId(), gestoriaId).stream()

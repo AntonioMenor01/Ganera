@@ -70,6 +70,11 @@ public class TramiteRevisionService {
     static final String MOTIVO_YA_HECHO_EN_OVZ = "Este trámite ya está marcado como hecho en OVZ.";
     static final String MOTIVO_DESMARCAR_SOLO_HECHO_EN_OVZ =
             "Solo se puede quitar la marca de un trámite marcado como hecho en OVZ.";
+    // Mensajes sin tramite (plan 2026-10-12): descartar no sale de Ganera; nada se envia ni se hace fuera.
+    static final String MOTIVO_DESCARTAR_SOLO_PENDIENTE = "Solo se puede descartar un trámite pendiente de revisión.";
+    static final String MOTIVO_NO_DESCARTABLE =
+            "Solo se descarta un mensaje sin trámite que nadie ha completado. Si no procede, recházalo.";
+    static final String MOTIVO_DESHACER_NO_DESCARTADO = "Este trámite no está descartado; no hay nada que deshacer.";
 
     private static final Logger log = LoggerFactory.getLogger(TramiteRevisionService.class);
 
@@ -81,6 +86,7 @@ public class TramiteRevisionService {
     private final UsuarioRepository usuarioRepository;
     private final Clock clock;
     private final WhatsappDetalleService whatsappDetalleService;
+    private final TramiteEventoRepository tramiteEventoRepository;
 
     /** Proxy compartido: dentro de la transaccion es el EntityManager de la peticion (OSIV). */
     @PersistenceContext
@@ -94,7 +100,8 @@ public class TramiteRevisionService {
             MensajeCampoRepository mensajeCampoRepository,
             UsuarioRepository usuarioRepository,
             Clock clock,
-            WhatsappDetalleService whatsappDetalleService) {
+            WhatsappDetalleService whatsappDetalleService,
+            TramiteEventoRepository tramiteEventoRepository) {
         this.tramiteRepository = tramiteRepository;
         this.explotacionRepository = explotacionRepository;
         this.tramiteCrotalService = tramiteCrotalService;
@@ -103,6 +110,7 @@ public class TramiteRevisionService {
         this.usuarioRepository = usuarioRepository;
         this.clock = clock;
         this.whatsappDetalleService = whatsappDetalleService;
+        this.tramiteEventoRepository = tramiteEventoRepository;
     }
 
     /**
@@ -147,13 +155,7 @@ public class TramiteRevisionService {
         tramiteRepository.save(tramite);
         incrementarVersion(tramite, versionLeida);
 
-        // gestoriaId explicito: un mensaje enlazado al Tramite pero de otra gestoria nunca se muestra.
-        String mensajeOriginal = mensajeCampoRepository
-                .findFirstByTramiteIdAndGestoriaIdOrderByCreatedAtDesc(tramite.getId(), gestoriaId)
-                .map(MensajeCampo::getCuerpo)
-                .orElse(null);
-        return TramiteDetalleResponse.from(tramite, mensajeOriginal, respuestas(filas),
-                whatsappDetalleService.bloque(tramite, gestoriaId));
+        return detalle(tramite, gestoriaId, filas);
     }
 
     /**
@@ -235,6 +237,8 @@ public class TramiteRevisionService {
         exigirVersion(tramite, versionVista);
         long versionLeida = tramite.getVersion();
         tramite.setEstado(EstadoTramite.RECHAZADO);
+        // Un rechazo normal no tiene motivo (solo el descarte lo pone) ni escribe evento.
+        tramite.setMotivoRechazo(null);
         tramiteRepository.save(tramite);
         incrementarVersion(tramite, versionLeida);
         return TramiteResponse.from(tramite, respuestas(filasDe(tramite, gestoriaId)));
@@ -292,6 +296,89 @@ public class TramiteRevisionService {
         incrementarVersion(tramite, versionLeida);
         log.info("Marca de hecho en OVZ quitada: tramiteId={} usuarioId={}", tramite.getId(), usuarioId);
         return TramiteResponse.from(tramite, respuestas(filasDe(tramite, gestoriaId)));
+    }
+
+    /**
+     * POST /tramites/{id}/descartar (mensajes sin tramite, plan 2026-10-12, D3/D4/A1/A6): el gestor quita de
+     * la cola un mensaje que no pide ningun tramite. Pasa a RECHAZADO con motivo SIN_TRAMITE y guarda un
+     * evento DESCARTADO con el usuario del JWT ({@code usuarioId}, que pone el controlador) y la hora del
+     * Clock, en la misma transaccion. No envia nada (ni WhatsApp ni OVZ). Sin comprobacion de suscripcion
+     * (D8). Orden: 404 -> 409 no pendiente -> 409 version -> 409 no descartable (D3) -> 200, version + 1.
+     */
+    @Transactional
+    public TramiteDetalleResponse descartar(Long gestoriaId, Long usuarioId, Long tramiteId, Long versionVista) {
+        Tramite tramite = cargarConBloqueo(gestoriaId, tramiteId);
+        exigirPendienteRevision(tramite, MOTIVO_DESCARTAR_SOLO_PENDIENTE);
+        exigirVersion(tramite, versionVista);
+        long versionLeida = tramite.getVersion();
+        List<TramiteCrotal> filas = filasDe(tramite, gestoriaId);
+        if (!DescarteTramite.esDescartable(tramite, filas.size())) {
+            throw new TramiteConflictoException(MOTIVO_NO_DESCARTABLE);
+        }
+        Usuario usuario = usuarioRepository.findByIdAndGestoriaId(usuarioId, gestoriaId)
+                .orElseThrow(RecursoNoEncontradoException::new);
+        tramite.setEstado(EstadoTramite.RECHAZADO);
+        tramite.setMotivoRechazo(MotivoRechazo.SIN_TRAMITE);
+        tramiteRepository.save(tramite);
+        registrarEvento(tramite, usuario, TipoEventoTramite.DESCARTADO);
+        incrementarVersion(tramite, versionLeida);
+        return detalle(tramite, gestoriaId, filas);
+    }
+
+    /**
+     * POST /tramites/{id}/deshacer-descarte (D7/A1): solo sobre un descarte (RECHAZADO + SIN_TRAMITE); un
+     * rechazo normal sigue sin vuelta atras. Vuelve a PENDIENTE_REVISION, vacia el motivo y guarda un evento
+     * DESCARTE_DESHECHO con el usuario del JWT. Sin limite de tiempo ni de suscripcion. Orden: 404 -> 409 no
+     * es un descarte -> 409 version -> 200, version + 1.
+     */
+    @Transactional
+    public TramiteDetalleResponse deshacerDescarte(Long gestoriaId, Long usuarioId, Long tramiteId, Long versionVista) {
+        Tramite tramite = cargarConBloqueo(gestoriaId, tramiteId);
+        if (!DescarteTramite.esDescarte(tramite)) {
+            throw new TramiteConflictoException(MOTIVO_DESHACER_NO_DESCARTADO);
+        }
+        exigirVersion(tramite, versionVista);
+        long versionLeida = tramite.getVersion();
+        Usuario usuario = usuarioRepository.findByIdAndGestoriaId(usuarioId, gestoriaId)
+                .orElseThrow(RecursoNoEncontradoException::new);
+        tramite.setEstado(EstadoTramite.PENDIENTE_REVISION);
+        tramite.setMotivoRechazo(null);
+        tramiteRepository.save(tramite);
+        registrarEvento(tramite, usuario, TipoEventoTramite.DESCARTE_DESHECHO);
+        incrementarVersion(tramite, versionLeida);
+        return detalle(tramite, gestoriaId, filasDe(tramite, gestoriaId));
+    }
+
+    /**
+     * Historial de descarte de un Tramite (A6) para el detalle: en orden cronologico, con el usuario en la
+     * MISMA consulta, y con el gestoriaId explicito (con el de otra gestoria, lista vacia).
+     */
+    public List<EventoDescarteResponse> historialDescarte(Long tramiteId, Long gestoriaId) {
+        return tramiteEventoRepository.findByTramiteIdAndGestoriaIdOrderByCreatedAtAscIdAsc(tramiteId, gestoriaId)
+                .stream().map(EventoDescarteResponse::from).toList();
+    }
+
+    private void registrarEvento(Tramite tramite, Usuario usuario, TipoEventoTramite tipo) {
+        TramiteEvento evento = new TramiteEvento();
+        evento.setGestoria(tramite.getGestoria());
+        evento.setTramite(tramite);
+        evento.setUsuario(usuario);
+        evento.setTipo(tipo);
+        // Truncado a microsegundos (precision de TIMESTAMP): la respuesta dice lo mismo que se guarda.
+        evento.setCreatedAt(Instant.now(clock).truncatedTo(ChronoUnit.MICROS));
+        tramiteEventoRepository.save(evento);
+    }
+
+    /** El detalle completo (PATCH, descartar, deshacer): mensaje original, crotales, WhatsApp e historial,
+     * todo con el gestoriaId explicito. */
+    private TramiteDetalleResponse detalle(Tramite tramite, Long gestoriaId, List<TramiteCrotal> filas) {
+        // gestoriaId explicito: un mensaje enlazado al Tramite pero de otra gestoria nunca se muestra.
+        String mensajeOriginal = mensajeCampoRepository
+                .findFirstByTramiteIdAndGestoriaIdOrderByCreatedAtDesc(tramite.getId(), gestoriaId)
+                .map(MensajeCampo::getCuerpo)
+                .orElse(null);
+        return TramiteDetalleResponse.from(tramite, mensajeOriginal, respuestas(filas),
+                whatsappDetalleService.bloque(tramite, gestoriaId), historialDescarte(tramite.getId(), gestoriaId));
     }
 
     /**

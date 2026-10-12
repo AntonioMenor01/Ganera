@@ -150,6 +150,7 @@ class RespuestaWhatsappEndToEndTest {
     @AfterEach
     void limpiar() {
         jdbcTemplate.update("delete from respuesta_whatsapp");
+        jdbcTemplate.update("delete from tramite_evento");
         mensajeCampoRepository.deleteAll();
         tramiteCrotalRepository.deleteAll();
         tramiteRepository.deleteAll();
@@ -675,7 +676,7 @@ class RespuestaWhatsappEndToEndTest {
         assertThat(campos(cuerpo)).containsExactlyInAnyOrder("id", "tipoTramite", "estado", "motivoError",
                 "explotacionId", "explotacionCodigoRega", "explotacionNombre", "ganaderoNombre", "ganaderoNif",
                 "mensajeOriginal", "crotales", "version", "origen", "estadoExtraccion", "crotalesDescartados",
-                "hechoEnOvzEn", "hechoEnOvzPorNombre", "whatsapp");
+                "hechoEnOvzEn", "hechoEnOvzPorNombre", "whatsapp", "motivoRechazo", "descartable", "historialDescarte");
     }
 
     @Test
@@ -691,6 +692,50 @@ class RespuestaWhatsappEndToEndTest {
         JsonNode whatsapp = objectMapper.readTree(patch.getBody()).get("whatsapp");
         assertThat(whatsapp.get("respuestas")).extracting(r -> r.get("texto").asText()).containsExactly("Antes del patch");
         assertThat(whatsapp.get("destinatarioNombre").asText()).isEqualTo("Juan Ganadero");
+    }
+
+    // ------------------------------------------------------------- SIN_TRAMITE (D9)
+
+    /** Un descartado no se responde: 409 con el motivo de D9, sin fila ni llamada a Twilio; el detalle lo
+     * dice en whatsapp.motivoNoDisponible. */
+    @Test
+    void responderAUnDescartadoEs409SinCrearFilaNiLlamar() throws IOException {
+        Tramite tramite = sinTramiteDeWhatsapp();
+        mensajeDe(gestoriaA, contactoA, tramite, AHORA.minus(Duration.ofHours(1)));
+        ResponseEntity<String> descartar = postCrudo("/tramites/" + tramite.getId() + "/descartar", tokenAna,
+                "{\"version\":" + versionEnBd(tramite) + "}");
+        assertThat(descartar.getStatusCode().value()).isEqualTo(200);
+        Map<String, Object> antes = fila(tramite);
+
+        ResponseEntity<String> respuesta = responder(tramite.getId(), tokenAna, "Hola", UUID.randomUUID().toString());
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(409);
+        assertThat(motivo(respuesta)).isEqualTo("Este mensaje se descartó como sin trámite; no se responde desde Ganera.");
+        assertThat(envio.llamadas()).isEmpty();
+        assertThat(cuantasRespuestas()).isZero();
+        assertThat(fila(tramite)).isEqualTo(antes);
+        assertThat(detalle(tramite.getId(), tokenAna).get("whatsapp").get("motivoNoDisponible").asText())
+                .isEqualTo("Este mensaje se descartó como sin trámite; no se responde desde Ganera.");
+    }
+
+    /** Tras deshacer el descarte se vuelve a poder responder. */
+    @Test
+    void trasDeshacerElDescarteSeVuelveAPoderResponder() throws IOException {
+        Tramite tramite = sinTramiteDeWhatsapp();
+        mensajeDe(gestoriaA, contactoA, tramite, AHORA.minus(Duration.ofHours(1)));
+        long v0 = versionEnBd(tramite);
+        assertThat(postCrudo("/tramites/" + tramite.getId() + "/descartar", tokenAna, "{\"version\":" + v0 + "}")
+                .getStatusCode().value()).isEqualTo(200);
+        ResponseEntity<String> deshacer = postCrudo("/tramites/" + tramite.getId() + "/deshacer-descarte", tokenBruno,
+                "{\"version\":" + (v0 + 1) + "}");
+        assertThat(deshacer.getStatusCode().value()).isEqualTo(200);
+        assertThat(objectMapper.readTree(deshacer.getBody()).get("whatsapp").get("motivoNoDisponible").isNull()).isTrue();
+
+        ResponseEntity<String> respuesta = responder(tramite.getId(), tokenAna, "¿Abrimos el lunes? Sí.",
+                UUID.randomUUID().toString());
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(201);
+        assertThat(envio.llamadas()).hasSize(1);
     }
 
     @Test
@@ -794,6 +839,13 @@ class RespuestaWhatsappEndToEndTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         return restTemplate.exchange(path, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+    }
+
+    /** Un mensaje que la IA vio como SIN_TRAMITE: pendiente, sin tipo ni crotales (descartable). */
+    private Tramite sinTramiteDeWhatsapp() {
+        Tramite tramite = deWhatsapp(gestoriaA, contactoA, EstadoTramite.PENDIENTE_REVISION);
+        tramite.setEstadoExtraccion(EstadoExtraccion.SIN_TRAMITE);
+        return tramiteRepository.save(tramite);
     }
 
     private Tramite deWhatsapp(Gestoria gestoria, Contacto contacto, EstadoTramite estado) {

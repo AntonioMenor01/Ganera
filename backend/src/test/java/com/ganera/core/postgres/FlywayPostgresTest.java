@@ -16,23 +16,23 @@ import java.util.stream.IntStream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Primera vez de Flyway contra PostgreSQL real (Prompt C, T1): V1-V22 (V18 es Java) en una base de
+ * Primera vez de Flyway contra PostgreSQL real (Prompt C, T1): V1-V23 (V18 es Java) en una base de
  * datos limpia de PostgreSQL 16, y despues Hibernate arrancado encima con ddl-auto=validate.
  */
 class FlywayPostgresTest {
 
     @Test
-    void aplicaLasVeintidosMigracionesEnUnPostgresLimpio() {
+    void aplicaLasVeintitresMigracionesEnUnPostgresLimpio() {
         String baseDeDatos = PostgresEmbebido.nuevaBaseDeDatos();
         DataSource dataSource = PostgresEmbebido.dataSource(baseDeDatos);
 
         MigrateResult resultado = flyway(dataSource).migrate();
 
         assertThat(resultado.success).isTrue();
-        assertThat(resultado.migrationsExecuted).isEqualTo(22);
+        assertThat(resultado.migrationsExecuted).isEqualTo(23);
         MigrationInfo[] aplicadas = flyway(dataSource).info().applied();
         assertThat(Arrays.stream(aplicadas).map(m -> m.getVersion().getVersion()).toList())
-                .containsExactlyElementsOf(IntStream.rangeClosed(1, 22).mapToObj(String::valueOf).toList());
+                .containsExactlyElementsOf(IntStream.rangeClosed(1, 23).mapToObj(String::valueOf).toList());
         assertThat(aplicadas).allSatisfy(m -> assertThat(m.getState()).isEqualTo(MigrationState.SUCCESS));
         assertThat(aplicadas[17].getType().name()).isEqualTo("JDBC"); // V18, la migracion Java
         assertThat(new JdbcTemplate(dataSource).queryForObject("select version()", String.class))
@@ -54,7 +54,7 @@ class FlywayPostgresTest {
             JdbcTemplate jdbc = contexto.getBean(JdbcTemplate.class);
             List<String> versiones = jdbc.queryForList(
                     "select version from flyway_schema_history where success order by installed_rank", String.class);
-            assertThat(versiones).hasSize(22).last().isEqualTo("22");
+            assertThat(versiones).hasSize(23).last().isEqualTo("23");
         }
     }
 

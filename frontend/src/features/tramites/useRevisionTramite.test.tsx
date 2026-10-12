@@ -56,6 +56,9 @@ function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
     hechoEnOvzEn: null,
     hechoEnOvzPorNombre: null,
     whatsapp: null,
+    motivoRechazo: null,
+    descartable: false,
+    historialDescarte: [],
     ...parcial,
   }
 }
@@ -78,6 +81,8 @@ function respuestaLista(d: TramiteDetalle) {
     crotalesDescartados: d.crotalesDescartados,
     hechoEnOvzEn: d.hechoEnOvzEn,
     hechoEnOvzPorNombre: d.hechoEnOvzPorNombre,
+    motivoRechazo: d.motivoRechazo ?? null,
+    descartable: d.descartable ?? false,
   } satisfies Tramite
 }
 
@@ -1750,5 +1755,255 @@ describe("useRevisionTramite: hecho en OVZ", () => {
     })
     expect(result.current.aviso).toEqual({ tipo: "error", accion: "marcar", mensaje: TEXTO_ERROR_SERVIDOR })
     expect(result.current.puedeMarcarHechoEnOvz).toBe(true)
+  })
+})
+
+describe("useRevisionTramite: descartar y deshacer (SIN_TRAMITE)", () => {
+  const SIN_TRAMITE: Partial<TramiteDetalle> = {
+    origen: "WHATSAPP",
+    estadoExtraccion: "SIN_TRAMITE",
+    tipoTramite: null,
+    crotales: [],
+    descartable: true,
+  }
+  const EVENTO = { tipo: "DESCARTADO", usuarioNombre: "Ana Pérez", en: "2026-10-12T08:00:00Z" }
+  const DESCARTADO: Partial<TramiteDetalle> = {
+    ...SIN_TRAMITE,
+    estado: "RECHAZADO",
+    motivoRechazo: "SIN_TRAMITE",
+    descartable: false,
+    historialDescarte: [EVENTO],
+  }
+
+  it("descartar: un clic envía solo {version}; la respuesta (detalle) sustituye al de pantalla sin otra petición y avisa a la cola", async () => {
+    const cuerpos: unknown[] = []
+    const get = detallesEnOrden(() => HttpResponse.json(detalle({ ...SIN_TRAMITE, version: 4 })))
+    server.use(
+      http.post(apiUrl("/tramites/7/descartar"), async ({ request }) => {
+        cuerpos.push(await request.json())
+        return HttpResponse.json(detalle({ ...DESCARTADO, version: 5 }))
+      }),
+    )
+    const { result, onCambiado } = await montar()
+    expect(result.current.puedeDescartar).toBe(true)
+    expect(result.current.puedeDeshacerDescarte).toBe(false)
+    await act(async () => {
+      await result.current.descartar()
+    })
+    expect(cuerpos).toEqual([{ version: 4 }])
+    expect(get.llamadas()).toBe(1)
+    expect(result.current.detalle).toMatchObject({ estado: "RECHAZADO", motivoRechazo: "SIN_TRAMITE", version: 5 })
+    expect(result.current.detalle?.historialDescarte).toEqual([EVENTO])
+    expect(result.current.editable).toBe(false)
+    expect(result.current.puedeDescartar).toBe(false)
+    expect(result.current.puedeDeshacerDescarte).toBe(true)
+    expect(result.current.enviando).toBeNull()
+    expect(result.current.aviso).toBeNull()
+    expect(onCambiado).toHaveBeenCalledTimes(1)
+  })
+
+  it("deshacer: envía {version}; vuelve a pendiente y descartable, con el historial de la respuesta", async () => {
+    const cuerpos: unknown[] = []
+    const historial = [EVENTO, { tipo: "DESCARTE_DESHECHO", usuarioNombre: "Luis", en: "2026-10-12T09:00:00Z" }]
+    detallesEnOrden(() => HttpResponse.json(detalle({ ...DESCARTADO, version: 5 })))
+    server.use(
+      http.post(apiUrl("/tramites/7/deshacer-descarte"), async ({ request }) => {
+        cuerpos.push(await request.json())
+        return HttpResponse.json(detalle({ ...SIN_TRAMITE, version: 6, historialDescarte: historial }))
+      }),
+    )
+    const { result, onCambiado } = await montar()
+    expect(result.current.puedeDeshacerDescarte).toBe(true)
+    await act(async () => {
+      await result.current.deshacerDescarte()
+    })
+    expect(cuerpos).toEqual([{ version: 5 }])
+    expect(result.current.detalle).toMatchObject({ estado: "PENDIENTE_REVISION", motivoRechazo: null, version: 6 })
+    expect(result.current.detalle?.historialDescarte).toEqual(historial)
+    expect(result.current.editable).toBe(true)
+    expect(result.current.puedeDescartar).toBe(true)
+    expect(result.current.puedeDeshacerDescarte).toBe(false)
+    expect(onCambiado).toHaveBeenCalledTimes(1)
+  })
+
+  it("sin `descartable` (aunque sea SIN_TRAMITE), con cambios sin guardar o en un rechazo normal, nada se envía", async () => {
+    let posts = 0
+    server.use(
+      http.post(apiUrl("/tramites/7/descartar"), () => {
+        posts += 1
+        return HttpResponse.json({})
+      }),
+      http.post(apiUrl("/tramites/7/deshacer-descarte"), () => {
+        posts += 1
+        return HttpResponse.json({})
+      }),
+    )
+    detallesEnOrden(() => HttpResponse.json(detalle({ ...SIN_TRAMITE, descartable: false })))
+    const noDescartable = await montar()
+    expect(noDescartable.result.current.puedeDescartar).toBe(false)
+    await act(async () => {
+      await noDescartable.result.current.descartar()
+    })
+    noDescartable.unmount()
+
+    detallesEnOrden(() => HttpResponse.json(detalle(SIN_TRAMITE)))
+    const conCambios = await montar()
+    act(() => {
+      conCambios.result.current.anadirCrotal("1234")
+    })
+    expect(conCambios.result.current.puedeDescartar).toBe(false)
+    await act(async () => {
+      await conCambios.result.current.descartar()
+    })
+    conCambios.unmount()
+
+    detallesEnOrden(() => HttpResponse.json(detalle({ estado: "RECHAZADO", motivoRechazo: null })))
+    const rechazado = await montar()
+    expect(rechazado.result.current.puedeDeshacerDescarte).toBe(false)
+    await act(async () => {
+      await rechazado.result.current.deshacerDescarte()
+    })
+    expect(posts).toBe(0)
+  })
+
+  it("dos descartar seguidos en el mismo render envían una sola petición", async () => {
+    let posts = 0
+    detallesEnOrden(() => HttpResponse.json(detalle(SIN_TRAMITE)))
+    server.use(
+      http.post(apiUrl("/tramites/7/descartar"), () => {
+        posts += 1
+        return HttpResponse.json(detalle({ ...DESCARTADO, version: 5 }))
+      }),
+    )
+    const { result } = await montar()
+    await act(async () => {
+      await Promise.all([result.current.descartar(), result.current.descartar()])
+    })
+    expect(posts).toBe(1)
+  })
+
+  it.each([
+    [
+      "descartar",
+      "/tramites/7/descartar",
+      SIN_TRAMITE,
+      "Solo se descarta un mensaje sin trámite que nadie ha completado. Si no procede, recházalo.",
+    ],
+    [
+      "deshacerDescarte",
+      "/tramites/7/deshacer-descarte",
+      DESCARTADO,
+      "Este trámite no está descartado; no hay nada que deshacer.",
+    ],
+  ] as const)("%s 409: recarga, motivo tal cual, sin reintento, avisa a la cola", async (accion, ruta, inicial, motivo) => {
+    let posts = 0
+    detallesEnOrden(
+      () => HttpResponse.json(detalle({ ...inicial, version: 4 })),
+      () => HttpResponse.json(detalle({ ...SIN_TRAMITE, tipoTramite: "BAJA_MUERTE", descartable: false, version: 5 })),
+    )
+    server.use(
+      http.post(apiUrl(ruta), () => {
+        posts += 1
+        return HttpResponse.json({ motivo }, { status: 409 })
+      }),
+    )
+    const { result, onCambiado } = await montar()
+    await act(async () => {
+      await result.current[accion]()
+    })
+    expect(posts).toBe(1)
+    expect(result.current.aviso).toEqual({
+      tipo: "conflicto",
+      accion: accion === "descartar" ? "descartar" : "deshacer",
+      mensaje: motivo,
+    })
+    expect(result.current.detalle?.version).toBe(5)
+    expect(result.current.puedeDescartar).toBe(false)
+    expect(onCambiado).toHaveBeenCalledTimes(1)
+  })
+
+  it("descartar 404 y la recarga también 404: no-encontrado con el texto de siempre", async () => {
+    detallesEnOrden(
+      () => HttpResponse.json(detalle(SIN_TRAMITE)),
+      () => new HttpResponse(null, { status: 404 }),
+    )
+    server.use(http.post(apiUrl("/tramites/7/descartar"), () => new HttpResponse(null, { status: 404 })))
+    const { result, onCambiado } = await montar()
+    await act(async () => {
+      await result.current.descartar()
+    })
+    expect(result.current.carga).toEqual({ estado: "no-encontrado", mensaje: TEXTO_NO_EXISTE })
+    expect(onCambiado).toHaveBeenCalled()
+  })
+
+  it("red al descartar y la recarga lo muestra descartado: se dice lo que consta", async () => {
+    detallesEnOrden(
+      () => HttpResponse.json(detalle(SIN_TRAMITE)),
+      () => HttpResponse.json(detalle({ ...DESCARTADO, version: 5 })),
+    )
+    server.use(http.post(apiUrl("/tramites/7/descartar"), () => HttpResponse.error()))
+    const { result, onCambiado } = await montar()
+    await act(async () => {
+      await result.current.descartar()
+    })
+    expect(result.current.aviso).toEqual({
+      tipo: "exito",
+      accion: "descartar",
+      mensaje: "No hubo respuesta a tiempo, pero el trámite consta como descartado.",
+    })
+    expect(result.current.puedeDeshacerDescarte).toBe(true)
+    expect(onCambiado).toHaveBeenCalledTimes(1)
+  })
+
+  // Revisión de T3, hallazgo 2: un rechazo NORMAL no es un descarte. Si la recarga lo muestra rechazado sin
+  // motivo (otra persona lo rechazó a la vez), ni «consta como descartado» ni «Inténtalo de nuevo».
+  it("red al descartar y la recarga lo muestra rechazado sin motivo: aviso neutro de cambio de estado", async () => {
+    detallesEnOrden(
+      () => HttpResponse.json(detalle(SIN_TRAMITE)),
+      () =>
+        HttpResponse.json(
+          detalle({ ...SIN_TRAMITE, estado: "RECHAZADO", motivoRechazo: null, descartable: false, version: 5 }),
+        ),
+    )
+    server.use(http.post(apiUrl("/tramites/7/descartar"), () => HttpResponse.error()))
+    const { result } = await montar()
+    await act(async () => {
+      await result.current.descartar()
+    })
+    expect(result.current.aviso).toEqual({
+      tipo: "estado-cambiado",
+      accion: "descartar",
+      mensaje: "No hubo respuesta a tiempo. El trámite consta ahora como rechazado.",
+    })
+    expect(result.current.puedeDeshacerDescarte).toBe(false)
+  })
+
+  it("red al deshacer y la recarga lo muestra aprobado: aviso neutro de cambio de estado", async () => {
+    detallesEnOrden(
+      () => HttpResponse.json(detalle(DESCARTADO)),
+      () => HttpResponse.json(detalle({ ...DESCARTADO, estado: "APROBADO", motivoRechazo: null, version: 9 })),
+    )
+    server.use(http.post(apiUrl("/tramites/7/deshacer-descarte"), () => HttpResponse.error()))
+    const { result } = await montar()
+    await act(async () => {
+      await result.current.deshacerDescarte()
+    })
+    expect(result.current.aviso).toEqual({
+      tipo: "estado-cambiado",
+      accion: "deshacer",
+      mensaje: "No hubo respuesta a tiempo. El trámite consta ahora como aprobado.",
+    })
+  })
+
+  it("5xx al deshacer y la recarga lo muestra igual: el error, y Deshacer otra vez disponible", async () => {
+    detallesEnOrden(() => HttpResponse.json(detalle(DESCARTADO)))
+    server.use(http.post(apiUrl("/tramites/7/deshacer-descarte"), () => new HttpResponse(null, { status: 500 })))
+    const { result } = await montar()
+    await act(async () => {
+      await result.current.deshacerDescarte()
+    })
+    expect(result.current.aviso).toEqual({ tipo: "error", accion: "deshacer", mensaje: TEXTO_ERROR_SERVIDOR })
+    expect(result.current.puedeDeshacerDescarte).toBe(true)
+    expect(result.current.detalle?.historialDescarte).toEqual([EVENTO])
   })
 })

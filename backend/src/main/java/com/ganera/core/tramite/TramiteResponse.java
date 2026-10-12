@@ -11,7 +11,7 @@ import java.util.List;
  *
  * <p>origen, estadoExtraccion y crotalesDescartados (B1, T3) son columnas del propio Tramite, sin
  * consultas extra: origen es "WHATSAPP" o null (Tramites anteriores a B1); estadoExtraccion es
- * "PENDIENTE", "COMPLETADA", "FALLIDA", "SIN_TEXTO" o null (anteriores a B1); crotalesDescartados
+ * "PENDIENTE", "COMPLETADA", "FALLIDA", "SIN_TEXTO", "SIN_TRAMITE" o null (anteriores a B1); crotalesDescartados
  * cuenta los identificadores que la IA devolvio y no parecian crotales (0 si no hubo). El motivo
  * tecnico de un fallo de la IA nunca se expone: solo va a los logs, sin datos del mensaje.
  *
@@ -19,6 +19,10 @@ import java.util.List;
  * marco el tramite como hecho en OVZ; los dos null si no esta marcado. hechoEnOvzEn sale en ISO-8601
  * UTC con «Z». Nunca el email ni el id del usuario. En el listado el usuario llega en la consulta de la
  * pagina (EntityGraph en TramiteRepository), nunca una consulta por fila.
+ *
+ * <p>motivoRechazo y descartable (mensajes sin tramite, plan 2026-10-12): motivoRechazo es "SIN_TRAMITE" en un
+ * tramite descartado y null en cualquier otro (tambien en un rechazo normal); descartable lo decide
+ * {@link DescarteTramite#esDescartable} con los crotales que ya lleva la respuesta (sin consultas nuevas).
  */
 public record TramiteResponse(
         Long id,
@@ -34,7 +38,9 @@ public record TramiteResponse(
         String estadoExtraccion,
         int crotalesDescartados,
         Instant hechoEnOvzEn,
-        String hechoEnOvzPorNombre) {
+        String hechoEnOvzPorNombre,
+        String motivoRechazo,
+        boolean descartable) {
 
     public static TramiteResponse from(Tramite tramite, List<TramiteCrotalResponse> crotales) {
         boolean tieneExplotacion = tramite.getExplotacion() != null;
@@ -52,6 +58,8 @@ public record TramiteResponse(
                 tramite.getEstadoExtraccion() != null ? tramite.getEstadoExtraccion().name() : null,
                 tramite.getCrotalesDescartados(),
                 tramite.getHechoEnOvzEn(),
-                tramite.getHechoEnOvzPor() != null ? tramite.getHechoEnOvzPor().getNombre() : null);
+                tramite.getHechoEnOvzPor() != null ? tramite.getHechoEnOvzPor().getNombre() : null,
+                tramite.getMotivoRechazo() != null ? tramite.getMotivoRechazo().name() : null,
+                DescarteTramite.esDescartable(tramite, crotales != null ? crotales.size() : 0));
     }
 }

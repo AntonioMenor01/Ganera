@@ -53,6 +53,9 @@ function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
     hechoEnOvzEn: null,
     hechoEnOvzPorNombre: null,
     whatsapp: null,
+    motivoRechazo: null,
+    descartable: false,
+    historialDescarte: [],
     ...parcial,
   }
 }

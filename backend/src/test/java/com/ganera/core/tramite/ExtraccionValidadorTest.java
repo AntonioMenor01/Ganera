@@ -83,9 +83,9 @@ class ExtraccionValidadorTest {
     @Test
     void listaNulaOVaciaDaCeroCrotales() {
         assertThat(ExtraccionValidador.validar(new TramiteExtraido(TipoTramite.ALTA_NACIMIENTO, null)))
-                .isEqualTo(new ExtraccionValidada(TipoTramite.ALTA_NACIMIENTO, List.of(), 0));
+                .isEqualTo(new ExtraccionValidada(TipoTramite.ALTA_NACIMIENTO, List.of(), 0, false));
         assertThat(ExtraccionValidador.validar(new TramiteExtraido(TipoTramite.ALTA_NACIMIENTO, List.of())))
-                .isEqualTo(new ExtraccionValidada(TipoTramite.ALTA_NACIMIENTO, List.of(), 0));
+                .isEqualTo(new ExtraccionValidada(TipoTramite.ALTA_NACIMIENTO, List.of(), 0, false));
     }
 
     @Test
@@ -94,5 +94,60 @@ class ExtraccionValidadorTest {
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> validada.crotales().add("5678"))
                 .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    // ------------------------------------------------------------------ D2: red de seguridad de SIN_TRAMITE
+
+    @Test
+    void sinTramiteSinCrotalesSeMantiene() {
+        ExtraccionValidada validada = ExtraccionValidador.validar(new TramiteExtraido(null, List.of(), true));
+
+        assertThat(validada.sinTramite()).isTrue();
+        assertThat(validada.tipo()).isNull();
+        assertThat(validada.crotales()).isEmpty();
+        assertThat(validada.descartados()).isZero();
+    }
+
+    @Test
+    void sinTramiteConListaNulaSeMantiene() {
+        assertThat(ExtraccionValidador.validar(new TramiteExtraido(null, null, true)).sinTramite()).isTrue();
+    }
+
+    /** D2: un mensaje que nombra un animal casi siempre pide algo; se trata como NO_IDENTIFICADO. */
+    @Test
+    void sinTramiteConUnCrotalValidoDejaDeSerSinTramiteYResuelveLosCrotales() {
+        ExtraccionValidada validada = ExtraccionValidador.validar(new TramiteExtraido(null, List.of("es-4521", "123"), true));
+
+        assertThat(validada.sinTramite()).isFalse();
+        assertThat(validada.tipo()).isNull();
+        assertThat(validada.crotales()).containsExactly("ES4521");
+        assertThat(validada.descartados()).isEqualTo(1);
+    }
+
+    /** D2 mira la lista CRUDA de la IA: aunque todos se descarten por invalidos, ya no es SIN_TRAMITE. */
+    @Test
+    void sinTramiteConSoloCrotalesInvalidosTambienDejaDeSerSinTramiteYLosCuenta() {
+        ExtraccionValidada validada = ExtraccionValidador.validar(new TramiteExtraido(null, Arrays.asList("12", "", null), true));
+
+        assertThat(validada.sinTramite()).isFalse();
+        assertThat(validada.crotales()).isEmpty();
+        assertThat(validada.descartados()).isEqualTo(3);
+    }
+
+    @Test
+    void unTipoNormalNuncaEsSinTramite() {
+        ExtraccionValidada validada = ExtraccionValidador.validar(new TramiteExtraido(TipoTramite.BAJA_MUERTE, List.of()));
+
+        assertThat(validada.sinTramite()).isFalse();
+        assertThat(validada.tipo()).isEqualTo(TipoTramite.BAJA_MUERTE);
+    }
+
+    /** Revision de T1, m1: un tipo y SIN_TRAMITE a la vez se contradicen; manda el tipo (nunca se pierde). */
+    @Test
+    void unTipoConSinTramiteNoEsSinTramiteYConservaElTipo() {
+        ExtraccionValidada validada = ExtraccionValidador.validar(new TramiteExtraido(TipoTramite.BAJA_MUERTE, List.of(), true));
+
+        assertThat(validada.sinTramite()).isFalse();
+        assertThat(validada.tipo()).isEqualTo(TipoTramite.BAJA_MUERTE);
     }
 }

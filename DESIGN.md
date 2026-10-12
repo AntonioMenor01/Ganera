@@ -204,8 +204,8 @@ the app: it would be a third red, almost indistinguishable from the brand one.
 - **Éxito** (`--success` / `--success-foreground`, unchanged): resolved favorably, meaning
   `HECHO_EN_OVZ` and `EJECUTADO_OVZ`.
 - **Aviso** (`--warning` / `--warning-foreground`, unchanged): not resolved yet, meaning
-  `PENDIENTE_EXTRACCION`, `PENDIENTE_REVISION`, `APROBADO` (data reviewed, the gestor still has to
-  type it into OVZ) and `EN_PROCESO`. The amber stays clearly apart from both reds.
+  `PENDIENTE_EXTRACCION`, `PENDIENTE_REVISION`, `APROBADO` (data reviewed, still to be done in OVZ)
+  and `EN_PROCESO`. The amber stays clearly apart from both reds.
 - **Peligro** (`--danger` / `--danger-foreground`): resolved unfavorably, meaning `ERROR_OVZ` and
   `RECHAZADO`, in Rojo Problema on Rojo Tinte, so there is a single "problem red".
 
@@ -360,8 +360,8 @@ The signature component, since state is the main thing the queue communicates.
   into OVZ themselves) and `EJECUTADO_OVZ`; peligro for `ERROR_OVZ` and `RECHAZADO`. In the queue the
   badge is all there is: who marked it and when live in the dialog and the ficha, never in the row.
   The queue's state filter offers Todos, the two pending states, "Aprobado · falta OVZ", "Hecho en OVZ"
-  and "Rechazado"; the automation states (`EN_PROCESO`, `EJECUTADO_OVZ`, `ERROR_OVZ`, Prompt 3c) keep
-  their labels but stay out of the filter until they can happen.
+  and "Rechazado"; the automation states (`EN_PROCESO`, `EJECUTADO_OVZ`, `ERROR_OVZ`, escalón 2
+  (modo asistido)) keep their labels but stay out of the filter until they can happen.
 - **Crotal resolution:** "En inventario" success; "Varios animales coinciden" and "Falta la
   explotación" warning; "No está en el inventario" `outline`, since it can still be approvable (the
   backend decides). A `NO_ENCONTRADO` crotal whose written value is incomplete (`completo: false`
@@ -571,6 +571,7 @@ in the UI. The favicon is `favicon-64.png`.
 - **Inline confirmation:** the action bar swaps for a named `role="group"` with the question first,
   then [safe option, focused] [destructive-tint option]. Esc cancels. Used for Rechazar, for "Quitar
   la marca" and for closing with unsaved changes. Never a second modal.
+- **"Descartar" (SIN_TRAMITE):** only in the dialog's footer, next to Rechazar, and only when the backend says `descartable` (the queue just shows the neutral line "Parece un mensaje sin trámite"); one click, no confirmation, because "Deshacer" in the neutral `bg-muted` band of a discarded trámite undoes it with no time limit; its badge is "Descartado" (`outline`).
 - **Action notices:** an error is a destructive Alert with a per-action title and the backend's
   `motivo` verbatim, persistent and dismissible. Success is the exact `success` pair with a check
   icon inside an always-mounted `role="status"`. A follow-up reload failure is a secondary muted

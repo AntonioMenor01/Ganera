@@ -61,6 +61,12 @@ public class IaDePruebaConfig {
             responder(texto -> extraido);
         }
 
+        /** La IA contesta SIN_TRAMITE (tipo nulo) con los crotales crudos dados, sin validar. */
+        public void devolverSinTramite(String... crotales) {
+            TramiteExtraido extraido = new TramiteExtraido(null, List.of(crotales), true);
+            responder(texto -> extraido);
+        }
+
         public void lanzar(RuntimeException fallo) {
             responder(texto -> {
                 throw fallo;

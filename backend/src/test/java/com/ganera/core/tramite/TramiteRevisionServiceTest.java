@@ -898,7 +898,316 @@ class TramiteRevisionServiceTest {
         }
     }
 
+    // --- descartar y deshacer (SIN_TRAMITE, plan 2026-10-12) ---
+
+    /** Instante que se guarda: el del Clock truncado a microsegundos (precision de TIMESTAMP). */
+    private static final Instant AHORA_GUARDADO = Instant.parse("2026-10-07T10:30:00.123456Z");
+
+    @Test
+    void descartarPasaARechazadoConMotivoGuardaElEventoEIncrementaLaVersion() {
+        Tramite tramite = nuevoSinTramite();
+        long v0 = version(tramite);
+
+        TramiteDetalleResponse respuesta = servicio.descartar(gestoriaA.getId(), usuarioA.getId(), tramite.getId(), v0);
+
+        assertThat(respuesta.estado()).isEqualTo("RECHAZADO");
+        assertThat(respuesta.motivoRechazo()).isEqualTo("SIN_TRAMITE");
+        assertThat(respuesta.descartable()).isFalse();
+        assertThat(respuesta.version()).isEqualTo(v0 + 1);
+        assertThat(respuesta.historialDescarte()).containsExactly(
+                new EventoDescarteResponse("DESCARTADO", "Ana Pérez", AHORA_GUARDADO));
+        assertThat(version(tramite)).isEqualTo(v0 + 1);
+        assertThat(tramite.getEstado()).isEqualTo(EstadoTramite.RECHAZADO);
+        assertThat(tramite.getMotivoRechazo()).isEqualTo(MotivoRechazo.SIN_TRAMITE);
+        assertThat(jdbcTemplate.queryForList("select tipo, usuario_id, gestoria_id from tramite_evento where tramite_id = ?",
+                tramite.getId())).hasSize(1).first().satisfies(fila -> {
+                    assertThat(fila.get("TIPO")).isEqualTo("DESCARTADO");
+                    assertThat(((Number) fila.get("USUARIO_ID")).longValue()).isEqualTo(usuarioA.getId());
+                    assertThat(((Number) fila.get("GESTORIA_ID")).longValue()).isEqualTo(gestoriaA.getId());
+                });
+    }
+
+    @Test
+    void descartarFueraDePendienteRevisionEsConflictoConSuMotivoAunqueLaVersionEsteDesfasada() {
+        for (EstadoTramite estado : List.of(EstadoTramite.PENDIENTE_EXTRACCION, EstadoTramite.APROBADO,
+                EstadoTramite.RECHAZADO, EstadoTramite.EN_PROCESO, EstadoTramite.EJECUTADO_OVZ, EstadoTramite.ERROR_OVZ)) {
+            Tramite tramite = nuevoSinTramite();
+            tramite.setEstado(estado);
+            tramiteRepository.save(tramite);
+            long v0 = version(tramite);
+
+            for (Long cualquiera : java.util.Arrays.asList(v0, v0 + 5, null)) {
+                assertThatThrownBy(() -> servicio.descartar(gestoriaA.getId(), usuarioA.getId(), tramite.getId(), cualquiera))
+                        .as(estado + " version " + cualquiera)
+                        .isInstanceOf(TramiteConflictoException.class)
+                        .hasMessage(TramiteRevisionService.MOTIVO_DESCARTAR_SOLO_PENDIENTE);
+            }
+            assertThat(tramite.getEstado()).isEqualTo(estado);
+            assertThat(tramite.getMotivoRechazo()).isNull();
+            assertThat(version(tramite)).isEqualTo(v0);
+            assertThat(eventos(tramite)).isZero();
+        }
+    }
+
+    @Test
+    void descartarConVersionDesfasadaEsConflictoAntesDeMirarSiEsDescartable() {
+        Tramite descartable = nuevoSinTramite();
+        Tramite conTipo = nuevoSinTramite();
+        conTipo.setTipoTramite(TipoTramite.BAJA_MUERTE);
+        tramiteRepository.save(conTipo);
+        long vd = version(descartable);
+        long vt = version(conTipo);
+
+        for (Long otra : java.util.Arrays.asList(vd + 1, vd - 1, null)) {
+            assertThatThrownBy(() -> servicio.descartar(gestoriaA.getId(), usuarioA.getId(), descartable.getId(), otra))
+                    .isInstanceOf(TramiteConflictoException.class)
+                    .hasMessage(TramiteRevisionService.MOTIVO_VERSION_DESFASADA);
+        }
+        assertThatThrownBy(() -> servicio.descartar(gestoriaA.getId(), usuarioA.getId(), conTipo.getId(), vt + 1))
+                .isInstanceOf(TramiteConflictoException.class)
+                .hasMessage(TramiteRevisionService.MOTIVO_VERSION_DESFASADA);
+        assertThat(descartable.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+        assertThat(version(descartable)).isEqualTo(vd);
+        assertThat(eventos(descartable)).isZero();
+    }
+
+    /** D3: si el gestor ya le puso tipo, lo ha convertido en un tramite: no se descarta (le queda Rechazar). */
+    @Test
+    void unSinTramiteConTipoNoEsDescartable() {
+        Tramite tramite = nuevoSinTramite();
+        long v0 = version(tramite);
+        TramiteDetalleResponse conTipo = servicio.actualizar(gestoriaA.getId(), tramite.getId(), v0, null,
+                TipoTramite.BAJA_MUERTE, null);
+        assertThat(conTipo.descartable()).isFalse();
+
+        assertThatThrownBy(() -> servicio.descartar(gestoriaA.getId(), usuarioA.getId(), tramite.getId(), v0 + 1))
+                .isInstanceOf(TramiteConflictoException.class)
+                .hasMessage(TramiteRevisionService.MOTIVO_NO_DESCARTABLE);
+        assertThat(tramite.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+        assertThat(tramite.getMotivoRechazo()).isNull();
+        assertThat(version(tramite)).isEqualTo(v0 + 1);
+        assertThat(eventos(tramite)).isZero();
+    }
+
+    /** D3: con crotales tampoco (aunque no tenga tipo). */
+    @Test
+    void unSinTramiteConCrotalesNoEsDescartable() {
+        Tramite tramite = nuevoSinTramite();
+        long v0 = version(tramite);
+        TramiteDetalleResponse conCrotal = servicio.actualizar(gestoriaA.getId(), tramite.getId(), v0, null, null,
+                List.of("1234"));
+        assertThat(conCrotal.descartable()).isFalse();
+        assertThat(conCrotal.tipoTramite()).isNull();
+
+        assertThatThrownBy(() -> servicio.descartar(gestoriaA.getId(), usuarioA.getId(), tramite.getId(), v0 + 1))
+                .isInstanceOf(TramiteConflictoException.class)
+                .hasMessage(TramiteRevisionService.MOTIVO_NO_DESCARTABLE);
+        assertThat(tramite.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+        assertThat(version(tramite)).isEqualTo(v0 + 1);
+        assertThat(eventos(tramite)).isZero();
+    }
+
+    /** Un pendiente cuya extraccion no fue SIN_TRAMITE no se descarta (se rechaza). */
+    @Test
+    void unPendienteQueNoEsSinTramiteNoEsDescartable() {
+        for (EstadoExtraccion estado : java.util.Arrays.asList(EstadoExtraccion.COMPLETADA, EstadoExtraccion.FALLIDA,
+                EstadoExtraccion.SIN_TEXTO, null)) {
+            Tramite tramite = nuevoSinTramite();
+            tramite.setEstadoExtraccion(estado);
+            tramiteRepository.save(tramite);
+            long v0 = version(tramite);
+
+            assertThatThrownBy(() -> servicio.descartar(gestoriaA.getId(), usuarioA.getId(), tramite.getId(), v0))
+                    .as(String.valueOf(estado))
+                    .isInstanceOf(TramiteConflictoException.class)
+                    .hasMessage(TramiteRevisionService.MOTIVO_NO_DESCARTABLE);
+            assertThat(tramite.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+        }
+    }
+
+    /** Aislamiento: con el gestoriaId (y el usuario) de B, el tramite de A no existe; un id inexistente,
+     * tampoco. Nada cambia y no se escribe ningun evento. */
+    @Test
+    void descartarYDeshacerUnTramiteDeOtraGestoriaOInexistenteEsNoEncontrado() {
+        Tramite pendiente = nuevoSinTramite();
+        Tramite descartado = nuevoSinTramite();
+        servicio.descartar(gestoriaA.getId(), usuarioA.getId(), descartado.getId(), version(descartado));
+        long vp = version(pendiente);
+        long vd = version(descartado);
+
+        assertThatThrownBy(() -> servicio.descartar(gestoriaB.getId(), usuarioB.getId(), pendiente.getId(), vp))
+                .isInstanceOf(RecursoNoEncontradoException.class);
+        assertThatThrownBy(() -> servicio.deshacerDescarte(gestoriaB.getId(), usuarioB.getId(), descartado.getId(), vd))
+                .isInstanceOf(RecursoNoEncontradoException.class);
+        assertThatThrownBy(() -> servicio.descartar(gestoriaA.getId(), usuarioA.getId(), 999999L, 0L))
+                .isInstanceOf(RecursoNoEncontradoException.class);
+        assertThatThrownBy(() -> servicio.deshacerDescarte(gestoriaA.getId(), usuarioA.getId(), 999999L, 0L))
+                .isInstanceOf(RecursoNoEncontradoException.class);
+        assertThat(pendiente.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+        assertThat(descartado.getEstado()).isEqualTo(EstadoTramite.RECHAZADO);
+        assertThat(version(pendiente)).isEqualTo(vp);
+        assertThat(version(descartado)).isEqualTo(vd);
+        assertThat(eventos(pendiente)).isZero();
+        assertThat(eventos(descartado)).isEqualTo(1);
+        // El historial de A tampoco se ve con el gestoriaId de B.
+        assertThat(servicio.historialDescarte(descartado.getId(), gestoriaB.getId())).isEmpty();
+    }
+
+    /** El usuario se carga con el gestoriaId explicito: uno de otra gestoria nunca consta. */
+    @Test
+    void descartarConUnUsuarioDeOtraGestoriaEsNoEncontrado() {
+        Tramite tramite = nuevoSinTramite();
+
+        assertThatThrownBy(() -> servicio.descartar(gestoriaA.getId(), usuarioB.getId(), tramite.getId(), version(tramite)))
+                .isInstanceOf(RecursoNoEncontradoException.class);
+        assertThat(eventos(tramite)).isZero();
+    }
+
+    /** Lo mismo al deshacer (revision de T2, m1): el usuario de otra gestoria nunca consta y nada cambia. */
+    @Test
+    void deshacerConUnUsuarioDeOtraGestoriaEsNoEncontrado() {
+        Tramite tramite = nuevoSinTramite();
+        servicio.descartar(gestoriaA.getId(), usuarioA.getId(), tramite.getId(), version(tramite));
+        long v1 = version(tramite);
+
+        assertThatThrownBy(() -> servicio.deshacerDescarte(gestoriaA.getId(), usuarioB.getId(), tramite.getId(), v1))
+                .isInstanceOf(RecursoNoEncontradoException.class);
+        assertThat(eventos(tramite)).isEqualTo(1);
+        assertThat(version(tramite)).isEqualTo(v1);
+    }
+
+    /** D7: deshacer vuelve a PENDIENTE_REVISION, vacia el motivo, guarda el evento y vuelve a ser descartable. */
+    @Test
+    void deshacerVuelveAPendienteVaciaElMotivoGuardaElEventoYVuelveASerDescartable() {
+        Tramite tramite = nuevoSinTramite();
+        servicio.descartar(gestoriaA.getId(), usuarioA.getId(), tramite.getId(), version(tramite));
+        long v1 = version(tramite);
+
+        TramiteDetalleResponse respuesta = servicio.deshacerDescarte(gestoriaA.getId(), usuarioA2.getId(), tramite.getId(), v1);
+
+        assertThat(respuesta.estado()).isEqualTo("PENDIENTE_REVISION");
+        assertThat(respuesta.motivoRechazo()).isNull();
+        assertThat(respuesta.descartable()).isTrue();
+        assertThat(respuesta.version()).isEqualTo(v1 + 1);
+        assertThat(respuesta.historialDescarte()).containsExactly(
+                new EventoDescarteResponse("DESCARTADO", "Ana Pérez", AHORA_GUARDADO),
+                new EventoDescarteResponse("DESCARTE_DESHECHO", "Bruno Gil", AHORA_GUARDADO));
+        assertThat(tramite.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+        assertThat(tramite.getMotivoRechazo()).isNull();
+        assertThat(version(tramite)).isEqualTo(v1 + 1);
+    }
+
+    /** A1: deshacer solo sobre descartados. Un rechazo normal (y cualquier otro estado) -> 409, nada cambia. */
+    @Test
+    void deshacerUnRechazoNormalOCualquierOtroEstadoEsConflicto() {
+        for (EstadoTramite estado : List.of(EstadoTramite.RECHAZADO, EstadoTramite.PENDIENTE_REVISION,
+                EstadoTramite.PENDIENTE_EXTRACCION, EstadoTramite.APROBADO, EstadoTramite.EN_PROCESO,
+                EstadoTramite.EJECUTADO_OVZ, EstadoTramite.ERROR_OVZ)) {
+            Tramite tramite = nuevoSinTramite();
+            tramite.setEstado(estado);
+            tramiteRepository.save(tramite);
+            long v0 = version(tramite);
+
+            for (Long cualquiera : java.util.Arrays.asList(v0, v0 + 5, null)) {
+                assertThatThrownBy(() -> servicio.deshacerDescarte(gestoriaA.getId(), usuarioA.getId(), tramite.getId(),
+                        cualquiera))
+                        .as(estado + " version " + cualquiera)
+                        .isInstanceOf(TramiteConflictoException.class)
+                        .hasMessage(TramiteRevisionService.MOTIVO_DESHACER_NO_DESCARTADO);
+            }
+            assertThat(tramite.getEstado()).isEqualTo(estado);
+            assertThat(version(tramite)).isEqualTo(v0);
+            assertThat(eventos(tramite)).isZero();
+        }
+    }
+
+    @Test
+    void deshacerConVersionDesfasadaEsConflictoSinCambiar() {
+        Tramite tramite = nuevoSinTramite();
+        servicio.descartar(gestoriaA.getId(), usuarioA.getId(), tramite.getId(), version(tramite));
+        long v1 = version(tramite);
+
+        for (Long otra : java.util.Arrays.asList(v1 + 1, v1 - 1, null)) {
+            assertThatThrownBy(() -> servicio.deshacerDescarte(gestoriaA.getId(), usuarioA.getId(), tramite.getId(), otra))
+                    .as("version " + otra)
+                    .isInstanceOf(TramiteConflictoException.class)
+                    .hasMessage(TramiteRevisionService.MOTIVO_VERSION_DESFASADA);
+        }
+        assertThat(tramite.getEstado()).isEqualTo(EstadoTramite.RECHAZADO);
+        assertThat(tramite.getMotivoRechazo()).isEqualTo(MotivoRechazo.SIN_TRAMITE);
+        assertThat(version(tramite)).isEqualTo(v1);
+        assertThat(eventos(tramite)).isEqualTo(1);
+    }
+
+    /** Rechazar (incluso un descartable) no pone motivo ni escribe evento; y no se puede deshacer. */
+    @Test
+    void rechazarNormalDejaElMotivoANullYNoEscribeEvento() {
+        Tramite tramite = nuevoSinTramite();
+
+        TramiteResponse respuesta = servicio.rechazar(gestoriaA.getId(), tramite.getId(), version(tramite));
+
+        assertThat(respuesta.estado()).isEqualTo("RECHAZADO");
+        assertThat(respuesta.motivoRechazo()).isNull();
+        assertThat(respuesta.descartable()).isFalse();
+        assertThat(tramite.getMotivoRechazo()).isNull();
+        assertThat(eventos(tramite)).isZero();
+        assertThatThrownBy(() -> servicio.deshacerDescarte(gestoriaA.getId(), usuarioA.getId(), tramite.getId(),
+                version(tramite)))
+                .isInstanceOf(TramiteConflictoException.class)
+                .hasMessage(TramiteRevisionService.MOTIVO_DESHACER_NO_DESCARTADO);
+    }
+
+    /** A6: descartar -> deshacer -> descartar deja los tres eventos, en orden, con quien lo hizo; la version
+     * sube exactamente 1 cada vez. PATCH sobre un descartado sigue siendo 409 (no esta pendiente). */
+    @Test
+    void elHistorialGuardaCadaAccionEnOrdenYLaVersionSubeDeUnoEnUno() {
+        Tramite tramite = nuevoSinTramite();
+        long v0 = version(tramite);
+
+        servicio.descartar(gestoriaA.getId(), usuarioA.getId(), tramite.getId(), v0);
+        servicio.deshacerDescarte(gestoriaA.getId(), usuarioA2.getId(), tramite.getId(), v0 + 1);
+        TramiteDetalleResponse ultima = servicio.descartar(gestoriaA.getId(), usuarioA2.getId(), tramite.getId(), v0 + 2);
+
+        assertThat(ultima.version()).isEqualTo(v0 + 3);
+        assertThat(ultima.historialDescarte()).extracting(EventoDescarteResponse::tipo, EventoDescarteResponse::usuarioNombre)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("DESCARTADO", "Ana Pérez"),
+                        org.assertj.core.groups.Tuple.tuple("DESCARTE_DESHECHO", "Bruno Gil"),
+                        org.assertj.core.groups.Tuple.tuple("DESCARTADO", "Bruno Gil"));
+        assertThat(servicio.historialDescarte(tramite.getId(), gestoriaA.getId())).isEqualTo(ultima.historialDescarte());
+        assertThatThrownBy(() -> servicio.actualizar(gestoriaA.getId(), tramite.getId(), v0 + 3, null,
+                TipoTramite.BAJA_MUERTE, null))
+                .isInstanceOf(TramiteConflictoException.class)
+                .hasMessage(TramiteRevisionService.MOTIVO_EDITAR_SOLO_PENDIENTE);
+        // Un tramite sin eventos tiene el historial vacio (nunca null).
+        assertThat(servicio.historialDescarte(nuevoSinTramite().getId(), gestoriaA.getId())).isEmpty();
+    }
+
+    @Test
+    void losMotivosDelDescarteNoDicenQueGaneraHayaHechoNadaFuera() {
+        for (String motivo : List.of(TramiteRevisionService.MOTIVO_DESCARTAR_SOLO_PENDIENTE,
+                TramiteRevisionService.MOTIVO_NO_DESCARTABLE, TramiteRevisionService.MOTIVO_DESHACER_NO_DESCARTADO)) {
+            assertThat(motivo.toLowerCase(java.util.Locale.ROOT))
+                    .doesNotContain("registr").doesNotContain("envi").doesNotContain("ejecut").doesNotContain("proces")
+                    .doesNotContain("tramitad").doesNotContain("respondid");
+        }
+    }
+
     // --- utilidades ---
+
+    /** Un mensaje de WhatsApp que la IA vio como SIN_TRAMITE: pendiente, sin tipo ni crotales. */
+    private Tramite nuevoSinTramite() {
+        Tramite tramite = nuevoTramite(explotacionA1, null, EstadoTramite.PENDIENTE_REVISION);
+        tramite.setOrigen(OrigenTramite.WHATSAPP);
+        tramite.setEstadoExtraccion(EstadoExtraccion.SIN_TRAMITE);
+        return tramiteRepository.save(tramite);
+    }
+
+    private int eventos(Tramite tramite) {
+        entityManager.flush();
+        return jdbcTemplate.queryForObject("select count(*) from tramite_evento where tramite_id = ?", Integer.class,
+                tramite.getId());
+    }
 
     /** Version actual en BD (tras volcar lo pendiente del contexto de persistencia). */
     private long version(Tramite tramite) {

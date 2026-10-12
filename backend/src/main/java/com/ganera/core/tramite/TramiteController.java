@@ -119,7 +119,8 @@ public class TramiteController {
                 .orElse(null);
         return ResponseEntity.ok(TramiteDetalleResponse.from(
                 tramite.get(), mensajeOriginal, crotalesDe(tramite.get(), principal.gestoriaId()),
-                whatsappDetalleService.bloque(tramite.get(), principal.gestoriaId())));
+                whatsappDetalleService.bloque(tramite.get(), principal.gestoriaId()),
+                tramiteRevisionService.historialDescarte(id, principal.gestoriaId())));
     }
 
     /**
@@ -235,6 +236,43 @@ public class TramiteController {
             return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_FALTA_VERSION));
         }
         return traducirErrores(() -> ResponseEntity.ok(tramiteRevisionService.desmarcarHechoEnOvz(
+                principal.gestoriaId(), principal.usuarioId(), id, version)));
+    }
+
+    /**
+     * «Descartar» un mensaje sin tramite (plan 2026-10-12): RECHAZADO con motivo SIN_TRAMITE, sin enviar nada.
+     * Quien descarta es SIEMPRE el usuario del JWT. Sin comprobacion de suscripcion (D8). Orden: 400 sin version
+     * (cuerpo ausente, {} o version null; antes de buscar el Tramite) -> 404 sin cuerpo -> 409 no pendiente ->
+     * 409 version desfasada -> 409 no descartable -> 200 TramiteDetalleResponse con la version + 1.
+     */
+    @PostMapping("/tramites/{id}/descartar")
+    public ResponseEntity<?> descartar(
+            @AuthenticationPrincipal GaneraUserPrincipal principal,
+            @PathVariable Long id,
+            @RequestBody(required = false) TramiteDescartarRequest request) {
+        Long version = request != null ? request.version() : null;
+        if (version == null) {
+            return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_FALTA_VERSION));
+        }
+        return traducirErrores(() -> ResponseEntity.ok(tramiteRevisionService.descartar(
+                principal.gestoriaId(), principal.usuarioId(), id, version)));
+    }
+
+    /**
+     * Deshace un descarte (D7): vuelve a PENDIENTE_REVISION. Solo sobre un descartado; un rechazo normal da
+     * 409. Orden: 400 sin version (antes de buscar el Tramite) -> 404 sin cuerpo -> 409 no es un descarte ->
+     * 409 version desfasada -> 200 TramiteDetalleResponse con la version + 1. Sin comprobacion de suscripcion.
+     */
+    @PostMapping("/tramites/{id}/deshacer-descarte")
+    public ResponseEntity<?> deshacerDescarte(
+            @AuthenticationPrincipal GaneraUserPrincipal principal,
+            @PathVariable Long id,
+            @RequestBody(required = false) TramiteDeshacerDescarteRequest request) {
+        Long version = request != null ? request.version() : null;
+        if (version == null) {
+            return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_FALTA_VERSION));
+        }
+        return traducirErrores(() -> ResponseEntity.ok(tramiteRevisionService.deshacerDescarte(
                 principal.gestoriaId(), principal.usuarioId(), id, version)));
     }
 

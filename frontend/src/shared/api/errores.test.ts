@@ -98,6 +98,19 @@ describe("mensajeDeError", () => {
     expect(mensajeDeError(error, "guardar-tramite")).toBe(esperado)
     expect(mensajeDeError(error, "marcar-hecho-ovz")).toBe(esperado)
     expect(mensajeDeError(error, "desmarcar-hecho-ovz")).toBe(esperado)
+    expect(mensajeDeError(error, "descartar-tramite")).toBe(esperado)
+    expect(mensajeDeError(error, "deshacer-descarte")).toBe(esperado)
+  })
+
+  it("descartar y deshacer (SIN_TRAMITE): el motivo del backend tal cual y, sin motivo, su genérico", () => {
+    const conMotivo = new ErrorApi({ tipo: "conflicto", status: 409, motivo: "Solo se puede descartar un trámite pendiente de revisión." })
+    expect(mensajeDeError(conMotivo, "descartar-tramite")).toBe("Solo se puede descartar un trámite pendiente de revisión.")
+    expect(mensajeDeError(new ErrorApi({ tipo: "conflicto", status: 409 }), "descartar-tramite")).toBe(
+      "No se ha podido descartar el mensaje. Inténtalo de nuevo.",
+    )
+    expect(mensajeDeError(new ErrorApi({ tipo: "desconocido" }), "deshacer-descarte")).toBe(
+      "No se ha podido deshacer el descarte. Inténtalo de nuevo.",
+    )
   })
 
   it("hecho en OVZ: genéricos propios, sin decir que Ganera haga nada en OVZ", () => {
@@ -213,6 +226,8 @@ describe("mensajeDeError", () => {
       "guardar-tramite",
       "marcar-hecho-ovz",
       "desmarcar-hecho-ovz",
+      "descartar-tramite",
+      "deshacer-descarte",
       "listar-ganaderos",
       "detalle-ganadero",
       "animales-explotacion",

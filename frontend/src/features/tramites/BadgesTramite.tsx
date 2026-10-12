@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import {
-  presentacionEstado,
+  presentacionEstadoTramite,
   presentacionCrotal,
   presentacionRolContacto,
   type Presentacion,
@@ -11,8 +11,10 @@ function BadgePresentacion({ presentacion }: { presentacion: Presentacion }) {
   return <Badge variant={presentacion.variante}>{presentacion.etiqueta}</Badge>;
 }
 
-export function BadgeEstadoTramite({ estado }: { estado: string }) {
-  return <BadgePresentacion presentacion={presentacionEstado(estado)} />;
+/** `motivoRechazo` (SIN_TRAMITE): un `RECHAZADO` descartado se ve «Descartado». Pásalo siempre que se
+ * tenga (cola, modal y ficha), para que los tres digan lo mismo. */
+export function BadgeEstadoTramite({ estado, motivoRechazo }: { estado: string; motivoRechazo?: string | null }) {
+  return <BadgePresentacion presentacion={presentacionEstadoTramite({ estado, motivoRechazo })} />;
 }
 
 /** Recibe el crotal (no solo la resolución) porque `completo` matiza `NO_ENCONTRADO`. */

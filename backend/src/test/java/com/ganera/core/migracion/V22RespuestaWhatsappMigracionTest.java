@@ -145,7 +145,9 @@ class V22RespuestaWhatsappMigracionTest {
         return dataSource;
     }
 
+    /** Hasta la V22 como mucho (la que prueba este test): asi «una sola migracion» y «nada pendiente» siguen
+     * siendo ciertos aunque se anadan migraciones posteriores (V23). */
     private static FluentConfiguration flyway(DataSource dataSource) {
-        return Flyway.configure().dataSource(dataSource).locations("classpath:db/migration");
+        return Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").target("22");
     }
 }

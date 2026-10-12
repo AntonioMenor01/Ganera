@@ -9,18 +9,22 @@ import {
 import {
   actualizarTramite,
   aprobarTramite,
+  descartarTramite,
+  deshacerDescarte,
   desmarcarHechoEnOvz,
   marcarHechoEnOvz,
   obtenerDetalleTramite,
   rechazarTramite,
 } from "./api";
-import { presentacionEstado, type TipoTramite } from "./etiquetas";
+import { esDescartado, presentacionEstadoTramite, type EstadoConMotivo, type TipoTramite } from "./etiquetas";
 import {
   AVISO_CAMBIOS_SIN_GUARDAR,
   construirPatch,
   esEditable,
   estaSucio,
   formularioDesdeDetalle,
+  puedeDescartar as sePuedeDescartar,
+  puedeDeshacerDescarte as sePuedeDeshacerDescarte,
   type FormularioRevision,
 } from "./revisionTramite";
 import type { RespuestaWhatsapp, Tramite, TramiteDetalle } from "./types";
@@ -42,16 +46,33 @@ import type { RespuestaWhatsapp, Tramite, TramiteDetalle } from "./types";
  * reintentar, 200 → se aplica la respuesta, se recarga y se avisa a la cola. Solo dejan constancia
  * en Ganera de lo que hizo la persona; Ganera no envía nada a OVZ.
  *
+ * SIN_TRAMITE (2026-10-12): descartar (si el backend dice `descartable`) y deshacer el descarte (solo
+ * un `RECHAZADO` + `SIN_TRAMITE`) siguen la misma mecánica, pero responden con el DETALLE, que
+ * sustituye al de pantalla sin otra petición. Solo cambian el trámite en Ganera: no se envía nada.
+ *
  * Las explotaciones para el selector NO se cargan aquí: las busca el propio combobox
  * (CampoExplotacion + useBuscarExplotaciones, `GET /explotaciones?q=`, T4 de la tarea antes del
  * piloto) solo con el desplegable abierto. Aquí solo vive el `explotacionId` elegido y la etiqueta
  * de la guardada (`explotacionAsignada`).
  */
 
-export type AccionRevision = "guardar" | "aprobar" | "rechazar" | "marcar" | "desmarcar";
+export type AccionRevision =
+  | "guardar"
+  | "aprobar"
+  | "rechazar"
+  | "marcar"
+  | "desmarcar"
+  | "descartar"
+  | "deshacer";
 
-/** Acciones que cambian el estado y responden con `TramiteResponse` (todas menos guardar). */
-type AccionEstado = Exclude<AccionRevision, "guardar">;
+/** Descartar y deshacer el descarte (SIN_TRAMITE): responden con el detalle (`TramiteDetalleResponse`). */
+type AccionDescarte = "descartar" | "deshacer";
+
+/** Acciones que cambian el estado y responden con `TramiteResponse`. */
+type AccionEstado = Exclude<AccionRevision, "guardar" | AccionDescarte>;
+
+/** Toda acción que cambia el estado (las de `TramiteResponse` y las del descarte). */
+type AccionCambio = AccionEstado | AccionDescarte;
 
 export type CargaRevision =
   /** Sin trámite (`tramiteId` null: modal cerrado). */
@@ -70,7 +91,7 @@ export type TipoAvisoRevision =
   | "no-encontrado" // 404
   | "error" // red, 5xx, inesperado
   | "estado-cambiado" // sin respuesta, y la recarga lo muestra en otro estado cerrado (m4 de 9b)
-  | "exito"; // aprobado, rechazado, marcado o desmarcado
+  | "exito"; // aprobado, rechazado, marcado o desmarcado (descartar/deshacer: solo si fue incierto)
 
 /** Resultado de la última acción. Persiste hasta la siguiente acción o `descartarAviso`. */
 export interface AvisoRevision {
@@ -135,12 +156,18 @@ export interface RevisionTramite {
   puedeMarcarHechoEnOvz: boolean;
   /** Solo en `HECHO_EN_OVZ`, sin otra acción en curso. */
   puedeDesmarcarHechoEnOvz: boolean;
+  /** SIN_TRAMITE: el backend lo marca `descartable`, sin cambios sin guardar ni otra acción en curso. */
+  puedeDescartar: boolean;
+  /** SIN_TRAMITE: es un descartado (`RECHAZADO` + `SIN_TRAMITE`), sin otra acción en curso. */
+  puedeDeshacerDescarte: boolean;
   /** Nunca lanzan: todo resultado acaba en `aviso` o en `carga`. Si no se puede, no hacen nada. */
   guardar: () => Promise<void>;
   aprobar: () => Promise<void>;
   rechazar: () => Promise<void>;
   marcarHechoEnOvz: () => Promise<void>;
   desmarcarHechoEnOvz: () => Promise<void>;
+  descartar: () => Promise<void>;
+  deshacerDescarte: () => Promise<void>;
 
   aviso: AvisoRevision | null;
   descartarAviso: () => void;
@@ -344,6 +371,10 @@ function reducer(estado: Estado, evento: Evento): Estado {
         // Hecho en OVZ: quién y cuándo, también en `TramiteResponse` (null si no está marcado).
         hechoEnOvzEn: tramite.hechoEnOvzEn ?? null,
         hechoEnOvzPorNombre: tramite.hechoEnOvzPorNombre ?? null,
+        // SIN_TRAMITE: también en `TramiteResponse` (el historial solo viene en el detalle: lo trae
+        // la recarga que sigue).
+        motivoRechazo: tramite.motivoRechazo ?? null,
+        descartable: tramite.descartable ?? false,
       };
       return { ...estado, detalle, formulario: formularioDesdeDetalle(detalle), aviso: evento.aviso };
     }
@@ -378,6 +409,8 @@ const CONTEXTO_DE_ACCION: Record<AccionRevision, ContextoError> = {
   rechazar: "rechazar-tramite",
   marcar: "marcar-hecho-ovz",
   desmarcar: "desmarcar-hecho-ovz",
+  descartar: "descartar-tramite",
+  deshacer: "deshacer-descarte",
 };
 
 /** Sin «OVZ» en los de la marca: la franja y el badge ya lo dicen (honestidad: nada habla de que
@@ -407,12 +440,29 @@ const LLAMADA: Record<AccionEstado, (id: number, version: number) => Promise<Tra
   desmarcar: desmarcarHechoEnOvz,
 };
 
-/** Estado al que lleva cada acción: si la recarga tras un fallo incierto ya lo muestra, se aplicó. */
-const ESTADO_TRAS: Record<AccionEstado, string> = {
-  aprobar: "APROBADO",
-  rechazar: "RECHAZADO",
-  marcar: "HECHO_EN_OVZ",
-  desmarcar: "APROBADO",
+/** Petición de descartar y deshacer: responden con el detalle. */
+const LLAMADA_DESCARTE: Record<AccionDescarte, (id: number, version: number) => Promise<TramiteDetalle>> = {
+  descartar: descartarTramite,
+  deshacer: deshacerDescarte,
+};
+
+/** Si el trámite ya está como lo deja cada acción: si la recarga tras un fallo incierto lo muestra
+ * así, se aplicó. Descartar se reconoce por el motivo, no solo por `RECHAZADO` (un rechazo normal no
+ * es un descarte). */
+const CONSTA_TRAS: Record<AccionCambio, (tramite: EstadoConMotivo) => boolean> = {
+  aprobar: (t) => t.estado === "APROBADO",
+  rechazar: (t) => t.estado === "RECHAZADO",
+  marcar: (t) => t.estado === "HECHO_EN_OVZ",
+  desmarcar: (t) => t.estado === "APROBADO",
+  descartar: esDescartado,
+  deshacer: (t) => t.estado === "PENDIENTE_REVISION",
+};
+
+/** Descartar y deshacer: el estado del que parte cada uno. Si la recarga tras un fallo incierto lo
+ * sigue mostrando así, no se aplicó y se puede reintentar. */
+const SIGUE_COMO_ANTES: Record<"descartar" | "deshacer", (tramite: EstadoConMotivo) => boolean> = {
+  descartar: (t) => t.estado === "PENDIENTE_REVISION",
+  deshacer: esDescartado,
 };
 
 /** Cómo se dice el estado dentro de una frase cuando la etiqueta del badge no encaja («consta como
@@ -424,19 +474,23 @@ const ESTADO_EN_FRASE: Readonly<Record<string, string>> = {
 
 /** N2 de la revisión 9a: red o 5xx al aprobar/rechazar, y la recarga muestra el trámite ya cerrado.
  * Decir "Inténtalo de nuevo" contradiría lo que se ve: se dice lo que consta. */
-function etiquetaEnFrase(estado: string): string {
-  if (Object.prototype.hasOwnProperty.call(ESTADO_EN_FRASE, estado)) return ESTADO_EN_FRASE[estado];
-  const etiqueta = presentacionEstado(estado).etiqueta;
+function etiquetaEnFrase(tramite: EstadoConMotivo): string {
+  const { estado } = tramite;
+  if (!esDescartado(tramite) && Object.prototype.hasOwnProperty.call(ESTADO_EN_FRASE, estado)) {
+    return ESTADO_EN_FRASE[estado];
+  }
+  // Un descartado se dice «descartado», no «rechazado» (misma fuente que el badge).
+  const etiqueta = presentacionEstadoTramite(tramite).etiqueta;
   return `${etiqueta.charAt(0).toLowerCase()}${etiqueta.slice(1)}`;
 }
 
-function avisoResultadoIncierto(accion: AccionEstado, estado: string): AvisoRevision {
+function avisoResultadoIncierto(accion: AccionCambio, tramite: EstadoConMotivo): AvisoRevision {
   // Justo lo pedido: se aplicó, aunque no llegara la respuesta.
-  if (estado === ESTADO_TRAS[accion]) {
+  if (CONSTA_TRAS[accion](tramite)) {
     return {
       tipo: "exito",
       accion,
-      mensaje: `No hubo respuesta a tiempo, pero el trámite consta como ${etiquetaEnFrase(estado)}.`,
+      mensaje: `No hubo respuesta a tiempo, pero el trámite consta como ${etiquetaEnFrase(tramite)}.`,
     };
   }
   // Otro estado (m4 de 9b): hoy RECHAZADO; tras 3c, también EN_PROCESO o EJECUTADO_OVZ después de un
@@ -444,7 +498,7 @@ function avisoResultadoIncierto(accion: AccionEstado, estado: string): AvisoRevi
   return {
     tipo: "estado-cambiado",
     accion,
-    mensaje: `No hubo respuesta a tiempo. El trámite consta ahora como ${etiquetaEnFrase(estado)}.`,
+    mensaje: `No hubo respuesta a tiempo. El trámite consta ahora como ${etiquetaEnFrase(tramite)}.`,
   };
 }
 
@@ -534,6 +588,8 @@ export function useRevisionTramite(
   const listo = detalle !== null && carga.estado === "listo";
   const puedeMarcarHechoEnOvz = listo && detalle.estado === "APROBADO" && libre;
   const puedeDesmarcarHechoEnOvz = listo && detalle.estado === "HECHO_EN_OVZ" && libre;
+  const puedeDescartar = listo && libre && sePuedeDescartar(detalle, formulario);
+  const puedeDeshacerDescarte = listo && libre && sePuedeDeshacerDescarte(detalle);
 
   /**
    * Pide el detalle dentro de la sesión (la recarga se aborta si la sesión se cierra). null si la
@@ -671,14 +727,18 @@ export function useRevisionTramite(
     const resultado = await recargarEstricto(sesion, id);
     // `incierto` ya excluye guardar.
     if (!incierto || !resultado?.ok) return;
-    const estadoFinal = resultado.detalle.estado;
+    const final = resultado.detalle;
     if (accion === "aprobar" || accion === "rechazar") {
       // N2: ya no está pendiente, así que no se invita a reintentar.
-      if (!esEditable(estadoFinal)) dispatch({ tipo: "aviso", aviso: avisoResultadoIncierto(accion, estadoFinal) });
-    } else if (estadoFinal === ESTADO_TRAS[accion]) {
-      // Marcar/quitar la marca: si consta lo pedido, se dice; si sigue igual, queda el error y el
-      // botón vuelve a estar disponible para reintentar.
-      dispatch({ tipo: "aviso", aviso: avisoResultadoIncierto(accion, estadoFinal) });
+      if (!esEditable(final.estado)) dispatch({ tipo: "aviso", aviso: avisoResultadoIncierto(accion, final) });
+    } else if (CONSTA_TRAS[accion](final)) {
+      // Marcar/quitar la marca y descartar/deshacer: si consta lo pedido, se dice; si sigue igual,
+      // queda el error y el botón vuelve a estar disponible para reintentar.
+      dispatch({ tipo: "aviso", aviso: avisoResultadoIncierto(accion, final) });
+    } else if ((accion === "descartar" || accion === "deshacer") && !SIGUE_COMO_ANTES[accion](final)) {
+      // Revisión de T3 (hallazgo 2): ni lo pedido ni como estaba (p. ej. otra persona lo rechazó a la vez):
+      // se dice lo que consta, sin invitar a reintentar.
+      dispatch({ tipo: "aviso", aviso: avisoResultadoIncierto(accion, final) });
     }
   }
 
@@ -744,6 +804,18 @@ export function useRevisionTramite(
         aviso: { tipo: "exito", accion, mensaje: TEXTO_EXITO[accion] },
       });
       await recargarTrasExito(sesion, id);
+    });
+  }
+
+  /** Descartar o deshacer el descarte: `{version}`; la respuesta es el detalle y sustituye al de
+   * pantalla tal cual (sin recarga ni aviso de éxito: la banda y el badge ya lo dicen). Los errores,
+   * como en las demás acciones (409 recarga con el motivo, 404 el texto de siempre, red/5xx recarga). */
+  function cambiarDescarte(accion: AccionDescarte, permitido: boolean): Promise<void> {
+    const version = detalle?.version;
+    return ejecutar(accion, permitido && version !== undefined, async (sesion, id) => {
+      const nuevo = await LLAMADA_DESCARTE[accion](id, version!);
+      onCambiadoRef.current();
+      if (sesion.activa) dispatch({ tipo: "cargado", detalle: nuevo });
     });
   }
 
@@ -814,6 +886,10 @@ export function useRevisionTramite(
     puedeDesmarcarHechoEnOvz,
     marcarHechoEnOvz: () => cambiarEstado("marcar", puedeMarcarHechoEnOvz),
     desmarcarHechoEnOvz: () => cambiarEstado("desmarcar", puedeDesmarcarHechoEnOvz),
+    puedeDescartar,
+    puedeDeshacerDescarte,
+    descartar: () => cambiarDescarte("descartar", puedeDescartar),
+    deshacerDescarte: () => cambiarDescarte("deshacer", puedeDeshacerDescarte),
 
     aviso,
     descartarAviso: () => dispatch({ tipo: "descartar-aviso" }),

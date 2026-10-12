@@ -38,6 +38,8 @@ function tramite(id: number, extra: Record<string, unknown> = {}) {
     crotalesDescartados: 0,
     hechoEnOvzEn: null,
     hechoEnOvzPorNombre: null,
+    motivoRechazo: null,
+    descartable: false,
     ...extra,
   }
 }
@@ -86,6 +88,8 @@ describe("TramitesPage: etiquetas legibles", () => {
               crotalesDescartados: 0,
               hechoEnOvzEn: null,
               hechoEnOvzPorNombre: null,
+              motivoRechazo: null,
+              descartable: false,
             },
             {
               id: 2,
@@ -102,6 +106,8 @@ describe("TramitesPage: etiquetas legibles", () => {
               crotalesDescartados: 0,
               hechoEnOvzEn: null,
               hechoEnOvzPorNombre: null,
+              motivoRechazo: null,
+              descartable: false,
             },
           ],
           totalElements: 2,
@@ -146,6 +152,8 @@ describe("TramitesPage: etiquetas legibles", () => {
               crotalesDescartados: 0,
               hechoEnOvzEn: null,
               hechoEnOvzPorNombre: null,
+              motivoRechazo: null,
+              descartable: false,
             },
           ],
           totalElements: 1,
@@ -934,5 +942,54 @@ describe("TramitesPage: origen y avisos de extracción (B1, T4)", () => {
     render(<TramitesPage />)
     await user.click(await screen.findByText("No se ha podido extraer"))
     expect(await screen.findByRole("dialog")).toHaveAccessibleName("Trámite #1")
+  })
+})
+
+describe("TramitesPage: mensajes sin trámite (SIN_TRAMITE, A2: en la cola solo el aviso)", () => {
+  function filas(...tramites: ReturnType<typeof tramite>[]) {
+    server.use(http.get(apiUrl("/tramites"), () => paginaTramites(tramites, tramites.length, 1)))
+  }
+
+  function celdas(id: number): HTMLElement[] {
+    const boton = screen.getByRole("button", { name: `Revisar trámite #${id}` })
+    return within(boton.closest("tr") as HTMLElement).getAllByRole("cell")
+  }
+
+  const SIN_TRAMITE = { origen: "WHATSAPP", estadoExtraccion: "SIN_TRAMITE", tipoTramite: null }
+
+  it("descartable: «Parece un mensaje sin trámite» bajo el estado, neutro (Gris Texto, sin icono); sin `descartable`, nada", async () => {
+    filas(tramite(1, { ...SIN_TRAMITE, descartable: true }), tramite(2, { ...SIN_TRAMITE, descartable: false }))
+    render(<TramitesPage />)
+    await screen.findByRole("button", { name: "Revisar trámite #1" })
+    const linea = within(celdas(1)[2]).getByText("Parece un mensaje sin trámite")
+    expect(linea).toHaveClass("text-xs", "text-muted-foreground")
+    expect(linea).not.toHaveClass("text-warning-foreground")
+    expect(linea.querySelector("svg")).toBeNull()
+    expect(celdas(2)[2]).toHaveTextContent(/^Pendiente de revisión$/)
+  })
+
+  it("un descartado lleva el badge «Descartado» neutro; un rechazo normal sigue «Rechazado» en rojo", async () => {
+    filas(
+      tramite(1, { ...SIN_TRAMITE, estado: "RECHAZADO", motivoRechazo: "SIN_TRAMITE" }),
+      tramite(2, { estado: "RECHAZADO", motivoRechazo: null }),
+    )
+    render(<TramitesPage />)
+    await screen.findByRole("button", { name: "Revisar trámite #1" })
+    const descartado = within(celdas(1)[2]).getByText("Descartado")
+    expect(descartado).toHaveClass("border-border")
+    expect(descartado).not.toHaveClass("bg-danger")
+    expect(celdas(1)[2]).toHaveTextContent(/^Descartado$/)
+    expect(within(celdas(2)[2]).getByText("Rechazado")).toHaveClass("bg-danger")
+  })
+
+  it("ningún botón nuevo en la fila: descartar solo se hace desde el modal", async () => {
+    filas(tramite(1, { ...SIN_TRAMITE, descartable: true }))
+    render(<TramitesPage />)
+    await screen.findByRole("button", { name: "Revisar trámite #1" })
+    const fila = screen.getByRole("button", { name: "Revisar trámite #1" }).closest("tr") as HTMLElement
+    expect(within(fila).getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual([
+      "Revisar trámite #1",
+    ])
+    expect(screen.queryByRole("button", { name: /Descartar/ })).not.toBeInTheDocument()
   })
 })

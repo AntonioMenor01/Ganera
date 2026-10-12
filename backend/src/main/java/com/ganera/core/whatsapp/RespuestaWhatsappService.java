@@ -141,6 +141,7 @@ public class RespuestaWhatsappService {
         Instant ventanaAbiertaHasta = ReglasRespuestaWhatsapp.ventanaAbiertaHasta(
                 mensajeCampoRepository.ultimoMensajeDelContacto(contacto.getId(), gestoriaId));
         String motivo = ReglasRespuestaWhatsapp.motivoNoDisponible(tramite.getOrigen(), tramite.getEstado(),
+                tramite.getMotivoRechazo(),
                 contacto.isActivo(), ventanaAbiertaHasta, ahora);
         if (motivo != null) {
             throw new RespuestaWhatsappConflictoException(motivo);

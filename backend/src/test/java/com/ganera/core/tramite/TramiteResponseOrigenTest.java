@@ -39,7 +39,7 @@ class TramiteResponseOrigenTest {
     void elDetalleLlevaOrigenEstadoDeExtraccionYDescartadosDeWhatsApp() {
         for (EstadoExtraccion estado : EstadoExtraccion.values()) {
             TramiteDetalleResponse respuesta = TramiteDetalleResponse.from(
-                    tramite(OrigenTramite.WHATSAPP, estado, 5), "texto", List.of(), null);
+                    tramite(OrigenTramite.WHATSAPP, estado, 5), "texto", List.of(), null, List.of());
 
             assertThat(respuesta.origen()).isEqualTo("WHATSAPP");
             assertThat(respuesta.estadoExtraccion()).isEqualTo(estado.name());
@@ -52,7 +52,7 @@ class TramiteResponseOrigenTest {
         Tramite anterior = tramite(null, null, 0);
 
         TramiteResponse fila = TramiteResponse.from(anterior, null);
-        TramiteDetalleResponse detalle = TramiteDetalleResponse.from(anterior, null, null, null);
+        TramiteDetalleResponse detalle = TramiteDetalleResponse.from(anterior, null, null, null, null);
 
         assertThat(fila.origen()).isNull();
         assertThat(fila.estadoExtraccion()).isNull();
@@ -66,6 +66,6 @@ class TramiteResponseOrigenTest {
     void losValoresDeLosEnumsSonLosDelContratoJson() {
         assertThat(OrigenTramite.values()).extracting(Enum::name).containsExactly("WHATSAPP");
         assertThat(EstadoExtraccion.values()).extracting(Enum::name)
-                .containsExactly("PENDIENTE", "COMPLETADA", "FALLIDA", "SIN_TEXTO");
+                .containsExactly("PENDIENTE", "COMPLETADA", "FALLIDA", "SIN_TEXTO", "SIN_TRAMITE");
     }
 }

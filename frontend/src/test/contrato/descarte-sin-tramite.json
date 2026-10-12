@@ -1,0 +1,138 @@
+{
+  "_nota": "Contrato SIN_TRAMITE entre backend y frontend (2026-10-12). Lo comprueba contra las respuestas reales TramiteDescarteEndToEndTest.lasRespuestasRealesCumplenElContratoQueUsaElFrontend (backend) y lo usan como respuestas los tests de contratoDescarte.test.tsx (frontend). Si cambia a propósito, regenerar desde backend/target/contrato-real/.",
+  "rutas": {
+    "descartar": "/tramites/{id}/descartar",
+    "deshacerDescarte": "/tramites/{id}/deshacer-descarte"
+  },
+  "cuerpo": {
+    "version": 0
+  },
+  "itemLista": {
+    "id": 1,
+    "explotacionId": 1,
+    "explotacionCodigoRega": "ES960000000001",
+    "explotacionNombre": "Finca ES960000000001",
+    "tipoTramite": null,
+    "estado": "PENDIENTE_REVISION",
+    "motivoError": null,
+    "crotales": [],
+    "version": 0,
+    "origen": "WHATSAPP",
+    "estadoExtraccion": "SIN_TRAMITE",
+    "crotalesDescartados": 0,
+    "hechoEnOvzEn": null,
+    "hechoEnOvzPorNombre": null,
+    "motivoRechazo": null,
+    "descartable": true
+  },
+  "detallePendiente": {
+    "id": 1,
+    "tipoTramite": null,
+    "estado": "PENDIENTE_REVISION",
+    "motivoError": null,
+    "explotacionId": 1,
+    "explotacionCodigoRega": "ES960000000001",
+    "explotacionNombre": "Finca ES960000000001",
+    "ganaderoNombre": "Ganadero ES960000000001",
+    "ganaderoNif": null,
+    "mensajeOriginal": "vale, gracias",
+    "crotales": [],
+    "version": 0,
+    "origen": "WHATSAPP",
+    "estadoExtraccion": "SIN_TRAMITE",
+    "crotalesDescartados": 0,
+    "hechoEnOvzEn": null,
+    "hechoEnOvzPorNombre": null,
+    "whatsapp": {
+      "destinatarioNombre": "Contacto descarte",
+      "telefonoEnmascarado": "+34******001",
+      "contactoActivo": true,
+      "ventanaAbiertaHasta": "2031-03-11T08:00:00Z",
+      "firmaGestoria": "Gestoría Descarte A",
+      "motivoNoDisponible": null,
+      "respuestas": []
+    },
+    "motivoRechazo": null,
+    "descartable": true,
+    "historialDescarte": []
+  },
+  "detalleDescartado": {
+    "id": 1,
+    "tipoTramite": null,
+    "estado": "RECHAZADO",
+    "motivoError": null,
+    "explotacionId": 1,
+    "explotacionCodigoRega": "ES960000000001",
+    "explotacionNombre": "Finca ES960000000001",
+    "ganaderoNombre": "Ganadero ES960000000001",
+    "ganaderoNif": null,
+    "mensajeOriginal": "vale, gracias",
+    "crotales": [],
+    "version": 1,
+    "origen": "WHATSAPP",
+    "estadoExtraccion": "SIN_TRAMITE",
+    "crotalesDescartados": 0,
+    "hechoEnOvzEn": null,
+    "hechoEnOvzPorNombre": null,
+    "whatsapp": {
+      "destinatarioNombre": "Contacto descarte",
+      "telefonoEnmascarado": "+34******001",
+      "contactoActivo": true,
+      "ventanaAbiertaHasta": "2031-03-11T08:00:00Z",
+      "firmaGestoria": "Gestoría Descarte A",
+      "motivoNoDisponible": "Este mensaje se descartó como sin trámite; no se responde desde Ganera.",
+      "respuestas": []
+    },
+    "motivoRechazo": "SIN_TRAMITE",
+    "descartable": false,
+    "historialDescarte": [
+      {
+        "tipo": "DESCARTADO",
+        "usuarioNombre": "Ana Pérez",
+        "en": "2031-03-10T09:00:00Z"
+      }
+    ]
+  },
+  "detalleDeshecho": {
+    "id": 1,
+    "tipoTramite": null,
+    "estado": "PENDIENTE_REVISION",
+    "motivoError": null,
+    "explotacionId": 1,
+    "explotacionCodigoRega": "ES960000000001",
+    "explotacionNombre": "Finca ES960000000001",
+    "ganaderoNombre": "Ganadero ES960000000001",
+    "ganaderoNif": null,
+    "mensajeOriginal": "vale, gracias",
+    "crotales": [],
+    "version": 2,
+    "origen": "WHATSAPP",
+    "estadoExtraccion": "SIN_TRAMITE",
+    "crotalesDescartados": 0,
+    "hechoEnOvzEn": null,
+    "hechoEnOvzPorNombre": null,
+    "whatsapp": {
+      "destinatarioNombre": "Contacto descarte",
+      "telefonoEnmascarado": "+34******001",
+      "contactoActivo": true,
+      "ventanaAbiertaHasta": "2031-03-11T08:00:00Z",
+      "firmaGestoria": "Gestoría Descarte A",
+      "motivoNoDisponible": null,
+      "respuestas": []
+    },
+    "motivoRechazo": null,
+    "descartable": true,
+    "historialDescarte": [
+      {
+        "tipo": "DESCARTADO",
+        "usuarioNombre": "Ana Pérez",
+        "en": "2031-03-10T09:00:00Z"
+      },
+      {
+        "tipo": "DESCARTE_DESHECHO",
+        "usuarioNombre": "Ana Pérez",
+        "en": "2031-03-10T09:00:00Z"
+      }
+    ]
+  }
+}

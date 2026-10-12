@@ -1032,6 +1032,87 @@ apareció por error en el chat del asesor (no en la sesión de Claude Code); Ant
 - **`Read-Host`:** las respuestas se pegan **línea a línea**, una por pregunta (pegar varias líneas de golpe las reparte
   mal entre las preguntas).
 - **Nunca escribir un valor dentro de un comando; los datos solo se escriben cuando `Read-Host` los pide.**
+- **Cuerpos JSON en PowerShell 5.1: nada de funciones auxiliares que devuelvan bytes** (smoke de SIN_TRAMITE,
+  2026-10-12). `function Json($o) { [Text.Encoding]::UTF8.GetBytes(($o | ConvertTo-Json -Depth 5)) }` dio un `400`
+  genérico en el onboarding: una función que devuelve un `byte[]` lo **desenrolla** por la tubería y `-Body` recibe un
+  `object[]` de bytes sueltos, no JSON. Funciona montando el cuerpo en línea, como en B2:
+  `-Body ([Text.Encoding]::UTF8.GetBytes((@{ … } | ConvertTo-Json)))` (o, si se quiere función, `return ,$bytes`). La
+  prueba en seco de la sesión principal usó `GetBytes` en línea y no cubrió la función: **probar en seco exactamente
+  los comandos que se entregan.**
+
+### SIN_TRAMITE en curso (2026-10-12; sin commit ni push)
+
+Plan aprobado: `docs/superpowers/plans/2026-10-12-sin-tramite.md` (decisiones A1–A6 de Antonio arriba). Briefs e
+informes en `.superpowers/sdd/st-*`.
+- **T1 (IA y extracción):** hecha. 920 + 1 omitido (la evaluación). Prompt ajustado por la sesión principal tras la
+  primera evaluación (falso `SIN_TRAMITE` en «ok, apunta el censo»). **Falta su revisión** (el primer revisor se cortó
+  por el límite; trabajaba en una copia del scratchpad, sin tocar el repo).
+- **Evaluación contra Haiku:** tres ejecuciones reales de la sesión principal (clave de las variables de usuario de
+  Windows, nunca vista): 1.ª con 1 falso; 2.ª y 3.ª con 0 falsos y charla 18/18; 0 `FALLO`. Coste estimado ≈ 0,15 $. El
+  informe todo `FALLO` es una mutación del revisor sin clave (no es una ejecución real). **Arreglo pendiente:** que
+  cualquier `FALLO` haga fallar la evaluación. **Desde ahora la evaluación solo la ejecuta Antonio** con las
+  instrucciones de la sesión principal.
+- **T2 (descartar, deshacer, V23, historial):** a medias, **solo tests** (fase roja). Sin código de producción ni `V23`.
+  El backend no compila hasta terminarla.
+- **T3 (frontend):** hecha (965 en 44 ficheros). **Falta su revisión** y cuatro ajustes de Antonio: pista propia de
+  «Descartar» desactivado; ficha OVZ de un descartado («Descartado como mensaje sin trámite»); explicar/recortar el
+  bundle (644 → 662 kB); E2E del contrato real backend ↔ frontend.
+- **Orden pendiente:** T2 → revisor T2 → revisor T1 → revisor T3 → instrucciones del smoke y de la evaluación para
+  Antonio.
+- **Actualización (2026-10-12, tarde):** T2 terminada (informe `st-t2-report.md`, mutaciones A5 en rojo). Hechos por
+  la sesión principal: evaluación que falla con cualquier `FALLO` y anota la causa; los cuatro ajustes de T3 (pista
+  «Para descartar el mensaje, quita antes los cambios con “Descartar cambios”.», tras la revisión de T3; ficha OVZ «Descartado como mensaje sin trámite» / «Un
+  mensaje descartado no se pasa a OVZ.»; bundle: `HEAD` ya pesaba 657,93 kB, SIN_TRAMITE suma +4,7 kB, todo código
+  propio, nada que recortar; contrato compartido `frontend/src/test/contrato/descarte-sin-tramite.json` comprobado por
+  `TramiteDescarteEndToEndTest.lasRespuestasRealesCumplenElContratoQueUsaElFrontend` y `contratoDescarte.test.tsx`,
+  con mutaciones en rojo). Suites: backend **966** (965 ejecutados + 1 omitido; surefire cuenta el omitido en «Tests run»), frontend **971 en 45**, build y lint limpios.
+  **Siguiente:** revisor T2 → revisor T1 → revisor T3.
+- **Revisores:** T2 **Approved with minors** (m1 test del usuario ajeno al deshacer, m2 contrato estricto con `null` y
+  tamaños: corregidos y comprobados con mutación); T1 **Approved with minors** (m1 tipo + sinTramite → manda el tipo,
+  m2 constructor sin uso quitado, m3 Javadoc, m4 la evaluación anota cualquier excepción: corregidos). Backend **968** (967 +
+  1 omitido). **Siguiente:** revisor T3, luego instrucciones del smoke y de la evaluación.
+- **T3 revisada: Approved with minors.** Corregidos: pista de «Descartar» → «Para descartar el mensaje, quita antes
+  los cambios con “Descartar cambios”.»; tras un fallo incierto al descartar/deshacer, si la recarga no muestra ni lo
+  pedido ni el estado de partida, aviso neutro «consta ahora como …» (la mutación M7 sale ahora en rojo); honestidad de
+  la ficha OVZ en rechazado y descartado. Frontend **975 en 45**, build y lint limpios. `CLAUDE.md` y
+  `ganera-prompts.md` al día. Instrucciones para Antonio en
+  `C:\Users\Antonio\Desktop\ganera-prueba-sin-tramite\INSTRUCCIONES.md` (arranque probado en seco con valores falsos).
+  **Pendiente:** visto bueno de Antonio, commit, su evaluación y su smoke.
+- **Evaluación y smoke de Antonio superados (2026-10-12, su terminal):** evaluación con 0 falsos SIN_TRAMITE, charla
+  18/18, 0 fallos («novillas»: CONFIRMACION, CONFIRMACION, SOLICITUD). Smoke con el sandbox de Twilio, pasos 1–9 PASS:
+  aviso en la cola, «Descartar» con su pista, descartar en un clic sin nada en el móvil, `404` desde B al descartar y al
+  deshacer, ficha OVZ del descartado, «Deshacer» con historial, y «gracias, se ha muerto la 4521» como baja con
+  `ES990000004521`. Incidencia: la función `Json` de `INSTRUCCIONES.md` (ver lecciones de pruebas reales). Commit
+  aprobado por Antonio.
+- **Alcance del modo asistido (escalón 2), aclarado por Antonio el 2026-10-12 — no se implementa ahora:** Ganera
+  rellena el formulario de OVZ (con credenciales cifradas; de quién es la cuenta, gestoría o ganadero, queda pendiente
+  del mapeo); el gestor revisa y pulsa
+  «Enviar»; Ganera descarga el justificante. **Nunca se envía sin ese clic, y el envío es de uno en uno.** El botón
+  «Enviar a OVZ» y los estados de envío del diseño de Álvaro son para ese momento; **en el diseño fase 1 no aparecen.**
+  **Corregido en `CLAUDE.md` el 2026-10-12, en el commit de SIN_TRAMITE, solo texto** (decisiones de Antonio: 2, 3 y
+  4 corregidos y sin «approve and commit, then execute asynchronously»; 1 y 5: **pendiente del mapeo** si la cuenta de
+  OVZ es de la gestoría o de cada ganadero, «cuenta del gestor» no está decidido; los tres sitios cortos completados;
+  «Prompt 3c» → «escalón 2 (modo asistido)»; además `:413` y `:513`, de la misma familia). Lo que se encontró:
+  1. *Domain model → Ganadero* (líneas ~25-27): «Holds the OVZ.net credentials (`ovzUsuario` /
+     `ovzPasswordCifrada`) — one login per Ganadero». **Pendiente del mapeo** si la cuenta de OVZ es de la gestoría o de
+     cada ganadero (Antonio: la «cuenta del gestor» de la aclaración no tenía base; no está decidido). Las columnas
+     siguen en `ganadero` desde `V3` y pueden cambiar según el resultado; ningún cambio de esquema en SIN_TRAMITE.
+  2. *Non-negotiable rules* (líneas ~98-99): «No trámite is ever executed against OVZ.net without an employee
+     explicitly clicking "Aprobar."». El clic que envía es el **«Enviar» del gestor tras revisar el formulario
+     rellenado**, uno a uno; aprobar no envía nada.
+  3. *Non-negotiable rules → frontend* (líneas ~129-133): «`OvzAutomationService.ejecutarTramite()` is unimplemented
+     (Prompt 3c)… until 3c is real». Da a entender que, cuando exista 3c, aprobar ejecutará en OVZ.
+  4. *Prompt A1 → Risks to respect in 3c* (línea ~557): «approve and commit, then execute asynchronously». Contradice
+     «nunca sin el clic»; lo que sigue valiendo es no abrir la sesión de OVZ dentro de la transacción con el bloqueo.
+  5. *No manual alta de Ganadero / OVZ-credentials screen* (líneas ~140-148), *Prompt 4* (línea ~1258) y *Still
+     blocked* (línea ~1536): «OVZ-credentials-onboarding screen for a new Ganadero» y «until a real Ganadero is ready
+     to hand over credentials». Las credenciales son del gestor, no del ganadero.
+  6. Completar (no contradicen, pero falta): *Operational flow* paso 7 (líneas ~88-93), *Automation* (línea ~220) y
+     *Still blocked* (línea ~1530) no dicen que la cuenta es la del gestor, que se descarga el justificante ni que el
+     envío es de uno en uno.
+  `DESIGN.md`: sin contradicciones. Describe los estados `EN_PROCESO`/`EJECUTADO_OVZ`/`ERROR_OVZ` como reservados para
+  «Prompt 3c» y fuera del filtro «until they can happen», y ningún texto habla de un botón de envío. Como mucho,
+  renombrar «Prompt 3c» a «escalón 2 (modo asistido)» al corregir `CLAUDE.md`.
 
 ### Pendientes técnicos
 
@@ -1052,6 +1133,10 @@ apareció por error en el chat del asesor (no en la sesión de Claude Code); Ant
   `ImportarExcelSection.tsx` usa las mismas palabras femeninas para las tres hojas, pero solo «Explotaciones» es
   femenino: «Animales» y «Contactos» son masculinos. Pasar el género por hoja (tarjeta y frase anunciada), con su test.
   **Entra en el diseño fase 1** (decisión de Antonio, 2026-10-12): texto «creados».
+- **Diseño fase 1 — encontrar un descartado reciente** (smoke de SIN_TRAMITE, 2026-10-12; posible mejora de
+  usabilidad, sin decidir): un descartado sale de la cola de pendientes (que abre filtrada por «Pendiente de
+  revisión»), así que para «Deshacer» hay que buscarlo con el filtro de estado. Que un descartado reciente sea fácil de
+  encontrar (p. ej. un acceso a «descartados hoy» o un aviso tras descartar).
 - **Columna «Animales» de la lista de Explotaciones:** en la prueba pareció vacía. Según el código no muestra ningún
   recuento: es la columna del botón «Ver animales», sin título visible (`ID_CABECERA_ANIMALES` en
   `ExplotacionesPage.tsx`), y `ExplotacionResponse` no trae número de animales. **Entra en el diseño fase 1** (decisión de
@@ -1075,5 +1160,18 @@ apareció por error en el chat del asesor (no en la sesión de Claude Code); Ant
   `NO_IDENTIFICADO`). Con `SIN_TRAMITE` y ningún crotal, el trámite **sigue en `PENDIENTE_REVISION`** (no se oculta
   nada por un error de la IA), con un aviso «Parece un mensaje sin trámite» y un «Descartar» de un clic que lo
   rechaza con su `version`. **Al descartar no se ofrece ni se envía ninguna respuesta al ganadero.**
+  **En curso desde el 2026-10-12** con el plan `docs/superpowers/plans/2026-10-12-sin-tramite.md`.
+- **Para el abogado — retención de los mensajes descartados** (SIN_TRAMITE, A4, decisión de Antonio 2026-10-12): hoy
+  el texto de un mensaje descartado como «sin trámite» se guarda **12 meses**, como el de cualquier mensaje con trámite
+  (`ganera.retencion.texto-con-tramite`). Pregunta: tratarlo como un mensaje sin trámite (**30 días**,
+  como `ganera.retencion.mensajes-sin-tramite`, que hoy los borra). Sin cambios hasta su respuesta. El historial de descartes (`tramite_evento`) no
+  guarda texto ni datos del ganadero.
+- **Acuse de B1 también con «vale, gracias»** (visto en SIN_TRAMITE, decisión de Antonio 2026-10-12): cualquier
+  mensaje de un contacto activo que crea trámite recibe «Recibido, tu gestoría lo revisará.», también un
+  agradecimiento, porque la IA decide después de contestar a Twilio. **Se queda así en el piloto.** Idea para después:
+  no repetir el acuse si a ese contacto ya se le mandó uno hace poco (ventana corta por contacto, con el `Clock`).
+- **«Mañana vienen dos novillas de Pepe»: la IA duda entre `CONFIRMACION_MOVIMIENTO` y `SOLICITUD_MOVIMIENTO`**
+  (evaluación de SIN_TRAMITE, 2026-10-12: una de tres pasadas salió `SOLICITUD_MOVIMIENTO`). No afecta a SIN_TRAMITE;
+  **revisarlo con la sesión de mapeo de OVZ** (cómo describir en el prompt la llegada frente a la salida de animales).
 - **Antes del piloto, tras la sesión de mapeo de OVZ:** la fecha del hecho y los campos propios del alta por
   nacimiento (crotal de la madre, sexo y fecha de nacimiento: extracción por la IA y edición en el modal), juntos.

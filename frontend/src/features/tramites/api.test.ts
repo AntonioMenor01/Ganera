@@ -6,6 +6,8 @@ import { ErrorApi } from "@/shared/api/errores"
 import {
   actualizarTramite,
   aprobarTramite,
+  descartarTramite,
+  deshacerDescarte,
   desmarcarHechoEnOvz,
   marcarHechoEnOvz,
   obtenerDetalleTramite,
@@ -231,6 +233,50 @@ describe("desmarcarHechoEnOvz (POST /tramites/{id}/desmarcar-hecho-ovz)", () => 
     )
     await desmarcarHechoEnOvz(7, 0)
     expect(cuerpo).toEqual({ version: 0 })
+  })
+})
+
+describe("descartarTramite y deshacerDescarte (SIN_TRAMITE)", () => {
+  it("descartar: POST /tramites/{id}/descartar con solo {version} (también 0) y devuelve el DETALLE", async () => {
+    const cuerpos: unknown[] = []
+    const descartado = {
+      ...DETALLE,
+      estado: "RECHAZADO",
+      motivoRechazo: "SIN_TRAMITE",
+      descartable: false,
+      historialDescarte: [{ tipo: "DESCARTADO", usuarioNombre: "Ana", en: "2026-10-12T08:00:00Z" }],
+    }
+    server.use(
+      http.post(apiUrl("/tramites/7/descartar"), async ({ request }) => {
+        cuerpos.push(await request.json())
+        return HttpResponse.json(descartado)
+      }),
+    )
+    const detalle = await descartarTramite(7, 4)
+    await descartarTramite(7, 0)
+    expect(cuerpos).toEqual([{ version: 4 }, { version: 0 }])
+    expect(detalle).toEqual(descartado)
+  })
+
+  it("deshacer: POST /tramites/{id}/deshacer-descarte con {version}; un 409 llega como conflicto con su motivo", async () => {
+    const cuerpos: unknown[] = []
+    let llamadas = 0
+    server.use(
+      http.post(apiUrl("/tramites/7/deshacer-descarte"), async ({ request }) => {
+        cuerpos.push(await request.json())
+        llamadas += 1
+        return llamadas === 1
+          ? HttpResponse.json({ ...DETALLE, motivoRechazo: null, descartable: true, historialDescarte: [] })
+          : HttpResponse.json({ motivo: "Este trámite no está descartado; no hay nada que deshacer." }, { status: 409 })
+      }),
+    )
+    const detalle = await deshacerDescarte(7, 5)
+    expect(detalle.estado).toBe("PENDIENTE_REVISION")
+    expect(detalle.descartable).toBe(true)
+    const error = await deshacerDescarte(7, 6).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(ErrorApi)
+    expect(error).toMatchObject({ tipo: "conflicto", motivo: "Este trámite no está descartado; no hay nada que deshacer." })
+    expect(cuerpos).toEqual([{ version: 5 }, { version: 6 }])
   })
 })
 

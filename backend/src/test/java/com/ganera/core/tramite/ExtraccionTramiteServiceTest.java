@@ -160,6 +160,86 @@ class ExtraccionTramiteServiceTest {
         assertThat(crotales(despues)).isEmpty();
     }
 
+    // ------------------------------------------------------------------ SIN_TRAMITE (D1, D2)
+
+    /** La IA dice que no pide ningun tramite: sigue en revision, nada se descarta solo. */
+    @Test
+    void sinTramiteDejaElTramiteEnRevisionConExtraccionSinTramiteYUnSoloIncremento(CapturedOutput salida) {
+        Tramite tramite = tramitePendiente(gestoriaA, contactoA, explotacionA, "vale, gracias");
+        long versionInicial = tramite.getVersion();
+        ia.devolverSinTramite();
+
+        servicio.procesarPendientes();
+
+        Tramite despues = recargar(tramite);
+        assertThat(despues.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+        assertThat(despues.getEstadoExtraccion()).isEqualTo(EstadoExtraccion.SIN_TRAMITE);
+        assertThat(despues.getTipoTramite()).isNull();
+        assertThat(despues.getCrotalesDescartados()).isZero();
+        assertThat(despues.getProximoIntentoExtraccion()).isNull();
+        assertThat(despues.getVersion()).isEqualTo(versionInicial + 1);
+        assertThat(crotales(despues)).isEmpty();
+        assertThat(servicio.pendientes(AHORA.plus(Duration.ofDays(1)), 10)).isEmpty();
+        assertThat(salida.getAll()).contains("estadoExtraccion=SIN_TRAMITE").doesNotContain("vale, gracias");
+    }
+
+    @Test
+    void unReintentoTrasFallidaQueAcabaEnSinTramiteLoAplica() {
+        Tramite tramite = tramitePendiente(gestoriaA, contactoA, explotacionA, "ok");
+        ia.lanzar(new ExtraccionFallidaException("caida"));
+        servicio.procesarPendientes();
+        long versionTrasFallo = recargar(tramite).getVersion();
+
+        reloj.avanzar(Duration.ofMinutes(1));
+        ia.devolverSinTramite();
+        servicio.procesarPendientes();
+
+        Tramite despues = recargar(tramite);
+        assertThat(ia.llamadas()).isEqualTo(2);
+        assertThat(despues.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+        assertThat(despues.getEstadoExtraccion()).isEqualTo(EstadoExtraccion.SIN_TRAMITE);
+        assertThat(despues.getTipoTramite()).isNull();
+        assertThat(despues.getProximoIntentoExtraccion()).isNull();
+        assertThat(despues.getVersion()).isEqualTo(versionTrasFallo + 1);
+    }
+
+    /** D2 de punta a punta en el servicio: SIN_TRAMITE con un crotal se aplica como NO_IDENTIFICADO. */
+    @Test
+    void sinTramiteConCrotalesSeAplicaComoCompletadaConLosCrotalesResueltos() {
+        animal(gestoriaA, explotacionA, "ES010000004521");
+        Tramite tramite = tramitePendiente(gestoriaA, contactoA, explotacionA, "gracias, la 4521");
+        long versionInicial = tramite.getVersion();
+        ia.devolverSinTramite("4521", "12");
+
+        servicio.procesarPendientes();
+
+        Tramite despues = recargar(tramite);
+        assertThat(despues.getEstado()).isEqualTo(EstadoTramite.PENDIENTE_REVISION);
+        assertThat(despues.getEstadoExtraccion()).isEqualTo(EstadoExtraccion.COMPLETADA);
+        assertThat(despues.getTipoTramite()).isNull();
+        assertThat(despues.getCrotalesDescartados()).isEqualTo(1);
+        assertThat(despues.getVersion()).isEqualTo(versionInicial + 1);
+        assertThat(crotales(despues)).singleElement()
+                .satisfies(c -> {
+                    assertThat(c.getCrotal()).isEqualTo("ES010000004521");
+                    assertThat(c.getResolucion()).isEqualTo(ResolucionCrotal.EN_INVENTARIO);
+                });
+    }
+
+    /** SIN_TRAMITE con solo crotales invalidos tampoco se queda en SIN_TRAMITE (la lista cruda manda). */
+    @Test
+    void sinTramiteConSoloCrotalesInvalidosSeAplicaComoCompletada() {
+        Tramite tramite = tramitePendiente(gestoriaA, contactoA, explotacionA, "gracias, la 12");
+        ia.devolverSinTramite("12");
+
+        servicio.procesarPendientes();
+
+        Tramite despues = recargar(tramite);
+        assertThat(despues.getEstadoExtraccion()).isEqualTo(EstadoExtraccion.COMPLETADA);
+        assertThat(despues.getCrotalesDescartados()).isEqualTo(1);
+        assertThat(crotales(despues)).isEmpty();
+    }
+
     /** Decision 23 de A1: si varios crotales resuelven al mismo Animal, se queda el primero. */
     @Test
     void losCrotalesQueResuelvenAlMismoAnimalSeDeduplicanQuedandoElPrimero() {

@@ -16,6 +16,25 @@ describe("BadgeEstadoTramite", () => {
     expect(badge).toHaveClass("border-border", "text-foreground")
     expect(badge).not.toHaveClass("bg-primary")
   })
+
+  it("RECHAZADO con motivoRechazo SIN_TRAMITE: «Descartado», neutro (outline), nunca el rojo", () => {
+    render(<BadgeEstadoTramite estado="RECHAZADO" motivoRechazo="SIN_TRAMITE" />)
+    const badge = screen.getByText("Descartado")
+    expect(badge).toHaveClass("border-border", "text-foreground")
+    expect(badge).not.toHaveClass("bg-danger")
+    expect(screen.queryByText("Rechazado")).not.toBeInTheDocument()
+  })
+
+  it("RECHAZADO con un motivo desconocido o sin motivo: «Rechazado» en rojo, como siempre", () => {
+    render(
+      <>
+        <BadgeEstadoTramite estado="RECHAZADO" motivoRechazo="OTRO" />
+        <BadgeEstadoTramite estado="RECHAZADO" motivoRechazo={null} />
+      </>,
+    )
+    for (const badge of screen.getAllByText("Rechazado")) expect(badge).toHaveClass("bg-danger")
+    expect(screen.queryByText("Descartado")).not.toBeInTheDocument()
+  })
 })
 
 describe("BadgeResolucionCrotal", () => {

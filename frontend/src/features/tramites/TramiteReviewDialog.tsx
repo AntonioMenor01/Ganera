@@ -11,7 +11,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { avisosExtraccion, etiquetaTipoTramite, TIPOS_TRAMITE, type TipoTramite } from "./etiquetas";
+import { avisosExtraccion, esDescartado, etiquetaTipoTramite, TIPOS_TRAMITE, type TipoTramite } from "./etiquetas";
+import {
+  PISTA_DESCARTAR_SIN_GUARDAR,
+  PISTA_DESHACER,
+  TEXTO_BOTON_DESCARTANDO,
+  TEXTO_BOTON_DESCARTAR,
+  TEXTO_BOTON_DESHACER,
+  TEXTO_BOTON_DESHACIENDO,
+  lineasHistorialDescarte,
+  textoBandaDescartado,
+} from "./descarte";
 import { BadgeEstadoTramite } from "./BadgesTramite";
 import { AvisosRevision } from "./AvisosRevision";
 import { CampoExplotacion, TextoExplotacion } from "./CampoExplotacion";
@@ -45,6 +55,11 @@ import type { TramiteDetalle } from "./types";
  * junto a la ficha; en `HECHO_EN_OVZ` el cuerpo lleva la franja de quién y cuándo, y el pie «Quitar la
  * marca» (confirmación en línea, como Rechazar). Los dos solo dejan constancia de lo que hizo la
  * persona: Ganera no envía nada a OVZ.
+ *
+ * SIN_TRAMITE (2026-10-12): si el backend marca el trámite `descartable`, el pie ofrece «Descartar»
+ * junto a Rechazar, de un clic (sin confirmación: se deshace). Un descartado se ve en solo lectura con
+ * una banda (quién y cuándo) y «Deshacer», también de un clic. El historial de descartes sale en
+ * cualquier estado si hay eventos. Descartar no envía nada por WhatsApp ni a OVZ.
  */
 
 interface TramiteReviewDialogProps {
@@ -62,6 +77,8 @@ const TEXTO_EN_CURSO: Record<AccionRevision, string> = {
   rechazar: "Rechazando…",
   marcar: TEXTO_BOTON_MARCANDO,
   desmarcar: TEXTO_BOTON_QUITANDO_MARCA,
+  descartar: TEXTO_BOTON_DESCARTANDO,
+  deshacer: TEXTO_BOTON_DESHACIENDO,
 };
 
 const TEXTO_SIN_TIPO = "Sin determinar todavía";
@@ -118,6 +135,9 @@ export function TramiteReviewDialog({
     avisoSucio: useId(),
     pregunta: useId(),
     pistaMarcar: useId(),
+    banda: useId(),
+    pistaDeshacer: useId(),
+    historial: useId(),
   };
 
   const tituloRef = useRef<HTMLHeadingElement | null>(null);
@@ -126,6 +146,8 @@ export function TramiteReviewDialog({
   const guardarRef = useRef<HTMLButtonElement | null>(null);
   const aprobarRef = useRef<HTMLButtonElement | null>(null);
   const quitarMarcaRef = useRef<HTMLButtonElement | null>(null);
+  const descartarRef = useRef<HTMLButtonElement | null>(null);
+  const deshacerRef = useRef<HTMLButtonElement | null>(null);
   const primeraDeConfirmacionRef = useRef<HTMLButtonElement | null>(null);
   /** A dónde va el foco tras el próximo render (al cancelar una confirmación). */
   const focoPendiente = useRef<RefObject<HTMLElement | null> | null>(null);
@@ -149,12 +171,27 @@ export function TramiteReviewDialog({
   // (p. ej. un 409 que acaba de cambiar la resolución de los crotales), un segundo Enter no debe
   // aprobar lo que aún no se ha leído. El motivo lo anuncia el role="alert" del aviso.
   const enviandoPrevio = useRef(enviando);
+  // El aviso de la última acción, leído al terminar un envío sin hacer depender el efecto de él (se
+  // actualiza en un efecto anterior del mismo commit).
+  const avisoActual = useRef(revision.aviso);
+  useEffect(() => {
+    avisoActual.current = revision.aviso;
+  });
   useEffect(() => {
     const antes = enviandoPrevio.current;
     enviandoPrevio.current = enviando;
     if (antes === null || enviando !== null) return;
     const activo = document.activeElement;
     const perdido = !activo || activo === document.body || pieRef.current?.contains(activo);
+    // SIN_TRAMITE: mientras se descarta o se deshace, el foco espera en el título. Al terminar bien (sin
+    // aviso), pasa al botón que deshace lo hecho: «Deshacer» tras descartar, «Descartar» tras deshacer.
+    // Si falló, se queda en el título (el motivo lo anuncia el aviso), como tras aprobar.
+    if (antes === "descartar" || antes === "deshacer") {
+      if (!perdido && activo !== tituloRef.current) return;
+      const destino = avisoActual.current === null ? (antes === "descartar" ? deshacerRef : descartarRef).current : null;
+      (destino && !destino.disabled ? destino : tituloRef.current)?.focus();
+      return;
+    }
     if (!perdido) return;
     const boton = antes === "guardar" ? guardarRef.current : antes === "rechazar" ? rechazarRef.current : null;
     (boton && !boton.disabled ? boton : tituloRef.current)?.focus();
@@ -217,6 +254,18 @@ export function TramiteReviewDialog({
     void revision.rechazar();
   }
 
+  /** SIN_TRAMITE: un clic, sin confirmación (se deshace). El botón pasa a «Descartando…» desactivado:
+   * el foco espera en el título hasta que termina (luego va a «Deshacer»). */
+  function descartar() {
+    focoPendiente.current = tituloRef;
+    void revision.descartar();
+  }
+
+  function deshacerDescarte() {
+    focoPendiente.current = tituloRef;
+    void revision.deshacerDescarte();
+  }
+
   function descartarYCerrar() {
     revision.descartarCambios();
     setConfirmacion(null);
@@ -262,7 +311,7 @@ export function TramiteReviewDialog({
           >
             Trámite #{idVisible}
           </DialogTitle>
-          {detalle && <BadgeEstadoTramite estado={detalle.estado} />}
+          {detalle && <BadgeEstadoTramite estado={detalle.estado} motivoRechazo={detalle.motivoRechazo} />}
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto" data-cuerpo-revision>
@@ -283,6 +332,7 @@ export function TramiteReviewDialog({
                 onSeguirEscribiendo: cancelarConfirmacion,
                 onDescartarYCerrar: descartarRespuestaYCerrar,
               }}
+              deshacer={{ ref: deshacerRef, onDeshacer: deshacerDescarte }}
             />
           </div>
         </div>
@@ -317,8 +367,9 @@ export function TramiteReviewDialog({
               <BarraAcciones
                 revision={revision}
                 idAvisoSucio={ids.avisoSucio}
-                refs={{ rechazar: rechazarRef, guardar: guardarRef, aprobar: aprobarRef }}
+                refs={{ rechazar: rechazarRef, guardar: guardarRef, aprobar: aprobarRef, descartar: descartarRef }}
                 onRechazar={() => setConfirmacion("rechazar")}
+                onDescartar={descartar}
                 onVistaPrevia={() => detalle && abrirFichaOvz(detalle.id)}
               />
             )}
@@ -402,6 +453,15 @@ interface IdsRevision {
   explotacion: string;
   tipo: string;
   crotales: string;
+  banda: string;
+  pistaDeshacer: string;
+  historial: string;
+}
+
+/** «Deshacer» de la banda de un descartado (SIN_TRAMITE). */
+interface DeshacerDescarte {
+  ref: RefObject<HTMLButtonElement | null>;
+  onDeshacer: () => void;
 }
 
 function Cuerpo({
@@ -409,11 +469,13 @@ function Cuerpo({
   ids,
   respuesta,
   descarte,
+  deshacer,
 }: {
   revision: RevisionTramite;
   ids: IdsRevision;
   respuesta: RespuestaWhatsappPanel;
   descarte: DescarteRespuesta;
+  deshacer: DeshacerDescarte;
 }) {
   const { carga, detalle } = revision;
   switch (carga.estado) {
@@ -448,6 +510,9 @@ function Cuerpo({
       return (
         <>
           {detalle.estado === "HECHO_EN_OVZ" && <FranjaHechoEnOvz detalle={detalle} />}
+          {esDescartado(detalle) && (
+            <BandaDescartado revision={revision} ids={ids} deshacer={deshacer} />
+          )}
           <div
             data-columnas-revision
             className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]"
@@ -484,6 +549,7 @@ function Cuerpo({
               ) : (
                 <DatosSoloLectura revision={revision} />
               )}
+              <HistorialDescarte detalle={detalle} idTitulo={ids.historial} />
             </section>
           </div>
         </>
@@ -527,6 +593,65 @@ function FranjaHechoEnOvz({ detalle }: { detalle: TramiteDetalle }) {
       <CircleCheckIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
       <span className="font-semibold">{textoHechoEnOvz(detalle)}</span>
     </p>
+  );
+}
+
+/** SIN_TRAMITE: banda de un descartado, en el par neutro (no es un error ni un éxito), con quién y
+ * cuándo y «Deshacer» de un clic (sin caducidad). Su descripción accesible es la banda y la pista. */
+function BandaDescartado({
+  revision,
+  ids,
+  deshacer,
+}: {
+  revision: RevisionTramite;
+  ids: IdsRevision;
+  deshacer: DeshacerDescarte;
+}) {
+  const { detalle, enviando } = revision;
+  if (!detalle) return null;
+  return (
+    <div
+      data-banda-descartado
+      className="mb-4 flex flex-col gap-2 rounded-lg bg-muted px-3 py-2 text-sm sm:flex-row sm:items-center sm:gap-4"
+    >
+      <p id={ids.banda} className="min-w-0 font-semibold">
+        {textoBandaDescartado(detalle.historialDescarte)}
+      </p>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:ml-auto sm:shrink-0">
+        <Button
+          ref={deshacer.ref}
+          variant="outline"
+          size="sm"
+          onClick={deshacer.onDeshacer}
+          disabled={!revision.puedeDeshacerDescarte}
+          aria-describedby={`${ids.banda} ${ids.pistaDeshacer}`}
+        >
+          {enviando === "deshacer" ? TEXTO_EN_CURSO.deshacer : TEXTO_BOTON_DESHACER}
+        </Button>
+        <p id={ids.pistaDeshacer} className="text-muted-foreground">
+          {PISTA_DESHACER}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** SIN_TRAMITE (A6): quién descartó y quién lo deshizo, y cuándo (hora de Madrid). En cualquier estado,
+ * solo si hay eventos. */
+function HistorialDescarte({ detalle, idTitulo }: { detalle: TramiteDetalle; idTitulo: string }) {
+  const lineas = lineasHistorialDescarte(detalle.historialDescarte);
+  if (lineas.length === 0) return null;
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <h4 id={idTitulo} className={CLASE_ETIQUETA}>
+        Historial
+      </h4>
+      <ul aria-labelledby={idTitulo} className="flex flex-col gap-1 text-sm text-muted-foreground">
+        {lineas.map((linea, indice) => (
+          <li key={indice}>{linea}</li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -706,6 +831,7 @@ interface RefsAcciones {
   rechazar: RefObject<HTMLButtonElement | null>;
   guardar: RefObject<HTMLButtonElement | null>;
   aprobar: RefObject<HTMLButtonElement | null>;
+  descartar: RefObject<HTMLButtonElement | null>;
 }
 
 function BarraAcciones({
@@ -713,17 +839,24 @@ function BarraAcciones({
   idAvisoSucio,
   refs,
   onRechazar,
+  onDescartar,
   onVistaPrevia,
 }: {
   revision: RevisionTramite;
   idAvisoSucio: string;
   refs: RefsAcciones;
   onRechazar: () => void;
+  /** SIN_TRAMITE: un clic, sin confirmación. */
+  onDescartar: () => void;
   /** Ficha OVZ (T5, D4): la ficha del trámite pendiente, sin botones de copiar. */
   onVistaPrevia: () => void;
 }) {
   const { enviando, avisoCambiosSinGuardar } = revision;
   const descritoPor = avisoCambiosSinGuardar ? idAvisoSucio : undefined;
+  const idPistaDescartar = useId();
+  // SIN_TRAMITE: «Descartar» desactivado por cambios sin guardar lleva su propia pista.
+  const pistaDescartar =
+    avisoCambiosSinGuardar && revision.detalle?.descartable === true ? PISTA_DESCARTAR_SIN_GUARDAR : null;
   return (
     <div className="flex flex-col gap-2">
       {avisoCambiosSinGuardar && (
@@ -732,6 +865,11 @@ function BarraAcciones({
           <p id={idAvisoSucio} className="text-muted-foreground">
             {avisoCambiosSinGuardar}
           </p>
+          {pistaDescartar && (
+            <p id={idPistaDescartar} className="text-muted-foreground">
+              {pistaDescartar}
+            </p>
+          )}
           <Button variant="ghost" size="sm" onClick={revision.descartarCambios} disabled={enviando !== null}>
             Descartar cambios
           </Button>
@@ -747,6 +885,19 @@ function BarraAcciones({
         >
           {enviando === "rechazar" ? TEXTO_EN_CURSO.rechazar : "Rechazar"}
         </Button>
+        {/* SIN_TRAMITE: solo si el BACKEND lo marca descartable (el frontend no recalcula la regla).
+            Con cambios sin guardar se desactiva, como Aprobar: descartaría lo guardado. */}
+        {revision.detalle?.descartable === true && (
+          <Button
+            ref={refs.descartar}
+            variant="outline"
+            onClick={onDescartar}
+            disabled={!revision.puedeDescartar}
+            aria-describedby={pistaDescartar ? idPistaDescartar : undefined}
+          >
+            {enviando === "descartar" ? TEXTO_EN_CURSO.descartar : TEXTO_BOTON_DESCARTAR}
+          </Button>
+        )}
         {/* Con cambios sin guardar se desactiva, como Aprobar: la ficha enseña lo guardado. */}
         <Button
           variant="ghost"

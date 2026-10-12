@@ -79,6 +79,22 @@ export async function desmarcarHechoEnOvz(id: number, version: number): Promise<
   return data;
 }
 
+/** SIN_TRAMITE: descarta un mensaje sin trámite (pasa a `RECHAZADO` con motivo `SIN_TRAMITE`). Solo
+ * cambia el trámite en Ganera: no envía nada por WhatsApp ni a OVZ. `version` la de la pantalla (si
+ * no es la actual, 409). Devuelve el DETALLE (con el historial), como el PATCH. Sin bloqueo de
+ * suscripción. */
+export async function descartarTramite(id: number, version: number): Promise<TramiteDetalle> {
+  const { data } = await httpClient.post<TramiteDetalle>(`/tramites/${id}/descartar`, { version });
+  return data;
+}
+
+/** SIN_TRAMITE: deshace un descarte (vuelve a `PENDIENTE_REVISION`). Solo sobre un descartado; un
+ * rechazo normal da 409. Devuelve el DETALLE. */
+export async function deshacerDescarte(id: number, version: number): Promise<TramiteDetalle> {
+  const { data } = await httpClient.post<TramiteDetalle>(`/tramites/${id}/deshacer-descarte`, { version });
+  return data;
+}
+
 /**
  * B2 reducido: responde al contacto que escribió el trámite, por WhatsApp. El destinatario lo decide
  * el servidor (el contacto del trámite); aquí solo viajan el texto y la clave de idempotencia, que se

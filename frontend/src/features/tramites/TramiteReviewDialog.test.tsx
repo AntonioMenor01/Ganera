@@ -7,7 +7,7 @@ import { setUnauthorizedHandler } from "@/shared/api/authSession"
 import { apiUrl } from "@/test/apiBaseUrl"
 import { server } from "@/test/server"
 import type { Explotacion } from "@/features/explotaciones/types"
-import type { EstadoTramite, Tramite, TramiteCrotal, WhatsappTramite } from "./types"
+import type { EstadoTramite, EventoDescarte, Tramite, TramiteCrotal, WhatsappTramite } from "./types"
 import { TramiteReviewDialog } from "./TramiteReviewDialog"
 
 const DETALLE = {
@@ -27,6 +27,9 @@ const DETALLE = {
   hechoEnOvzEn: null as string | null,
   hechoEnOvzPorNombre: null as string | null,
   whatsapp: null as WhatsappTramite | null,
+  motivoRechazo: null as string | null,
+  descartable: false,
+  historialDescarte: [] as EventoDescarte[],
 }
 
 type Detalle = typeof DETALLE
@@ -73,6 +76,8 @@ function respuestaLista(d: Detalle) {
     crotalesDescartados: d.crotalesDescartados,
     hechoEnOvzEn: d.hechoEnOvzEn,
     hechoEnOvzPorNombre: d.hechoEnOvzPorNombre,
+    motivoRechazo: d.motivoRechazo ?? null,
+    descartable: d.descartable ?? false,
   } satisfies Tramite
 }
 
@@ -1960,4 +1965,289 @@ describe("TramiteReviewDialog: honestidad con la sección de WhatsApp (B2 reduci
       )
     })
   }
+})
+
+// ---------------------------------------------------------------------------------------------
+// SIN_TRAMITE: «Descartar» (un clic, sin confirmación) y «Deshacer» (sin caducidad), solo en el modal.
+
+const AVISO_SIN_TRAMITE =
+  "Parece un mensaje sin trámite: un saludo, un agradecimiento o una pregunta. Si hay que contestar, responde antes de descartar."
+const EVENTO_DESCARTE: EventoDescarte = { tipo: "DESCARTADO", usuarioNombre: "Ana Pérez", en: "2026-10-12T08:00:00Z" }
+const BANDA_DESCARTADO = "Descartado como mensaje sin trámite por Ana Pérez el 12/10/2026, 10:00."
+const SIN_TRAMITE: Partial<Detalle> = {
+  origen: "WHATSAPP",
+  mensajeOriginal: "vale, gracias",
+  estadoExtraccion: "SIN_TRAMITE",
+  tipoTramite: null as unknown as string,
+  explotacionId: null as unknown as number,
+  explotacionCodigoRega: null as unknown as string,
+  explotacionNombre: null as unknown as string,
+  crotales: [],
+  descartable: true,
+}
+const DESCARTADO: Partial<Detalle> = {
+  ...SIN_TRAMITE,
+  estado: "RECHAZADO",
+  motivoRechazo: "SIN_TRAMITE",
+  descartable: false,
+  historialDescarte: [EVENTO_DESCARTE],
+}
+
+/** POST a `ruta` que guarda los cuerpos y responde lo dado (el último se repite). */
+function postsA(ruta: string, ...respuestas: (() => Response | Promise<Response>)[]) {
+  const cuerpos: unknown[] = []
+  server.use(
+    http.post(apiUrl(ruta), async ({ request }) => {
+      cuerpos.push(await request.json())
+      return respuestas[Math.min(cuerpos.length - 1, respuestas.length - 1)]()
+    }),
+  )
+  return cuerpos
+}
+
+describe("TramiteReviewDialog: descartar un mensaje sin trámite (SIN_TRAMITE)", () => {
+  it("descartable: aviso neutro fijo (sin icono ni rol) y «Descartar» en el pie, junto a Rechazar", async () => {
+    server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(detalle(SIN_TRAMITE))))
+    renderDialog()
+    const dialogo = await dialogoListo()
+
+    const aviso = within(dialogo).getByText(AVISO_SIN_TRAMITE)
+    expect(aviso).toHaveClass("text-muted-foreground")
+    expect(aviso).not.toHaveClass("bg-warning")
+    expect(aviso.querySelector("svg")).toBeNull()
+    expect(aviso.closest("[role=alert],[role=status]")).toBeNull()
+    const nombres = within(dialogo).getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent)
+    expect(nombres.indexOf("Descartar")).toBe(nombres.indexOf("Rechazar") + 1)
+    expect(boton(dialogo, "Descartar")).toBeEnabled()
+  })
+
+  it("SIN_TRAMITE pero el backend NO lo marca descartable: ni aviso ni «Descartar» (el frontend no recalcula la regla)", async () => {
+    server.use(
+      http.get(apiUrl("/tramites/7"), () => HttpResponse.json(detalle({ ...SIN_TRAMITE, descartable: false }))),
+    )
+    renderDialog()
+    const dialogo = await dialogoListo()
+    expect(within(dialogo).queryByText(AVISO_SIN_TRAMITE)).not.toBeInTheDocument()
+    expect(within(dialogo).queryByRole("button", { name: "Descartar" })).not.toBeInTheDocument()
+    expect(boton(dialogo, "Rechazar")).toBeEnabled()
+  })
+
+  it("un clic, sin confirmación: envía {version}, «Descartando…» con el foco en el título, y luego banda, badge «Descartado» y el foco en «Deshacer»", async () => {
+    const espera = puerta()
+    detallesEnOrden(() => HttpResponse.json(detalle({ ...SIN_TRAMITE, version: 3 })))
+    const cuerpos = postsA("/tramites/7/descartar", async () => {
+      await espera.promesa
+      return HttpResponse.json(detalle({ ...DESCARTADO, version: 4 }))
+    })
+    const onCambiado = vi.fn()
+    const onClose = vi.fn()
+    const user = userEvent.setup()
+    renderDialog({ onCambiado, onClose })
+    const dialogo = await dialogoListo()
+    await user.click(boton(dialogo, "Descartar"))
+
+    // Ninguna pregunta en línea: la petición ya ha salido.
+    expect(within(dialogo).queryByText(/¿/)).not.toBeInTheDocument()
+    expect(within(dialogo).queryByRole("button", { name: /^Sí,/ })).not.toBeInTheDocument()
+    const enCurso = await within(dialogo).findByRole("button", { name: "Descartando…" })
+    expect(enCurso).toBeDisabled()
+    await waitFor(() => expect(within(dialogo).getByRole("heading", { name: "Trámite #7" })).toHaveFocus())
+    await user.click(enCurso)
+    espera.abrir()
+
+    const deshacer = await within(dialogo).findByRole("button", { name: "Deshacer" })
+    expect(cuerpos).toEqual([{ version: 3 }])
+    expect(within(dialogo).getByText(BANDA_DESCARTADO)).toBeInTheDocument()
+    const badge = within(dialogo).getByText("Descartado")
+    expect(badge).toHaveClass("border-border")
+    expect(badge).not.toHaveClass("bg-danger")
+    expect(within(dialogo).queryByText("Rechazado")).not.toBeInTheDocument()
+    expect(deshacer).toHaveAccessibleDescription(`${BANDA_DESCARTADO} Vuelve a la cola de pendientes.`)
+    expect(within(dialogo).getByText("Vuelve a la cola de pendientes.")).toBeInTheDocument()
+    await waitFor(() => expect(deshacer).toHaveFocus())
+    // Solo lectura, sin pie de acciones y sin el aviso (ya no está pendiente).
+    expect(within(dialogo).queryByRole("button", { name: "Rechazar" })).not.toBeInTheDocument()
+    expect(within(dialogo).queryByRole("textbox")).not.toBeInTheDocument()
+    expect(within(dialogo).queryByText(AVISO_SIN_TRAMITE)).not.toBeInTheDocument()
+    expect(onCambiado).toHaveBeenCalledTimes(1)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it("con cambios sin guardar: «Descartar» desactivado con su pista propia, no la de aprobar", async () => {
+    let posts = 0
+    server.use(
+      http.get(apiUrl("/tramites/7"), () => HttpResponse.json(detalle(SIN_TRAMITE))),
+      http.post(apiUrl("/tramites/7/descartar"), () => {
+        posts += 1
+        return HttpResponse.json({})
+      }),
+    )
+    const user = userEvent.setup()
+    renderDialog()
+    const dialogo = await dialogoListo()
+    await user.click(boton(dialogo, "Añadir crotal"))
+    await user.keyboard("1234")
+
+    const descartar = boton(dialogo, "Descartar")
+    expect(descartar).toBeDisabled()
+    expect(descartar).toHaveAccessibleDescription("Para descartar el mensaje, quita antes los cambios con “Descartar cambios”.")
+    expect(within(dialogo).getByText("Para descartar el mensaje, quita antes los cambios con “Descartar cambios”.")).toBeVisible()
+    // Aprobar y Rechazar conservan la suya.
+    expect(boton(dialogo, "Aprobar")).toHaveAccessibleDescription("Guarda antes de aprobar")
+    expect(boton(dialogo, "Rechazar")).toHaveAccessibleDescription("Guarda antes de aprobar")
+    await user.click(descartar)
+    expect(posts).toBe(0)
+  })
+
+  it("un trámite que no es descartable no enseña la pista de descartar aunque haya cambios", async () => {
+    server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(detalle({ ...SIN_TRAMITE, descartable: false }))))
+    const user = userEvent.setup()
+    renderDialog()
+    const dialogo = await dialogoListo()
+    await user.click(boton(dialogo, "Añadir crotal"))
+    await user.keyboard("1234")
+
+    expect(within(dialogo).getByText("Guarda antes de aprobar")).toBeVisible()
+    expect(within(dialogo).queryByText("Para descartar el mensaje, quita antes los cambios con “Descartar cambios”.")).not.toBeInTheDocument()
+  })
+
+  it("«Deshacer» de un clic: envía {version}, «Deshaciendo…», vuelve a pendiente y el foco va a «Descartar»", async () => {
+    const espera = puerta()
+    const historial = [EVENTO_DESCARTE, { tipo: "DESCARTE_DESHECHO", usuarioNombre: "Luis", en: "2026-10-12T09:15:00Z" }]
+    detallesEnOrden(() => HttpResponse.json(detalle({ ...DESCARTADO, version: 4 })))
+    const cuerpos = postsA("/tramites/7/deshacer-descarte", async () => {
+      await espera.promesa
+      return HttpResponse.json(detalle({ ...SIN_TRAMITE, version: 5, historialDescarte: historial }))
+    })
+    const onCambiado = vi.fn()
+    const user = userEvent.setup()
+    renderDialog({ onCambiado })
+    const dialogo = await dialogoListo()
+    await user.click(boton(dialogo, "Deshacer"))
+
+    expect(within(dialogo).queryByText(/¿/)).not.toBeInTheDocument()
+    expect(within(dialogo).queryByRole("button", { name: /^Sí,/ })).not.toBeInTheDocument()
+    expect(await within(dialogo).findByRole("button", { name: "Deshaciendo…" })).toBeDisabled()
+    await waitFor(() => expect(within(dialogo).getByRole("heading", { name: "Trámite #7" })).toHaveFocus())
+    espera.abrir()
+
+    const descartar = await within(dialogo).findByRole("button", { name: "Descartar" })
+    expect(cuerpos).toEqual([{ version: 4 }])
+    await waitFor(() => expect(descartar).toHaveFocus())
+    expect(within(dialogo).getByText("Pendiente de revisión")).toBeInTheDocument()
+    expect(within(dialogo).queryByText(BANDA_DESCARTADO)).not.toBeInTheDocument()
+    expect(within(dialogo).queryByRole("button", { name: "Deshacer" })).not.toBeInTheDocument()
+    expect(within(dialogo).getByText(AVISO_SIN_TRAMITE)).toBeInTheDocument()
+    expect(onCambiado).toHaveBeenCalledTimes(1)
+  })
+
+  it("historial: una línea por evento, en hora de Madrid, en cualquier estado; sin eventos no hay historial", async () => {
+    const historial = [EVENTO_DESCARTE, { tipo: "DESCARTE_DESHECHO", usuarioNombre: "Luis", en: "2026-10-12T09:15:00Z" }]
+    server.use(
+      http.get(apiUrl("/tramites/7"), () =>
+        HttpResponse.json(detalle({ ...SIN_TRAMITE, estado: "APROBADO", descartable: false, historialDescarte: historial })),
+      ),
+    )
+    const { unmount } = renderDialog()
+    const dialogo = await dialogoListo()
+    const lista = within(dialogo).getByRole("list", { name: "Historial" })
+    expect(within(lista).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "Descartado por Ana Pérez el 12/10/2026, 10:00",
+      "Descarte deshecho por Luis el 12/10/2026, 11:15",
+    ])
+    unmount()
+
+    server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(detalle(SIN_TRAMITE))))
+    renderDialog()
+    const otro = await dialogoListo()
+    expect(within(otro).queryByRole("list", { name: "Historial" })).not.toBeInTheDocument()
+    expect(within(otro).queryByText("Historial")).not.toBeInTheDocument()
+  })
+
+  it("un rechazo normal: «Rechazado» en rojo, sin banda ni «Deshacer»", async () => {
+    server.use(
+      http.get(apiUrl("/tramites/7"), () =>
+        HttpResponse.json(detalle({ ...SIN_TRAMITE, estado: "RECHAZADO", motivoRechazo: null, descartable: false })),
+      ),
+    )
+    renderDialog()
+    const dialogo = await dialogoListo()
+    expect(within(dialogo).getByText("Rechazado")).toHaveClass("bg-danger")
+    expect(within(dialogo).queryByText(/Descartado como mensaje/)).not.toBeInTheDocument()
+    expect(within(dialogo).queryByRole("button", { name: "Deshacer" })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ["descartar", SIN_TRAMITE, "Solo se puede descartar un trámite pendiente de revisión.", "No se ha descartado el mensaje"],
+    ["deshacer-descarte", DESCARTADO, "Este trámite no está descartado; no hay nada que deshacer.", "No se ha deshecho el descarte"],
+  ] as const)("409 al %s: recarga, el motivo tal cual con su título, sin reintentar, y el foco al título", async (ruta, inicial, motivo, titulo) => {
+    detallesEnOrden(
+      () => HttpResponse.json(detalle({ ...inicial, version: 3 })),
+      () =>
+        HttpResponse.json(
+          detalle({ ...SIN_TRAMITE, estado: "APROBADO", tipoTramite: "BAJA_MUERTE", descartable: false, version: 4 }),
+        ),
+    )
+    const cuerpos = postsA(`/tramites/7/${ruta}`, () => HttpResponse.json({ motivo }, { status: 409 }))
+    const onCambiado = vi.fn()
+    const user = userEvent.setup()
+    renderDialog({ onCambiado })
+    const dialogo = await dialogoListo()
+    await user.click(boton(dialogo, ruta === "descartar" ? "Descartar" : "Deshacer"))
+
+    const alerta = (await within(dialogo).findByText(motivo)).closest("[role=alert]")!
+    expect(alerta).toHaveTextContent(titulo)
+    await within(dialogo).findByText("Aprobado · falta OVZ")
+    expect(cuerpos).toEqual([{ version: 3 }])
+    expect(onCambiado).toHaveBeenCalled()
+    await waitFor(() => expect(within(dialogo).getByRole("heading", { name: "Trámite #7" })).toHaveFocus())
+  })
+
+  it("404 al descartar y la recarga también 404: «Trámite no disponible» con el texto de siempre", async () => {
+    detallesEnOrden(
+      () => HttpResponse.json(detalle(SIN_TRAMITE)),
+      () => new HttpResponse(null, { status: 404 }),
+    )
+    postsA("/tramites/7/descartar", () => new HttpResponse(null, { status: 404 }))
+    const user = userEvent.setup()
+    renderDialog()
+    const dialogo = await dialogoListo()
+    await user.click(boton(dialogo, "Descartar"))
+    expect(await within(dialogo).findByText("Trámite no disponible")).toBeInTheDocument()
+    expect(within(dialogo).getByText("Este trámite ya no existe o no es de tu gestoría.")).toBeInTheDocument()
+  })
+})
+
+describe("TramiteReviewDialog: honestidad con «Descartar» (SIN_TRAMITE)", () => {
+  it.each([
+    ["pendiente y descartable", SIN_TRAMITE],
+    ["descartado, con historial", DESCARTADO],
+  ] as const)("%s: sin palabras prohibidas y sin ninguna mención de OVZ", async (_nombre, d) => {
+    server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(detalle(d))))
+    renderDialog()
+    const dialogo = await dialogoListo()
+    // El aviso tiene que estar a la vista para que la comprobación cubra su texto.
+    if (d === SIN_TRAMITE) expect(within(dialogo).getByText(AVISO_SIN_TRAMITE)).toBeVisible()
+    expect(dialogo).not.toHaveTextContent(PROHIBIDAS)
+    expect(within(dialogo).queryAllByText(/OVZ/)).toEqual([])
+  })
+
+  it("mientras descarta y con un error de descartar a la vista: tampoco", async () => {
+    const espera = puerta()
+    detallesEnOrden(() => HttpResponse.json(detalle(SIN_TRAMITE)))
+    postsA("/tramites/7/descartar", async () => {
+      await espera.promesa
+      return new HttpResponse(null, { status: 500 })
+    })
+    const user = userEvent.setup()
+    renderDialog()
+    const dialogo = await dialogoListo()
+    await user.click(boton(dialogo, "Descartar"))
+    await within(dialogo).findByRole("button", { name: "Descartando…" })
+    expect(dialogo).not.toHaveTextContent(PROHIBIDAS)
+    espera.abrir()
+    await within(dialogo).findByText("No se ha descartado el mensaje")
+    expect(dialogo).not.toHaveTextContent(PROHIBIDAS)
+    expect(within(dialogo).queryAllByText(/OVZ/)).toEqual([])
+  })
 })

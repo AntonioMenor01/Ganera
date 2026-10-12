@@ -240,12 +240,15 @@ public class ExtraccionTramiteService {
         tramite.setTipoTramite(validada.tipo());
         tramite.setCrotalesDescartados(validada.descartados());
         tramite.setEstado(EstadoTramite.PENDIENTE_REVISION);
-        tramite.setEstadoExtraccion(EstadoExtraccion.COMPLETADA);
+        // SIN_TRAMITE (ya pasado por la red de seguridad D2) sigue en PENDIENTE_REVISION: nunca se
+        // rechaza ni se descarta solo.
+        EstadoExtraccion resultado = validada.sinTramite() ? EstadoExtraccion.SIN_TRAMITE : EstadoExtraccion.COMPLETADA;
+        tramite.setEstadoExtraccion(resultado);
         tramite.setProximoIntentoExtraccion(null);
         exigirUnSoloIncremento(tramite, versionLeida);
         log.info("Extraccion aplicada: tramiteId={}, gestoriaId={}, estadoExtraccion={}, intentos={}, crotales={}, "
                         + "descartados={}, mismoAnimal={}",
-                tramite.getId(), pendiente.gestoriaId(), EstadoExtraccion.COMPLETADA, tramite.getIntentosExtraccion(),
+                tramite.getId(), pendiente.gestoriaId(), resultado, tramite.getIntentosExtraccion(),
                 filas.size() - quitados, validada.descartados(), quitados);
     }
 

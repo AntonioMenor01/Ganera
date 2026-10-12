@@ -668,8 +668,9 @@ Plan con las decisiones cerradas: `docs/superpowers/plans/2026-10-03-tarea-front
      Antonio desde su terminal a su propio móvil. Los tipos de OVZ y el tipo de alta por
      nacimiento ya están hechos con la `V20`. **Antes del piloto, tras la sesión de mapeo:** la fecha del
      hecho, junto con los campos propios del alta por nacimiento (crotal de la madre, sexo y fecha de
-     nacimiento). **Después de B2 y antes del piloto:** `SIN_TRAMITE` en la extracción (ver «Pendientes
-     técnicos» de `progress.md`). **Después del piloto:** varios trámites por mensaje. El resto de las notas de abajo (números
+     nacimiento). **Después de B2 y antes del piloto:** `SIN_TRAMITE` en la extracción — **hecho el
+     2026-10-12** (plan `docs/superpowers/plans/2026-10-12-sin-tramite.md`, `V23`; evaluación contra Haiku y smoke
+     real de Antonio superados). **Después del piloto:** varios trámites por mensaje. El resto de las notas de abajo (números
      desconocidos, adjuntos, medición de uso) sigue pendiente.
 4. **C mínimo** (2026-10-06, **código en `main`, despliegue pendiente**): demo en Clever Cloud (París) con
    PostgreSQL gestionado y datos inventados, para el socio. Plan
