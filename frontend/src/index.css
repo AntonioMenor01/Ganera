@@ -1,7 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/archivo";
+/* Archivo con el eje de ancho (wdth: 62-125 %, pesos 100-900), local, sin Google ni CDN. La app lo
+   usa al 90 % (font-stretch en html, @layer base). */
+@import "@fontsource-variable/archivo/wdth.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -60,6 +62,7 @@
   --danger: #fff2ef;
   --danger-foreground: #7c1405;
 
+  /* Borde fino de tarjetas, tablas y filas: Gris 300. */
   --border: #d7d3d3;
   /* Gris 600: el gris mas claro de la rampa que llega a 3:1 sobre blanco (4,30)
      y sobre Superficie (3,55). */
@@ -73,11 +76,40 @@
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
 
-  /* radius base elegido para que --radius-xl (el que usan las Card) salga en 12px exactos. */
-  --radius: 0.5357rem;
+  /* Radio 0 (diseno v2 de Alvaro): todo recto. Todos los --radius-* derivan de este, asi que
+     cualquier rounded-sm...rounded-4xl sale a 0. */
+  --radius: 0px;
 
-  /* "Sidebar" = la barra de navegacion superior ya existente (ver AppLayout) --
-     Prompt de rebrand pidio explicitamente no restructurar a un panel lateral. */
+  /* Rampas de marca (v2). Para texto secundario, Gris 700 (--muted-foreground, >= 5,38:1);
+     nunca grises mas claros ni tinta translucida como texto. */
+  --gris-100: #f8f4f4;
+  --gris-200: #eae7e7;
+  --gris-300: #d7d3d3;
+  --gris-400: #bab6b6;
+  --gris-500: #9b9797;
+  --gris-600: #7d7979;
+  --gris-700: #605d5d;
+  --gris-800: #444141;
+  --gris-900: #2d2b2b;
+  --rojo-100: #fff2ef;
+  --rojo-200: #ffe0d9;
+  --rojo-300: #ffc4b8;
+  --rojo-400: #ff9783;
+  --rojo-500: #ff563c;
+  --rojo-600: #dd2b0f;
+  --rojo-700: #ae1800;
+  --rojo-800: #7c1405;
+  --rojo-900: #4d170e;
+
+  /* Par neutro (badges sin estado semantico): Gris 800 sobre Gris 200 = 8,22:1. */
+  --neutral: #eae7e7;
+  --neutral-foreground: #444141;
+
+  /* Divisor de 2 px entre zonas (tinta al 40 %). Decorativo: nunca como borde de un control. */
+  --divisor: color-mix(in srgb, #201e1d 40%, transparent);
+
+  /* "Sidebar" = la barra de AppLayout: barra superior por debajo de `lg` y barra lateral fija
+     desde `lg` (diseno de Alvaro, fase 1). Es el mismo <header> en los dos casos. */
   --sidebar: #eae9e9;
   --sidebar-foreground: #201e1d;
   --sidebar-primary: #dd2b0f;
@@ -154,6 +186,27 @@
   --color-warning-foreground: var(--warning-foreground);
   --color-danger: var(--danger);
   --color-danger-foreground: var(--danger-foreground);
+  --color-neutral: var(--neutral);
+  --color-neutral-foreground: var(--neutral-foreground);
+  --color-divisor: var(--divisor);
+  --color-gris-100: var(--gris-100);
+  --color-gris-200: var(--gris-200);
+  --color-gris-300: var(--gris-300);
+  --color-gris-400: var(--gris-400);
+  --color-gris-500: var(--gris-500);
+  --color-gris-600: var(--gris-600);
+  --color-gris-700: var(--gris-700);
+  --color-gris-800: var(--gris-800);
+  --color-gris-900: var(--gris-900);
+  --color-rojo-100: var(--rojo-100);
+  --color-rojo-200: var(--rojo-200);
+  --color-rojo-300: var(--rojo-300);
+  --color-rojo-400: var(--rojo-400);
+  --color-rojo-500: var(--rojo-500);
+  --color-rojo-600: var(--rojo-600);
+  --color-rojo-700: var(--rojo-700);
+  --color-rojo-800: var(--rojo-800);
+  --color-rojo-900: var(--rojo-900);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -178,6 +231,8 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  /* Sombra flotante de v2: solo capas flotantes (modal, popovers, menus). */
+  --shadow-lg: 0 12px 32px color-mix(in srgb, #2d2b2b 22%, transparent);
 }
 
 body {
@@ -216,6 +271,8 @@ body {
   }
   html {
     @apply font-sans;
+    /* Archivo al 90 % de ancho (v2). Los controles heredan con el `font: inherit` del preflight. */
+    font-stretch: 90%;
   }
   /* Selección (Rojo 600 al 18 %) y cursor de texto (Rojo 600) con el rojo de marca de las
      acciones, no los del navegador. */

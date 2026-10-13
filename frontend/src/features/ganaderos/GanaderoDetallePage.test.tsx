@@ -89,7 +89,7 @@ describe("GanaderoDetallePage: ficha", () => {
       "href",
       "tel:+447911123456",
     )
-    expect(within(luis).getByText("Empleado")).toHaveClass("border-border")
+    expect(within(luis).getByText("Empleado")).toHaveClass("bg-neutral", "text-neutral-foreground")
     expect(within(seccion).queryByText("TITULAR")).not.toBeInTheDocument()
   })
 

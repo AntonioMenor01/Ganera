@@ -283,7 +283,7 @@ export function FichaOvzPage() {
       <header className="sticky top-0 z-10 border-b border-sidebar-border bg-sidebar px-4 py-2.5 text-sidebar-foreground">
         <div className="mx-auto flex w-full max-w-xl items-center gap-2">
           <LogoGanera decorativo className="size-5 text-marca" />
-          <span className="text-sm font-semibold text-foreground">Ficha para OVZ</span>
+          <span className="text-sm font-bold text-foreground">Ficha para OVZ</span>
           {id !== null && (
             <span className="ml-auto flex items-center gap-2">
               <span className="text-sm text-muted-foreground tabular-nums">{`#${id}`}</span>
@@ -353,7 +353,7 @@ function FichaCargando() {
 function SinFicha({ titulo, texto }: { titulo: string; texto: string }) {
   return (
     <div className="flex flex-col gap-1">
-      <h1 className="text-xl font-extrabold">{titulo}</h1>
+      <h1 className="text-xl font-bold">{titulo}</h1>
       <p className="text-sm text-muted-foreground">{texto}</p>
       <Link to="/tramites" className={cn("mt-2 w-fit", CLASE_ENLACE)}>
         Volver a trámites
@@ -463,7 +463,7 @@ function Ficha({
       {modo === "hecho" && <FranjaHecho detalle={detalle} accion={accion} />}
 
       <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-extrabold">{ficha.formulario}</h1>
+        <h1 className="text-xl font-bold">{ficha.formulario}</h1>
         <p className="text-sm text-muted-foreground">
           En OVZ: <span className="text-foreground">{ficha.rutaOvz}</span>
         </p>
@@ -602,7 +602,7 @@ function FranjaHecho({ detalle, accion }: { detalle: TramiteDetalle; accion: Pro
       >
         <span className="flex min-w-0 flex-1 basis-56 items-start gap-2">
           <CircleCheckIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-          <span className="font-semibold">{textoHechoEnOvz(detalle)}</span>
+          <span className="font-medium">{textoHechoEnOvz(detalle)}</span>
         </span>
         {!confirmando && (
           <Button
@@ -623,7 +623,7 @@ function FranjaHecho({ detalle, accion }: { detalle: TramiteDetalle; accion: Pro
           onKeyDown={alPulsarTecla}
           className="flex flex-wrap items-center gap-2 rounded-lg bg-muted px-3 py-2"
         >
-          <p id={idPregunta} className="mr-auto text-sm font-semibold">
+          <p id={idPregunta} className="mr-auto text-sm font-medium">
             {PREGUNTA_QUITAR_MARCA}
           </p>
           <div className="flex flex-wrap items-center gap-2">
@@ -706,7 +706,7 @@ function Seccion({
   return (
     <section aria-labelledby={idTitulo} className="rounded-xl bg-card ring-1 ring-foreground/10">
       <header className="border-b px-4 py-3">
-        <h2 id={idTitulo} className="text-base font-semibold">
+        <h2 id={idTitulo} className="text-base font-bold">
           {bloque.titulo}
         </h2>
       </header>
@@ -750,7 +750,7 @@ function Fila({
         {campo.obligatorio && (
           <>
             {/* Tinta, no rojo: en Ganera el rojo sólido es para acciones (DESIGN.md, los dos rojos). */}
-            <span aria-hidden="true" className="font-semibold text-foreground">
+            <span aria-hidden="true" className="font-medium text-foreground">
               *
             </span>
             <span className="sr-only">obligatorio</span>

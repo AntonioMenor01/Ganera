@@ -117,7 +117,7 @@ export function ImportarExcelSection({ onImportado }: { onImportado: () => void 
             </div>
             {resumen.errores.length > 0 && (
               <div>
-                <p className="mb-2 text-sm font-semibold">
+                <p className="mb-2 text-sm font-medium">
                   {textoFilasConError(resumen.errores.length)}:
                 </p>
                 <ul className="flex flex-col gap-1.5 text-sm text-muted-foreground">
@@ -142,7 +142,7 @@ export function ImportarExcelSection({ onImportado }: { onImportado: () => void 
 function ResumenHoja({ titulo, resumen }: { titulo: string; resumen: ImportHojaResumen }) {
   return (
     <div>
-      <p className="font-semibold">{titulo}</p>
+      <p className="font-bold">{titulo}</p>
       <p className="text-muted-foreground">
         {[
           plural(resumen.filasProcesadas, "fila", "filas"),

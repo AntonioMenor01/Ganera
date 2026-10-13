@@ -97,7 +97,7 @@ export function GanaderosPage() {
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <div className="min-w-0">
-        <h1 className="text-xl font-extrabold">Ganaderos</h1>
+        <h1 className="text-xl font-bold">Ganaderos</h1>
         <p className="text-sm text-muted-foreground tabular-nums">{subtitulo}</p>
       </div>
 
@@ -251,7 +251,7 @@ function CabeceraOrdenable({
       <button
         type="button"
         onClick={() => onOrdenar(campo)}
-        className="-mx-1 inline-flex items-center gap-1 rounded-md px-1 py-0.5 font-semibold outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring"
+        className="-mx-1 inline-flex items-center gap-1 rounded-md px-1 py-0.5 font-medium outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring"
       >
         {children}
         <Icono

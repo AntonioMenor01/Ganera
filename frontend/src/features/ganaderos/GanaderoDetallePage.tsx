@@ -98,7 +98,7 @@ export function GanaderoDetallePage() {
 
       {vista.estado === "no-encontrado" && (
         <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-extrabold">Ganadero no encontrado</h1>
+          <h1 className="text-xl font-bold">Ganadero no encontrado</h1>
           <p className="text-sm text-muted-foreground">{TEXTO_GANADERO_NO_ENCONTRADO}</p>
           <Link to="/ganaderos" className={cn("mt-2 w-fit", CLASE_ENLACE)}>
             Volver a Ganaderos
@@ -132,7 +132,7 @@ function FichaCargando() {
         <div className="h-6 w-56 max-w-full rounded-sm bg-muted motion-safe:animate-pulse" />
         <div className="h-4 w-28 rounded-sm bg-muted motion-safe:animate-pulse" />
       </div>
-      <div aria-hidden="true" className="h-40 rounded-xl bg-card ring-1 ring-foreground/10" />
+      <div aria-hidden="true" className="h-40 border border-border bg-card" />
     </div>
   );
 }
@@ -155,7 +155,7 @@ function Ficha({ ganadero }: { ganadero: GanaderoDetalle }) {
     <>
       <div className="min-w-0">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-          <h1 className="min-w-0 text-xl font-extrabold break-words">{ganadero.nombre}</h1>
+          <h1 className="min-w-0 text-xl font-bold break-words">{ganadero.nombre}</h1>
           {ganadero.nif ? (
             <span className="text-muted-foreground tabular-nums">
               <span className="sr-only">NIF </span>
@@ -237,13 +237,13 @@ function SeccionExplotacion({ explotacion }: { explotacion: ExplotacionDeGanader
     <section
       id={idSeccion(explotacion.id)}
       aria-labelledby={idTitulo}
-      className="scroll-mt-6 rounded-xl bg-card ring-1 ring-foreground/10"
+      className="scroll-mt-6 border border-border bg-card"
     >
       <header className="border-b px-4 py-3">
         <h2
           id={idTitulo}
           tabIndex={-1}
-          className="rounded-sm text-base font-semibold break-words outline-none focus-visible:ring-3 focus-visible:ring-ring"
+          className="rounded-sm text-base font-bold break-words outline-none focus-visible:ring-3 focus-visible:ring-ring"
         >
           <span className="tabular-nums">{explotacion.codigoRega}</span>
           <span className="font-normal"> · {explotacion.nombre}</span>
@@ -251,7 +251,7 @@ function SeccionExplotacion({ explotacion }: { explotacion: ExplotacionDeGanader
       </header>
 
       <div className="px-4 py-3">
-        <h3 id={idContactos} className="text-sm font-semibold text-muted-foreground">
+        <h3 id={idContactos} className="text-sm font-bold text-muted-foreground">
           Contactos
         </h3>
         {explotacion.contactos.length === 0 ? (

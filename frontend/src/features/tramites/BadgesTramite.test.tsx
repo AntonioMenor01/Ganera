@@ -13,14 +13,14 @@ describe("BadgeEstadoTramite", () => {
   it("un estado desconocido sale tal cual en un badge neutro", () => {
     render(<BadgeEstadoTramite estado="PAUSADO" />)
     const badge = screen.getByText("PAUSADO")
-    expect(badge).toHaveClass("border-border", "text-foreground")
+    expect(badge).toHaveClass("bg-neutral", "text-neutral-foreground")
     expect(badge).not.toHaveClass("bg-primary")
   })
 
   it("RECHAZADO con motivoRechazo SIN_TRAMITE: «Descartado», neutro (outline), nunca el rojo", () => {
     render(<BadgeEstadoTramite estado="RECHAZADO" motivoRechazo="SIN_TRAMITE" />)
     const badge = screen.getByText("Descartado")
-    expect(badge).toHaveClass("border-border", "text-foreground")
+    expect(badge).toHaveClass("bg-neutral", "text-neutral-foreground")
     expect(badge).not.toHaveClass("bg-danger")
     expect(screen.queryByText("Rechazado")).not.toBeInTheDocument()
   })
@@ -49,12 +49,12 @@ describe("BadgeResolucionCrotal", () => {
 
   it("NO_ENCONTRADO completo es neutro (outline)", () => {
     render(<BadgeResolucionCrotal crotal={{ resolucion: "NO_ENCONTRADO", completo: true }} />)
-    expect(screen.getByText("No está en el inventario")).toHaveClass("border-border", "text-foreground")
+    expect(screen.getByText("No está en el inventario")).toHaveClass("bg-neutral", "text-neutral-foreground")
   })
 
   it("NO_ENCONTRADO sin completo (D5b) es neutro (outline)", () => {
     render(<BadgeResolucionCrotal crotal={{ resolucion: "NO_ENCONTRADO" }} />)
-    expect(screen.getByText("No está en el inventario")).toHaveClass("border-border", "text-foreground")
+    expect(screen.getByText("No está en el inventario")).toHaveClass("bg-neutral", "text-neutral-foreground")
   })
 
   it("NO_ENCONTRADO incompleto es ámbar y lo dice en el texto, no solo con color", () => {
@@ -67,7 +67,7 @@ describe("BadgeResolucionCrotal", () => {
 
   it("una resolución desconocida sale tal cual en un badge neutro", () => {
     render(<BadgeResolucionCrotal crotal={{ resolucion: "DUPLICADO" }} />)
-    expect(screen.getByText("DUPLICADO")).toHaveClass("border-border")
+    expect(screen.getByText("DUPLICADO")).toHaveClass("bg-neutral", "text-neutral-foreground")
   })
 })
 
@@ -81,7 +81,7 @@ describe("BadgeRolContacto", () => {
   it("Empleado con el outline neutro", () => {
     render(<BadgeRolContacto rol="EMPLEADO" />)
     const badge = screen.getByText("Empleado")
-    expect(badge).toHaveClass("border-border", "text-foreground")
+    expect(badge).toHaveClass("bg-neutral", "text-neutral-foreground")
     expect(badge).not.toHaveClass("bg-success")
   })
 })

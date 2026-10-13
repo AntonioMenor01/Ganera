@@ -97,15 +97,15 @@ export function ExplotacionesPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-extrabold">Explotaciones</h1>
+        <h1 className="text-xl font-bold">Explotaciones</h1>
       </div>
 
       <Card className="w-fit min-w-48">
         <CardContent className="flex flex-col gap-1">
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
             Explotaciones totales
           </span>
-          <span className="text-3xl font-extrabold">
+          <span className="text-3xl font-bold">
             {pagina ? pagina.totalElements : "—"}
           </span>
         </CardContent>

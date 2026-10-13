@@ -140,7 +140,7 @@ export function TramitesPage() {
     <div className="flex min-w-0 flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-xl font-extrabold">Cola de trámites</h1>
+          <h1 className="text-xl font-bold">Cola de trámites</h1>
           <p className="text-sm text-muted-foreground">{subtitulo}</p>
         </div>
         <Select value={filtroEstado} onValueChange={(value) => cambiarFiltro(value as FiltroEstado)}>

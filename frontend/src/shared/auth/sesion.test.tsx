@@ -269,14 +269,14 @@ describe("sesión persistente: login, caducidad en uso y salida manual", () => {
     expect(screen.queryByText(AVISO_CADUCADA)).not.toBeInTheDocument()
   })
 
-  it("Salir borra el token y no enseña el aviso de caducada", async () => {
+  it("Cerrar sesión borra el token y no enseña el aviso de caducada", async () => {
     sessionStorage.setItem(CLAVE, "tok-guardado")
     meDevuelveUsuario()
     suscripcionSinDatos()
     const user = userEvent.setup()
 
     const { router } = montarApp("/ganaderos")
-    await user.click(await screen.findByRole("button", { name: "Salir" }))
+    await user.click(await screen.findByRole("button", { name: "Cerrar sesión" }))
 
     expect(await screen.findByLabelText("Contraseña")).toBeInTheDocument()
     expect(router.state.location.pathname).toBe("/login")
@@ -296,14 +296,14 @@ describe("sesión persistente: login, caducidad en uso y salida manual", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/tramites"))
   })
 
-  it("M4: Salir y un 401 tardío en /login no dejan aviso de caducada para la siguiente visita", async () => {
+  it("M4: Cerrar sesión y un 401 tardío en /login no dejan aviso de caducada para la siguiente visita", async () => {
     sessionStorage.setItem(CLAVE, "tok-guardado")
     meDevuelveUsuario()
     suscripcionSinDatos()
     const user = userEvent.setup()
 
     const { router } = montarApp("/ganaderos")
-    await user.click(await screen.findByRole("button", { name: "Salir" }))
+    await user.click(await screen.findByRole("button", { name: "Cerrar sesión" }))
     expect(await screen.findByLabelText("Contraseña")).toBeInTheDocument()
 
     // Una petición lanzada antes de Salir responde 401 ahora, ya en /login (ruta pública).

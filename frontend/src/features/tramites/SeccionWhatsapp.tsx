@@ -63,11 +63,11 @@ export function SeccionWhatsapp({ whatsapp, panel, descarte, ahora = new Date() 
 
   return (
     <section aria-labelledby={idTitulo} data-seccion-whatsapp className="flex min-w-0 flex-col gap-3">
-      <h3 id={idTitulo} className="text-sm font-semibold text-muted-foreground">
+      <h3 id={idTitulo} className="text-sm font-bold text-muted-foreground">
         WhatsApp
       </h3>
       <p className="text-sm wrap-anywhere">
-        <span className="font-semibold">{whatsapp.destinatarioNombre}</span>
+        <span className="font-medium">{whatsapp.destinatarioNombre}</span>
         {" · "}
         <span className="tabular-nums">{whatsapp.telefonoEnmascarado}</span>
       </p>
@@ -84,7 +84,7 @@ export function SeccionWhatsapp({ whatsapp, panel, descarte, ahora = new Date() 
 
       {whatsapp.respuestas.length > 0 && (
         <div className="flex min-w-0 flex-col gap-2">
-          <h4 id={idHistorial} className="text-sm font-semibold text-muted-foreground">
+          <h4 id={idHistorial} className="text-sm font-bold text-muted-foreground">
             Respuestas por WhatsApp
           </h4>
           <ol aria-labelledby={idHistorial} className="flex min-w-0 flex-col gap-2">
@@ -230,7 +230,7 @@ function PanelRespuesta({
   const descritoPor = [panel.problema ? idPista : null, idContador].filter(Boolean).join(" ");
   return (
     <div data-panel-whatsapp className="flex min-w-0 flex-col gap-2 rounded-lg border bg-muted/50 p-3">
-      <label htmlFor={idCampo} className="text-sm font-semibold text-muted-foreground">
+      <label htmlFor={idCampo} className="text-sm font-medium text-muted-foreground">
         Respuesta
       </label>
       <Textarea
@@ -271,7 +271,7 @@ function PanelRespuesta({
       )}
       {preguntando && descarte ? (
         <div role="group" aria-labelledby={idPregunta} className="flex flex-wrap items-center gap-2">
-          <p id={idPregunta} className="mr-auto text-sm font-semibold">
+          <p id={idPregunta} className="mr-auto text-sm font-medium">
             {PREGUNTA_DESCARTAR_RESPUESTA}
           </p>
           <div className="flex flex-wrap items-center gap-2">

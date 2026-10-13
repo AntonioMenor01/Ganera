@@ -299,7 +299,7 @@ describe("FichaOvzPage: modos según el estado (D4)", () => {
     montar();
 
     const badge = await screen.findByText("Descartado");
-    expect(badge).toHaveClass("border-border");
+    expect(badge).toHaveClass("bg-neutral", "text-neutral-foreground");
     expect(badge).not.toHaveClass("bg-danger");
     expect(screen.queryByText("Rechazado")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Copiar/ })).not.toBeInTheDocument();

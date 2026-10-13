@@ -1114,8 +1114,39 @@ informes en `.superpowers/sdd/st-*`.
   «Prompt 3c» y fuera del filtro «until they can happen», y ningún texto habla de un botón de envío. Como mucho,
   renombrar «Prompt 3c» a «escalón 2 (modo asistido)» al corregir `CLAUDE.md`.
 
+### Diseño de Álvaro, fase 1 — en curso (2026-10-12; sin commit ni push)
+
+Plan aprobado: `docs/superpowers/plans/2026-10-12-diseno-alvaro-fase1.md` (prioridad 1, T1–T8, 4,0 días). Decisiones de
+Antonio: nombre y «Cerrar sesión» abajo en la barra lateral en escritorio y arriba a la derecha en móvil; «Guardar»
+secundario (solo «Aprobar» en rojo sólido); foco con el anillo actual, recto; «Abrir #N» solo si P1 cierra en 3,5 días.
+Referencias de diseño y capturas fuera del repo (`C:\Users\Antonio\Desktop\ganera-diseno\`,
+`C:\Users\Antonio\Desktop\capturas-ganera-diseno-fase1\`). Informes en `.superpowers/sdd/df-*`.
+Estado al cortar la sesión (2026-10-13, sin commit ni push):
+- **T1 hecha y revisada** (Aprobado con menores; `df-t1-report.md`, `df-t1-review.md`): `index.css` (Archivo `wdth.css`
+  local, `font-stretch: 90%`, `--radius: 0px`, rampas gris/rojo, par neutro, `--divisor`, `--shadow-lg`), pesos
+  700/500 en todo `src`, primitivos `components/ui` con la piel de v2, badge `outline` = par neutro. 976/976, build y
+  lint limpios; fuente latin 34,9 → 90,1 KB. Menor 1 arreglado por la sesión principal (tarjetas de
+  `GanaderoDetallePage` con `border border-border`). Menores abiertos: el banner de suscripción pierde su raya inferior
+  (mirarlo en el smoke de T8) y las cabeceras de tabla en mayúsculas con lector de pantalla (T8).
+- **T2 hecha y revisada** (2026-10-13; Aprobado con menores; `df-t2-report.md`, `df-t2-review.md`): barra lateral desde
+  `lg` con el usuario abajo, barra superior por debajo con el usuario arriba a la derecha, mismo DOM y orden de
+  tabulación, iconos lucide, `iniciales.ts` (NFC tras el menor 1), «Cerrar sesión». 987/987 en 46 ficheros, build y lint
+  limpios; navegador real a 375/768/1023/1024/1280/1440 sin scroll lateral. Abierto: nombre en 700 (brief) o 500 (plan).
+- **Briefs de T3–T7 escritos** (`df-t3-brief.md` … `df-t7-brief.md`), sin lanzar. Commit intermedio T1+T2 pendiente de
+  la aprobación de Antonio.
+- **Pendientes:** T3 login, T4 lista, T5 modal (incl. `scroll-mb-3` y el popup de `CampoExplotacion` con
+  `ring-foreground/10`), T6 ficha OVZ (sus `ring-foreground/10`), T7 «creados» + cabecera «Animales», T8 DESIGN.md +
+  smoke + informe final. Línea base del build antes de T1: CSS 57,5 KB, JS 662,7 KB, fuentes wght 34,9/32,6/13,2 KB.
+
 ### Pendientes técnicos
 
+- **Antes de la demo — tarjetas-fila de la cola en móvil** (fuera de la fase 1 del diseño por plazo, decisión de Antonio
+  2026-10-12): a 375 px la tabla de `TramitesPage` mide **1.099 px** y se ven **325** (30 %): número y tipo visibles,
+  estado cortado, explotación y crotales fuera sin pista de que hay más. Dejando cortar línea con CSS sigue en 680 px y
+  los badges se parten en tres líneas. Se puede abrir un trámite pero no triar la cola. Propuesta: por debajo de `md`, un
+  render alternativo en lista (`ul` de tarjetas-fila con #id + estado, tipo, REGA · nombre, crotales y avisos); en
+  jsdom sin `matchMedia` se sigue pintando la tabla, así que los tests actuales no cambian. Capturas en
+  `C:\Users\Antonio\Desktop\capturas-ganera-diseno-fase1\cola-375-*.png`. Estimación: se da al cerrar la fase 1.
 - **Antes de la demo — quitar el `UserDetailsService` por defecto** (visto en la prueba real de B2): al arrancar, Spring
   Boot imprime «Using generated security password: …» porque no hay ningún bean `UserDetailsService`/
   `AuthenticationProvider` y su `UserDetailsServiceAutoConfiguration` crea un `InMemoryUserDetailsManager` con un usuario

@@ -154,25 +154,61 @@ describe("AppLayout: barra de navegación", () => {
     }
   })
 
-  it("el email se muestra truncado con el email completo en title", async () => {
+  it("el nombre y el email se muestran truncados con el email completo en title", async () => {
     montarLayout("/tramites")
-    const email = await screen.findByText(EMAIL_LARGO)
+    const nombre = await screen.findByText("Ana")
+    expect(nombre).toHaveAttribute("title", EMAIL_LARGO)
+    // Visible en todos los tamaños, truncado: 96 px por debajo de md (cabe a 375 px), 160 px de md
+    // a lg y el ancho de la tarjeta de la barra lateral desde lg.
+    expect(nombre).toHaveClass("truncate", "min-w-0", "max-w-24", "md:max-w-40", "lg:max-w-none")
+    // Texto de interfaz: 500 en todos los tamaños (el 700 es para títulos).
+    expect(nombre).toHaveClass("font-medium")
+    expect(nombre.className).not.toMatch(/font-bold/)
+    const email = screen.getByText(EMAIL_LARGO)
     expect(email).toHaveAttribute("title", EMAIL_LARGO)
     expect(email).toHaveClass("truncate", "min-w-0")
-    // Oculto por debajo de md; desde md, con el ancho máximo calculado para 768 px (112 px).
-    expect(email).toHaveClass("hidden", "md:block", "md:max-w-28", "lg:max-w-xs")
+    // Oculto por debajo de md; desde md, debajo del nombre y truncado.
+    expect(email).toHaveClass("hidden", "md:block", "max-w-40", "lg:max-w-none")
+  })
+
+  it("las iniciales del usuario van en un cuadro decorativo (aria-hidden)", async () => {
+    montarLayout("/tramites")
+    await screen.findByText("Ana")
+    const cuadro = within(screen.getByRole("banner")).getByText("A")
+    expect(cuadro).toHaveAttribute("aria-hidden", "true")
+    expect(cuadro).toHaveClass("bg-rojo-100", "text-rojo-800", "size-8")
+  })
+
+  it("cada enlace lleva su icono decorativo y su nombre accesible es solo el texto", async () => {
+    montarLayout("/tramites")
+    const nav = await screen.findByRole("navigation", { name: "Principal" })
+    for (const nombre of ["Trámites", "Ganaderos", "Explotaciones"]) {
+      const enlace = within(nav).getByRole("link", { name: nombre })
+      const iconos = enlace.querySelectorAll("svg")
+      expect(iconos).toHaveLength(1)
+      expect(iconos[0]).toHaveAttribute("aria-hidden", "true")
+    }
+    // Iconos distintos: Trámites, Ganaderos, Explotaciones.
+    const clases = within(nav)
+      .getAllByRole("link")
+      .map((e) => e.querySelector("svg")?.getAttribute("class") ?? "")
+    expect(clases[0]).toContain("lucide-clipboard-list")
+    expect(clases[1]).toContain("lucide-users")
+    expect(clases[2]).toContain("lucide-warehouse")
   })
 
   it("la tira es la referencia de offsetLeft de sus enlaces (relative) y se desplaza por dentro", async () => {
     montarLayout("/tramites")
     const nav = await screen.findByRole("navigation", { name: "Principal" })
     expect(nav).toHaveClass("relative", "overflow-x-auto", "overscroll-x-contain", "scrollbar-oculta", "md:overflow-visible")
+    // Desde lg (barra lateral) la tira es una columna: no desborda en horizontal.
+    expect(nav).toHaveClass("lg:flex-col", "lg:overflow-x-visible", "lg:overflow-y-auto")
   })
 
-  it("orden de tabulación: los enlaces van antes que Salir", async () => {
+  it("orden de tabulación: los enlaces van antes que Cerrar sesión", async () => {
     montarLayout("/tramites")
     const nav = await screen.findByRole("navigation", { name: "Principal" })
-    const salir = screen.getByRole("button", { name: "Salir" })
+    const salir = screen.getByRole("button", { name: "Cerrar sesión" })
     const ultimoEnlace = within(nav).getByRole("link", { name: "Explotaciones" })
     expect(ultimoEnlace.compareDocumentPosition(salir) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })

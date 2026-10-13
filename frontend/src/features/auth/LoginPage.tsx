@@ -53,7 +53,7 @@ export function LoginPage() {
         <CardHeader>
           <LogoGanera decorativo className="mb-3 size-10 text-marca" />
           {/* Mismo aspecto que CardTitle, pero como h1: es el título de la pantalla. */}
-          <h1 data-slot="card-title" className="font-heading text-base leading-snug font-extrabold">
+          <h1 data-slot="card-title" className="font-heading text-base leading-snug font-bold">
             Ganera
           </h1>
           <CardDescription>Inicia sesión con tu cuenta de gestoría.</CardDescription>

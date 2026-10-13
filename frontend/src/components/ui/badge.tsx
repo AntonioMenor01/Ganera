@@ -5,7 +5,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const badgeVariants = cva(
-  "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-4xl border border-transparent px-2 py-0.5 text-xs font-semibold whitespace-nowrap transition-all focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3!",
+  "group/badge inline-flex h-6 w-fit shrink-0 items-center justify-center gap-1.5 overflow-hidden border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-all focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3.5!",
   {
     variants: {
       variant: {
@@ -17,8 +17,11 @@ const badgeVariants = cva(
         success: "bg-success text-success-foreground [a]:hover:bg-success/80",
         warning: "bg-warning text-warning-foreground [a]:hover:bg-warning/80",
         danger: "bg-danger text-danger-foreground [a]:hover:bg-danger/80",
-        outline:
-          "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground",
+        /* Par neutro (Gris 800 sobre Gris 200, 8,22:1): v2 no tiene badges de contorno para
+           estados. "neutral" es el mismo par con nombre explicito; "outline" se conserva porque
+           lo usan etiquetas.ts y las pantallas. */
+        outline: "bg-neutral text-neutral-foreground [a]:hover:bg-gris-300",
+        neutral: "bg-neutral text-neutral-foreground [a]:hover:bg-gris-300",
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-enlace underline-offset-4 hover:underline",

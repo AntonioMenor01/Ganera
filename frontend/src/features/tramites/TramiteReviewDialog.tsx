@@ -301,13 +301,13 @@ export function TramiteReviewDialog({
         // Móvil: pantalla completa. Desde md: modal ancho con el borde superior fijo (no centrado
         // en vertical: al aparecer un aviso o "Guarda antes de aprobar" crece hacia abajo, sin
         // mover lo que se está editando), cuerpo con scroll y cabecera y pie fijos.
-        className="top-0 left-0 flex h-dvh w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 ring-0 sm:max-w-none md:top-[8dvh] md:left-1/2 md:h-auto md:max-h-[84dvh] md:max-w-4xl md:-translate-x-1/2 md:rounded-xl md:ring-1"
+        className="top-0 left-0 flex h-dvh w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 sm:max-w-none md:top-[8dvh] md:left-1/2 md:h-auto md:max-h-[84dvh] md:max-w-4xl md:-translate-x-1/2 md:rounded-xl"
       >
         <header className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-b py-3 pr-12 pl-4">
           <DialogTitle
             ref={tituloRef}
             tabIndex={-1}
-            className="rounded-sm text-base font-semibold tabular-nums outline-none"
+            className="rounded-sm text-base font-bold tabular-nums outline-none"
           >
             Trámite #{idVisible}
           </DialogTitle>
@@ -569,7 +569,7 @@ function MensajeOriginal({
 }) {
   return (
     <section aria-labelledby={idTitulo} className={cn("flex min-w-0 flex-col gap-2", className)}>
-      <h3 id={idTitulo} className="text-sm font-semibold text-muted-foreground">
+      <h3 id={idTitulo} className="text-sm font-bold text-muted-foreground">
         Mensaje de WhatsApp
       </h3>
       {detalle.mensajeOriginal ? (
@@ -591,7 +591,7 @@ function FranjaHechoEnOvz({ detalle }: { detalle: TramiteDetalle }) {
       className="mb-4 flex items-start gap-2 rounded-lg bg-success px-3 py-2 text-sm text-success-foreground"
     >
       <CircleCheckIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-      <span className="font-semibold">{textoHechoEnOvz(detalle)}</span>
+      <span className="font-medium">{textoHechoEnOvz(detalle)}</span>
     </p>
   );
 }
@@ -614,7 +614,7 @@ function BandaDescartado({
       data-banda-descartado
       className="mb-4 flex flex-col gap-2 rounded-lg bg-muted px-3 py-2 text-sm sm:flex-row sm:items-center sm:gap-4"
     >
-      <p id={ids.banda} className="min-w-0 font-semibold">
+      <p id={ids.banda} className="min-w-0 font-medium">
         {textoBandaDescartado(detalle.historialDescarte)}
       </p>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:ml-auto sm:shrink-0">
@@ -670,7 +670,7 @@ function BotonAbrirFicha({ onClick, className }: { onClick: () => void; classNam
   );
 }
 
-const CLASE_ETIQUETA = "text-sm font-semibold text-muted-foreground";
+const CLASE_ETIQUETA = "text-sm font-medium text-muted-foreground";
 
 function Campo({
   etiqueta,
@@ -943,7 +943,7 @@ function BarraConfirmacion({
 }) {
   return (
     <div role="group" aria-labelledby={idPregunta} className="flex flex-wrap items-center gap-2">
-      <p id={idPregunta} className="mr-auto text-sm font-semibold">
+      <p id={idPregunta} className="mr-auto text-sm font-medium">
         {pregunta}
       </p>
       <div className="flex flex-wrap items-center gap-2">{children}</div>

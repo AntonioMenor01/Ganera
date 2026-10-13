@@ -45,8 +45,8 @@ describe("marca: el símbolo de Ganera aparece donde debe", () => {
     // El texto sigue siendo el nombre visible (y accesible) de la marca, y el punto ya no está.
     const logotipo = within(cabecera).getByText("GANERA")
     expect(logotipo).toBeInTheDocument()
-    // Logotipo en Tinta y 800; el rojo de marca es solo del símbolo.
-    expect(logotipo).toHaveClass("font-extrabold", "text-foreground")
+    // Logotipo en Tinta y 700; el rojo de marca es solo del símbolo.
+    expect(logotipo).toHaveClass("font-bold", "text-foreground")
     expect(logotipo).not.toHaveClass("text-primary")
     expect(cabecera.querySelector(".rounded-full")).toBeNull()
   })

@@ -165,7 +165,7 @@ describe("TramitesPage: etiquetas legibles", () => {
     )
     render(<TramitesPage />)
 
-    expect(await screen.findByText("PAUSADO")).toHaveClass("border-border")
+    expect(await screen.findByText("PAUSADO")).toHaveClass("bg-neutral", "text-neutral-foreground")
     expect(screen.getByText("TRASLADO_FERIA")).toBeInTheDocument()
   })
 })
@@ -694,7 +694,7 @@ describe("TramitesPage: crotal no encontrado e incompleto (completo, punto 5)", 
     const fila = (await screen.findByText("4321")).closest("li")!
     expect(within(fila).getByText("No está en el inventario · incompleto")).toHaveClass("bg-warning")
     const completoFila = screen.getByText("ES000000000004").closest("li")!
-    expect(within(completoFila).getByText("No está en el inventario")).toHaveClass("border-border")
+    expect(within(completoFila).getByText("No está en el inventario")).toHaveClass("bg-neutral", "text-neutral-foreground")
     expect(within(completoFila).queryByText(/incompleto/)).not.toBeInTheDocument()
   })
 
@@ -976,7 +976,7 @@ describe("TramitesPage: mensajes sin trámite (SIN_TRAMITE, A2: en la cola solo 
     render(<TramitesPage />)
     await screen.findByRole("button", { name: "Revisar trámite #1" })
     const descartado = within(celdas(1)[2]).getByText("Descartado")
-    expect(descartado).toHaveClass("border-border")
+    expect(descartado).toHaveClass("bg-neutral", "text-neutral-foreground")
     expect(descartado).not.toHaveClass("bg-danger")
     expect(celdas(1)[2]).toHaveTextContent(/^Descartado$/)
     expect(within(celdas(2)[2]).getByText("Rechazado")).toHaveClass("bg-danger")
