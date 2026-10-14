@@ -919,3 +919,34 @@ describe("FichaOvzPage: honestidad tras las acciones y con errores (M1)", () => 
     expect(document.body).not.toHaveTextContent(PROHIBIDAS_FICHA);
   });
 });
+
+describe("FichaOvzPage: piel (diseño fase 1)", () => {
+  it("cabecera con el divisor de 2 px, secciones como tarjetas rectas con borde y la cita sobre Fondo", async () => {
+    responderCon(() => HttpResponse.json(detalle()));
+    montar();
+    await screen.findByRole("heading", { level: 1 });
+
+    const cabecera = screen.getAllByRole("banner")[0];
+    expect(cabecera).toHaveClass("sticky", "bg-sidebar", "border-b-2", "border-divisor");
+    const seccion = screen.getByRole("region", { name: "Entrar en OVZ" });
+    expect(seccion).toHaveClass("bg-card", "border", "border-border");
+    expect(seccion.className).not.toMatch(/ring-foreground\/10|rounded/);
+    // «Copiar», secundario de 30 px.
+    expect(screen.getByRole("button", { name: "Copiar NIF del titular" })).toHaveClass("border-input", "h-[30px]");
+    const cita = screen.getByText("Se ha muerto la 1234 esta mañana").closest("blockquote");
+    expect(cita).toHaveClass("bg-background", "border", "border-border");
+    expect(cita).not.toHaveClass("bg-muted");
+  });
+
+  it("un descartado va en el par neutro", async () => {
+    responderCon(() => HttpResponse.json(detalle({ estado: "RECHAZADO", motivoRechazo: "SIN_TRAMITE" })));
+    montar();
+
+    const titulo = await screen.findByRole("heading", { level: 1, name: "Descartado como mensaje sin trámite" });
+    expect(titulo.parentElement).toHaveClass("bg-neutral", "text-neutral-foreground");
+    const pista = screen.getByText("Un mensaje descartado no se pasa a OVZ.");
+    expect(pista).not.toHaveClass("text-muted-foreground");
+    // Hereda el texto del par neutro de la banda (Gris 800 sobre Gris 200), no un gris propio.
+    expect(pista.closest(".bg-neutral")).toBe(titulo.parentElement);
+  });
+});

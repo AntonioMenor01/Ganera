@@ -22,17 +22,30 @@ function textoFilasConError(n: number): string {
   return plural(n, "fila con error", "filas con error");
 }
 
-function fraseHoja(titulo: string, hoja: ImportHojaResumen): string {
-  return `${titulo}: ${plural(hoja.creadas, "creada", "creadas")}, ${plural(hoja.actualizadas, "actualizada", "actualizadas")}.`;
+/** Género gramatical de cada hoja: «Explotaciones» es femenino; «Animales» y «Contactos», masculinos. */
+type Genero = "f" | "m";
+
+function textoCreadas(n: number, genero: Genero): string {
+  return genero === "f" ? plural(n, "creada", "creadas") : plural(n, "creado", "creados");
+}
+
+function textoActualizadas(n: number, genero: Genero): string {
+  return genero === "f"
+    ? plural(n, "actualizada", "actualizadas")
+    : plural(n, "actualizado", "actualizados");
+}
+
+function fraseHoja(titulo: string, hoja: ImportHojaResumen, genero: Genero): string {
+  return `${titulo}: ${textoCreadas(hoja.creadas, genero)}, ${textoActualizadas(hoja.actualizadas, genero)}.`;
 }
 
 /** Lo que se anuncia al terminar (WCAG 4.1.3): el resultado entero, no solo que terminó. */
 function fraseResumenImportacion(resumen: ImportResumen): string {
   const partes = [
     "Importación terminada.",
-    fraseHoja("Explotaciones", resumen.explotaciones),
-    fraseHoja("Animales", resumen.animales),
-    fraseHoja("Contactos", resumen.contactos),
+    fraseHoja("Explotaciones", resumen.explotaciones, "f"),
+    fraseHoja("Animales", resumen.animales, "m"),
+    fraseHoja("Contactos", resumen.contactos, "m"),
   ];
   if (resumen.errores.length > 0) partes.push(`${textoFilasConError(resumen.errores.length)}.`);
   return partes.join(" ");
@@ -107,13 +120,13 @@ export function ImportarExcelSection({ onImportado }: { onImportado: () => void 
         )}
 
         {resumen && (
-          <div data-testid="resumen-importacion" className="flex flex-col gap-3 rounded-lg border p-4">
+          <div data-testid="resumen-importacion" className="flex flex-col gap-3 border border-border p-4">
             <div className="flex flex-wrap gap-6 text-sm">
-              <ResumenHoja titulo="Explotaciones" resumen={resumen.explotaciones} />
-              <ResumenHoja titulo="Animales" resumen={resumen.animales} />
+              <ResumenHoja titulo="Explotaciones" resumen={resumen.explotaciones} genero="f" />
+              <ResumenHoja titulo="Animales" resumen={resumen.animales} genero="m" />
               {/* Siempre visible, también con 0/0/0: el frontend no distingue "sin hoja" de "hoja
                   vacía", y ocultarla sería justo el dato silencioso que H10 quiere evitar. */}
-              <ResumenHoja titulo="Contactos" resumen={resumen.contactos} />
+              <ResumenHoja titulo="Contactos" resumen={resumen.contactos} genero="m" />
             </div>
             {resumen.errores.length > 0 && (
               <div>
@@ -139,15 +152,23 @@ export function ImportarExcelSection({ onImportado }: { onImportado: () => void 
   );
 }
 
-function ResumenHoja({ titulo, resumen }: { titulo: string; resumen: ImportHojaResumen }) {
+function ResumenHoja({
+  titulo,
+  resumen,
+  genero,
+}: {
+  titulo: string;
+  resumen: ImportHojaResumen;
+  genero: Genero;
+}) {
   return (
     <div>
       <p className="font-bold">{titulo}</p>
       <p className="text-muted-foreground">
         {[
           plural(resumen.filasProcesadas, "fila", "filas"),
-          plural(resumen.creadas, "creada", "creadas"),
-          plural(resumen.actualizadas, "actualizada", "actualizadas"),
+          textoCreadas(resumen.creadas, genero),
+          textoActualizadas(resumen.actualizadas, genero),
         ].join(" · ")}
       </p>
     </div>

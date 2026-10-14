@@ -173,6 +173,24 @@ describe("ExplotacionesPage: móvil sin scroll lateral (I1)", () => {
     await screen.findByText("ES001")
     expect(cabeceras()).toEqual(["Código REGA", "Nombre", "Ganadero", "Animales"])
   })
+
+  it.each([false, true])(
+    "la cabecera «Animales» (desdeSm=%s) se llama «Animales» y es visible solo desde sm, sin duplicar el texto",
+    async (desdeSm) => {
+      simularAncho(desdeSm)
+      server.use(http.get(apiUrl("/explotaciones"), () => listado([1])))
+      montar()
+      await screen.findByText("ES001")
+
+      const cabecera = screen.getByRole("columnheader", { name: "Animales" })
+      expect(cabecera).toHaveTextContent(/^Animales$/)
+      expect(within(cabecera).getAllByText("Animales")).toHaveLength(1)
+      // jsdom no aplica media queries: se comprueban las clases (oculta por debajo de sm, visible desde sm).
+      expect(within(cabecera).getByText("Animales")).toHaveClass("sr-only", "sm:not-sr-only")
+      // Alineada a la derecha, como los botones «Ver animales» de su columna.
+      expect(cabecera).toHaveClass("text-right")
+    },
+  )
 })
 
 describe("ExplotacionesPage: recargar el listado pliega los paneles (m4)", () => {

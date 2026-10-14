@@ -81,7 +81,7 @@ export function AvisosRevision({
 
       <div role="status" className="empty:hidden">
         {exito && (
-          <div className="relative flex items-start gap-2 rounded-lg bg-success py-2 pr-12 pl-2.5 text-sm text-success-foreground">
+          <div className="relative flex items-start gap-2 bg-success py-2 pr-12 pl-2.5 text-sm text-success-foreground">
             <CircleCheckIcon aria-hidden className="mt-0.5 size-4 shrink-0" />
             <p>{exito.mensaje}</p>
             <div className="absolute top-1 right-1">
@@ -134,7 +134,7 @@ function AvisoExtraccion({ texto, tono }: { texto: string; tono: "aviso" | "neut
   return (
     <div
       data-aviso-extraccion
-      className="flex items-start gap-2 rounded-lg bg-warning px-2.5 py-2 text-sm text-warning-foreground"
+      className="flex items-start gap-2 bg-warning px-2.5 py-2 text-sm text-warning-foreground"
     >
       <TriangleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0" />
       <p>{texto}</p>

@@ -116,11 +116,11 @@ export function CampoExplotacion({
           placeholder={placeholder}
           autoComplete="off"
           spellCheck={false}
-          className="h-8 w-full min-w-0 rounded-lg border border-input bg-transparent py-1 pr-9 pl-2.5 text-base tabular-nums transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+          className="h-10 w-full min-w-0 border border-input bg-card py-1 pr-9 pl-2.5 text-base tabular-nums transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
         />
         <Combobox.Trigger
           aria-label="Abrir la lista de explotaciones"
-          className="absolute top-0 right-0 flex h-8 w-8 items-center justify-center rounded-r-lg text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring disabled:opacity-50"
+          className="absolute top-0 right-0 flex h-10 w-8 items-center justify-center text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring disabled:opacity-50"
         >
           <ChevronDownIcon className="size-4" aria-hidden />
         </Combobox.Trigger>
@@ -128,7 +128,7 @@ export function CampoExplotacion({
 
       <Combobox.Portal>
         <Combobox.Positioner sideOffset={4} className="isolate z-50 outline-none">
-          <Combobox.Popup className="w-(--anchor-width) max-w-(--available-width) origin-(--transform-origin) overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0">
+          <Combobox.Popup className="w-(--anchor-width) max-w-(--available-width) origin-(--transform-origin) overflow-hidden border border-border bg-popover text-popover-foreground shadow-md duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0">
             {/* Solo con la búsqueda terminada: mientras busca o si falla, "ninguna coincide" no es cierto. */}
             <Combobox.Empty className="px-3 py-2 text-sm text-muted-foreground empty:hidden">
               {busqueda.estado === "lista" ? "Ninguna explotación coincide con lo que has escrito." : null}

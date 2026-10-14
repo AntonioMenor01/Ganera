@@ -1132,8 +1132,38 @@ Estado al cortar la sesión (2026-10-13, sin commit ni push):
   `lg` con el usuario abajo, barra superior por debajo con el usuario arriba a la derecha, mismo DOM y orden de
   tabulación, iconos lucide, `iniciales.ts` (NFC tras el menor 1), «Cerrar sesión». 987/987 en 46 ficheros, build y lint
   limpios; navegador real a 375/768/1023/1024/1280/1440 sin scroll lateral. Abierto: nombre en 700 (brief) o 500 (plan).
-- **Briefs de T3–T7 escritos** (`df-t3-brief.md` … `df-t7-brief.md`), sin lanzar. Commit intermedio T1+T2 pendiente de
-  la aprobación de Antonio.
+- **Commit intermedio T1+T2: `5c157a9`** (2026-10-13, aprobado por Antonio; nombre de la barra lateral en 500), con push.
+- **T3 hecha y revisada** (Aprobado con menores; `df-t3-report.md`, `df-t3-review.md`), sin commitear: login con panel
+  Rojo 600 desde `lg`, banda roja en móvil, h1 «Entrar en Ganera», campos de 44 px con icono. 990 en 46 ficheros.
+  Menores como nota: el test de `aria-hidden` de los iconos no caza su retirada (lucide lo pone por defecto); dos
+  símbolos juntos por debajo de `lg` (opción de diseño); `DESIGN.md` del login → T8.
+- **T4 hecha y revisada** (Aprobado con menores; `df-t4-report.md`, `df-t4-review.md`), sin commitear: iconos por tipo y
+  estado en `etiquetas.ts` (TDD), `IconoTramite.tsx`, badge de estado con icono (también en modal y ficha), piel de la
+  tabla. 1035 en 46. Dos selectores de `TramitesPage.test.tsx` → `svg:not([data-icono])` (equivalente exacto).
+- **T5 hecha y revisada** (Aprobado con menores; `df-t5-report.md`, `df-t5-review.md`), sin commitear: piel del modal,
+  «Rechazar» `destructive`, pies blancos con raya de 2 px, bandas rectas con sus pares, `scroll-mb-3` + `scroll-pb-3`
+  (cierra el pendiente B2 T3c del anillo de la alerta de WhatsApp). Nuevo `TramiteReviewDialog.piel.test.tsx` (9).
+  Pregunta abierta para Antonio: «Enviar por WhatsApp» sigue en rojo sólido (de B2).
+- **T6 hecha y revisada** (Aprobado con menores; `df-t6-report.md`, `df-t6-review.md`), sin commitear: piel de la ficha OVZ
+  (cabecera con divisor 2 px, tarjetas rectas, cita sobre Fondo, pares neutros), sin tocar tests existentes; 1046 en 47.
+- **T7 hecha y revisada** (Aprobado con menores; `df-t7-report.md`, `df-t7-review.md`), sin commitear: «creados/
+  actualizados» en Animales y Contactos (frase anunciada y visible), cabecera «Animales» visible desde `sm` y a la
+  derecha, contenedores rectos. 1052 en 47.
+- **T8 hecha y revisada** (Aprobado con menores; `df-t8-report.md`, `df-t8-review.md`), sin commitear: `DESIGN.md` y el
+  brief del shell al día; smoke Chromium + Firefox a 1440/1024/768/375 en 12 pantallas sin scroll lateral y con axe a 0;
+  cabeceras en mayúsculas solo por CSS; Tab en el modal ≥ 16 px del pie. Popup del `Select` a `shadow-md`. Suites:
+  frontend 1052 en 47, backend 968 (967 + 1 omitido). Build: CSS 60,9 KB, JS 669,8 KB, fuentes 90,1/86,2/34,5 KB.
+- **Decisiones de Antonio (2026-10-14), aplicadas con TDD:** raya del banner opción A (`CLASE_BANNER` =
+  `rounded-none border-x-0 border-t-0 border-b-2 border-b-divisor` en los cinco `<Alert>` de `SuscripcionBanner.tsx`,
+  `it.each` en su test, verificado en Chromium y Firefox a 1440/375: 2 px sólido); «Enviar por WhatsApp» pasa a
+  `outline` (test en `.piel`: con el panel abierto, el único `bg-primary` es «Aprobar»). `DESIGN.md` al día. Frontend
+  **1058 en 47** (987 en `5c157a9` + 71), build y lint limpios. «Abrir #N» (P2) no entró. Tarjetas-fila en móvil:
+  estimación ~1 día (render alternativo por debajo de `md`, TDD, revisión y smoke), tarea propia antes de la demo.
+- **Incidente (2026-10-14) y lección:** `npx vitest list --json <ruta>` toma `<ruta>` como **fichero de salida**: al
+  contar tests sobrescribió `LoginPage.test.tsx` (de T3, sin commitear) con el JSON. Recuperado desde el `git diff` que
+  el revisor de T3 dejó en su transcripción, aplicado sobre `5c157a9`; diff idéntico byte a byte al revisado y 6/6 en
+  verde. Ningún otro fichero tocado. Para contar tests por fichero: `npx vitest run <fichero>` y leer «Tests … (N)»;
+  nunca `--json` con una ruta del repo. `--reporter=json` también escribe en `frontend/.vitest/` (borrado).
 - **Pendientes:** T3 login, T4 lista, T5 modal (incl. `scroll-mb-3` y el popup de `CampoExplotacion` con
   `ring-foreground/10`), T6 ficha OVZ (sus `ring-foreground/10`), T7 «creados» + cabecera «Animales», T8 DESIGN.md +
   smoke + informe final. Línea base del build antes de T1: CSS 57,5 KB, JS 662,7 KB, fuentes wght 34,9/32,6/13,2 KB.

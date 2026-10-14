@@ -19,6 +19,10 @@ const MENSAJES_AVISO: Record<string, string> = {
 const MENSAJE_SIN_SUSCRIPCION =
   "Todavía no tienes una suscripción activa. Ponte en contacto con Ganera para activarla.";
 
+/** Banda a todo el ancho, recta, separada del contenido por la raya divisora de 2 px (diseño fase 1): sin
+ * ella, los bloqueantes (fondo Rojo 100 y borde transparente) casi no se distinguían del Fondo. */
+const CLASE_BANNER = "rounded-none border-x-0 border-t-0 border-b-2 border-b-divisor";
+
 const TITULO_BLOQUEANTE = "No puedes aprobar trámites ahora mismo";
 
 /** Persistente en el layout: null en estado significa "nunca tuvo Suscripcion" (mismo tratamiento
@@ -35,7 +39,7 @@ export function SuscripcionBanner({ suscripcion }: { suscripcion: SuscripcionEst
   // Sin el estado no se sabe si se puede aprobar: se dice, en vez de no enseñar nada.
   if (error) {
     return (
-      <Alert variant="destructive" className="rounded-none border-x-0 border-t-0">
+      <Alert variant="destructive" className={CLASE_BANNER}>
         <TriangleAlertIcon />
         <AlertTitle>No se ha podido comprobar tu suscripción</AlertTitle>
         <AlertDescription>{mensajeDeError(error, "suscripcion")}</AlertDescription>
@@ -50,7 +54,7 @@ export function SuscripcionBanner({ suscripcion }: { suscripcion: SuscripcionEst
 
   if (estado === null) {
     return (
-      <Alert variant="destructive" className="rounded-none border-x-0 border-t-0">
+      <Alert variant="destructive" className={CLASE_BANNER}>
         <TriangleAlertIcon />
         <AlertTitle>{TITULO_BLOQUEANTE}</AlertTitle>
         <AlertDescription>{MENSAJE_SIN_SUSCRIPCION}</AlertDescription>
@@ -61,7 +65,7 @@ export function SuscripcionBanner({ suscripcion }: { suscripcion: SuscripcionEst
   const mensajeBloqueante = MENSAJES_BLOQUEANTES[estado.estado];
   if (mensajeBloqueante) {
     return (
-      <Alert variant="destructive" className="rounded-none border-x-0 border-t-0">
+      <Alert variant="destructive" className={CLASE_BANNER}>
         <TriangleAlertIcon />
         <AlertTitle>{TITULO_BLOQUEANTE}</AlertTitle>
         <AlertDescription>{mensajeBloqueante}</AlertDescription>
@@ -72,7 +76,7 @@ export function SuscripcionBanner({ suscripcion }: { suscripcion: SuscripcionEst
   const mensajeAviso = MENSAJES_AVISO[estado.estado];
   if (mensajeAviso) {
     return (
-      <Alert className="rounded-none border-x-0 border-t-0">
+      <Alert className={CLASE_BANNER}>
         <TriangleAlertIcon />
         <AlertTitle>Aviso de pago</AlertTitle>
         <AlertDescription>{mensajeAviso}</AlertDescription>

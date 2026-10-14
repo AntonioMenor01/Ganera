@@ -44,7 +44,7 @@ export function BadgeSinGuardar() {
 export function CrotalesSoloLectura({ crotales }: { crotales: readonly TramiteCrotal[] }) {
   if (crotales.length === 0) return <p className="text-muted-foreground">Sin crotales.</p>;
   return (
-    <ul aria-label="Crotales" className="flex flex-col divide-y">
+    <ul aria-label="Crotales" className="flex flex-col divide-y divide-border">
       {crotales.map((crotal, indice) => (
         <li
           key={`${indice}-${crotal.crotalIndicado}`}
@@ -113,13 +113,13 @@ export function ListaCrotalesEditable({
         // va en su columna. En móvil: campo + quitar en la primera línea y el badge siempre debajo.
         <ul
           aria-label="Crotales"
-          className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-2 sm:grid-cols-[minmax(0,1fr)_minmax(11rem,auto)_auto]"
+          className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-0 divide-y divide-border sm:grid-cols-[minmax(0,1fr)_minmax(11rem,auto)_auto]"
         >
           {valores.map((valor, indice) => {
             const guardado = explotacionCambiada ? null : guardadoDe(valor, guardados);
             const nombre = valor.trim() || `${indice + 1} (vacío)`;
             return (
-              <li key={indice} className="col-span-full grid grid-cols-subgrid items-center gap-y-1">
+              <li key={indice} className="col-span-full grid grid-cols-subgrid items-center gap-y-1 py-2 first:pt-0 last:pb-0">
                 <Input
                   ref={(el) => {
                     campos.current[indice] = el;
@@ -131,7 +131,7 @@ export function ListaCrotalesEditable({
                   autoComplete="off"
                   spellCheck={false}
                   placeholder="Últimos dígitos o crotal completo"
-                  className="col-start-1 row-start-1 min-w-0 tabular-nums"
+                  className="col-start-1 row-start-1 h-10 min-w-0 font-medium tabular-nums"
                 />
                 <span className="col-start-1 row-start-2 justify-self-start sm:col-start-2 sm:row-start-1">
                   {guardado ? <BadgeResolucionCrotal crotal={guardado} /> : <BadgeSinGuardar />}

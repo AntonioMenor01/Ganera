@@ -305,7 +305,7 @@ describe("TramiteReviewDialog: composición (mesa de cotejo)", () => {
     const mensaje = within(dialogo).getByRole("region", { name: "Mensaje de WhatsApp" })
     const datos = within(dialogo).getByRole("region", { name: "Datos del trámite" })
     expect(mensaje.querySelector("blockquote")).toHaveTextContent("alta del 1234")
-    expect(mensaje.querySelector("blockquote")).toHaveClass("bg-muted")
+    expect(mensaje.querySelector("blockquote")).toHaveClass("bg-background", "border-border")
     // Mismo contenedor, mensaje antes que datos en el DOM: arriba en móvil, izquierda en escritorio.
     const columnas = mensaje.parentElement!
     expect(columnas).toBe(datos.parentElement)
@@ -331,7 +331,9 @@ describe("TramiteReviewDialog: composición (mesa de cotejo)", () => {
     // jsdom no calcula layout: se comprueba la estructura de clases.
     expect(dialogo).toHaveClass("top-0", "left-0", "h-dvh", "w-full", "max-w-none", "rounded-none", "flex-col")
     // Finish review #2: arriba fijo (no centrado), para que el panel no salte al crecer.
-    expect(dialogo).toHaveClass("md:max-w-4xl", "md:h-auto", "md:rounded-xl", "md:top-[8dvh]", "md:max-h-[84dvh]")
+    expect(dialogo).toHaveClass("md:max-w-4xl", "md:h-auto", "md:top-[8dvh]", "md:max-h-[84dvh]")
+    // Diseño fase 1: panel recto también desde md.
+    expect(dialogo).not.toHaveClass("md:rounded-xl")
     expect(dialogo).not.toHaveClass("md:top-1/2")
     expect(dialogo).not.toHaveClass("md:-translate-y-1/2")
     expect(dialogo).not.toHaveClass("grid")

@@ -119,7 +119,7 @@ function AvisoAmbar({ texto }: { texto: string }) {
   return (
     <div
       data-aviso-whatsapp
-      className="flex items-start gap-2 rounded-lg bg-warning px-2.5 py-2 text-sm text-warning-foreground"
+      className="flex items-start gap-2 bg-warning px-2.5 py-2 text-sm text-warning-foreground"
     >
       <TriangleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0" />
       <p className="min-w-0 wrap-anywhere">{texto}</p>
@@ -132,7 +132,7 @@ function FilaRespuesta({ respuesta }: { respuesta: RespuestaWhatsapp }) {
   const fecha = fechaHoraMadrid(respuesta.enviadoEn);
   const quien = respuesta.enviadoPorNombre?.trim();
   return (
-    <li className="flex min-w-0 flex-col gap-1 rounded-lg border px-3 py-2">
+    <li className="flex min-w-0 flex-col gap-1 border border-border px-3 py-2">
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
         <span className="tabular-nums">{fecha ?? "—"}</span>
         {quien && (
@@ -229,7 +229,7 @@ function PanelRespuesta({
   const largo = panel.texto.length > MAX_CARACTERES;
   const descritoPor = [panel.problema ? idPista : null, idContador].filter(Boolean).join(" ");
   return (
-    <div data-panel-whatsapp className="flex min-w-0 flex-col gap-2 rounded-lg border bg-muted/50 p-3">
+    <div data-panel-whatsapp className="flex min-w-0 flex-col gap-2 border border-border bg-background p-3">
       <label htmlFor={idCampo} className="text-sm font-medium text-muted-foreground">
         Respuesta
       </label>
@@ -242,7 +242,6 @@ function PanelRespuesta({
         disabled={panel.enviando}
         aria-invalid={largo || undefined}
         aria-describedby={descritoPor}
-        className="bg-background"
       />
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 text-sm text-muted-foreground">
         <p id={idPista} className="min-w-0">
@@ -258,7 +257,7 @@ function PanelRespuesta({
           tabIndex={-1}
           variant="destructive"
           data-error-whatsapp={panel.error.tipo}
-          className="outline-none focus-visible:ring-3 focus-visible:ring-ring"
+          className="scroll-mb-3 outline-none focus-visible:ring-3 focus-visible:ring-ring"
         >
           <CircleAlertIcon />
           <AlertTitle>
@@ -288,7 +287,9 @@ function PanelRespuesta({
           <Button variant="outline" onClick={panel.cancelar} disabled={panel.enviando}>
             Cancelar
           </Button>
+          {/* Secundario (diseño fase 1): en el modal, el único rojo sólido es «Aprobar». */}
           <Button
+            variant="outline"
             onClick={() => void panel.enviar()}
             // Mientras se envía no se desactiva de verdad: un botón `disabled` con el foco lo tira a
             // `body` (N2). Queda aria-disabled, con el mismo aspecto, y el clic no hace nada (la guarda

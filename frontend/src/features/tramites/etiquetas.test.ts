@@ -15,6 +15,8 @@ import {
   presentacionEstado,
   presentacionEstadoTramite,
   esDescartado,
+  iconoEstadoTramite,
+  iconoTipoTramite,
   presentacionCrotal,
   presentacionResolucion,
   presentacionRespuestaWhatsapp,
@@ -411,5 +413,62 @@ describe("presentacionEstadoTramite: «Descartado» (SIN_TRAMITE)", () => {
       etiqueta: "PAUSADO",
       variante: "outline",
     })
+  })
+})
+
+describe("iconoTipoTramite (diseño de Álvaro, fase 1, T4)", () => {
+  it.each([
+    ["ALTA_NACIMIENTO", "log-in"],
+    ["BAJA_MUERTE", "log-out"],
+    ["SOLICITUD_MOVIMIENTO", "truck"],
+    ["CONFIRMACION_MOVIMIENTO", "arrow-down-to-line"],
+    ["DECLARACION_CENSO", "list-ordered"],
+    ["DEMORA_CROTALIZACION", "tag"],
+  ])("%s → %s", (tipo, icono) => {
+    expect(iconoTipoTramite(tipo)).toBe(icono)
+  })
+
+  it("cada tipo de TIPOS_TRAMITE tiene icono (si se añade un tipo, hay que darle uno)", () => {
+    for (const tipo of Object.keys(TIPOS_TRAMITE)) expect(iconoTipoTramite(tipo)).not.toBeNull()
+  })
+
+  it.each([null, undefined, "", "   ", "ALTA", "TRASLADO_FERIA", "toString", "constructor"])(
+    "%j no tiene icono",
+    (tipo) => {
+      expect(iconoTipoTramite(tipo)).toBeNull()
+    },
+  )
+})
+
+describe("iconoEstadoTramite (diseño de Álvaro, fase 1, T4)", () => {
+  it.each([
+    ["PENDIENTE_EXTRACCION", "sparkles"],
+    ["PENDIENTE_REVISION", "eye"],
+    ["APROBADO", "check"],
+    ["HECHO_EN_OVZ", "circle-check"],
+    ["RECHAZADO", "x"],
+  ])("%s → %s", (estado, icono) => {
+    expect(iconoEstadoTramite({ estado })).toBe(icono)
+  })
+
+  it("un descartado (RECHAZADO + SIN_TRAMITE) lleva «archive», no la «x» del rechazado", () => {
+    expect(iconoEstadoTramite({ estado: "RECHAZADO", motivoRechazo: "SIN_TRAMITE" })).toBe("archive")
+  })
+
+  it("RECHAZADO con otro motivo o sin motivo sigue con la «x»", () => {
+    expect(iconoEstadoTramite({ estado: "RECHAZADO", motivoRechazo: "OTRO" })).toBe("x")
+    expect(iconoEstadoTramite({ estado: "RECHAZADO", motivoRechazo: null })).toBe("x")
+  })
+
+  it("SIN_TRAMITE en un estado que no es RECHAZADO no es descartado", () => {
+    expect(iconoEstadoTramite({ estado: "PENDIENTE_REVISION", motivoRechazo: "SIN_TRAMITE" })).toBe("eye")
+  })
+
+  it.each(["EN_PROCESO", "EJECUTADO_OVZ", "ERROR_OVZ"])("el reservado %s no lleva icono", (estado) => {
+    expect(iconoEstadoTramite({ estado })).toBeNull()
+  })
+
+  it.each(["PAUSADO", "", "toString", "constructor"])("el desconocido %j no lleva icono", (estado) => {
+    expect(iconoEstadoTramite({ estado })).toBeNull()
   })
 })

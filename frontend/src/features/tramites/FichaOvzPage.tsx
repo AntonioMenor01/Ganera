@@ -280,7 +280,7 @@ export function FichaOvzPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <header className="sticky top-0 z-10 border-b border-sidebar-border bg-sidebar px-4 py-2.5 text-sidebar-foreground">
+      <header className="sticky top-0 z-10 border-b-2 border-divisor bg-sidebar px-4 py-2.5 text-sidebar-foreground">
         <div className="mx-auto flex w-full max-w-xl items-center gap-2">
           <LogoGanera decorativo className="size-5 text-marca" />
           <span className="text-sm font-bold text-foreground">Ficha para OVZ</span>
@@ -341,20 +341,20 @@ function FichaCargando() {
     <div role="status" className="flex flex-col gap-5">
       <span className="sr-only">Cargando la ficha…</span>
       <div aria-hidden="true" className="flex flex-col gap-2">
-        <div className="h-6 w-48 max-w-full rounded-sm bg-muted motion-safe:animate-pulse" />
-        <div className="h-4 w-64 max-w-full rounded-sm bg-muted motion-safe:animate-pulse" />
+        <div className="h-6 w-48 max-w-full bg-muted motion-safe:animate-pulse" />
+        <div className="h-4 w-64 max-w-full bg-muted motion-safe:animate-pulse" />
       </div>
-      <div aria-hidden="true" className="h-48 rounded-xl bg-card ring-1 ring-foreground/10" />
+      <div aria-hidden="true" className="h-48 border border-border bg-card" />
     </div>
   );
 }
 
 /** Estados sin ficha: título, una frase y la vuelta a la cola (patrón "Not found" de DESIGN.md). */
-function SinFicha({ titulo, texto }: { titulo: string; texto: string }) {
+function SinFicha({ titulo, texto, neutro = false }: { titulo: string; texto: string; neutro?: boolean }) {
   return (
-    <div className="flex flex-col gap-1">
+    <div className={cn("flex flex-col gap-1", neutro && "bg-neutral px-4 py-3 text-neutral-foreground")}>
       <h1 className="text-xl font-bold">{titulo}</h1>
-      <p className="text-sm text-muted-foreground">{texto}</p>
+      <p className={cn("text-sm", neutro ? "text-neutral-foreground" : "text-muted-foreground")}>{texto}</p>
       <Link to="/tramites" className={cn("mt-2 w-fit", CLASE_ENLACE)}>
         Volver a trámites
       </Link>
@@ -378,7 +378,7 @@ function Contenido({ detalle, accion }: { detalle: TramiteDetalle; accion: Props
   const modo = modoFicha(detalle.estado);
   if (modo === "rechazado") {
     if (esDescartado(detalle)) {
-      return <SinFicha titulo={TITULO_FICHA_DESCARTADO} texto={TEXTO_FICHA_DESCARTADO} />;
+      return <SinFicha titulo={TITULO_FICHA_DESCARTADO} texto={TEXTO_FICHA_DESCARTADO} neutro />;
     }
     return <SinFicha titulo="Trámite rechazado" texto="Un trámite rechazado no se pasa a OVZ." />;
   }
@@ -454,8 +454,8 @@ function Ficha({
   return (
     <>
       {!copiable && (
-        <p className="flex items-start gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-foreground">
-          <EyeIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <p className="flex items-start gap-2 bg-neutral px-3 py-2 text-sm text-neutral-foreground">
+          <EyeIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
           <span>Vista previa: aprueba el trámite antes de pasarlo a OVZ.</span>
         </p>
       )}
@@ -542,7 +542,7 @@ function BloqueMarcar({ accion }: { accion: PropsAccionHecho }) {
   const marcarRef = useRef<HTMLButtonElement | null>(null);
   useFocoPedido(accion, "marcar", marcarRef);
   return (
-    <div className="flex flex-col gap-3 border-t pt-4">
+    <div className="flex flex-col gap-3 border-t-2 border-divisor pt-4">
       <AvisoAccionHecho accion={accion} />
       <div className="flex flex-col items-start gap-1.5">
         <Button ref={marcarRef} onClick={accion.onMarcar} disabled={accion.enviando !== null} aria-describedby={idPista}>
@@ -598,7 +598,7 @@ function FranjaHecho({ detalle, accion }: { detalle: TramiteDetalle; accion: Pro
         ref={franjaRef}
         tabIndex={-1}
         data-franja-hecho-en-ovz
-        className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-success px-3 py-2 text-sm text-success-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring"
+        className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-success px-3 py-2 text-sm text-success-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring"
       >
         <span className="flex min-w-0 flex-1 basis-56 items-start gap-2">
           <CircleCheckIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
@@ -621,7 +621,7 @@ function FranjaHecho({ detalle, accion }: { detalle: TramiteDetalle; accion: Pro
           role="group"
           aria-labelledby={idPregunta}
           onKeyDown={alPulsarTecla}
-          className="flex flex-wrap items-center gap-2 rounded-lg bg-muted px-3 py-2"
+          className="flex flex-wrap items-center gap-2 bg-neutral px-3 py-2 text-neutral-foreground"
         >
           <p id={idPregunta} className="mr-auto text-sm font-medium">
             {PREGUNTA_QUITAR_MARCA}
@@ -679,7 +679,7 @@ function Mensaje({ texto }: { texto: string }) {
       </Button>
       <div id={idPanel} hidden={!abierto}>
         {abierto && (
-          <blockquote className="rounded-lg bg-muted px-3 py-2 text-sm whitespace-pre-wrap break-words">
+          <blockquote className="border border-border bg-background px-3 py-2 text-sm whitespace-pre-wrap break-words">
             {texto}
           </blockquote>
         )}
@@ -704,13 +704,13 @@ function Seccion({
 }) {
   const idTitulo = useId();
   return (
-    <section aria-labelledby={idTitulo} className="rounded-xl bg-card ring-1 ring-foreground/10">
-      <header className="border-b px-4 py-3">
+    <section aria-labelledby={idTitulo} className="border border-border bg-card">
+      <header className="border-b border-border px-4 py-3">
         <h2 id={idTitulo} className="text-base font-bold">
           {bloque.titulo}
         </h2>
       </header>
-      <dl className="divide-y px-4">
+      <dl className="divide-y divide-border px-4">
         {bloque.campos.map((campo) => (
           <Fila
             key={campo.id}

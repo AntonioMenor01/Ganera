@@ -51,18 +51,23 @@ describe("marca: el símbolo de Ganera aparece donde debe", () => {
     expect(cabecera.querySelector(".rounded-full")).toBeNull()
   })
 
-  it("/login: símbolo encima del título de la tarjeta", async () => {
+  it("/login: símbolo encima del título del formulario y símbolo blanco en el panel rojo", async () => {
     const { container } = montarApp("/login")
 
     await screen.findByText("Inicia sesión con tu cuenta de gestoría.")
     const logos = logosDe(container)
-    expect(logos).toHaveLength(1)
-    const [logo] = logos
-    expect(logo).toHaveClass("logo-ganera", "text-marca")
-    // Decorativo: el título visible "Ganera" ya da el nombre; no se lee dos veces.
-    expect(logo).toHaveAttribute("aria-hidden", "true")
-    const titulo = screen.getByText("Ganera")
-    expect(logo.nextElementSibling).toBe(titulo)
+    expect(logos).toHaveLength(2)
+    const [logoPanel, logoFormulario] = logos
+    // Panel rojo: decorativo (al lado está el texto «GANERA») y en blanco sobre Rojo 600.
+    expect(logoPanel).toHaveClass("logo-ganera", "text-primary-foreground")
+    expect(logoPanel).not.toHaveClass("text-marca")
+    expect(logoPanel).toHaveAttribute("aria-hidden", "true")
+    expect(logoPanel.closest('[data-slot="login-panel"]')).toHaveClass("bg-primary")
+    // Formulario: en marca, decorativo (el título visible ya da el nombre) y justo encima del título.
+    expect(logoFormulario).toHaveClass("logo-ganera", "text-marca")
+    expect(logoFormulario).toHaveAttribute("aria-hidden", "true")
+    const titulo = screen.getByRole("heading", { level: 1, name: "Entrar en Ganera" })
+    expect(logoFormulario.nextElementSibling).toBe(titulo)
   })
 })
 

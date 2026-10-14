@@ -132,15 +132,16 @@ export function ExplotacionesPage() {
         </Alert>
       )}
 
-      <div className="rounded-xl border bg-card">
+      <div className="border border-border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Código REGA</TableHead>
               {desdeSm && <TableHead>Nombre</TableHead>}
               <TableHead>Ganadero</TableHead>
-              <TableHead id={ID_CABECERA_ANIMALES}>
-                <span className="sr-only">Animales</span>
+              <TableHead id={ID_CABECERA_ANIMALES} className="text-right">
+                {/* Visible desde sm; por debajo, solo para el lector de pantalla (falta sitio). */}
+                <span className="sr-only sm:not-sr-only">Animales</span>
               </TableHead>
             </TableRow>
           </TableHeader>

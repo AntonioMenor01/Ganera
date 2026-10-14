@@ -301,9 +301,9 @@ export function TramiteReviewDialog({
         // Móvil: pantalla completa. Desde md: modal ancho con el borde superior fijo (no centrado
         // en vertical: al aparecer un aviso o "Guarda antes de aprobar" crece hacia abajo, sin
         // mover lo que se está editando), cuerpo con scroll y cabecera y pie fijos.
-        className="top-0 left-0 flex h-dvh w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 sm:max-w-none md:top-[8dvh] md:left-1/2 md:h-auto md:max-h-[84dvh] md:max-w-4xl md:-translate-x-1/2 md:rounded-xl"
+        className="top-0 left-0 flex h-dvh w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 sm:max-w-none md:top-[8dvh] md:left-1/2 md:h-auto md:max-h-[84dvh] md:max-w-4xl md:-translate-x-1/2"
       >
-        <header className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-b py-3 pr-12 pl-4">
+        <header className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-b-2 border-divisor py-3 pr-12 pl-4">
           <DialogTitle
             ref={tituloRef}
             tabIndex={-1}
@@ -314,7 +314,10 @@ export function TramiteReviewDialog({
           {detalle && <BadgeEstadoTramite estado={detalle.estado} motivoRechazo={detalle.motivoRechazo} />}
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto" data-cuerpo-revision>
+        <div
+          className="min-h-0 flex-1 scroll-pb-3 overflow-y-auto [&_:is(a,button,input,select,textarea,[tabindex])]:scroll-mb-3"
+          data-cuerpo-revision
+        >
           <div className="p-4">
             <AvisosRevision
               aviso={revision.aviso}
@@ -340,7 +343,7 @@ export function TramiteReviewDialog({
         {editable && carga.estado === "listo" && (
           <div
             ref={pieRef}
-            className="border-t bg-muted/50 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+            className="border-t-2 border-divisor bg-card px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
           >
             {confirmacionVisible === "rechazar" ? (
               <BarraConfirmacion
@@ -381,7 +384,7 @@ export function TramiteReviewDialog({
         {!editable && carga.estado === "listo" && detalle?.estado === "APROBADO" && (
           <div
             ref={pieRef}
-            className="flex flex-col gap-2 border-t bg-muted/50 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+            className="flex flex-col gap-2 border-t-2 border-divisor bg-card px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
           >
             <p id={ids.pistaMarcar} className="text-sm text-muted-foreground sm:text-right">
               {PISTA_MARCAR_HECHO_EN_OVZ}
@@ -403,7 +406,7 @@ export function TramiteReviewDialog({
         {!editable && carga.estado === "listo" && detalle?.estado === "HECHO_EN_OVZ" && (
           <div
             ref={pieRef}
-            className="border-t bg-muted/50 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+            className="border-t-2 border-divisor bg-card px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
           >
             {confirmacionVisible === "quitar-marca" ? (
               <BarraConfirmacion idPregunta={ids.pregunta} pregunta={PREGUNTA_QUITAR_MARCA}>
@@ -569,11 +572,14 @@ function MensajeOriginal({
 }) {
   return (
     <section aria-labelledby={idTitulo} className={cn("flex min-w-0 flex-col gap-2", className)}>
-      <h3 id={idTitulo} className="text-sm font-bold text-muted-foreground">
+      <h3
+        id={idTitulo}
+        className="text-[11px] font-medium tracking-[0.08em] text-muted-foreground uppercase"
+      >
         Mensaje de WhatsApp
       </h3>
       {detalle.mensajeOriginal ? (
-        <blockquote className="rounded-lg bg-muted px-3 py-2.5 whitespace-pre-wrap wrap-anywhere">
+        <blockquote className="border border-border bg-background px-3 py-2.5 whitespace-pre-wrap wrap-anywhere">
           {detalle.mensajeOriginal}
         </blockquote>
       ) : (
@@ -588,7 +594,7 @@ function FranjaHechoEnOvz({ detalle }: { detalle: TramiteDetalle }) {
   return (
     <p
       data-franja-hecho-en-ovz
-      className="mb-4 flex items-start gap-2 rounded-lg bg-success px-3 py-2 text-sm text-success-foreground"
+      className="mb-4 flex items-start gap-2 bg-success px-3 py-2 text-sm text-success-foreground"
     >
       <CircleCheckIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
       <span className="font-medium">{textoHechoEnOvz(detalle)}</span>
@@ -612,7 +618,7 @@ function BandaDescartado({
   return (
     <div
       data-banda-descartado
-      className="mb-4 flex flex-col gap-2 rounded-lg bg-muted px-3 py-2 text-sm sm:flex-row sm:items-center sm:gap-4"
+      className="mb-4 flex flex-col gap-2 bg-neutral px-3 py-2 text-sm text-neutral-foreground sm:flex-row sm:items-center sm:gap-4"
     >
       <p id={ids.banda} className="min-w-0 font-medium">
         {textoBandaDescartado(detalle.historialDescarte)}
@@ -734,7 +740,7 @@ function DatosEditables({ revision, ids }: { revision: RevisionTramite; ids: Ids
           }}
           disabled={ocupado}
         >
-          <SelectTrigger id={ids.tipo} aria-labelledby={idEtiquetaTipo} className="w-full sm:w-56">
+          <SelectTrigger id={ids.tipo} aria-labelledby={idEtiquetaTipo} className="w-full data-[size=default]:h-10 sm:w-56">
             <SelectValue>
               {(valor: string | null) => (valor ? etiquetaTipoTramite(valor) : TEXTO_SIN_TIPO)}
             </SelectValue>
@@ -878,7 +884,7 @@ function BarraAcciones({
       <div className="flex flex-wrap items-center gap-2">
         <Button
           ref={refs.rechazar}
-          variant="outline"
+          variant="destructive"
           onClick={onRechazar}
           disabled={!revision.puedeRechazar}
           aria-describedby={descritoPor}

@@ -890,7 +890,7 @@ describe("TramitesPage: origen y avisos de extracción (B1, T4)", () => {
     filas(tramite(1, { estadoExtraccion: "COMPLETADA" }), tramite(2))
     render(<TramitesPage />)
     await screen.findByRole("button", { name: "Revisar trámite #1" })
-    for (const id of [1, 2]) expect(celdas(id)[2].querySelector("svg")).toBeNull()
+    for (const id of [1, 2]) expect(celdas(id)[2].querySelector("svg:not([data-icono])")).toBeNull()
     expect(celdas(1)[2]).toHaveTextContent(/^Pendiente de revisión$/)
   })
 
@@ -923,7 +923,7 @@ describe("TramitesPage: origen y avisos de extracción (B1, T4)", () => {
     await screen.findByRole("button", { name: "Revisar trámite #1" })
     expect(screen.queryByText("No se ha podido extraer")).not.toBeInTheDocument()
     expect(screen.queryByText(/descartado/)).not.toBeInTheDocument()
-    expect(celdas(1)[2].querySelector("svg")).toBeNull()
+    expect(celdas(1)[2].querySelector("svg:not([data-icono])")).toBeNull()
     expect(within(celdas(1)[0]).getByText("Recibido por WhatsApp")).toBeInTheDocument()
   })
 
@@ -991,5 +991,58 @@ describe("TramitesPage: mensajes sin trámite (SIN_TRAMITE, A2: en la cola solo 
       "Revisar trámite #1",
     ])
     expect(screen.queryByRole("button", { name: /Descartar/ })).not.toBeInTheDocument()
+  })
+})
+
+describe("TramitesPage: iconos y cabeceras (diseño de Álvaro, fase 1, T4)", () => {
+  function filas(...tramites: ReturnType<typeof tramite>[]) {
+    server.use(http.get(apiUrl("/tramites"), () => paginaTramites(tramites, tramites.length, 1)))
+  }
+
+  function celdas(id: number): HTMLElement[] {
+    const boton = screen.getByRole("button", { name: `Revisar trámite #${id}` })
+    return within(boton.closest("tr") as HTMLElement).getAllByRole("cell")
+  }
+
+  it("la celda Tipo lleva el icono del tipo, decorativo, y la etiqueta en 500", async () => {
+    filas(tramite(1, { tipoTramite: "BAJA_MUERTE" }), tramite(2, { tipoTramite: "SOLICITUD_MOVIMIENTO" }))
+    render(<TramitesPage />)
+    await screen.findByRole("button", { name: "Revisar trámite #1" })
+    const icono = celdas(1)[1].querySelector("svg")
+    expect(icono).toHaveAttribute("aria-hidden", "true")
+    expect(icono).toHaveAttribute("data-icono", "log-out")
+    expect(icono).toHaveClass("size-4", "text-muted-foreground")
+    expect(within(celdas(1)[1]).getByText("Baja por muerte")).toHaveClass("font-medium")
+    expect(celdas(1)[1]).toHaveTextContent(/^Baja por muerte$/)
+    expect(celdas(2)[1].querySelector("svg")).toHaveAttribute("data-icono", "truck")
+  })
+
+  it("sin tipo («Sin determinar») o con un tipo desconocido, la celda Tipo no lleva icono", async () => {
+    filas(tramite(1, { tipoTramite: null }), tramite(2, { tipoTramite: "TRASLADO_FERIA" }))
+    render(<TramitesPage />)
+    await screen.findByRole("button", { name: "Revisar trámite #1" })
+    expect(celdas(1)[1].querySelector("svg")).toBeNull()
+    expect(celdas(1)[1]).toHaveTextContent(/^Sin determinar$/)
+    expect(celdas(2)[1].querySelector("svg")).toBeNull()
+    expect(celdas(2)[1]).toHaveTextContent(/^TRASLADO_FERIA$/)
+  })
+
+  it("el badge de estado de la fila lleva su icono decorativo y su nombre sigue siendo la etiqueta", async () => {
+    filas(tramite(1))
+    render(<TramitesPage />)
+    await screen.findByRole("button", { name: "Revisar trámite #1" })
+    const badge = within(celdas(1)[2]).getByText("Pendiente de revisión")
+    expect(badge.querySelector("svg")).toHaveAttribute("aria-hidden", "true")
+    expect(badge.querySelector("svg")).toHaveAttribute("data-icono", "eye")
+    expect(badge).toHaveTextContent(/^Pendiente de revisión$/)
+  })
+
+  it("las cabeceras conservan el texto en el DOM y van en mayúsculas solo por clase", async () => {
+    filas(tramite(1))
+    render(<TramitesPage />)
+    await screen.findByRole("button", { name: "Revisar trámite #1" })
+    const cabeceras = screen.getAllByRole("columnheader")
+    expect(cabeceras.map((c) => c.textContent)).toEqual(["Trámite", "Tipo", "Estado", "Explotación", "Crotales"])
+    for (const cabecera of cabeceras) expect(cabecera).toHaveClass("uppercase")
   })
 })

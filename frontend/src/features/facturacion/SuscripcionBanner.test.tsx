@@ -136,3 +136,19 @@ describe("SuscripcionBanner: textos sin pago en la app (D2)", () => {
     expect(within(alerta).queryByRole("link")).not.toBeInTheDocument()
   })
 })
+
+describe("SuscripcionBanner: raya inferior divisora (diseño fase 1)", () => {
+  // Sin ella, los bloqueantes (borde transparente, fondo Rojo 100 a 1,02:1 del Fondo) no se separaban del
+  // contenido (smoke de T8). La misma raya de 2 px que separa zonas en todo el diseño, en los cuatro banners.
+  it.each([
+    ["TRIAL_EXPIRADO_SIN_PAGO", estadoJson("TRIAL_EXPIRADO_SIN_PAGO", false)],
+    ["SUSPENDIDA", estadoJson("SUSPENDIDA", false)],
+    ["sin Suscripcion (404)", () => new HttpResponse(null, { status: 404 })],
+    ["IMPAGO_GRACIA", estadoJson("IMPAGO_GRACIA", true)],
+    ["error al cargar", () => HttpResponse.error()],
+  ])("%s: recto y con la raya inferior de 2 px en el color divisor", async (_caso, respuesta) => {
+    await montarConRespuesta(respuesta)
+    const alerta = await screen.findByRole("alert")
+    expect(alerta).toHaveClass("rounded-none", "border-x-0", "border-t-0", "border-b-2", "border-b-divisor")
+  })
+})

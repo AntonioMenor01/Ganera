@@ -85,3 +85,40 @@ describe("BadgeRolContacto", () => {
     expect(badge).not.toHaveClass("bg-success")
   })
 })
+
+describe("BadgeEstadoTramite: icono a la izquierda (diseño de Álvaro, fase 1, T4)", () => {
+  it.each([
+    ["PENDIENTE_EXTRACCION", null, "Pendiente de extracción", "sparkles"],
+    ["PENDIENTE_REVISION", null, "Pendiente de revisión", "eye"],
+    ["APROBADO", null, "Aprobado · falta OVZ", "check"],
+    ["HECHO_EN_OVZ", null, "Hecho en OVZ", "circle-check"],
+    ["RECHAZADO", null, "Rechazado", "x"],
+    ["RECHAZADO", "SIN_TRAMITE", "Descartado", "archive"],
+  ])("%s (motivo %s): «%s» con el icono %s, decorativo y antes del texto", (estado, motivoRechazo, etiqueta, icono) => {
+    render(<BadgeEstadoTramite estado={estado} motivoRechazo={motivoRechazo} />)
+    const badge = screen.getByText(etiqueta)
+    const svgs = badge.querySelectorAll("svg")
+    expect(svgs).toHaveLength(1)
+    expect(svgs[0]).toHaveAttribute("aria-hidden", "true")
+    expect(svgs[0]).toHaveAttribute("data-icono", icono)
+    expect(badge.firstChild).toBe(svgs[0])
+    // El nombre accesible y el texto siguen siendo solo la etiqueta.
+    expect(badge).toHaveTextContent(new RegExp(`^${etiqueta}$`))
+  })
+
+  it("el badge con icono no tiene nombre extra: un rol con nombre lo encuentra solo por la etiqueta", () => {
+    render(
+      <div role="group" aria-labelledby="b">
+        <span id="b">
+          <BadgeEstadoTramite estado="APROBADO" />
+        </span>
+      </div>,
+    )
+    expect(screen.getByRole("group")).toHaveAccessibleName("Aprobado · falta OVZ")
+  })
+
+  it.each(["EN_PROCESO", "EJECUTADO_OVZ", "ERROR_OVZ", "PAUSADO"])("%s no lleva icono", (estado) => {
+    const { container } = render(<BadgeEstadoTramite estado={estado} />)
+    expect(container.querySelector("svg")).toBeNull()
+  })
+})

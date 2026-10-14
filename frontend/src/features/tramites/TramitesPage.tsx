@@ -23,8 +23,15 @@ import { aErrorApi, mensajeDeError, type ErrorApi } from "@/shared/api/errores";
 import type { Pagina } from "@/shared/api/types";
 import { listarTramites } from "./api";
 import type { EstadoTramite, Tramite, TramiteCrotal } from "./types";
-import { ESTADOS_TRAMITE, avisosExtraccion, etiquetaOrigen, etiquetaTipoTramite } from "./etiquetas";
+import {
+  ESTADOS_TRAMITE,
+  avisosExtraccion,
+  etiquetaOrigen,
+  etiquetaTipoTramite,
+  iconoTipoTramite,
+} from "./etiquetas";
 import { BadgeEstadoTramite, BadgeResolucionCrotal } from "./BadgesTramite";
+import { IconoTramite } from "./IconoTramite";
 import { TramiteReviewDialog } from "./TramiteReviewDialog";
 
 const TAMANIO_PAGINA = 20;
@@ -138,13 +145,13 @@ export function TramitesPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b-2 border-divisor pb-4">
         <div className="min-w-0">
           <h1 className="text-xl font-bold">Cola de trámites</h1>
           <p className="text-sm text-muted-foreground">{subtitulo}</p>
         </div>
         <Select value={filtroEstado} onValueChange={(value) => cambiarFiltro(value as FiltroEstado)}>
-          <SelectTrigger className="w-full sm:w-56" aria-label="Filtrar por estado">
+          <SelectTrigger className="w-full data-[size=default]:h-[38px] sm:w-56" aria-label="Filtrar por estado">
             <SelectValue>
               {(value: FiltroEstado) =>
                 ESTADOS.find((estado) => estado.value === value)?.label ?? value
@@ -175,7 +182,7 @@ export function TramitesPage() {
       )}
 
       {/* La tabla hace scroll horizontal dentro de su contenedor, nunca la página (H12). */}
-      <div className="min-w-0 rounded-xl border bg-card">
+      <div className="min-w-0 border border-border bg-card">
         {/* WCAG 4.1.3: estado siempre montado y fuera de aria-busy; solo cambia su texto, así el
             lector de pantalla lo anuncia (uno que aparece ya lleno dentro de un contenedor ocupado
             suele perderse). */}
@@ -197,7 +204,7 @@ export function TramitesPage() {
             {cargando &&
               !pagina &&
               Array.from({ length: FILAS_ESQUELETO }, (_, fila) => (
-                <TableRow key={`esqueleto-${fila}`} className="hover:bg-transparent">
+                <TableRow key={`esqueleto-${fila}`} className="h-14 hover:bg-transparent">
                   {Array.from({ length: COLUMNAS }, (_, columna) => (
                     <TableCell key={columna}>
                       <div aria-hidden="true" className={BARRA_ESQUELETO} />
@@ -215,7 +222,7 @@ export function TramitesPage() {
             {pagina?.content.map((tramite) => (
               <TableRow
                 key={tramite.id}
-                className="cursor-pointer has-focus-visible:bg-muted/50"
+                className="h-14 cursor-pointer has-focus-visible:bg-muted/50"
                 // Comodidad de ratón: toda la fila abre. El acceso real (teclado, lector de
                 // pantalla) es el botón de la primera celda.
                 onClick={() => setTramiteSeleccionado(tramite.id)}
@@ -237,7 +244,7 @@ export function TramitesPage() {
                 </TableCell>
                 <TableCell>
                   {tramite.tipoTramite ? (
-                    etiquetaTipoTramite(tramite.tipoTramite)
+                    <CeldaTipo tipo={tramite.tipoTramite} />
                   ) : (
                     <span className="text-muted-foreground">Sin determinar</span>
                   )}
@@ -263,7 +270,6 @@ export function TramitesPage() {
         <nav aria-label="Paginación" className="flex items-center justify-between gap-3">
           <Button
             variant="outline"
-            size="sm"
             disabled={numeroPagina === 0}
             onClick={() => setNumeroPagina((p) => p - 1)}
           >
@@ -274,7 +280,6 @@ export function TramitesPage() {
           </span>
           <Button
             variant="outline"
-            size="sm"
             disabled={numeroPagina + 1 >= totalPaginas}
             onClick={() => setNumeroPagina((p) => p + 1)}
           >
@@ -289,6 +294,18 @@ export function TramitesPage() {
         onCambiado={recargar}
       />
     </div>
+  );
+}
+
+/** Columna Tipo (diseño de Álvaro, fase 1): icono decorativo de 16 px en Gris 700 (sin color de
+ * estado) + la etiqueta en 500. Un tipo desconocido sale tal cual, sin icono. */
+function CeldaTipo({ tipo }: { tipo: string }) {
+  const icono = iconoTipoTramite(tipo);
+  return (
+    <span className="inline-flex items-center gap-2">
+      {icono && <IconoTramite nombre={icono} className="size-4 shrink-0 text-muted-foreground" />}
+      <span className="font-medium">{etiquetaTipoTramite(tipo)}</span>
+    </span>
   );
 }
 

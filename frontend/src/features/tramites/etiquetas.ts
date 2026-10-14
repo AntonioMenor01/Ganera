@@ -50,6 +50,24 @@ export function etiquetaTipoTramite(tipo: string): string {
   return buscar<string>(TIPOS_TRAMITE, tipo) ?? textoCrudo(tipo);
 }
 
+/** Icono de cada tipo (diseño de Álvaro, fase 1): nombres kebab de lucide. El componente que los
+ * pinta vive en `IconoTramite.tsx`; aquí no se importa React. */
+export type IconoTipo = "log-in" | "log-out" | "truck" | "arrow-down-to-line" | "list-ordered" | "tag";
+
+const ICONOS_TIPO_TRAMITE = {
+  ALTA_NACIMIENTO: "log-in",
+  BAJA_MUERTE: "log-out",
+  SOLICITUD_MOVIMIENTO: "truck",
+  CONFIRMACION_MOVIMIENTO: "arrow-down-to-line",
+  DECLARACION_CENSO: "list-ordered",
+  DEMORA_CROTALIZACION: "tag",
+} as const satisfies Record<TipoTramite, IconoTipo>;
+
+/** Sin tipo, vacío o desconocido → `null` (sin icono). */
+export function iconoTipoTramite(tipo: string | null | undefined): IconoTipo | null {
+  return tipo ? (buscar<IconoTipo>(ICONOS_TIPO_TRAMITE, tipo) ?? null) : null;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Estado del trámite. Aún sin resolver → aviso; resuelto a favor → éxito; en contra → peligro.
 // Hecho en OVZ (2026-10-07): APROBADO solo es «datos revisados» y aún falta que el gestor lo meta
@@ -100,6 +118,27 @@ export function presentacionEstadoTramite(tramite: EstadoConMotivo): Presentacio
     if (motivo) return motivo;
   }
   return presentacionEstado(tramite.estado);
+}
+
+/** Icono del badge de estado (diseño de Álvaro, fase 1): nombres kebab de lucide. */
+export type IconoEstado = "sparkles" | "eye" | "check" | "circle-check" | "x" | "archive";
+
+/** Los reservados de la automatización (EN_PROCESO, EJECUTADO_OVZ, ERROR_OVZ) no tienen icono. */
+const ICONOS_ESTADO_TRAMITE = {
+  PENDIENTE_EXTRACCION: "sparkles",
+  PENDIENTE_REVISION: "eye",
+  APROBADO: "check",
+  HECHO_EN_OVZ: "circle-check",
+  RECHAZADO: "x",
+} as const satisfies Partial<Record<EstadoTramite, IconoEstado>>;
+
+const ICONO_DESCARTADO: IconoEstado = "archive";
+
+/** Icono del estado, con el descartado aparte (misma regla que `presentacionEstadoTramite`). Reservado
+ * o desconocido → `null` (sin icono). */
+export function iconoEstadoTramite(tramite: EstadoConMotivo): IconoEstado | null {
+  if (esDescartado(tramite)) return ICONO_DESCARTADO;
+  return buscar<IconoEstado>(ICONOS_ESTADO_TRAMITE, tramite.estado) ?? null;
 }
 
 /** Variante de `Badge` para un estado (DESIGN.md la nombra). Desconocido → `outline`. */
