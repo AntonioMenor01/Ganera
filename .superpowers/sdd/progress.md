@@ -1114,14 +1114,21 @@ informes en `.superpowers/sdd/st-*`.
   «Prompt 3c» y fuera del filtro «until they can happen», y ningún texto habla de un botón de envío. Como mucho,
   renombrar «Prompt 3c» a «escalón 2 (modo asistido)» al corregir `CLAUDE.md`.
 
-### Diseño de Álvaro, fase 1 — en curso (2026-10-12; sin commit ni push)
+### Diseño de Álvaro, fase 1 — CERRADA (2026-10-14): `5c157a9` (tokens, fuente Archivo y shell) y `558ea5c` (login, cola, modal, ficha OVZ y Explotaciones), con push
 
 Plan aprobado: `docs/superpowers/plans/2026-10-12-diseno-alvaro-fase1.md` (prioridad 1, T1–T8, 4,0 días). Decisiones de
 Antonio: nombre y «Cerrar sesión» abajo en la barra lateral en escritorio y arriba a la derecha en móvil; «Guardar»
 secundario (solo «Aprobar» en rojo sólido); foco con el anillo actual, recto; «Abrir #N» solo si P1 cierra en 3,5 días.
 Referencias de diseño y capturas fuera del repo (`C:\Users\Antonio\Desktop\ganera-diseno\`,
 `C:\Users\Antonio\Desktop\capturas-ganera-diseno-fase1\`). Informes en `.superpowers/sdd/df-*`.
-Estado al cortar la sesión (2026-10-13, sin commit ni push):
+**Cierre (2026-10-14):** T1–T8 hechas, cada una con implementador + revisor independiente (todas Aprobado con menores;
+informes `df-*`, sin commitear). Frontend 1058 en 47 ficheros, build y lint limpios; backend 968 (967 + 1 omitido), sin
+cambios. Capturas para Álvaro en `C:\Users\Antonio\Desktop\capturas-ganera-diseno-fase1\final-*.png` (login, cola,
+modal con el panel de WhatsApp abierto, ficha OVZ y banner; 375 y 1280 px). **Siguiente tarea: tarjetas-fila de la cola
+en móvil (~1 día), con la columna de crotales a 1280 px incluida** (ver «Pendientes técnicos»), en una sesión nueva con
+Paso 0.
+
+Historial de la fase:
 - **T1 hecha y revisada** (Aprobado con menores; `df-t1-report.md`, `df-t1-review.md`): `index.css` (Archivo `wdth.css`
   local, `font-stretch: 90%`, `--radius: 0px`, rampas gris/rojo, par neutro, `--divisor`, `--shadow-lg`), pesos
   700/500 en todo `src`, primitivos `components/ui` con la piel de v2, badge `outline` = par neutro. 976/976, build y
@@ -1176,7 +1183,16 @@ Estado al cortar la sesión (2026-10-13, sin commit ni push):
   los badges se parten en tres líneas. Se puede abrir un trámite pero no triar la cola. Propuesta: por debajo de `md`, un
   render alternativo en lista (`ul` de tarjetas-fila con #id + estado, tipo, REGA · nombre, crotales y avisos); en
   jsdom sin `matchMedia` se sigue pintando la tabla, así que los tests actuales no cambian. Capturas en
-  `C:\Users\Antonio\Desktop\capturas-ganera-diseno-fase1\cola-375-*.png`. Estimación: se da al cerrar la fase 1.
+  `C:\Users\Antonio\Desktop\capturas-ganera-diseno-fase1\cola-375-*.png`. **Estimación: ~1 día** (render alternativo
+  por debajo de `md`, TDD, revisión y smoke). **Es la siguiente tarea** (tras cerrar la fase 1, 2026-10-14).
+  **Incluye la columna de crotales a 1280 px — regresión de la fase 1, comprobada el 2026-10-14** con un worktree de
+  `aac93ee` fuera del repo y los mismos datos simulados (7 trámites de `cola375.js`), en Chromium: en `aac93ee` la tabla
+  cabía a 1280 px (1230 px de tabla en 1230 visibles) y a 1440; en `558ea5c` a 1280 px la tabla mide **1045 px y solo
+  hay 974** (la barra lateral de 240 px + `lg:p-8` quitan ~256 px), así que la columna de crotales se corta y se desplaza
+  dentro del contenedor (sin scroll de página); a 1440 cabe (1134/1134). Afecta a todo el tramo `lg` hasta ~1350 px.
+  Capturas `comparacion-cola-aac93ee-1280.png` y `comparacion-cola-main-1280.png` en esa carpeta. Opciones para decidir
+  en esa sesión (sin implementar): que las celdas de crotales corten línea desde `lg`, limitar los crotales visibles a
+  uno + «+N más» por debajo de `xl`, o usar las tarjetas-fila también hasta `xl`.
 - **Antes de la demo — quitar el `UserDetailsService` por defecto** (visto en la prueba real de B2): al arrancar, Spring
   Boot imprime «Using generated security password: …» porque no hay ningún bean `UserDetailsService`/
   `AuthenticationProvider` y su `UserDetailsServiceAutoConfiguration` crea un `InMemoryUserDetailsManager` con un usuario
