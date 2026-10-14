@@ -386,11 +386,13 @@ From `lg` the content column starts at 240px (`lg:pl-60`). At the top of the con
   (`wrap-anywhere`) so a long single-word name can't push numeric columns out. A long header may
   shorten below `sm` ("Expl."), with the full name kept for screen readers, and a column dropped on
   mobile is removed from the markup (`useDesdeSm`), not hidden with CSS, so `colSpan` stays exact.
-  The review dialog goes full screen below `md`. The shell is a side bar from `lg`, one row at
-  `md` and two rows below `md`, with its links in a strip that scrolls inside itself, so it never
-  widens the page. The Login panel is a column from `lg` and a 56px band below. Checked on
-  2026-10-13 in Chromium and Firefox at 1440, 1024, 768 and 375px: no page-level horizontal scroll
-  on any screen.
+  The trámites queue is row cards below `xl` and a table from `xl`, with a second crotal from
+  1440px (a JS media query, `90rem`, not a Tailwind breakpoint; see Tables). The review dialog goes
+  full screen below `md`. The shell is a side bar from `lg`, one row at `md` and two rows below
+  `md`, with its links in a strip that scrolls inside itself, so it never widens the page. The
+  Login panel is a column from `lg` and a 56px band below. Checked on 2026-10-13 in Chromium and
+  Firefox at 1440, 1024, 768 and 375px: no page-level horizontal scroll on any screen; the queue's
+  cards again on 2026-10-14 in Chromium at 375, 768, 1024, 1280 and 1440px.
 
 ## Elevation & Depth
 
@@ -673,9 +675,23 @@ in the UI. The favicon is `favicon-64.png`.
 - **Empty states teach:** they say why the list is empty (naming the active filter) and where the
   data comes from, with a link there ("Se crean al importar el Excel de explotaciones." → "Ir a
   Explotaciones").
-- **Overflowing cell content:** the queue shows two crotales and a "+N más" button
-  (`aria-expanded`) that expands the rest inside the row; it never opens a tooltip, which doesn't
-  work on touch.
+- **Overflowing cell content:** the queue shows two crotales from 1440px (one from 1280 to 1439px,
+  so the table fits at 1280 with the sidebar) and a "+N más" button (`aria-expanded`) that expands
+  the rest inside the row or card; it never opens a tooltip, which doesn't work on touch. Collapsed,
+  its accessible name starts with the visible text and says how many (WCAG 2.5.3): "+3 más: 3
+  crotales más", "+1 más: 1 crotal más"; expanded it reads "Ver menos".
+- **Queue below `xl` (1280px): row cards.** The table doesn't fit there (at 1024 it needs 869px of
+  718, after the sidebar and `lg:p-8`), so the queue becomes a `ul aria-label="Trámites"` of cards
+  in the same white container, split by Gris Borde rules, 12px padding. Per card: `#N` (the same
+  table-link button, "Revisar trámite #N") with the origin marker, and the state badge right-aligned
+  with its extraction line; then the tipo; then "REGA · nombre" (the name visible here, since touch
+  has no `title`; truncated with "…", `title` for the mouse; the "·" is `aria-hidden`, with an
+  `sr-only` ", " for the pause); then one crotal and "+N más", wrapping as needed, with "N
+  descartados" under it. The whole card opens the review with the mouse, like a row; Tab goes `#N`
+  → "+N más" → next card. Only one markup is in the DOM at a time, chosen by `useConsultaAncho`
+  (`shared/layout`), because it changes structure, not just looks; cells and cards share the same
+  components. The skeleton is two bars per card, each card `aria-hidden` (the `role="status"`
+  announces the load).
 - **Origin marker (WhatsApp, B1):** a 14px speech-bubble icon in Gris Texto next to the `#N` button,
   outside it (the button keeps its own `aria-label`), with a `title` for the mouse and "Recibido por
   WhatsApp" announced once, as hidden text. It is not a badge: badges are states.

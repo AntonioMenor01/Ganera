@@ -407,7 +407,7 @@ describe("TramitesPage: crotales visibles en la fila", () => {
     expect(screen.getByText("En inventario")).toHaveClass("bg-success")
     expect(screen.getByText("Varios animales coinciden")).toHaveClass("bg-warning")
     // Task 10: "+N más" es un botón que despliega (antes, title + texto sr-only "Además: …").
-    const resto = screen.getByRole("button", { name: "+1 más" })
+    const resto = screen.getByRole("button", { name: "+1 más: 1 crotal más" })
     expect(resto).toHaveAttribute("aria-expanded", "false")
     expect(resto).not.toHaveAttribute("title")
     expect(screen.queryByText("ES000000000001")).not.toBeInTheDocument()
@@ -701,7 +701,7 @@ describe("TramitesPage: crotal no encontrado e incompleto (completo, punto 5)", 
   it("en el desplegable «+N más» también", async () => {
     const user = userEvent.setup()
     render(<TramitesPage />)
-    await user.click(await screen.findByRole("button", { name: "+1 más" }))
+    await user.click(await screen.findByRole("button", { name: "+1 más: 1 crotal más" }))
     const fila = screen.getByText("8765").closest("li")!
     expect(within(fila).getByText("No está en el inventario · incompleto")).toHaveClass("bg-warning")
   })
@@ -732,7 +732,7 @@ describe("TramitesPage: «+N más» despliega los crotales (Task 10)", () => {
 
   it("es un botón «+2 más» plegado, con la clase de foco del sistema", async () => {
     render(<TramitesPage />)
-    const boton = await screen.findByRole("button", { name: "+2 más" })
+    const boton = await screen.findByRole("button", { name: "+2 más: 2 crotales más" })
     expect(boton).toHaveAttribute("aria-expanded", "false")
     expect(boton).toHaveClass("text-muted-foreground", "focus-visible:ring-3")
     expect(screen.queryByText("ES000000333333")).not.toBeInTheDocument()
@@ -741,7 +741,7 @@ describe("TramitesPage: «+N más» despliega los crotales (Task 10)", () => {
   it("al pulsarlo enseña el resto con el mismo marcado, sin abrir el modal; luego pliega", async () => {
     const user = userEvent.setup()
     render(<TramitesPage />)
-    await user.click(await screen.findByRole("button", { name: "+2 más" }))
+    await user.click(await screen.findByRole("button", { name: "+2 más: 2 crotales más" }))
 
     const lista = screen.getByText("ES000000111111").closest("ul")!
     expect(within(lista).getByText("ES000000333333")).toHaveAttribute("title", "Indicado: 333333")
@@ -754,7 +754,7 @@ describe("TramitesPage: «+N más» despliega los crotales (Task 10)", () => {
     const menos = screen.getByRole("button", { name: "Ver menos" })
     expect(menos).toHaveAttribute("aria-expanded", "true")
     await user.click(menos)
-    expect(screen.getByRole("button", { name: "+2 más" })).toHaveAttribute("aria-expanded", "false")
+    expect(screen.getByRole("button", { name: "+2 más: 2 crotales más" })).toHaveAttribute("aria-expanded", "false")
     expect(screen.queryByText("ES000000333333")).not.toBeInTheDocument()
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
@@ -762,7 +762,7 @@ describe("TramitesPage: «+N más» despliega los crotales (Task 10)", () => {
   it("con Enter también despliega, y no abre el modal", async () => {
     const user = userEvent.setup()
     render(<TramitesPage />)
-    const boton = await screen.findByRole("button", { name: "+2 más" })
+    const boton = await screen.findByRole("button", { name: "+2 más: 2 crotales más" })
     boton.focus()
     await user.keyboard("{Enter}")
 

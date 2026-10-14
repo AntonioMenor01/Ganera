@@ -1175,9 +1175,32 @@ Historial de la fase:
   `ring-foreground/10`), T6 ficha OVZ (sus `ring-foreground/10`), T7 «creados» + cabecera «Animales», T8 DESIGN.md +
   smoke + informe final. Línea base del build antes de T1: CSS 57,5 KB, JS 662,7 KB, fuentes wght 34,9/32,6/13,2 KB.
 
+### Tarjetas-fila de la cola — CERRADA (2026-10-14)
+
+Plan aprobado por Antonio con sus decisiones: «+N más» con el mismo nombre accesible en todos los anchos («+3 más: 3
+crotales más», «+1 más: 1 crotal más»; «Ver menos» desplegado), «REGA · nombre» en la tarjeta (nombre recortado con «…»,
+`title`), la tabla tal cual. **Corte de tarjetas en 1280 px (`xl`, `(min-width: 80rem)`), no en `lg`:** medido en
+Chromium, a 1024 la tabla con 1 crotal mide 869 px en 718 de hueco (la barra lateral de 240 + `lg:p-8` quitan 304);
+cortando línea en Crotales, 752; también en Tipo, 718 en 718 sin margen. Antonio eligió tarjetas hasta 1280. Resultado:
+- < 1280: `ul aria-label="Trámites"` de tarjetas, 1 crotal + «+N más». Página 375/375, 768/768, 1024/1024; lista
+  325/325 (375) y 718/718 (768 y 1024); nombre largo recortado; Tab #N → «+N más» → siguiente tarjeta; desplegar no abre
+  el modal.
+- 1280–1439: tabla con 1 crotal, 974 px en 974 de hueco (natural 869, 105 de margen, sin cortar línea).
+- ≥ 1440 (`(min-width: 90rem)`): como antes, 2 crotales, 1134/1134.
+Un solo marcado en el DOM cada vez (`shared/layout/useConsultaAncho.ts`; `useDesdeSm` pasa a usarlo); tabla y tarjetas
+comparten `BotonRevisar`, `Tipo`, `CeldaCrotales` (con `maximo`) y las celdas de antes. En `TramitesPage.test.tsx` solo
+cambian 6 selectores de nombre. Revisión independiente **Aprobado con menores** (el `aria-hidden` del «·» no tenía test
+y la mutación pasaba; el esqueleto anunciaba 5 elementos vacíos; DESIGN.md), arreglados con TDD y la mutación
+comprobada en rojo; 6 mutaciones más del revisor en rojo. Frontend **1075 en 49** (46 + 14 + 3 nuevos en la cola y el
+hook), build y lint limpios; backend 968 (967 + 1 omitido), sin cambios. Capturas en
+`C:\Users\Antonio\Desktop\capturas-ganera-tarjetas-fila\` (375/768/1024/1280/1440 y desplegado a 375/768/1024).
+**Siguiente tarea: M2** — descifrar la contraseña de OVZ solo bajo demanda (ver «Credenciales de OVZ bajo demanda» en
+`ganera-prompts.md` y la ficha OVZ T2 M2 arriba), en una sesión nueva con Paso 0.
+
 ### Pendientes técnicos
 
-- **Antes de la demo — tarjetas-fila de la cola en móvil** (fuera de la fase 1 del diseño por plazo, decisión de Antonio
+- **HECHO (2026-10-14, ver «Tarjetas-fila de la cola — CERRADA»). Antes de la demo — tarjetas-fila de la cola en
+  móvil** (fuera de la fase 1 del diseño por plazo, decisión de Antonio
   2026-10-12): a 375 px la tabla de `TramitesPage` mide **1.099 px** y se ven **325** (30 %): número y tipo visibles,
   estado cortado, explotación y crotales fuera sin pista de que hay más. Dejando cortar línea con CSS sigue en 680 px y
   los badges se parten en tres líneas. Se puede abrir un trámite pero no triar la cola. Propuesta: por debajo de `md`, un

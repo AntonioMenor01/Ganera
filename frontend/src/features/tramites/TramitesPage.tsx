@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { CLASE_ENLACE_TABLA } from "@/shared/ui/enlace";
+import { useConsultaAncho } from "@/shared/layout/useConsultaAncho";
 import { aErrorApi, mensajeDeError, type ErrorApi } from "@/shared/api/errores";
 import type { Pagina } from "@/shared/api/types";
 import { listarTramites } from "./api";
@@ -38,8 +39,12 @@ const TAMANIO_PAGINA = 20;
 const COLUMNAS = 5;
 const FILAS_ESQUELETO = 5;
 const BARRA_ESQUELETO = "h-4 w-full max-w-28 rounded-sm bg-muted motion-safe:animate-pulse";
-/** Crotales que se ven en la fila; el resto se despliega con "+N más". */
-const MAX_CROTALES_EN_FILA = 2;
+
+/** `xl` de Tailwind v4 (80rem = 1280 px): por debajo, tarjetas-fila en vez de tabla. A 1024 la tabla
+ * con 1 crotal no cabe (869 px en 718: la barra lateral y el margen quitan 304); a 1280 sí (974). */
+const CONSULTA_TABLA = "(min-width: 80rem)";
+/** 90rem = 1440 px: desde aquí la fila lleva 2 crotales; por debajo, 1 (así la tabla cabe a 1280 px). */
+const CONSULTA_DOS_CROTALES = "(min-width: 90rem)";
 
 type FiltroEstado = EstadoTramite | "TODOS";
 
@@ -137,6 +142,14 @@ export function TramitesPage() {
     setPagina(null);
   }
 
+  // Se decide en JS y no con clases: cambia la ESTRUCTURA (tabla o lista, cuántos crotales), y así
+  // el DOM tiene un solo marcado, sin botones «Revisar trámite #N» duplicados para el lector.
+  const conTabla = useConsultaAncho(CONSULTA_TABLA);
+  const maxCrotales = useConsultaAncho(CONSULTA_DOS_CROTALES) ? 2 : 1;
+  // Solo cuando la carga terminó bien y no hay filas (ni durante la carga ni con error).
+  const vacio =
+    pagina?.content.length === 0 && !cargando && !errorCarga ? textoVacio(filtroEstado) : null;
+
   const subtitulo = pagina
     ? textoRecuento(pagina.totalElements)
     : errorCarga
@@ -181,7 +194,8 @@ export function TramitesPage() {
         </Alert>
       )}
 
-      {/* La tabla hace scroll horizontal dentro de su contenedor, nunca la página (H12). */}
+      {/* Por debajo de xl, tarjetas-fila; desde xl, la tabla, que si no cabe hace scroll horizontal
+          dentro de su contenedor, nunca la página (H12). */}
       <div className="min-w-0 border border-border bg-card">
         {/* WCAG 4.1.3: estado siempre montado y fuera de aria-busy; solo cambia su texto, así el
             lector de pantalla lo anuncia (uno que aparece ya lleno dentro de un contenedor ocupado
@@ -189,81 +203,23 @@ export function TramitesPage() {
         <p role="status" className="sr-only">
           {cargando ? "Cargando trámites…" : ""}
         </p>
-        <Table aria-busy={cargando}>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Trámite</TableHead>
-              <TableHead>Tipo</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead>Explotación</TableHead>
-              <TableHead>Crotales</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody className={cargando && pagina ? "opacity-60 transition-opacity" : undefined}>
-            {/* Esqueleto como en Ganaderos: el texto de carga está en el estado de arriba. */}
-            {cargando &&
-              !pagina &&
-              Array.from({ length: FILAS_ESQUELETO }, (_, fila) => (
-                <TableRow key={`esqueleto-${fila}`} className="h-14 hover:bg-transparent">
-                  {Array.from({ length: COLUMNAS }, (_, columna) => (
-                    <TableCell key={columna}>
-                      <div aria-hidden="true" className={BARRA_ESQUELETO} />
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))}
-            {pagina?.content.length === 0 && !cargando && !errorCarga && (
-              <TableRow>
-                <TableCell colSpan={COLUMNAS} className="text-center text-muted-foreground">
-                  {textoVacio(filtroEstado)}
-                </TableCell>
-              </TableRow>
-            )}
-            {pagina?.content.map((tramite) => (
-              <TableRow
-                key={tramite.id}
-                className="h-14 cursor-pointer has-focus-visible:bg-muted/50"
-                // Comodidad de ratón: toda la fila abre. El acceso real (teclado, lector de
-                // pantalla) es el botón de la primera celda.
-                onClick={() => setTramiteSeleccionado(tramite.id)}
-              >
-                <TableCell>
-                  <button
-                    type="button"
-                    aria-label={`Revisar trámite #${tramite.id}`}
-                    onClick={(evento) => {
-                      evento.stopPropagation();
-                      setTramiteSeleccionado(tramite.id);
-                    }}
-                    className={cn("-mx-1 px-1 font-medium tabular-nums", CLASE_ENLACE_TABLA)}
-                  >
-                    #{tramite.id}
-                  </button>
-                  {/* Fuera del botón: su nombre accesible sigue siendo "Revisar trámite #N". */}
-                  <IndicadorOrigen origen={tramite.origen} />
-                </TableCell>
-                <TableCell>
-                  {tramite.tipoTramite ? (
-                    <CeldaTipo tipo={tramite.tipoTramite} />
-                  ) : (
-                    <span className="text-muted-foreground">Sin determinar</span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <BadgeEstadoTramite estado={tramite.estado} motivoRechazo={tramite.motivoRechazo} />
-                  <LineaExtraccion tramite={tramite} />
-                </TableCell>
-                <TableCell>
-                  <CeldaExplotacion tramite={tramite} />
-                </TableCell>
-                <TableCell>
-                  <CeldaCrotales crotales={tramite.crotales} />
-                  <LineaDescartados tramite={tramite} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        {conTabla ? (
+          <TablaTramites
+            pagina={pagina}
+            cargando={cargando}
+            textoVacio={vacio}
+            maxCrotales={maxCrotales}
+            onRevisar={setTramiteSeleccionado}
+          />
+        ) : (
+          <ListaTramites
+            pagina={pagina}
+            cargando={cargando}
+            textoVacio={vacio}
+            maxCrotales={maxCrotales}
+            onRevisar={setTramiteSeleccionado}
+          />
+        )}
       </div>
 
       {totalPaginas > 1 && (
@@ -294,6 +250,184 @@ export function TramitesPage() {
         onCambiado={recargar}
       />
     </div>
+  );
+}
+
+interface VistaColaProps {
+  pagina: Pagina<Tramite> | null;
+  cargando: boolean;
+  /** Frase del vacío, o null si no toca enseñarla. */
+  textoVacio: string | null;
+  maxCrotales: number;
+  onRevisar: (id: number) => void;
+}
+
+/** Desde xl. Las celdas son los mismos componentes que las tarjetas de `ListaTramites`. */
+function TablaTramites({ pagina, cargando, textoVacio, maxCrotales, onRevisar }: VistaColaProps) {
+  return (
+    <Table aria-busy={cargando}>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Trámite</TableHead>
+          <TableHead>Tipo</TableHead>
+          <TableHead>Estado</TableHead>
+          <TableHead>Explotación</TableHead>
+          <TableHead>Crotales</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody className={cargando && pagina ? "opacity-60 transition-opacity" : undefined}>
+        {/* Esqueleto como en Ganaderos: el texto de carga está en el estado de arriba. */}
+        {cargando &&
+          !pagina &&
+          Array.from({ length: FILAS_ESQUELETO }, (_, fila) => (
+            <TableRow key={`esqueleto-${fila}`} className="h-14 hover:bg-transparent">
+              {Array.from({ length: COLUMNAS }, (_, columna) => (
+                <TableCell key={columna}>
+                  <div aria-hidden="true" className={BARRA_ESQUELETO} />
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        {textoVacio && (
+          <TableRow>
+            <TableCell colSpan={COLUMNAS} className="text-center text-muted-foreground">
+              {textoVacio}
+            </TableCell>
+          </TableRow>
+        )}
+        {pagina?.content.map((tramite) => (
+          <TableRow
+            key={tramite.id}
+            className="h-14 cursor-pointer has-focus-visible:bg-muted/50"
+            // Comodidad de ratón: toda la fila abre. El acceso real (teclado, lector de
+            // pantalla) es el botón de la primera celda.
+            onClick={() => onRevisar(tramite.id)}
+          >
+            <TableCell>
+              <BotonRevisar id={tramite.id} onRevisar={onRevisar} />
+              {/* Fuera del botón: su nombre accesible sigue siendo "Revisar trámite #N". */}
+              <IndicadorOrigen origen={tramite.origen} />
+            </TableCell>
+            <TableCell>
+              <Tipo tipo={tramite.tipoTramite} />
+            </TableCell>
+            <TableCell>
+              <BadgeEstadoTramite estado={tramite.estado} motivoRechazo={tramite.motivoRechazo} />
+              <LineaExtraccion tramite={tramite} />
+            </TableCell>
+            <TableCell>
+              <CeldaExplotacion tramite={tramite} />
+            </TableCell>
+            <TableCell>
+              <CeldaCrotales crotales={tramite.crotales} maximo={maxCrotales} />
+              <LineaDescartados tramite={tramite} />
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
+/** Por debajo de xl: una tarjeta-fila por trámite, con los mismos datos y el mismo orden de
+ * tabulación que la fila de la tabla (#N y, si lo hay, «+N más»). */
+function ListaTramites({ pagina, cargando, textoVacio, maxCrotales, onRevisar }: VistaColaProps) {
+  return (
+    <ul
+      aria-label="Trámites"
+      aria-busy={cargando}
+      className={cn("divide-y divide-border text-sm", cargando && pagina && "opacity-60 transition-opacity")}
+    >
+      {cargando &&
+        !pagina &&
+        Array.from({ length: FILAS_ESQUELETO }, (_, fila) => (
+          // aria-hidden: no se anuncian 5 elementos vacíos; la carga la dice el role="status".
+          <li key={`esqueleto-${fila}`} aria-hidden="true" className="flex flex-col gap-2 px-3 py-3">
+            <div aria-hidden="true" className={BARRA_ESQUELETO} />
+            <div aria-hidden="true" className={BARRA_ESQUELETO} />
+          </li>
+        ))}
+      {textoVacio && <li className="px-3 py-4 text-center text-muted-foreground">{textoVacio}</li>}
+      {pagina?.content.map((tramite) => (
+        <li
+          key={tramite.id}
+          className="flex min-w-0 cursor-pointer flex-col gap-1.5 px-3 py-3 transition-colors hover:bg-foreground/4 has-focus-visible:bg-muted/50 has-aria-expanded:bg-muted/50"
+          // Como la fila: toda la tarjeta abre; el acceso real es el botón #N.
+          onClick={() => onRevisar(tramite.id)}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="shrink-0">
+              <BotonRevisar id={tramite.id} onRevisar={onRevisar} />
+              <IndicadorOrigen origen={tramite.origen} />
+            </div>
+            <div className="flex min-w-0 flex-col items-end text-right">
+              <BadgeEstadoTramite estado={tramite.estado} motivoRechazo={tramite.motivoRechazo} />
+              <LineaExtraccion tramite={tramite} />
+            </div>
+          </div>
+          <div>
+            <Tipo tipo={tramite.tipoTramite} />
+          </div>
+          <ExplotacionTarjeta tramite={tramite} />
+          <div>
+            <CeldaCrotales crotales={tramite.crotales} maximo={maxCrotales} cortarLinea />
+            <LineaDescartados tramite={tramite} />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** El #N de la fila o de la tarjeta: abre la revisión (la fila o tarjeta entera también, con ratón). */
+function BotonRevisar({ id, onRevisar }: { id: number; onRevisar: (id: number) => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={`Revisar trámite #${id}`}
+      onClick={(evento) => {
+        evento.stopPropagation();
+        onRevisar(id);
+      }}
+      className={cn("-mx-1 px-1 font-medium tabular-nums", CLASE_ENLACE_TABLA)}
+    >
+      #{id}
+    </button>
+  );
+}
+
+function Tipo({ tipo }: { tipo: string | null | undefined }) {
+  return tipo ? <CeldaTipo tipo={tipo} /> : <span className="text-muted-foreground">Sin determinar</span>;
+}
+
+/** En la tarjeta, «REGA · nombre» a la vista (con el dedo no hay title); el nombre se recorta con
+ * «…» si no cabe y lleva title para el ratón. Sin REGA, lo mismo que la celda de la tabla. */
+function ExplotacionTarjeta({ tramite }: { tramite: Tramite }) {
+  const { explotacionCodigoRega: codigoRega, explotacionNombre } = tramite;
+  if (!codigoRega) {
+    return (
+      <p>
+        <CeldaExplotacion tramite={tramite} />
+      </p>
+    );
+  }
+  const nombre = explotacionNombre?.trim() || undefined;
+  return (
+    <p className="flex min-w-0">
+      <span className="shrink-0 tabular-nums">{codigoRega}</span>
+      {nombre && (
+        <>
+          {/* El «·» es solo visual; el lector oye una pausa, como con el sr-only de la tabla. */}
+          <span aria-hidden="true" className="shrink-0 whitespace-pre text-muted-foreground">
+            {" · "}
+          </span>
+          <span className="sr-only">, </span>
+          <span className="truncate" title={nombre}>
+            {nombre}
+          </span>
+        </>
+      )}
+    </p>
   );
 }
 
@@ -337,11 +471,11 @@ function CeldaExplotacion({ tramite }: { tramite: Tramite }) {
   );
 }
 
-function ItemCrotal({ crotal }: { crotal: TramiteCrotal }) {
+function ItemCrotal({ crotal, cortarLinea }: { crotal: TramiteCrotal; cortarLinea: boolean }) {
   const indicado =
     crotal.crotal !== crotal.crotalIndicado ? `Indicado: ${crotal.crotalIndicado}` : null;
   return (
-    <li className="flex items-center gap-1.5">
+    <li className={cn("flex items-center gap-1.5", cortarLinea && "flex-wrap gap-y-1")}>
       <span className="tabular-nums" title={indicado ?? undefined}>
         {crotal.crotal || crotal.crotalIndicado}
       </span>
@@ -352,23 +486,39 @@ function ItemCrotal({ crotal }: { crotal: TramiteCrotal }) {
   );
 }
 
-function CeldaCrotales({ crotales }: { crotales: TramiteCrotal[] | undefined }) {
+/** Nombre accesible de «+N más»: empieza por el texto visible (WCAG 2.5.3) y dice cuántos son. */
+function nombreResto(resto: number): string {
+  return `+${resto} más: ${resto} ${resto === 1 ? "crotal" : "crotales"} más`;
+}
+
+/** Los `maximo` primeros crotales y «+N más» para desplegar el resto. `cortarLinea` (tarjetas): el
+ * crotal, su badge y «+N más» pasan a la línea siguiente si no caben. */
+function CeldaCrotales({
+  crotales,
+  maximo,
+  cortarLinea = false,
+}: {
+  crotales: TramiteCrotal[] | undefined;
+  maximo: number;
+  cortarLinea?: boolean;
+}) {
   // Por fila: las filas llevan key por id, así que cambiar de página lo vuelve a plegar.
   const [desplegado, setDesplegado] = useState(false);
   const lista = crotales ?? [];
   if (lista.length === 0) return <span className="text-muted-foreground">Sin crotales</span>;
-  const resto = lista.length - MAX_CROTALES_EN_FILA;
-  const visibles = desplegado ? lista : lista.slice(0, MAX_CROTALES_EN_FILA);
+  const resto = lista.length - maximo;
+  const visibles = desplegado ? lista : lista.slice(0, maximo);
   return (
-    <ul className={cn("flex items-center gap-3", desplegado && "flex-wrap")}>
+    <ul className={cn("flex items-center gap-3", (desplegado || cortarLinea) && "flex-wrap", cortarLinea && "gap-y-1")}>
       {visibles.map((crotal, indice) => (
-        <ItemCrotal key={`${indice}-${crotal.crotalIndicado}`} crotal={crotal} />
+        <ItemCrotal key={`${indice}-${crotal.crotalIndicado}`} crotal={crotal} cortarLinea={cortarLinea} />
       ))}
       {resto > 0 && (
         <li>
           {/* Task 6 M3: un title no se ve con el dedo ni con el teclado; esto sí recibe foco. */}
           <button
             type="button"
+            aria-label={desplegado ? undefined : nombreResto(resto)}
             aria-expanded={desplegado}
             onClick={(evento) => {
               // Desplegar no abre la revisión del trámite (la fila entera sí lo hace).
