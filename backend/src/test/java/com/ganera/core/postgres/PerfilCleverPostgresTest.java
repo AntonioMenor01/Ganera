@@ -43,6 +43,7 @@ class PerfilCleverPostgresTest {
                 "--POSTGRESQL_ADDON_DB=" + baseDeDatos,
                 "--POSTGRESQL_ADDON_USER=" + PostgresEmbebido.USUARIO,
                 "--POSTGRESQL_ADDON_PASSWORD=",
+                "--FRONTEND_ORIGEN=https://app.ganera.es",
                 "--server.port=0",
                 "--spring.datasource.hikari.pool-name=pg-clever-" + baseDeDatos,
                 "--spring.jmx.enabled=false")) {

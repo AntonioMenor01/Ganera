@@ -14,3 +14,18 @@ spring:
     # Explicito para que el perfil no dependa de que nadie mas defina el driver (en los tests,
     # application.yml de test fija org.h2.Driver y sin esto lo heredaria).
     driver-class-name: org.postgresql.Driver
+
+ganera:
+  frontend:
+    # CORS en produccion (despliegue en Clever, T3): FRONTEND_ORIGEN es OBLIGATORIA (sin valor por defecto: sin ella
+    # la app no arranca, nunca se queda con el http://localhost:5173 de desarrollo) y tiene que ser un origen exacto
+    # https, p. ej. https://app.ganera.es (lo comprueba OrigenFrontend al arrancar).
+    origen: ${FRONTEND_ORIGEN}
+    exigir-https: true
+  seguridad:
+    # HTTPS detras del proxy de Clever (despliegue en Clever, T2): Clever termina TLS y llega a la app por HTTP, asi que
+    # Strict-Transport-Security se manda en todas las respuestas (ver SecurityConfig).
+    # Sin placeholder a proposito: no depende de
+    # ninguna variable. No definir GANERA_SEGURIDAD_HSTSSIEMPRE ni GANERA_FRONTEND_EXIGIRHTTPS en Clever (por el
+    # binding relajado de Spring pisarian estos valores).
+    hsts-siempre: true

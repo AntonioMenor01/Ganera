@@ -938,6 +938,32 @@ approval step before anything is written to OVZ.net.
     AI decides after answering Twilio); the text of a discarded message is kept 12 months like any other — question for
     Ganera's lawyer (`progress.md`); a reply being sent while someone discards the Tramite isn't locked against it (B2
     design; tiny window).
+- **Clever deployment hardening** (2026-10-14; plan `docs/superpowers/plans/2026-10-14-despliegue-clever.md`, decisions
+  D1–D6 at the top: `app.ganera.es` static frontend + `api.ganera.es` backend, PostgreSQL XXS Small in Paris, the first
+  base is for the demo only — a new one before the first real data).
+  - **No default Spring user:** `GaneraApplication` excludes `UserDetailsServiceAutoConfiguration` (it created a `user`
+    and logged «Using generated security password»); `SinUsuarioPorDefectoTest` starts its own context to avoid a cached
+    one.
+  - **HSTS only in production:** `ganera.seguridad.hsts-siempre` (false by default, `true` only in
+    `application-clever.yml`, no placeholder) makes `SecurityConfig` send `Strict-Transport-Security: max-age=31536000 ;
+    includeSubDomains` on **every** response, because Clever terminates TLS and reaches the app over HTTP. No
+    `forward-headers-strategy`: nothing reads the request's scheme/host/IP (Twilio validates against configured URLs).
+    The two filters before Spring Security (`RegistroCerradoFilter`, `LimiteCuerpoCallbackEstadoFilter`) don't add it.
+  - **CORS fail-closed:** `OrigenFrontend.validar` (pure) accepts only an exact `scheme://host[:port]` (no wildcard,
+    path, trailing slash, query, userinfo, default port or bare `:`); with `ganera.frontend.exigir-https` (true only in
+    `clever`) only `https`. In `clever`, `ganera.frontend.origen: ${FRONTEND_ORIGEN}` has **no default**: without it, or
+    with an invalid value, the app does not start. Never define `GANERA_SEGURIDAD_*`/`GANERA_FRONTEND_*` on Clever
+    (relaxed binding would override the profile). `ConfiguracionSeguridadProduccionTest` reads the real YAMLs from disk
+    (the test `application.yml` shadows the main one on the test classpath).
+  - **Installable web app (PWA), install only:** `public/manifest.webmanifest` (`start_url` `/`, `standalone`, background
+    `#f3f2f2`, theme `#eae9e9`), icons 192/512 + 512 maskable + 180 `apple-touch-icon` rendered from
+    `ganera-logo-rojo.svg`; **no service worker**, no offline mode or data cache (`pwa.test.ts`). Real Chromium 151 and
+    Edge 155 report no installability errors. In an installed window the session (`sessionStorage`) ends when the window
+    closes.
+  - **Deployment kit** outside the repo in `C:\Users\Antonio\Desktop\ganera-clever\` (replaces
+    `Archivos-Ganera\ganera-demo`): `alta-gestorias.sh`, two invented Excel files, `seed-tramites.sql` (8 trámites per
+    gestoría with OVZ types, one `HECHO_EN_OVZ`, one discardable `SIN_TRAMITE`), `smoke.sh` (41 checks against Clever;
+    recovers the state a demo leaves). Rehearsed against embedded PostgreSQL 16 with the `clever` profile.
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)
@@ -1149,7 +1175,7 @@ reference for every frontend decision below.
   handler fails the test (`onUnhandledRequest: "error"`), and session state is cleared after each
   test. `npm test` ran **475 tests in 36 files** at the end of A2 (476 after the mini-prompt's
   Rechazar change; **506 in 36 files** after the frontend task before the pilot; **508 in 36** after billing left the app;
-  **513 in 37** after the brand colours and typography; **558 in 37** after Prompt B1; **557 in 36** after C mínimo removed the registration screen; **720 in 40** after the ficha OVZ; **811 in 41** after "Hecho en OVZ"; **912 in 43** after B2 reducido; **976 in 45** after SIN_TRAMITE). Layout can't be checked in
+  **513 in 37** after the brand colours and typography; **558 in 37** after Prompt B1; **557 in 36** after C mínimo removed the registration screen; **720 in 40** after the ficha OVZ; **811 in 41** after "Hecho en OVZ"; **912 in 43** after B2 reducido; **976 in 45** after SIN_TRAMITE; **1084 in 50** after the Clever deployment tasks). Layout can't be checked in
   jsdom: for visual changes, also drive the real app in a browser (Playwright from npm installed
   **outside the repo**, as in Prompts 4 and A2).
 
@@ -1171,7 +1197,7 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw clean test` — runs the test suite (968 tests after SIN_TRAMITE — 967 run plus the skipped Haiku evaluation —, including the embedded-PostgreSQL ones); **always with `clean`**
+- `./mvnw clean test` — runs the test suite (1001 tests after the Clever deployment tasks — 1000 run plus the skipped Haiku evaluation —, including the embedded-PostgreSQL ones); **always with `clean`**
   (see the VS Code/ECJ note under Architecture notes). A single test:
   `./mvnw clean test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no

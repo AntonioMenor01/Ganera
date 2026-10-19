@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/favicon-64.png" />
+    <!-- Web instalable (Chrome y Edge ofrecen «Instalar Ganera»). Solo instalable: sin service worker ni caché. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#eae9e9" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- La app va detrás del login: nada que indexar. -->
     <meta name="robots" content="noindex, nofollow" />

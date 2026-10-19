@@ -1194,10 +1194,73 @@ y la mutación pasaba; el esqueleto anunciaba 5 elementos vacíos; DESIGN.md), a
 comprobada en rojo; 6 mutaciones más del revisor en rojo. Frontend **1075 en 49** (46 + 14 + 3 nuevos en la cola y el
 hook), build y lint limpios; backend 968 (967 + 1 omitido), sin cambios. Capturas en
 `C:\Users\Antonio\Desktop\capturas-ganera-tarjetas-fila\` (375/768/1024/1280/1440 y desplegado a 375/768/1024).
-**Siguiente tarea: M2** — descifrar la contraseña de OVZ solo bajo demanda (ver «Credenciales de OVZ bajo demanda» en
-`ganera-prompts.md` y la ficha OVZ T2 M2 arriba), en una sesión nueva con Paso 0.
+~~Siguiente tarea: M2~~ — **aplazada (decisión de Antonio, 2026-10-14):** M2 (descifrar la contraseña de OVZ solo bajo
+demanda; ver «Credenciales de OVZ bajo demanda» en `ganera-prompts.md` y la ficha OVZ T2 M2 arriba) pasa a **justo antes
+del modo asistido (escalón 2)**. Hoy no hay ninguna credencial de OVZ guardada (no hay pantalla ni importador que las
+rellene), así que el `500` por cifra corrupta o `ENCRYPTION_KEY` cambiada no puede darse; y la sesión de mapeo de OVZ
+decidirá si la cuenta es de la gestoría o de cada ganadero (las columnas `ovz_usuario`/`ovz_password_cifrada` pueden
+moverse o desaparecer). Comprobado el mismo día: `ovzPasswordCifrada` no sale en ninguna respuesta (todas son DTO
+explícitos, `Ganadero` no tiene `toString` de Lombok, el conversor no registra nada y sus excepciones no llevan el valor,
+no hay log de SQL ni de parámetros; lo cubre `CredencialesOvzDetalleEndToEndTest`).
+**Siguiente tarea: despliegue en Clever Cloud (demo y piloto)**: plan en
+`docs/superpowers/plans/2026-10-14-despliegue-clever.md`, **aprobado el 2026-10-14** con las decisiones D1–D6 al principio
+del plan (dos subdominios `app.`/`api.ganera.es`, PostgreSQL XXS Small en París, base de demo que se tira, copias de 7
+días). **Código de T1–T5 hecho el 2026-10-14, sin commit (pendiente de aprobación de Antonio):** T1 sin
+`UserDetailsService` por defecto; T2 HSTS en todas las respuestas solo con el perfil `clever` (sin
+`forward-headers-strategy`, ver el plan); T3 CORS fail-closed (`OrigenFrontend`, `FRONTEND_ORIGEN` obligatoria y `https`
+en `clever`); T4 web instalable (manifiesto e iconos, sin service worker; Chromium 151 y Edge 155 sin errores de
+instalabilidad); T5 kit nuevo en `C:\Users\Antonio\Desktop\ganera-clever\`. TDD; mutaciones en rojo: T1 2, T2 4, T3 8
+(restauradas con `cp` + `cmp`). Revisión independiente por tarea, las cinco **Aprobado con menores** (T5 con un
+Importante: el smoke no se recuperaba de un descarte a medias), todo arreglado; informes en `.superpowers/sdd/dc-t*-review.md`.
+Backend **1001** (1000 + 1 omitido), frontend **1084 en 50**, build y lint limpios (avisos conocidos). Ensayo del kit
+contra PostgreSQL 16 embebido con el perfil `clever`: 39 PASS / 0 FAIL, repetido 38, y tras simular una demo 38 con
+recuperación; log sin teléfonos ni textos. Siguiente: aprobación y commit, y el despliegue real (pasos de Antonio y su
+socio en §8 del plan). Sin commit ni push sin aprobación de Antonio; la demo del 2026-10-15 va desde
+`C:\Users\Antonio\Desktop\ganera-demo\app` (worktree fijado en `b4b786c`), que no se toca.
+
+### Decisiones 19/10 (sobre el informe de impacto de arquitectura)
+
+- **Orden:** commit de Clever (T1–T5) → Supabase → auditoría base → M2 → número de WhatsApp por gestoría → modelo
+  ganadero/empleados → documentos → Mistral. Cada tarea en una sesión nueva con Paso 0.
+- **Despliegue:** Supabase sustituye solo a la BD; backend en Clever (París), frontend en Vercel (`app.ganera.es`), API en
+  `api.ganera.es`. HSTS, CORS, sin usuario por defecto y PWA se mantienen.
+- **Supabase:** pooler en modo sesión (5432) para la app y Flyway, esquema `ganera`, `REVOKE` a `anon`/`authenticated`,
+  `verify-full` con la CA en el classpath, Hikari a 5, RLS con políticas `TO ganera_app USING (true)` y un test que exija
+  RLS en todas las tablas. Sin restricción por IP. Proyecto ya creado en eu-west-1 (Irlanda), plan Free hasta antes del
+  ensayo; la Data API la desactiva Antonio; la versión de PostgreSQL la da Antonio en esa tarea.
+- **Auditoría:** híbrida (servicio explícito + inmutabilidad en BD): roles propietario y `ganera_app`, trigger en
+  `db/{vendor}`. Se auditan los 403 de acceso a otra gestoría, no los 409. Sin pantalla para la gestoría. IP: se reabre
+  T2, la de más a la derecha de `X-Forwarded-For`. Antes/después: solo ids y códigos.
+- **Número por gestoría:** una cuenta de Twilio con varios remitentes. Al cambiar de número, el antiguo se desactiva y lo
+  que llegue a él queda como `NUMERO_DESTINO_DESCONOCIDO`.
+- **Modelo:** opción B (el titular sigue siendo un `Contacto`, enlazado desde el ganadero). Un número puede ser titular de
+  un ganadero y empleado en otra explotación; si es ambiguo, `PENDIENTE_REVISION` sin explotación. Migración: con varios
+  titulares se queda el más antiguo y se registra el resto. Excel: `telefono_ganadero` en «Explotaciones» (vacía =
+  conservar); una fila `TITULAR` en «Contactos» es error de fila con mensaje claro. Formularios de alta y edición de
+  ganadero, explotaciones y empleados (camino de escritura nuevo, auditado); la regla de CLAUDE.md se actualiza en esa tarea.
+- **Documentos:** escalón 1, subida manual opcional al marcar «Hecho en OVZ»; escalón 2, descarga automática. Supabase
+  Storage, bucket privado, solo desde el backend; PDF/JPG/PNG de hasta 10 MB.
+- **IA:** REST directo contra Mistral; modelos fechados por configuración; el modelo concreto se elige con la evaluación.
 
 ### Pendientes técnicos
+
+- **Antes del primer dato real: crear una base nueva y empezar desde cero** (decisión de Antonio, 2026-10-14, D3 del
+  plan de despliegue en Clever). La base de PostgreSQL que se crea ahora en Clever es **para la demo** (dos gestorías
+  inventadas). Pasos: add-on PostgreSQL nuevo (v16, XXS Small, París) → enlazarlo a `ganera-api` en lugar del de la
+  demo → redesplegar (Flyway V1–V23) → `ALTER DATABASE … SET timezone TO 'UTC'` → alta de las gestorías reales con un
+  `ONBOARDING_SECRET` temporal que se borra al acabar → borrar el add-on de la demo.
+- **Para el abogado, antes de los datos reales — retención de las copias de seguridad** (D4): hoy las copias diarias de
+  PostgreSQL en Clever se guardan **7 días** (lo que incluye el plan; soporte de Clever puede ampliarlo). La retención
+  se decide con el abogado antes del primer dato real, junto con los plazos de los mensajes (30 días / 12 meses).
+- **Para el abogado — datos que salen de la UE** (D5, 2026-10-14). La base de datos, la app y sus copias están en Clever
+  Cloud, zona París (UE, empresa francesa). Salen de la UE:
+  - **Twilio** (EE. UU.): recibe y entrega cada mensaje de WhatsApp —texto, teléfono del ganadero o de su empleado y
+    nombre del perfil— y las respuestas de la gestoría.
+  - **Meta / WhatsApp** (EE. UU.): todo mensaje pasa por su red; es el canal.
+  - **Anthropic** (EE. UU.): recibe el **texto** de cada mensaje (sin teléfono ni nombre, sin inventario) para extraer
+    el tipo de trámite y los crotales.
+  Hacen falta los DPA (con cláusulas contractuales tipo) de Twilio y Anthropic, el de Clever (se acepta en su consola) y
+  revisar las condiciones de WhatsApp Business de Meta; mencionarlo en la información a las gestorías y los ganaderos.
 
 - **HECHO (2026-10-14, ver «Tarjetas-fila de la cola — CERRADA»). Antes de la demo — tarjetas-fila de la cola en
   móvil** (fuera de la fase 1 del diseño por plazo, decisión de Antonio

@@ -11,6 +11,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.util.matcher.AnyRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -30,9 +31,13 @@ public class SecurityConfig {
      * navegador bloquea la respuesta en el preflight antes de que la request llegue a ningun
      * controller, JWT valido o no. Solo el origen del frontend, no un wildcard. */
     @Bean
-    public CorsConfigurationSource corsConfigurationSource(@Value("${ganera.frontend.origen}") String origenFrontend) {
+    public CorsConfigurationSource corsConfigurationSource(
+            @Value("${ganera.frontend.origen}") String origenFrontend,
+            @Value("${ganera.frontend.exigir-https:false}") boolean exigirHttps) {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of(origenFrontend));
+        // Un solo origen exacto, validado al arrancar (OrigenFrontend); sin credenciales de navegador (el JWT va en
+        // la cabecera Authorization, no en cookies).
+        configuration.setAllowedOrigins(List.of(OrigenFrontend.validar(origenFrontend, exigirHttps)));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
@@ -42,7 +47,18 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(
-            HttpSecurity http, JwtService jwtService, CorsConfigurationSource corsConfigurationSource) throws Exception {
+            HttpSecurity http, JwtService jwtService, CorsConfigurationSource corsConfigurationSource,
+            @Value("${ganera.seguridad.hsts-siempre:false}") boolean hstsSiempre) throws Exception {
+        if (hstsSiempre) {
+            // Solo en produccion (perfil clever; despliegue en Clever, T2). Clever termina TLS en su proxy y llega
+            // a la app por HTTP, asi que el HSTS por defecto (solo en peticiones que Spring cree seguras) no saldria
+            // nunca. Se manda en todas las respuestas, sin fiarse de X-Forwarded-Proto ni de la IP del proxy: por
+            // HTTP el navegador la ignora (RFC 6797) y Clever ya redirige HTTP a HTTPS ("Force HTTPS").
+            http.headers(headers -> headers.httpStrictTransportSecurity(hsts -> hsts
+                    .requestMatcher(AnyRequestMatcher.INSTANCE)
+                    .includeSubDomains(true)
+                    .maxAgeInSeconds(31_536_000)));
+        }
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))

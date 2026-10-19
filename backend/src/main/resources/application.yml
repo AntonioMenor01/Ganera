@@ -33,6 +33,10 @@ ganera:
     secret: ${ONBOARDING_SECRET:}
   frontend:
     origen: ${FRONTEND_ORIGEN:http://localhost:5173}
+  seguridad:
+    # Strict-Transport-Security en todas las respuestas. Solo en produccion (application-clever.yml la pone a
+    # true, ver SecurityConfig): en local se sirve por HTTP y no aporta nada.
+    hsts-siempre: false
   registro:
     # Registro publico (POST /gestorias/registro). CERRADO por defecto (Prompt C, D4, fail-closed):
     # cerrado responde 404 sin cuerpo y no crea nada. Sin placeholder ${...} a proposito; solo lo
