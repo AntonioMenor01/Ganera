@@ -1,7 +1,6 @@
 package com.ganera.core.postgres;
 
 import com.ganera.core.migracion.V23SentenciasDePrueba;
-import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.junit.jupiter.api.Test;
 
@@ -17,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * V23 (mensajes sin tramite) sobre PostgreSQL 16 real, con las MISMAS sentencias que
+ * V23 (mensajes sin tramite) sobre PostgreSQL 17 real, con las MISMAS sentencias que
  * V23DescarteSinTramiteMigracionTest (H2): filas previas sin motivo; el CHECK ck_tramite_motivo_rechazo
  * rechaza el motivo con otro estado y un codigo no previsto con el SQLState de CHECK de PostgreSQL (23514);
  * tramite_evento con su CHECK de tipo y sus tres claves ajenas (23503).
@@ -92,6 +91,6 @@ class V23DescarteSinTramitePostgresTest {
     }
 
     private static FluentConfiguration flyway(DataSource dataSource) {
-        return Flyway.configure().dataSource(dataSource).locations("classpath:db/migration");
+        return PostgresEmbebido.flyway(dataSource);
     }
 }

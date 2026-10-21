@@ -1,0 +1,2 @@
+# Fail-closed de las variables de la base de datos antes de crear ningun bean (migracion a Supabase, T3).
+org.springframework.boot.env.EnvironmentPostProcessor=com.ganera.core.shared.basedatos.ConexionBaseDeDatosEstricta

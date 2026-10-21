@@ -680,6 +680,17 @@ Plan con las decisiones cerradas: `docs/superpowers/plans/2026-10-03-tarea-front
    ahora no se paga hosting.** El despliegue se hará cuando se decida (con los créditos gratuitos de Clever o
    antes del piloto), con los pasos y variables de "Despliegue en Clever Cloud — pendiente" (más abajo). **No es
    la infraestructura definitiva del C.**
+   **Despliegue en Clever endurecido** (plan `docs/superpowers/plans/2026-10-14-despliegue-clever.md`, commit `28ea24d`:
+   sin usuario por defecto, HSTS, CORS fail-closed, web instalable y el kit `C:\Users\Antonio\Desktop\ganera-clever\`).
+4b. **Migración de la base de datos a Supabase** (decisiones del 19/10: Supabase sustituye solo a la BD; backend en
+   Clever, frontend en Vercel, tarea aparte). Plan `docs/superpowers/plans/2026-10-19-migracion-supabase.md` (S1–S7).
+   **Código hecho el 2026-10-20, sin commit** (rama `supabase`): PostgreSQL 17 en los tests y `db/{vendor}` (T1), roles
+   `ganera_propietario`/`ganera_app`, esquema `ganera`, RLS con un callback `afterMigrate` y zona UTC (T2), perfil
+   `clever` con las siete `SUPABASE_*`, `verify-full` y la CA en el classpath (T3), documentación y kit con ensayo
+   contra PostgreSQL 17 embebido (T4). Backend 1075, todo en verde con la CA real (JDK 21 y 23), frontend 1084 en 50.
+   **Smoke real contra Supabase (T5) todo PASS y esquema vaciado (S7)**, 2026-10-21;
+   pendiente solo el commit. Orden siguiente (decisiones del 19/10): auditoría base → M2 → número de WhatsApp por gestoría → modelo
+   ganadero/empleados → documentos → Mistral.
 5. **Prompt C**, después la app de escritorio, el MVP a la gestoría piloto y, tras el piloto, OVZ 3a/3c.
 
 **Añadido el 2026-10-06 — escalón 1 de OVZ:** la **ficha lista para OVZ** (**hecha el 2026-10-07, commit `db0d234`**: backend 706/706, frontend 720/720, smoke en navegador real
@@ -722,6 +733,11 @@ está en `docs/referencias/ovz-tramites-bovino.md`.
 4. **Frecuencia real** de cada trámite en la gestoría piloto, para ordenar el MVP.
 
 ### Despliegue en Clever Cloud — pendiente
+
+> **Superado** por el plan del 14/10 (`docs/superpowers/plans/2026-10-14-despliegue-clever.md`) y, para la base de
+> datos, por la migración a Supabase (2026-10-19): ya no hay add-on PostgreSQL ni Adminer; las `POSTGRESQL_ADDON_*`
+> pasan a ser las siete `SUPABASE_*` y la zona horaria la pone el script `backend/supabase/01-…sql`. Se deja como
+> historia.
 
 Pasos y variables, para cuando se decida desplegar. Los secretos los genera Antonio en **su** terminal y los
 pega en la consola de Clever; nunca en el chat ni en el repo.

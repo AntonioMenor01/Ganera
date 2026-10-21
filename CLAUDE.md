@@ -735,26 +735,31 @@ approval step before anything is written to OVZ.net.
   `docs/superpowers/plans/2026-10-06-promptC-minimo-demo-desplegada.md`, decisions D1–D8). Not the
   final Prompt C infrastructure: a demo with **invented data only** for Antonio's partner.
   - **Clever Cloud, Paris zone**: Java/Maven app XS (`APP_FOLDER=backend`, one instance, no
-    autoscaling — the extraction queue doesn't claim rows), PostgreSQL 16 add-on XXS Small Space,
+    autoscaling — the extraction queue doesn't claim rows), PostgreSQL 16 add-on XXS Small Space
+    (replaced by Supabase on 2026-10-19, see the "Supabase" bullet; never deployed),
     frontend on the Static runtime (pico, `VITE_API_BASE_URL` baked in at build time). Every secret
     lives only in Clever's environment variables; Claude never sees them. `.clever.json` is ignored.
   - **`application-clever.yml`** (`SPRING_PROFILES_ACTIVE=clever`): datasource from the add-on's
-    `POSTGRESQL_ADDON_HOST/PORT/DB/USER/PASSWORD`, `?logServerErrorDetail=false`, explicit
+    `POSTGRESQL_ADDON_HOST/PORT/DB/USER/PASSWORD` (history: since the Supabase migration the profile reads the seven
+    `SUPABASE_*` variables instead, see the "Supabase" bullet), `?logServerErrorDetail=false`, explicit
     PostgreSQL driver. Never define a `GANERA_REGISTRO_*` variable there (relaxed binding would open
     the registration).
-  - **Tests against real PostgreSQL 16** (`com.ganera.core.postgres`, `io.zonky.test:embedded-postgres`
-    2.2.2 + binaries BOM 16.15.0, test scope only, no Docker; `PostgresEmbebido` shares one server per
-    JVM, UTF8, a fresh database per test): Flyway V1–V22 + `ddl-auto=validate`, V18 on existing rows,
+  - **Tests against real PostgreSQL** (`com.ganera.core.postgres`, `io.zonky.test:embedded-postgres`
+    2.2.2 + binaries BOM **17.11.0** since the Supabase migration — Supabase's exact version; 16.15.0 until then —,
+    test scope only, no Docker; `PostgresEmbebido` shares one server per
+    JVM, UTF8, a fresh database per test): Flyway V1–V23 + `ddl-auto=validate`, V18 on existing rows,
     the `clever` profile end to end, and `InstantTimestampPostgresTest`. **Finding (D8):** with
     Hibernate 6.6 + pgjdbc 42.7.4 an `Instant` round-trips through a `TIMESTAMP` (without time zone)
     column with no shift even with the JVM in `Europe/Madrid`, and the extraction queue and
     retention cut exactly (also in October's repeated hour); that test is the regression guard for
     pgjdbc/Hibernate upgrades. Only `DEFAULT now()` on rows inserted by hand depends on the session
     zone (`DefaultNowPostgresTest`): hand-written SQL starts with `SET TIME ZONE 'UTC'` and sets
-    `created_at` explicitly; `TZ=UTC` on Clever and `ALTER DATABASE … SET timezone TO 'UTC'`.
+    `created_at` explicitly; `TZ=UTC` on Clever and `ALTER DATABASE … SET timezone TO 'UTC'` (since the Supabase
+    migration, done by `backend/supabase/01-preparar-roles-y-esquema.sql`).
   - Demo data and scripts (two invented Gestorías, Excel, seed SQL for Adminer, onboarding and smoke
     scripts that Antonio runs in his own terminal) live **outside the repo**, in
-    `C:\Users\Antonio\Desktop\ganera-demo\`.
+    `C:\Users\Antonio\Desktop\ganera-demo\` (superseded by the `ganera-clever` kit, see "Clever deployment
+    hardening").
 - **Ficha lista para OVZ — escalón 1 de OVZ** (2026-10-07; analysis of the OVZNET manual in
   `docs/referencias/ovz-tramites-bovino.md`, the PDF itself is git-ignored; plan
   `docs/superpowers/plans/2026-10-06-ficha-ovz.md`, decisions D1–D8 and the approved T5 shape). Ganera
@@ -940,7 +945,9 @@ approval step before anything is written to OVZ.net.
     design; tiny window).
 - **Clever deployment hardening** (2026-10-14; plan `docs/superpowers/plans/2026-10-14-despliegue-clever.md`, decisions
   D1–D6 at the top: `app.ganera.es` static frontend + `api.ganera.es` backend, PostgreSQL XXS Small in Paris, the first
-  base is for the demo only — a new one before the first real data).
+  base is for the demo only — a new one before the first real data). Since 2026-10-19 the database is **Supabase**
+  (Ireland), not the Clever add-on, and "a new base" means emptying the `ganera` schema and rerunning script 01 (S7);
+  the frontend will move to Vercel (separate task). See the "Supabase" bullet; the plan of 14/10 marks each change.
   - **No default Spring user:** `GaneraApplication` excludes `UserDetailsServiceAutoConfiguration` (it created a `user`
     and logged «Using generated security password»); `SinUsuarioPorDefectoTest` starts its own context to avoid a cached
     one.
@@ -963,7 +970,99 @@ approval step before anything is written to OVZ.net.
   - **Deployment kit** outside the repo in `C:\Users\Antonio\Desktop\ganera-clever\` (replaces
     `Archivos-Ganera\ganera-demo`): `alta-gestorias.sh`, two invented Excel files, `seed-tramites.sql` (8 trámites per
     gestoría with OVZ types, one `HECHO_EN_OVZ`, one discardable `SIN_TRAMITE`), `smoke.sh` (41 checks against Clever;
-    recovers the state a demo leaves). Rehearsed against embedded PostgreSQL 16 with the `clever` profile.
+    recovers the state a demo leaves). Rehearsed against embedded PostgreSQL 16 with the `clever` profile. Updated for
+    Supabase on 2026-10-20: `LEEME.md` uses Supabase's SQL editor instead of Adminer (script 01, passwords with `psql`
+    17 `\password`), `seed-tramites.sql` starts with `SET ROLE ganera_propietario; SET search_path TO ganera;`, and
+    `prueba-supabase.sh` (step 5 of the Supabase smoke) is new; rehearsed against embedded PostgreSQL 17 imitating
+    Supabase (see the "Supabase" bullet).
+- **Supabase — the production database** (2026-10-19/20; plan `docs/superpowers/plans/2026-10-19-migracion-supabase.md`,
+  Antonio's decisions S1–S7 at the top prevail). Supabase replaces **only** the database (project in **eu-west-1,
+  Ireland**, **PostgreSQL 17.11**, Free plan, UTC, **Data API disabled**); the backend stays on Clever (Paris) and the
+  frontend will go to Vercel (separate task). HSTS, CORS fail-closed, no default user and the PWA don't change. The audit
+  trail (trigger, cross-Gestoría `403`, IP) is the next task.
+  - **`clever` profile:** `jdbc:postgresql://${SUPABASE_DB_HOST}:${SUPABASE_DB_PORT}/${SUPABASE_DB_NAME}` with
+    **fixed** `sslmode=verify-full`, `sslfactory=org.postgresql.ssl.SingleCertValidatingFactory`,
+    `sslfactoryarg=classpath:supabase/ca-raiz.crt`, `currentSchema=ganera` and `logServerErrorDetail=false`; Hikari
+    `maximum-pool-size: 5`. The app connects as `ganera_app` (`SUPABASE_DB_USER`/`_PASSWORD`); Flyway migrates as
+    `ganera_propietario` (`SUPABASE_FLYWAY_USER`/`_PASSWORD`, Boot gives it its own unpooled connection to the same URL),
+    `default-schema`/`schemas: ganera`, `create-schemas: false` (script 01 creates it; without it the app doesn't start).
+    Through the **pooler in session mode, port 5432**; users are `rol.<ref>` (`ganera_app.<ref>`,
+    `ganera_propietario.<ref>`), database `postgres`. **Port 6543 (transaction mode) doesn't work**: it breaks pgjdbc's
+    prepared statements and Flyway's advisory lock. Never connect the app as `postgres`.
+  - **The CA:** pgjdbc checks the host name after building the socket with that factory, so `verify-full` still
+    verifies it. The real CA goes in `src/main/resources/supabase/ca-raiz.crt` (Antonio downloaded it on 2026-10-20, T0:
+    *Supabase Root 2021 CA*, valid until April 2031); `src/test/resources/supabase/ca-raiz.crt` is a test-only CA that shadows it on the test classpath, with the
+    test server certificates in `src/test/resources/ssl-pruebas/` (`localhost` only, 100 years, `LEEME.md`).
+    `CaSupabaseTest` reads the main one **from disk** (an X.509 CA, valid, Supabase's subject, not the test one) — it
+    would fail if the file were missing or were the test CA.
+  - **Seven variables, no defaults:** `SUPABASE_DB_HOST/PORT/NAME/USER/PASSWORD`, `SUPABASE_FLYWAY_USER/PASSWORD` (in
+    `.env.example`, commented). `ConexionBaseDeDatosEstricta` (`EnvironmentPostProcessor` in `shared/basedatos`, registered
+    in `META-INF/spring.factories`, runs before any bean in **every** startup, not only `clever`) resolves
+    `spring.datasource.url/username/password` and `spring.flyway.url/user/password` strictly and fails, naming the
+    property and the variable but never a value, if a variable is missing **or defined but blank**. Why: Boot's binder
+    leaves an unresolved `${…}` as text, and an empty host turns into `localhost` in pgjdbc — with `trust` auth (the
+    embedded test server) a missing password would even connect. Side effect in local: `DATABASE_PASSWORD=` (defined,
+    empty) also stops startup, even though `application.yml` has `${DATABASE_PASSWORD:ganera}`; `${X:}` with `X` unset
+    is fine. **Never define `GANERA_*`, `DATABASE_*`, `SPRING_DATASOURCE_*` or `SPRING_FLYWAY_*` on Clever** (relaxed
+    binding would override the profile).
+  - **Roles and schema — `backend/supabase/01-preparar-roles-y-esquema.sql`** (Antonio pastes it whole in Supabase's SQL
+    editor as `postgres`; one transaction, idempotent, no passwords): `ganera_propietario` (owns the schema and every
+    table; only Flyway and hand-written SQL) and `ganera_app` (`LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION
+    NOBYPASSRLS`, fixed if they already existed); `anon`/`authenticated`/`service_role` only if missing (local and
+    tests); `GRANT ganera_propietario TO CURRENT_USER WITH SET TRUE, INHERIT FALSE` (PG16+: needed to create the schema
+    for it and to `SET ROLE` for seeding/dropping); schema `ganera` owned by `ganera_propietario`, nothing for
+    `PUBLIC`/Supabase roles, `USAGE` only for `ganera_app`; `ALTER DATABASE … SET timezone TO 'UTC'`. Passwords
+    afterwards with `psql` 17 `\password` (SCRAM is computed client-side; alternative: paste a SCRAM hash, **never** a
+    plain password in the editor). **`02-comprobar-seguridad.sql`**: one read-only query, one row per problem (RLS,
+    exact policies, privileges of `PUBLIC`/`anon`/`authenticated`/`service_role`/`authenticator` on schema, tables,
+    columns, views, sequences, functions, `ganera_app`'s exact privileges, role memberships and attributes, the
+    database's `TimeZone=UTC`); **0 rows = correct**. The tests read both from disk: one source.
+  - **Callback `db/postgresql/afterMigrate__seguridad_esquema.sql`** (S1): runs after **every** `migrate` on
+    `${flyway:defaultSchema}`, idempotent, over **all** tables (future ones too): `ENABLE ROW LEVEL SECURITY` only if
+    missing (no `FORCE`: the owner doesn't obey it; re-enabling took an `ACCESS EXCLUSIVE` lock on every start),
+    `REVOKE ALL … CASCADE` from `PUBLIC, anon, authenticated, service_role` and `ganera_app`, then for `ganera_app`
+    `SELECT, INSERT, UPDATE, DELETE` + policy `ganera_app_todo` (`FOR ALL TO ganera_app USING (true) WITH CHECK
+    (true)`, created only if missing in `pg_policies`; tenant separation is still the app's job, RLS keeps every other
+    role out). The **"insert-only" list** (`solo_insercion`, today only the reserved name `auditoria` for the coming
+    audit table; the **same** list in 02 — rename both together) gets `SELECT, INSERT` and two policies, never `UPDATE`/
+    `DELETE`. `flyway_schema_history`: nothing for `ganera_app`. Sequences: `USAGE` (`BIGSERIAL`). Functions: no
+    `EXECUTE` for the outsiders. Fails with a clear message if a role is missing (fail-closed).
+  - **`db/{vendor}`:** `spring.flyway.locations: classpath:db/migration,classpath:db/{vendor}` in **both**
+    `application.yml` (the test one shadows the main one); Boot resolves `postgresql` or `h2`. **Numbering rule:** the
+    version is global across folders — a Postgres-only migration leaves a gap in H2, which Flyway accepts; never two
+    files with the same version. `db/h2/` only holds a `LEEME.md` (Maven doesn't copy empty folders).
+    `spring.flyway.fail-on-missing-locations: true` in both YAMLs: Flyway 10 only logs a missing location at `DEBUG`,
+    so a `db/postgresql` missing from the jar would silently skip the security callback.
+  - **Hand-written SQL** (seed, fixes) runs as the owner: start with `SET ROLE ganera_propietario; SET search_path TO
+    ganera;` (and `SET TIME ZONE 'UTC'`, see C mínimo). `postgres` **cannot** `SET ROLE ganera_app` (on purpose: 02
+    flags anyone who can) — to see what the app sees, connect with `psql` as `ganera_app.<ref>`.
+  - **Tests:** `PostgresEmbebido` (PostgreSQL 17.11) runs with `ssl=on` and the test certificate, creates
+    `admin_supabase` (`CREATEROLE CREATEDB`, **not** superuser, like Supabase's `postgres`) and `anon`/`authenticated`/
+    `service_role`/`authenticator` (`LOGIN NOINHERIT`, member of the three), and every `nuevaBaseDeDatos()` is owned by
+    `admin_supabase` and gets script 01 run **as `admin_supabase`**. `SeguridadEsquemaPostgresTest`,
+    `PreparacionBaseDeDatosPostgresTest`, `BaseDeDatosPerfilCleverPostgresTest` (each variable missing or blank,
+    `127.0.0.1` vs the `localhost` certificate, no schema, and a real flow as `ganera_app` with RLS),
+    `ConfiguracionBaseDeDatosProduccionTest` and `ConfiguracionFlywayTest` (read the YAMLs from disk),
+    `FlywayH2VendorTest`. Older PostgreSQL tests still connect as superuser to `public`; the callback protects them too.
+  - **`docker-compose`:** `postgres:17-alpine` with script 01 mounted in `/docker-entrypoint-initdb.d/` (without those
+    roles the callback won't let Flyway migrate). It only runs when the volume is created: with an old volume,
+    `docker-compose down -v` (or run the script by hand). The image's user `ganera` is a **superuser** and, because the schema is
+    also called `ganera`, `search_path = "$user", public` makes the local app migrate into `ganera` as that superuser —
+    it works and the callback protects it, but it doesn't reproduce Supabase's role split (T2 review M6). Not tested
+    here (no Docker).
+  - **Known limitations (from the reviews):** the callback doesn't revoke anything from `authenticator` (it may not
+    exist outside Supabase; by default it gets nothing in `ganera`, and 02 detects a hand-made grant, but migrating
+    doesn't undo it — Antonio's decision: fixed in the audit task, with a conditional `REVOKE`); since 2026-10-20 02 also
+    follows **role chains** (T3 second review N1): an outsider role that can become some role R (itself, or through a
+    `pg_has_role(…, 'SET')` chain) which inherits a `ganera_*` role (`'USAGE'`), can `SET ROLE` to it or has ADMIN on it
+    (direct or inherited) shows as «llega por una cadena de roles» — not repeated when a direct clause already flags
+    it; a direct membership without options doesn't hide the chain. So a grant to `anon`, `authenticated` or
+    `service_role` also shows a row for `authenticator`, which can become any of them (and since `pg_has_role` is true
+    for a superuser, being able to become one shows too); the CA validation is only pinned by the URL text (swapping the factory for
+    `NonValidatingFactory` keeps the `127.0.0.1` test green; the exact-URL tests catch it — M2); Spring's chained cause
+    for a missing variable carries the property's **unresolved** raw value (a secret would only show if a variable's
+    value itself contained `${…}` — M4). The real pooler (`rol.<ref>` users), the real CA and `ALTER DATABASE` as
+    Supabase's `postgres` can only be checked by the real smoke (T5).
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)
@@ -971,7 +1070,8 @@ approval step before anything is written to OVZ.net.
 Package layout under `backend/src/main/java/com/ganera/core/`: `gestoria`, `ganadero`,
 `explotacion`, `contacto`, `tramite`, `facturacion`, `whatsapp`, `ovz`, `auth`, `onboarding`, and
 `shared` (`shared/tenant`, `shared/security`, `shared/crypto`, `shared/web` — `MotivoErrorResponse`,
-`OrdenacionPermitida` — and `shared/texto` — `NormalizadorBusqueda`). Java Flyway migrations live in
+`OrdenacionPermitida` —, `shared/texto` — `NormalizadorBusqueda` —, `shared/tiempo` — `RelojConfig`, the `Clock`
+bean — and `shared/basedatos` — `ConexionBaseDeDatosEstricta`, see the "Supabase" bullet). Java Flyway migrations live in
 `backend/src/main/java/db/migration/` (V18 is the first one).
 
 - `Tramite.estado` (`EstadoTramite`) has exactly 8 values:
@@ -1056,6 +1156,10 @@ Package layout under `backend/src/main/java/com/ganera/core/`: `gestoria`, `gana
   did not compile at all with `javac` (a clean build failed at `testCompile`), and a non-clean run
   later picked up ECJ's "Unresolved compilation problem" stubs. `clean` is the only trustworthy
   signal.
+- **`TestRestTemplate`/`RestTemplate` with `String.class` gets XML**: Twilio's SDK brings `jackson-dataformat-xml`, so
+  the default converters send `Accept: application/xml` first and the server answers XML. Send `Accept:
+  application/json` explicitly in the `HttpEntity` headers (`RestTemplateBuilder.defaultHeader` doesn't work: the
+  `Accept` callback overrides it). The frontend (axios) already asks for JSON.
 
 ## Architecture notes (frontend)
 
@@ -1197,7 +1301,7 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw clean test` — runs the test suite (1001 tests after the Clever deployment tasks — 1000 run plus the skipped Haiku evaluation —, including the embedded-PostgreSQL ones); **always with `clean`**
+- `./mvnw clean test` — runs the test suite (1001 tests after the Clever deployment tasks — 1000 run plus the skipped Haiku evaluation —; **1075** after the Supabase migration — 1074 run plus the skipped evaluation —, including the embedded-PostgreSQL ones; also green with JDK 21, Temurin 21 in `~/.jdks/temurin-21`); **always with `clean`**
   (see the VS Code/ECJ note under Architecture notes). A single test:
   `./mvnw clean test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
@@ -1232,7 +1336,9 @@ Frontend (from `frontend/`):
 - `npm run preview`
 
 Root:
-- `docker-compose up -d` — Postgres only (the Spring Boot app runs outside Docker for now).
+- `docker-compose up -d` — Postgres only (the Spring Boot app runs outside Docker for now). `postgres:17-alpine` with
+  `backend/supabase/01-…sql` in `docker-entrypoint-initdb.d` (runs only on a new volume: remove an old one with
+  `docker-compose down -v`); see the "Supabase" bullet.
 - **After cloning, recreate the `impeccable` skill junction.** The design skill is committed under
   `.agents/skills/impeccable/` (pinned in `skills-lock.json`), but Claude Code loads it from
   `.claude/skills/impeccable`. That path is a Windows directory junction, and it's in `.gitignore`:
@@ -1571,6 +1677,24 @@ and undo, the ficha OVZ of a discarded one, «Deshacer» with history, «gracias
 `ES990000004521`). Instructions live outside the repo, in
 `C:\Users\Antonio\Desktop\ganera-prueba-sin-tramite\INSTRUCCIONES.md` (lesson about PowerShell JSON bodies in
 `progress.md`).
+
+**Supabase migration — complete, real smoke (T5) passed, not committed yet** (2026-10-19 → 2026-10-21),
+following `docs/superpowers/plans/2026-10-19-migracion-supabase.md` with the Superpowers flow (T1 PostgreSQL 17 in the
+tests and `db/{vendor}`, **Approved with minors**; T2 roles, schema, RLS and time zone, **Changes requested** → fixed →
+**Approved with minors**; T3 the `clever` profile against Supabase, **Changes requested** → fixed → **Approved with
+minors**; T4 docs and kit; reports `.superpowers/sdd/su-*`, not committed). **Backend, `.env.example`, `docker-compose`
+and docs; frontend untouched.** See the "Supabase" bullet under Technical decisions. No new versioned migration (the
+callback lives in `db/postgresql`). Verified with `./mvnw clean test` **1075** (1074 pass, 1 skipped: the evaluation; JDK 21
+and 23), after the role-chain check of 02 (`pg_has_role`, reviewed), `npm test` **1084 in 50** (unchanged), and a rehearsal of the kit
+against embedded PostgreSQL 17 imitating Supabase (SSL `verify-full`, SCRAM for the two roles, the `clever` profile):
+`prueba-supabase.sh` 5/5 PASS, `alta-gestorias.sh`, both Excel files, the seed from a non-UTC session, `smoke.sh` 39 and
+38 PASS, 02 with 0 rows. **Real smoke (T5, Antonio's terminal, 2026-10-21): all PASS** — the pooler accepts
+`rol.<ref>` and the panel's CA validates it with `verify-full`; the local backend (`clever`, JDK 21) migrated 23
+versions into `ganera` with the callback and no Flyway WARN; `prueba-supabase.sh` 5/5; 02 with 0 rows on real
+Supabase; `UTC`; `anon` denied; `ganera_app` sees 15 explotaciones and not `flyway_schema_history`; S7 done (schema
+emptied, roles kept). Lesson: never paste a password blind into a console prompt — read it from the clipboard and
+set it as a SCRAM hash in the SQL editor (kit `rotar-contrasenas.ps1`, `smoke-supabase-local.ps1`; details in
+`progress.md`). **No commit until Antonio approves it.**
 
 **Still blocked: Prompt 3a and escalón 2 (modo asistido)** — the OVZ.net read sync, and the mode where
 Ganera fills in the OVZ form for the gestor to review — one trámite at a time, after the gestor’s

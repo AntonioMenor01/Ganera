@@ -24,7 +24,7 @@ import java.util.TimeZone;
 import java.util.function.Consumer;
 
 /**
- * Columnas TIMESTAMP (sin zona) mapeadas a java.time.Instant contra PostgreSQL 16 real (Prompt C,
+ * Columnas TIMESTAMP (sin zona) mapeadas a java.time.Instant contra PostgreSQL 17 real (Prompt C,
  * T1; hipotesis del plan, seccion 7, y nota n4 de la revision de B1 T3).
  *
  * <p>Que comprueba, con la zona por defecto de la JVM en UTC y en Europe/Madrid: que la columna

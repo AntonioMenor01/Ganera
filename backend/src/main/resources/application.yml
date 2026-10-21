@@ -14,7 +14,13 @@ spring:
         format_sql: true
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    # {vendor} lo resuelve Boot a "postgresql" o "h2": las migraciones y callbacks solo-Postgres van en
+    # db/postgresql. La version es global entre carpetas (un hueco en H2 es normal); nunca dos ficheros con la
+    # misma version.
+    locations: classpath:db/migration,classpath:db/{vendor}
+    # Sin esto, si db/postgresql no llegara al jar, Flyway 10 solo lo diria en DEBUG y el callback de seguridad
+    # (afterMigrate__seguridad_esquema.sql: RLS y permisos) dejaria de ejecutarse en silencio (hallazgo de T1).
+    fail-on-missing-locations: true
   task:
     scheduling:
       pool:

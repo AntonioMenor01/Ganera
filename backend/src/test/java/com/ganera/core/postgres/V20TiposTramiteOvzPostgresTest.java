@@ -1,6 +1,5 @@
 package com.ganera.core.postgres;
 
-import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.junit.jupiter.api.Test;
 
@@ -16,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * V20 (tipos de tramite de OVZ, ficha OVZ T1) sobre PostgreSQL 16 real. Mismo patron que
+ * V20 (tipos de tramite de OVZ, ficha OVZ T1) sobre PostgreSQL 17 real. Mismo patron que
  * V20TiposTramiteOvzMigracionTest (H2): migrar hasta la 19, insertar tramites con los tipos viejos,
  * migrar al final y comprobar cada valor, los null y que la columna admite 23 caracteres.
  */
@@ -70,7 +69,7 @@ class V20TiposTramiteOvzPostgresTest {
     }
 
     private static FluentConfiguration flyway(DataSource dataSource) {
-        return Flyway.configure().dataSource(dataSource).locations("classpath:db/migration");
+        return PostgresEmbebido.flyway(dataSource);
     }
 
     private static Map<Long, String> columna(DataSource dataSource, String sql) throws SQLException {

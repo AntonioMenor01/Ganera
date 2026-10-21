@@ -1,12 +1,12 @@
 package com.ganera.core.postgres;
 
-import com.ganera.core.GaneraApplication;
 import com.zaxxer.hikari.HikariDataSource;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.postgresql.core.BaseConnection;
-import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SimpleDriverDataSource;
 
 import javax.sql.DataSource;
 import java.net.URI;
@@ -20,54 +20,76 @@ import java.util.stream.IntStream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Prompt C, T2: la aplicacion completa arranca con el perfil {@code clever} (el de la demo en Clever
- * Cloud) contra el PostgreSQL embebido de T1. Las variables que Clever inyecta al enlazar el add-on
- * PostgreSQL ({@code POSTGRESQL_ADDON_*}) se pasan como argumentos de linea de comandos que apuntan
- * a esa base de datos, no como variables de entorno reales. No se pasa ninguna propiedad
- * {@code spring.datasource.*}: la URL, el usuario y la contrasena salen de application-clever.yml.
- * El contexto es propio de este test (SpringApplicationBuilder), asi que el perfil no se activa en
- * el resto de la suite, que sigue en H2.
+ * Prompt C, T2, y migracion a Supabase, T3: la aplicacion completa arranca con el perfil {@code clever} contra el
+ * PostgreSQL embebido como contra Supabase: SSL de verdad con {@code sslmode=verify-full} y la CA del classpath (la de
+ * prueba tapa a la real en los tests), la app como {@code ganera_app} en el esquema {@code ganera} y Flyway como
+ * {@code ganera_propietario} por una conexion aparte. Las siete variables {@code SUPABASE_*} se pasan como argumentos
+ * de linea de comandos ({@link PostgresEmbebido#variablesSupabase}); ninguna propiedad {@code spring.datasource.*} ni
+ * {@code spring.flyway.*}: salen de application-clever.yml.
  */
 class PerfilCleverPostgresTest {
 
     @Test
-    void arrancaContraPostgresConLasVariablesDelAddOnYDejaElRegistroCerrado() throws Exception {
+    void arrancaContraPostgresComoEnSupabaseYDejaElRegistroCerrado() throws Exception {
         String baseDeDatos = PostgresEmbebido.nuevaBaseDeDatos();
-        // jdbc:postgresql://localhost:<puerto>/<base>?user=postgres
-        URI uri = URI.create(PostgresEmbebido.jdbcUrl(baseDeDatos).substring("jdbc:".length()));
 
-        try (ConfigurableApplicationContext contexto = new SpringApplicationBuilder(GaneraApplication.class).run(
-                "--spring.profiles.active=clever",
-                "--POSTGRESQL_ADDON_HOST=" + uri.getHost(),
-                "--POSTGRESQL_ADDON_PORT=" + uri.getPort(),
-                "--POSTGRESQL_ADDON_DB=" + baseDeDatos,
-                "--POSTGRESQL_ADDON_USER=" + PostgresEmbebido.USUARIO,
-                "--POSTGRESQL_ADDON_PASSWORD=",
-                "--FRONTEND_ORIGEN=https://app.ganera.es",
-                "--server.port=0",
-                "--spring.datasource.hikari.pool-name=pg-clever-" + baseDeDatos,
-                "--spring.jmx.enabled=false")) {
+        try (ConfigurableApplicationContext contexto = PostgresEmbebido.arrancarPerfilClever(baseDeDatos)) {
 
             assertThat(contexto.getEnvironment().getActiveProfiles()).containsExactly("clever");
 
-            // Conecta a ESA base de datos de PostgreSQL, con la URL del perfil.
+            // El pool conecta a ESA base con la URL exacta del perfil, y es de 5.
             HikariDataSource dataSource = (HikariDataSource) contexto.getBean(DataSource.class);
-            assertThat(dataSource.getJdbcUrl()).isEqualTo("jdbc:postgresql://" + uri.getHost() + ":" + uri.getPort()
-                    + "/" + baseDeDatos + "?logServerErrorDetail=false");
+            String urlEsperada = "jdbc:postgresql://localhost:" + PostgresEmbebido.puerto() + "/" + baseDeDatos
+                    + "?sslmode=verify-full&sslfactory=org.postgresql.ssl.SingleCertValidatingFactory"
+                    + "&sslfactoryarg=classpath:supabase/ca-raiz.crt&currentSchema=ganera&logServerErrorDetail=false";
+            assertThat(dataSource.getJdbcUrl()).isEqualTo(urlEsperada);
+            assertThat(dataSource.getUsername()).isEqualTo(PostgresEmbebido.APP);
+            assertThat(dataSource.getMaximumPoolSize()).isEqualTo(5);
+
             JdbcTemplate jdbc = contexto.getBean(JdbcTemplate.class);
             assertThat(jdbc.queryForObject("select current_database()", String.class)).isEqualTo(baseDeDatos);
-            assertThat(jdbc.queryForObject("select version()", String.class)).startsWith("PostgreSQL 16.");
+            assertThat(jdbc.queryForObject("select version()", String.class)).startsWith("PostgreSQL 17.");
+            assertThat(jdbc.queryForObject("select current_user", String.class)).isEqualTo(PostgresEmbebido.APP);
+            assertThat(jdbc.queryForObject("select current_schema()", String.class)).isEqualTo(PostgresEmbebido.ESQUEMA);
+            // La conexion de la app va por SSL de verdad (no solo esta en la URL).
+            assertThat(jdbc.queryForObject("select ssl from pg_stat_ssl where pid = pg_backend_pid()", Boolean.class))
+                    .isTrue();
 
             // El driver de verdad ha aplicado logServerErrorDetail=false (no solo esta en el texto).
             try (Connection conexion = dataSource.getConnection()) {
                 assertThat(conexion.unwrap(BaseConnection.class).getLogServerErrorDetail()).isFalse();
             }
 
-            // Flyway ha aplicado V1-V23 al arrancar.
-            List<String> versiones = jdbc.queryForList(
-                    "select version from flyway_schema_history where success order by installed_rank", String.class);
+            // Flyway: conexion aparte, sin pool, derivada del datasource (misma URL) y como el propietario.
+            DataSource deFlyway = contexto.getBean(Flyway.class).getConfiguration().getDataSource();
+            assertThat(deFlyway).isInstanceOf(SimpleDriverDataSource.class);
+            assertThat(((SimpleDriverDataSource) deFlyway).getUrl()).isEqualTo(urlEsperada);
+            assertThat(((SimpleDriverDataSource) deFlyway).getUsername()).isEqualTo(PostgresEmbebido.PROPIETARIO);
+
+            // V1-V23 aplicadas en ganera, todas por ganera_propietario. La app no puede leer flyway_schema_history
+            // (el callback se lo quita): se mira como superusuario.
+            JdbcTemplate admin = new JdbcTemplate(PostgresEmbebido.dataSource(baseDeDatos));
+            List<String> versiones = admin.queryForList("select version from ganera.flyway_schema_history "
+                    + "where success order by installed_rank", String.class);
             assertThat(versiones).containsExactlyElementsOf(
                     IntStream.rangeClosed(1, 23).mapToObj(String::valueOf).toList());
+            assertThat(admin.queryForList("select distinct installed_by from ganera.flyway_schema_history",
+                    String.class)).containsExactly(PostgresEmbebido.PROPIETARIO);
+            assertThat(admin.queryForObject("select count(*) from ganera.flyway_schema_history", Long.class))
+                    .isEqualTo(23);
+
+            // Las tablas de negocio son del propietario (ninguna de la app).
+            List<String> duenos = admin.queryForList("select distinct tableowner from pg_tables "
+                    + "where schemaname = 'ganera'", String.class);
+            assertThat(duenos).containsExactly(PostgresEmbebido.PROPIETARIO);
+            assertThat(admin.queryForObject("select count(*) from pg_tables where schemaname = 'ganera'", Long.class))
+                    .isGreaterThan(10);
+            // Y nada en public.
+            assertThat(admin.queryForObject("select count(*) from pg_tables where schemaname = 'public'", Long.class))
+                    .isZero();
+
+            // La guardia del smoke (script 02) da 0 filas.
+            assertThat(SeguridadEsquemaPostgresTest.problemas(baseDeDatos)).isEmpty();
 
             // Registro publico cerrado: 404 sin cuerpo y nada creado.
             int puerto = Integer.parseInt(contexto.getEnvironment().getProperty("local.server.port"));

@@ -10,6 +10,12 @@ Base: el plan de C mínimo (`2026-10-06-promptC-minimo-demo-desplegada.md`, D1�
 `generador/generar.py`) **ha caducado**: siembra tipos anteriores a V20 (`BAJA`, `ALTA`, `MOVIMIENTO`, que hoy darían
 `500` al leerlos), no tiene `HECHO_EN_OVZ` ni `SIN_TRAMITE`, y su smoke espera el webhook de Twilio en `503`.
 
+> **Nota (migración a Supabase, 2026-10-19):** la base de datos ya **no** es el add-on PostgreSQL de Clever: es un proyecto de **Supabase**
+> (región eu-west-1, Irlanda; PostgreSQL 17.11; plan Free; Data API desactivada). El backend sigue en Clever (París). El
+> frontend irá a **Vercel** (`app.ganera.es`; tarea aparte, sin plan todavía). Plan y decisiones:
+> `docs/superpowers/plans/2026-10-19-migracion-supabase.md`. Lo de este plan que cambia va marcado con esta etiqueta;
+> el resto sigue igual (HSTS, CORS fail-closed, sin usuario por defecto, PWA).
+
 ---
 
 ## Decisiones de Antonio (2026-10-14) — prevalecen sobre el resto del plan
@@ -17,12 +23,18 @@ Base: el plan de C mínimo (`2026-10-06-promptC-minimo-demo-desplegada.md`, D1�
 - **D1** Dos subdominios: `app.ganera.es` (frontend estático) y `api.ganera.es` (backend), con CORS limitado a
   `https://app.ganera.es`.
 - **D2** PostgreSQL **XXS Small Space** en París (5,32 €/mes). No XXS Medium.
+  **(migración a Supabase, 2026-10-19):** sustituida: la base es Supabase, Irlanda, PostgreSQL 17.11, plan Free (0 €). Sin add-on en Clever.
 - **D3** **Esta base es para la demo. Antes del primer dato real: crear una base nueva y empezar desde cero** (add-on
   PostgreSQL nuevo, enlazarlo a `ganera-api` en lugar del de la demo, redesplegar —Flyway aplica V1–V23—, `ALTER
   DATABASE … SET timezone TO 'UTC'`, alta de las gestorías reales con un `ONBOARDING_SECRET` temporal que se borra
   después; y borrar el add-on de la demo).
+  **(migración a Supabase, 2026-10-19):** ahora en Supabase (S7): `SET ROLE ganera_propietario; DROP SCHEMA ganera CASCADE; RESET ROLE;` en el
+  editor SQL y el script `backend/supabase/01-preparar-roles-y-esquema.sql` otra vez (se conservan los roles y sus
+  contraseñas); redesplegar `ganera-api` (Flyway aplica V1–V23 y el callback); la zona horaria ya la pone el 01.
 - **D4** Copias de seguridad: las de Clever, **7 días** por ahora. **La retención se decide con el abogado antes de los
   datos reales.**
+  **(migración a Supabase, 2026-10-19):** las copias son las de Supabase. En el plan Free probablemente **no** hay copias descargables (llegan con
+  Pro): Antonio lo comprueba en el panel. Va a la lista del abogado (`progress.md`) junto con la retención.
 - **D5** Para el abogado: los datos que salen de la UE (Twilio, Meta y Anthropic), anotados en `progress.md`.
 - **D6** Tareas (Superpowers + TDD, revisión independiente por tarea; cada cambio de seguridad con su mutación en rojo):
   **T1** quitar el `UserDetailsService` por defecto; **T2** cabeceras del proxy (HTTPS y HSTS) solo en producción;
@@ -58,6 +70,11 @@ Precios leídos hoy en la tabla pública de Clever (`api.clever-cloud.com/v4/bil
   siempre), o mantenerla.
 - Clever es una empresa francesa con centros de datos en la UE; la zona `par` está en París (ver §7, «Dónde están los
   datos»).
+- **(migración a Supabase, 2026-10-19):** la fila de PostgreSQL desaparece de Clever: la base es un proyecto de **Supabase** en **eu-west-1
+  (Irlanda)**, **PostgreSQL 17.11**, plan Free (0 €; en Free el proyecto **se pausa tras 7 días sin actividad**). La app
+  conecta por el *pooler* en modo sesión (puerto 5432) con SSL `verify-full`, como `ganera_app` (sin ser dueña de nada,
+  con RLS), y Flyway migra como `ganera_propietario`. Total demo en Clever: backend + frontend ≈ 20,78 € + IVA (el
+  frontend se irá a Vercel, tarea aparte).
 
 ## 2. Dominios y DNS
 
@@ -121,7 +138,8 @@ copiando `Archivos-Ganera\ganera-demo` como punto de partida; no se toca `ganera
 - `h2` y `embedded-postgres` tienen ámbito `test` en `pom.xml`, y `src/test/resources/application.yml` no entra en el
   jar. Comprobación: `jar tf target/ganera-core-*.jar` sin `h2`, `zonky` ni `application.yml` de test.
 - El perfil `clever` fija el driver de PostgreSQL y lee las variables `POSTGRESQL_ADDON_*`; `ddl-auto: none` y Flyway
-  activo vienen de `application.yml`.
+  activo vienen de `application.yml`. **(migración a Supabase, 2026-10-19):** lee las siete `SUPABASE_*` (§4), con SSL, CA y esquema fijos en
+  `application-clever.yml`.
 - Frontend: `msw` es dependencia de desarrollo y `dist/` no contiene `mockServiceWorker.js`. Comprobación:
   `npm run build` y luego listar `dist/`.
 - En el primer log de arranque en Clever: `Flyway … V23`, el perfil `clever` activo, ninguna mención a `H2`, y que no
@@ -154,11 +172,20 @@ del portátil.
 | `TWILIO_WHATSAPP_FROM` | no | número del sandbox, `whatsapp:+14155238886` |
 | `TWILIO_WEBHOOK_URL` | no | `https://api.ganera.es/webhooks/twilio/whatsapp` |
 | `TWILIO_STATUS_CALLBACK_URL` | no | `https://api.ganera.es/webhooks/twilio/whatsapp/estado` |
-| `POSTGRESQL_ADDON_HOST/PORT/DB/USER/PASSWORD` | sí | **No se escriben:** Clever las inyecta al enlazar el add-on a la app |
+| ~~`POSTGRESQL_ADDON_HOST/PORT/DB/USER/PASSWORD`~~ | sí | ~~**No se escriben:** Clever las inyecta al enlazar el add-on a la app~~ **(migración a Supabase, 2026-10-19):** ya no existen; las sustituyen las siete siguientes |
+| `SUPABASE_DB_HOST` | no | host del **pooler en modo sesión** (Supabase → Connect → Session pooler) |
+| `SUPABASE_DB_PORT` | no | `5432` (modo sesión; el `6543`, modo transacción, **no vale**: rompe los *prepared statements* y el bloqueo consultivo de Flyway) |
+| `SUPABASE_DB_NAME` | no | `postgres` |
+| `SUPABASE_DB_USER` | no | `ganera_app.<ref del proyecto>` |
+| `SUPABASE_DB_PASSWORD` | **sí** | la de `ganera_app`, puesta con `\password` de `psql` 17 (kit, `LEEME.md`) |
+| `SUPABASE_FLYWAY_USER` | no | `ganera_propietario.<ref del proyecto>` |
+| `SUPABASE_FLYWAY_PASSWORD` | **sí** | la de `ganera_propietario`, igual |
 | `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID_EXPLOTACION` | — | **No definir** (el cobro va en la landing; sin ellas, el webhook de Stripe rechaza todo y el job nocturno no hace nada) |
 
 **No definir nunca** ninguna `GANERA_REGISTRO_*` (abriría el registro público), `GANERA_SEGURIDAD_*` ni `GANERA_FRONTEND_*` (pisarían HSTS y CORS del perfil `clever`), ni `DATABASE_URL`/`DATABASE_*` (las
-sustituye el perfil `clever`), ni `ANTHROPIC_LOG`.
+sustituye el perfil `clever`), ni `ANTHROPIC_LOG`. **(migración a Supabase, 2026-10-19):** tampoco `SPRING_DATASOURCE_*` ni `SPRING_FLYWAY_*`
+(el binding relajado pisaría el perfil). Las siete `SUPABASE_*` son obligatorias y sin valor por defecto: si falta una o
+está **definida pero vacía**, la app no arranca (`ConexionBaseDeDatosEstricta`).
 
 **App del frontend (`ganera-app`)**
 
@@ -217,6 +244,9 @@ Lo mínimo para que Chrome y Edge muestren «Instalar Ganera» en la barra de di
   del piloto, en un add-on temporal que se borra después; (b) pedir a soporte de Clever **30 días** de retención si
   el abogado lo ve necesario (es configurable por soporte). No hay recuperación a un instante concreto (PITR) salvo
   pidiéndolo.
+  **(migración a Supabase, 2026-10-19):** las copias son las de **Supabase**. En el plan Free probablemente no hay copias descargables ni PITR
+  (llegan con Pro): Antonio lo comprueba en el panel antes de los datos reales, y va a la lista del abogado. Riesgo de
+  demo: en Free el proyecto **se pausa tras 7 días sin actividad**.
 - **Logs sin teléfonos ni textos:** ya es así en el código (teléfonos enmascarados con `EnmascaradorTelefono`, nunca el
   texto del mensaje, cliente de Anthropic con `logLevel(OFF)`, `logServerErrorDetail=false` en la URL de PostgreSQL,
   sin log de SQL). Ojo con dos cosas fuera de nuestro código: **los logs de acceso del proxy de Clever** guardan la
@@ -228,6 +258,10 @@ Lo mínimo para que Chrome y Edge muestren «Instalar Ganera» en la barra de di
   **Anthropic** (EE. UU.) para extraer el trámite. Eso necesita los DPA de Twilio y Anthropic (cláusulas contractuales
   tipo) y está ya en la lista del abogado, junto con los plazos de retención. Hay que firmar también el DPA de Clever
   (se acepta en la consola).
+  **(migración a Supabase, 2026-10-19):** la base de datos y sus copias están en **Supabase**, región **eu-west-1 (Irlanda, sobre AWS)**. Los datos
+  se quedan en la UE, pero **Supabase Inc. es una empresa estadounidense**: hace falta su DPA con cláusulas
+  contractuales tipo (lista del abogado en `progress.md`). La Data API de Supabase está desactivada; además, RLS en
+  todas las tablas y ningún permiso para `anon`/`authenticated`/`service_role` (lo comprueba el script 02).
 - **Superficie pública:** solo los tres webhooks (cada uno valida su firma), `/auth/login`, `/error` y
   `/internal/onboarding/gestoria` (cerrado con `401` en cuanto se borra `ONBOARDING_SECRET`). El registro público,
   cerrado (`404`).
@@ -249,6 +283,9 @@ Lo mínimo para que Chrome y Edge muestren «Instalar Ganera» en la barra de di
    factura lleve IVA correcto). Los créditos gratuitos de bienvenida cubren las primeras pruebas.
 3. **Base de datos:** Create → add-on → PostgreSQL, versión **16**, plan XXS Small (o Medium para el piloto), zona
    **Paris**. Nombre `ganera-db`.
+   **(migración a Supabase, 2026-10-19):** sustituido: sin add-on. El proyecto de Supabase ya existe (Irlanda, PostgreSQL 17.11). En su editor SQL,
+   el script `backend/supabase/01-preparar-roles-y-esquema.sql` entero; después, las contraseñas de `ganera_propietario`
+   y `ganera_app` con `\password` de `psql` 17 (kit, `LEEME.md`). En el paso 4, nada que enlazar.
 4. **Backend:** Create → application → Java + Maven, desde el *git* de Clever (sin GitHub), XS, 1 instancia, sin
    autoescalado, zona Paris, nombre `ganera-api`. Enlazarle `ganera-db` (Service dependencies). Activar «Force HTTPS».
 5. **Frontend:** Create → application → Static, pico, zona Paris, nombre `ganera-app`. «Force HTTPS».
@@ -260,6 +297,9 @@ Lo mínimo para que Chrome y Edge muestren «Instalar Ganera» en la barra de di
    **Avisa a tu socio** para el DNS.
 8. **Zona horaria de la BD:** en el panel del add-on (Adminer o `psql`): `ALTER DATABASE <base> SET timezone TO 'UTC';`,
    reconectar y `SHOW timezone;` → `UTC`.
+   **(migración a Supabase, 2026-10-19):** ya no hace falta: la pone el script 01 (paso 3). La siembra del paso 9 se pega en el **editor SQL de
+   Supabase** (empieza con `SET ROLE ganera_propietario; SET search_path TO ganera;`), y al acabar el script
+   `backend/supabase/02-comprobar-seguridad.sql` → 0 filas.
 9. **Alta y datos:** `bash alta-gestorias.sh` (una vez), importar los dos Excel desde la app, ejecutar `seed-tramites.sql`;
    después **borrar `ONBOARDING_SECRET`** y reiniciar `ganera-api`.
 10. **Dominios:** con los CNAME resolviendo, añadir `api.ganera.es` y `app.ganera.es` en «Domain names» de cada app,
@@ -294,7 +334,11 @@ kit en PostgreSQL embebido (T4).
 - **Sandbox de Twilio desde tu móvil:** mensaje → acuse en el móvil y trámite en la cola de la gestoría del contacto,
   extraído por Haiku; responder desde el modal → «Entregado»/«Leído»; en el log, sin teléfono ni texto.
 - La variable `ONBOARDING_SECRET` ya no está en el panel.
-- Una copia de seguridad aparece en el panel del add-on al día siguiente.
+- Una copia de seguridad aparece en el panel del add-on al día siguiente. **(migración a Supabase, 2026-10-19):** en el panel de Supabase, si el
+  plan Free la ofrece (ver §7).
+- **(migración a Supabase, 2026-10-19):** el script `backend/supabase/02-comprobar-seguridad.sql` en el editor SQL → **0 filas**; en el log de
+  arranque, «Successfully applied 23 migrations to schema "ganera"», el callback `afterMigrate` y ningún `WARN` de
+  Flyway. Antes del despliegue, el smoke contra Supabase desde el portátil (plan del 19/10, T5).
 
 ## 10. Estimación
 

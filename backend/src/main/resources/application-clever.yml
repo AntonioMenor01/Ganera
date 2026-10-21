@@ -1,19 +1,44 @@
-# Perfil de la demo en Clever Cloud (Prompt C): SPRING_PROFILES_ACTIVE=clever.
-# Solo placeholders, ningun valor secreto. Las variables POSTGRESQL_ADDON_* las inyecta Clever al
-# enlazar el add-on PostgreSQL a la app; el resto de secretos (JWT_SECRET, ENCRYPTION_KEY...) se
-# leen con los placeholders de application.yml. El registro publico ya esta cerrado por defecto
-# (ganera.registro.abierto: false en application.yml) y la zona horaria va como TZ=UTC en las
-# variables de Clever, no aqui (D8).
+# Perfil de produccion en Clever Cloud (Prompt C): SPRING_PROFILES_ACTIVE=clever. La base de datos es Supabase
+# (migracion a Supabase, 2026-10-19); el backend sigue en Clever (Paris).
+# Solo placeholders, ningun valor secreto, y NINGUNO con valor por defecto: si falta una variable, la app no arranca
+# (lo prueba BaseDeDatosPerfilCleverPostgresTest). El resto de secretos (JWT_SECRET, ENCRYPTION_KEY...) se leen con
+# los placeholders de application.yml. El registro publico ya esta cerrado por defecto (ganera.registro.abierto:
+# false en application.yml) y la zona horaria va como TZ=UTC en las variables de Clever, no aqui (D8).
+# En Clever no definir ninguna variable GANERA_* (el binding relajado de Spring pisaria los valores de este fichero)
+# ni DATABASE_* / SPRING_DATASOURCE_* / SPRING_FLYWAY_*: la base de datos solo se configura con las siete SUPABASE_*.
 spring:
   datasource:
-    # logServerErrorDetail=false: que un error de restriccion no lleve "Failing row contains (...)"
-    # con datos de mensajes a los logs (nota de B1 para produccion).
-    url: jdbc:postgresql://${POSTGRESQL_ADDON_HOST}:${POSTGRESQL_ADDON_PORT}/${POSTGRESQL_ADDON_DB}?logServerErrorDetail=false
-    username: ${POSTGRESQL_ADDON_USER}
-    password: ${POSTGRESQL_ADDON_PASSWORD}
+    # Supabase por el POOLER EN MODO SESION (Supavisor, puerto 5432 en SUPABASE_DB_PORT). El modo transaccion (6543)
+    # NO vale: rompe los prepared statements de pgjdbc y el bloqueo consultivo de Flyway.
+    # Fijos aqui, nunca en variables:
+    # - sslmode=verify-full: cifra, valida el certificado contra la CA de Supabase Y comprueba que el nombre del host
+    #   es el del certificado. La CA va en el classpath (src/main/resources/supabase/ca-raiz.crt, la de Database >
+    #   SSL Configuration del panel), asi no depende de ninguna ruta de disco en Clever. pgjdbc comprueba el nombre
+    #   del host despues de crear el socket con esta fabrica, asi que verify-full sigue verificandolo.
+    # - currentSchema=ganera: las tablas viven en el esquema ganera (lo crea el script 01), no en public.
+    # - logServerErrorDetail=false: que un error de restriccion no lleve "Failing row contains (...)" con datos de
+    #   mensajes a los logs (nota de B1 para produccion).
+    url: jdbc:postgresql://${SUPABASE_DB_HOST}:${SUPABASE_DB_PORT}/${SUPABASE_DB_NAME}?sslmode=verify-full&sslfactory=org.postgresql.ssl.SingleCertValidatingFactory&sslfactoryarg=classpath:supabase/ca-raiz.crt&currentSchema=ganera&logServerErrorDetail=false
+    # La app conecta como ganera_app (sin ser duena de nada, con RLS: ver db/postgresql/afterMigrate__...sql), NUNCA
+    # como postgres. En el pooler el usuario lleva el ref del proyecto: ganera_app.<ref>.
+    username: ${SUPABASE_DB_USER}
+    password: ${SUPABASE_DB_PASSWORD}
     # Explicito para que el perfil no dependa de que nadie mas defina el driver (en los tests,
     # application.yml de test fija org.h2.Driver y sin esto lo heredaria).
     driver-class-name: org.postgresql.Driver
+    hikari:
+      # 5 conexiones de la app + 1 de Flyway al arrancar: el pooler del plan Free admite de sobra.
+      maximum-pool-size: 5
+  flyway:
+    # Flyway migra como ganera_propietario (dueno del esquema y de las tablas), NUNCA como postgres ni como la app.
+    # En el pooler: ganera_propietario.<ref>. Con usuario propio y sin url, Boot le crea una conexion aparte, sin
+    # pool, derivada del datasource (la misma URL, con SSL y currentSchema).
+    user: ${SUPABASE_FLYWAY_USER}
+    password: ${SUPABASE_FLYWAY_PASSWORD}
+    default-schema: ganera
+    schemas: ganera
+    # El esquema lo crea backend/supabase/01-preparar-roles-y-esquema.sql; sin el, la app no arranca.
+    create-schemas: false
 
 ganera:
   frontend:

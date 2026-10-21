@@ -1,6 +1,5 @@
 package com.ganera.core.postgres;
 
-import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.junit.jupiter.api.Test;
 
@@ -16,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * V21 («hecho en OVZ») sobre PostgreSQL 16 real. Mismo patron que V21HechoEnOvzMigracionTest (H2):
+ * V21 («hecho en OVZ») sobre PostgreSQL 17 real. Mismo patron que V21HechoEnOvzMigracionTest (H2):
  * migrar hasta la 20, insertar tramites en varios estados, migrar al final; las filas previas quedan
  * sin marca y el CHECK ck_tramite_hecho_en_ovz rechaza las combinaciones incoherentes con el SQLState
  * de violacion de CHECK de PostgreSQL (23514), no con cualquier fallo.
@@ -103,6 +102,6 @@ class V21HechoEnOvzPostgresTest {
     }
 
     private static FluentConfiguration flyway(DataSource dataSource) {
-        return Flyway.configure().dataSource(dataSource).locations("classpath:db/migration");
+        return PostgresEmbebido.flyway(dataSource);
     }
 }

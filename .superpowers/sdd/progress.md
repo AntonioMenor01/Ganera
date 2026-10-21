@@ -1245,10 +1245,16 @@ socio en §8 del plan). Sin commit ni push sin aprobación de Antonio; la demo d
 ### Pendientes técnicos
 
 - **Antes del primer dato real: crear una base nueva y empezar desde cero** (decisión de Antonio, 2026-10-14, D3 del
-  plan de despliegue en Clever). La base de PostgreSQL que se crea ahora en Clever es **para la demo** (dos gestorías
+  plan de despliegue en Clever). ~~La base de PostgreSQL que se crea ahora en Clever es **para la demo** (dos gestorías
   inventadas). Pasos: add-on PostgreSQL nuevo (v16, XXS Small, París) → enlazarlo a `ganera-api` en lugar del de la
   demo → redesplegar (Flyway V1–V23) → `ALTER DATABASE … SET timezone TO 'UTC'` → alta de las gestorías reales con un
-  `ONBOARDING_SECRET` temporal que se borra al acabar → borrar el add-on de la demo.
+  `ONBOARDING_SECRET` temporal que se borra al acabar → borrar el add-on de la demo.~~
+  **Ahora en Supabase (migración del 19/10, S7):** la base de la demo es la del proyecto de Supabase. Pasos: en el editor
+  SQL, `SET ROLE ganera_propietario; DROP SCHEMA ganera CASCADE; RESET ROLE;` → el script
+  `backend/supabase/01-preparar-roles-y-esquema.sql` otra vez (los roles y sus contraseñas se conservan; la zona UTC la
+  pone el 01) → redesplegar `ganera-api` (Flyway V1–V23 y el callback) → el 02 a 0 filas → alta de las gestorías reales
+  con un `ONBOARDING_SECRET` temporal que se borra al acabar. S7 se hace también justo después del smoke real (T5),
+  antes de sembrar la demo en Clever.
 - **Para el abogado, antes de los datos reales — retención de las copias de seguridad** (D4): hoy las copias diarias de
   PostgreSQL en Clever se guardan **7 días** (lo que incluye el plan; soporte de Clever puede ampliarlo). La retención
   se decide con el abogado antes del primer dato real, junto con los plazos de los mensajes (30 días / 12 meses).
@@ -1338,3 +1344,115 @@ socio en §8 del plan). Sin commit ni push sin aprobación de Antonio; la demo d
   **revisarlo con la sesión de mapeo de OVZ** (cómo describir en el prompt la llegada frente a la salida de animales).
 - **Antes del piloto, tras la sesión de mapeo de OVZ:** la fecha del hecho y los campos propios del alta por
   nacimiento (crotal de la madre, sexo y fecha de nacimiento: extracción por la IA y edición en el modal), juntos.
+
+### Migración a Supabase — código hecho, CA real (T0) y smoke real (T5) hechos, sin commit (2026-10-19 → 2026-10-21)
+
+Plan `docs/superpowers/plans/2026-10-19-migracion-supabase.md` (decisiones de Antonio S1–S7 al principio). Rama
+`supabase`, **sin commit**. Supabase sustituye solo a la base de datos (eu-west-1, Irlanda; PostgreSQL 17.11; plan Free;
+Data API desactivada); el backend sigue en Clever (París) y el frontend irá a Vercel (tarea aparte). Informes y
+revisiones en `.superpowers/sdd/su-t1-*` … `su-t4-*`.
+
+- **T1 — PostgreSQL 17 en los tests y `db/{vendor}`: Aprobado con menores.** BOM de binarios 17.11.0; ubicaciones
+  `classpath:db/migration,classpath:db/{vendor}` en los dos `application.yml`; carpetas `db/postgresql` y `db/h2` (con
+  `LEEME.md`); `PostgresEmbebido.flyway`. Hallazgo: Flyway 10 solo avisa en DEBUG de una ubicación que no existe (de ahí
+  `fail-on-missing-locations: true` en T2). 1005 tests.
+- **T2 — roles, esquema, RLS y zona horaria: Cambios pedidos → corregido → Aprobado con menores.** Scripts
+  `backend/supabase/01-preparar-roles-y-esquema.sql` y `02-comprobar-seguridad.sql`; callback
+  `db/postgresql/afterMigrate__seguridad_esquema.sql` (RLS en todas las tablas, `ganera_app_todo`, lista «solo inserción»
+  para la futura auditoría); `PostgresEmbebido` con `admin_supabase` (no superusuario) y el 01 por base;
+  `docker-compose` con `postgres:17-alpine` y el 01 en `initdb`. Las correcciones: el 02 ve membresías y atributos de rol
+  (I1), RLS solo si falta (bloqueos), idempotencia probada, privilegios por columna, el 01 corrige roles ya existentes y
+  ADMIN sobre los roles de Ganera (N1). 1032 tests.
+- **T3 — perfil `clever` contra Supabase: Cambios pedidos → corregido → Aprobado con menores.** `application-clever.yml`
+  con las siete `SUPABASE_*`, `verify-full` + la CA en el classpath, `currentSchema=ganera`, Hikari 5, Flyway como
+  `ganera_propietario`; certificados de prueba (S5); `ConexionBaseDeDatosEstricta` (una variable que falta **o está
+  definida pero vacía** no deja arrancar; I1); el 02 marca un `SET` sobre `ganera_propietario` de un rol de Supabase (I2)
+  y vigila a `authenticator` (M1). 1070 tests, 1 fallo esperado (`CaSupabaseTest`, sin la CA real).
+- **T4 — documentación y kit (esta entrada).** `.env.example` (bloque «Perfil clever (Supabase)» y las dos de Twilio que
+  faltaban), `CLAUDE.md` (bullet «Supabase», C mínimo y Clever al día, nota de `TestRestTemplate` y XML, cifras,
+  estado), plan del 14/10 con las marcas «(migración a Supabase, 2026-10-19)», este `progress.md` y `ganera-prompts.md`.
+  Kit `C:\Users\Antonio\Desktop\ganera-clever\`: `LEEME.md` (editor SQL de Supabase, `psql` 17 solo con las
+  herramientas de línea de comandos y `\password`), `generador/generar.py` y `seed-tramites.sql` con `SET ROLE
+  ganera_propietario; SET search_path TO ganera;` al principio, y `prueba-supabase.sh` nuevo (paso 5 de T5). Ensayo
+  contra PostgreSQL 17 embebido imitando Supabase (SSL `verify-full`, SCRAM obligatorio para los dos roles, 01 como
+  `admin_supabase`): `prueba-supabase.sh` 5/5 PASS (y re-ejecutable), alta, los dos Excel, siembra desde una sesión no
+  UTC, `smoke.sh` 39 y 38 PASS, 02 con 0 filas. Suite: **1070** (1068 + 1 omitido + 1 fallo esperado de la CA); frontend
+  **1084 en 50**, sin tocar.
+- **Hallazgo del ensayo para T5, paso 6:** `SET ROLE ganera_app` desde el editor SQL (como `postgres`) **no funciona**
+  («permission denied to set role»), y es lo correcto: nadie debe poder hacerse pasar por la app (el 02 lo marcaría). La
+  comprobación de lo que ve la app se hace con `psql` conectado como `ganera_app.<ref>` (está en el `LEEME.md` del kit).
+  `SET ROLE anon` → «permission denied for schema ganera».
+
+**Pendientes de la migración:**
+- **HECHO — T0 (Antonio, 2026-10-20):** CA en `backend/src/main/resources/supabase/ca-raiz.crt` (*Supabase Root 2021 CA*,
+  Supabase Inc, `CA:TRUE`, válida hasta el 26/04/2031). `CaSupabaseTest` 2/2. **Suite completa con JDK 21 (Temurin
+  21.0.12.1, zip oficial con SHA-256 comprobado, en `~/.jdks/temurin-21`, solo por comando): 1075, 0 fallos, 1
+  omitido (la evaluación).** Frontend 1084 en 50, build y lint con los 3 avisos conocidos.
+- **HECHO — T5, smoke real contra Supabase (Antonio, 2026-10-20 → 2026-10-21), todo PASS:**
+  1. Script 01 en el editor SQL como `postgres`: «Success» (también el `ALTER DATABASE … SET timezone`).
+  2. `psql` 17.11 (solo «Command Line Tools») como `postgres.<ref>` al **pooler en modo sesión** (5432) con
+     `sslmode=verify-full` y la CA real: conecta, `\conninfo` con SSL. **El pooler acepta `rol.<ref>` y la CA del panel
+     valida el certificado del pooler**: los dos riesgos que paraban el smoke, descartados.
+  3. Backend **local** con el perfil `clever` y **JDK 21** contra Supabase: «Successfully applied 23 migrations to schema
+     "ganera"», el callback `afterMigrate`, Hikari, Tomcat, `Started GaneraApplication`; 0 WARN de Flyway, 0 ERROR, sin
+     «generated security password». Rearranque: «is up to date» y el callback otra vez.
+  4. `prueba-supabase.sh` 5/5 PASS (alta, login, `inventario-norte.xlsx` con 15 explotaciones/150 animales/15
+     contactos y 0 errores, `GET /explotaciones?q=castanos`, `GET /tramites`).
+  5. Editor SQL: el **02 da 0 filas** (también la cláusula de cadenas de roles: ningún falso positivo con los roles
+     reales de Supabase); `SHOW timezone` → `UTC`; `installed_by` = `ganera_propietario` × 23 (con `SET ROLE
+     ganera_propietario`); `SET ROLE anon` → *permission denied for schema ganera*.
+  6. Como `ganera_app` por el pooler: ve **15** explotaciones (RLS con `ganera_app_todo`) y **no** puede leer
+     `flyway_schema_history`.
+  7. **S7:** `SET ROLE ganera_propietario; DROP SCHEMA ganera CASCADE; RESET ROLE;` y el 01 otra vez → esquema vacío
+     (0 tablas), roles conservados, 02 con 0 filas.
+  **Lecciones del smoke (para el despliegue en Clever):**
+  - **Pegar contraseñas a ciegas en un prompt de consola** (`\password`, la contraseña de `psql`, `Read-Host
+    -AsSecureString`) dio valores que no coincidían con los del fichero: dos «password authentication failed» seguidos,
+    uno por rol. Lo fiable fue **leerlas del portapapeles** (`Get-Clipboard`) y fijarlas con el **hash SCRAM**
+    calculado en PowerShell (`Rfc2898DeriveBytes` SHA-256, 4096 iteraciones; comprobado contra una implementación de
+    referencia en Python y contra Supabase) y pegado en el editor SQL: `ALTER ROLE … PASSWORD 'SCRAM-SHA-256$…'`. La
+    contraseña en claro nunca llega a Supabase.
+  - **Un aviso `Read-Host` normal muestra lo que se pegue en él:** dos contraseñas de los roles acabaron en el chat de
+    la sesión. Se cambiaron las dos al momento (`rotar-contrasenas.ps1`); las expuestas ya no valen. Los avisos de los
+    scripts del kit son ahora `-AsSecureString` (no muestran nada aunque se pegue).
+  - Git Bash dio problemas para pegar; los pasos 3 y 4 quedaron en un script de **PowerShell 5.1**.
+  - La contraseña de `postgres` no la sabía Antonio: restablecerla en el panel no afecta a nada de Ganera (la app y
+    Flyway usan sus roles; la Data API está apagada).
+  **Kit** (`C:\Users\Antonio\Desktop\ganera-clever\`, fuera del repo), dos scripts nuevos: `smoke-supabase-local.ps1`
+  (pasos 3–4: comprueba las dos contraseñas contra el pooler, arranca la app con JDK 21 y `clever` en otra ventana,
+  revisa el log, lanza `prueba-supabase.sh` y para la app) y `rotar-contrasenas.ps1` (genera contraseñas nuevas para
+  los dos roles, las deja para el fichero, fija los hashes SCRAM por el editor SQL y comprueba los logins, las 15
+  explotaciones como `ganera_app` y que no lee `flyway_schema_history`).
+- **El callback no revoca a `authenticator` → va en la TAREA DE AUDITORÍA** (decisión de Antonio, 2026-10-20; menor
+  de la segunda revisión de T3): por defecto no recibe nada en `ganera`, y el 02 detecta una concesión a mano, pero
+  migrar no la deshace. Cerrar allí con un `REVOKE` condicional (`to_regrole('authenticator') IS NOT NULL`) y su caso
+  hostil antes de migrar, como los de `anon`.
+- **HECHO (2026-10-20, sesión principal, TDD): el 02 sigue las cadenas de roles** (N1 de la segunda revisión de T3).
+  Cláusula nueva: un rol de Supabase llega a `ganera_app` o `ganera_propietario` si puede hacerse algún rol R (él
+  mismo o por una cadena de SET, `pg_has_role(…, 'SET')`) que hereda el rol de Ganera (`'USAGE'`), puede hacer SET
+  ROLE a él o tiene ADMIN sobre él, directo o heredado; sale como «llega por una cadena de roles». No repite lo que ya
+  marcan las cláusulas directas (membresía directa con INHERIT, SET o ADMIN); una directa sin opciones no tapa la
+  cadena. Test `SeguridadEsquemaPostgresTest.laComprobacionDetectaCadenasDeRolesHastaLosRolesDeGanera` (5 casos con un
+  rol puente: SET, SET con `ganera_app`, solo INHERIT, ADMIN en el intermedio, directa sin opciones). Lo concedido a
+  `anon`, `authenticated` o `service_role` le llega también a `authenticator` (en Supabase puede hacerse cualquiera de
+  los tres), así que seis casos del parametrizado de membresías esperan ahora esa fila además de la suya. Primera
+  versión revisada (`su-pghasrole-review.md`, **Aprobado con menores**): m1 (la mitad USAGE sin test), m2 (ADMIN en un
+  rol intermedio no salía, explotable), m3 (una directa sin opciones tapaba la cadena) y m4 (`drop role if exists`
+  antes de crear el puente), todos corregidos con TDD: rojo inicial 6, verde, y tres mutaciones (sin USAGE, sin ADMIN,
+  tapar con cualquier directa) en rojo, restauradas con `cp` + `cmp`. **Para T5:** si en Supabase sale «authenticator
+  llega por una cadena de roles», no es un falso positivo: es una capacidad real de Supabase (p. ej. si
+  `authenticator` pudiera hacerse un superusuario); parar y mirarlo con las dos consultas de diagnóstico de
+  `su-pghasrole-review.md`.
+- **Decisiones de Antonio (2026-10-20):** T3 y T4 aprobadas; una variable definida pero vacía impide arrancar también
+  en local (se queda así); en `.env.example` todas las variables sin valor van comentadas (12 líneas comentadas, con
+  una nota de cuáles hacen falta en local).
+- Notas: la validación contra la CA solo la vigila el texto de la URL (M2 de T3); el mensaje encadenado de Spring lleva
+  el valor sin resolver de la propiedad (M4 de T3); `docker-compose` no probado (no hay Docker; su usuario `ganera` es
+  superusuario y migra en el esquema `ganera`).
+
+**Para el abogado (migración a Supabase):**
+- **Supabase Inc. es una empresa estadounidense**, aunque los datos estén en Irlanda (AWS eu-west-1): hace falta su
+  **DPA con cláusulas contractuales tipo**. Se suma a los de Twilio, Anthropic y Clever.
+- **Copias de seguridad en el plan Free:** Antonio lo comprueba en el panel; probablemente no hay copias descargables
+  (ni PITR) hasta el plan Pro. Afecta a la retención de copias (D4) que se decide antes de los datos reales.
+- **Riesgo de demo:** en el plan Free el proyecto **se pausa tras 7 días sin actividad**.

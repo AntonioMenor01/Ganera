@@ -1,7 +1,6 @@
 package com.ganera.core.postgres;
 
 import com.ganera.core.shared.texto.NormalizadorBusqueda;
-import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.junit.jupiter.api.Test;
 
@@ -18,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * V18 (Java, solo JDBC) sobre datos existentes en PostgreSQL 16 real (Prompt C, T1). Mismo patron
+ * V18 (Java, solo JDBC) sobre datos existentes en PostgreSQL 17 real (Prompt C, T1). Mismo patron
  * que V18BusquedaNormalizadaMigracionTest (H2): migrar hasta la 17, insertar filas como las de
  * antes de la V18 (con tildes, enes, signos y mas de un lote), migrar al final y comprobar los
  * valores, que coinciden con NormalizadorBusqueda, y el NOT NULL.
@@ -127,7 +126,7 @@ class V18BusquedaNormalizadaPostgresTest {
     }
 
     private static FluentConfiguration flyway(DataSource dataSource) {
-        return Flyway.configure().dataSource(dataSource).locations("classpath:db/migration");
+        return PostgresEmbebido.flyway(dataSource);
     }
 
     private static Map<Long, String> columna(DataSource dataSource, String sql) throws SQLException {

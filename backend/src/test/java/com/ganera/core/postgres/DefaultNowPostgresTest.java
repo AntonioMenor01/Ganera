@@ -1,6 +1,5 @@
 package com.ganera.core.postgres;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 
 import javax.sql.DataSource;
@@ -57,7 +56,7 @@ class DefaultNowPostgresTest {
      */
     private static Duration desfaseDeUnaFilaPorSql(String zonaSesion) throws SQLException {
         DataSource dataSource = PostgresEmbebido.dataSource(PostgresEmbebido.nuevaBaseDeDatos());
-        Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate();
+        PostgresEmbebido.flyway(dataSource).load().migrate();
 
         try (Connection conexion = dataSource.getConnection(); Statement st = conexion.createStatement()) {
             st.execute("SET TIME ZONE '" + zonaSesion + "'");
