@@ -1,11 +1,10 @@
-# Despliegue en producción: frontend en Vercel, backend en Clever, base de datos POR DECIDIR
+# Despliegue en producción: frontend en Vercel, backend en Clever, base de datos en Supabase
 
 **Estado: PLAN. Esta sesión implementa SOLO el bloque A (frontend/Vercel) y el bloque C (runbook).**
 Fecha: 2026-10-21. Rama: `feat/despliegue`.
 
-⚠️ **La base de datos NO está decidida.** Supabase aparece como **PROPUESTA** a comparar contra
-dejarla en Clever; no como hecho. Ver la comparativa de coste (sección 1) — es lo que bloquea el
-bloque B.
+✅ **La base de datos es Supabase (decidido el 19/10).** Backend en Clever, app en Vercel. La
+comparativa de coste (sección 1) queda como justificación de esa decisión, no como elección abierta.
 
 Objetivo: dejar el repo listo para desplegar la web app en una URL pública y escribir el runbook de
 los pasos manuales, pensado para que lo siga Álvaro (que no escribió el backend). Esta rama es
@@ -34,7 +33,7 @@ en `git status`). El reparto se toma de las instrucciones del chat:
 
 ---
 
-## 1. Comparativa de coste mensual de la base de datos (lo que bloquea el bloque B)
+## 1. Comparativa de coste mensual de la base de datos (justificación de la decisión del 19/10)
 
 En las tres opciones el **backend sigue en Clever** (instancia Java XS) y el **frontend en Vercel**
 (plan Hobby, 0 €). La única variable es dónde vive PostgreSQL. **Precios a confirmar en la consola
@@ -58,8 +57,9 @@ de cada proveedor**; aquí van órdenes de magnitud (2026-10).
   tiene sentido solo si Supabase va a ser la **infraestructura definitiva** (su dashboard, auth,
   storage…) más allá de la demo, no solo "una BD".
 
-Recomendación técnica para esta fase (demo/piloto): **Clever**, por coste y por no rehacer nada.
-Supabase queda como camino si se busca infra definitiva. **Decisión de Antonio.**
+**Decisión tomada el 19/10: la base de datos va en Supabase** (solo como base de datos), con el
+backend en Clever y la app en Vercel. La comparativa de arriba queda como registro de los costes y
+el trabajo de conexión que implica esa opción.
 
 ---
 
@@ -67,7 +67,7 @@ Supabase queda como camino si se busca infra definitiva. **Decisión de Antonio.
 
 ### (a) Reparto de piezas
 Frontend (Vite + React SPA) → **Vercel**. Backend (Spring Boot) → **Clever** (perfil `clever` ya
-listo). Base de datos → **por decidir** (sección 1): Clever add-on o Supabase (propuesta).
+listo). Base de datos → **Supabase** (decidido el 19/10; ver sección 1).
 
 ### (b) Qué deja de valer del perfil `clever` SI la BD pasara a Supabase
 Hoy el datasource de `application-clever.yml` se arma con variables que **inyecta el add-on de

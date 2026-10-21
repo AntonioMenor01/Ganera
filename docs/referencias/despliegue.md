@@ -4,10 +4,10 @@ Pasos manuales para poner la web app en una URL pública. Pensado para que lo si
 escribió el backend. Cada paso dice **qué variable va en qué sitio**, **qué comprobar después** y
 **cómo saber que ha ido bien**.
 
-> **Estado (2026-10-21):** el frontend va a **Vercel** y el backend a **Clever Cloud**. **Dónde vive
-> la base de datos está SIN decidir** (Clever add-on vs. Supabase): ver la sección 1. El runbook
-> antiguo "todo en Clever" de `ganera-prompts.md` sigue siendo válido para el backend; su parte de
-> frontend (runtime Static de Clever) queda **superada por Vercel**.
+> **Estado (2026-10-21):** el frontend va a **Vercel**, el backend a **Clever Cloud** y la **base de
+> datos a Supabase (decidido el 19/10**; ver la sección 1). El runbook antiguo "todo en Clever" de
+> `ganera-prompts.md` sigue siendo válido para el backend; sus partes de frontend (runtime Static de
+> Clever) y de base de datos (add-on de Clever) quedan **superadas por Vercel y Supabase**.
 
 > ⚠️ **NUNCA se hace `push` a `main`.** Esta rama (`feat/despliegue`) es configuración y
 > documentación. Los **secretos los genera Antonio en su terminal** y los pega en la consola del
@@ -25,10 +25,11 @@ escribió el backend. Cada paso dice **qué variable va en qué sitio**, **qué 
 
 ---
 
-## 1. Decisión pendiente: dónde vive la base de datos
+## 1. Decisión tomada (19/10): la base de datos va en Supabase
 
-El backend va a Clever en las dos opciones. Lo único a decidir es PostgreSQL. Resumen (detalle y
-comparativa completa en `docs/superpowers/plans/2026-10-21-despliegue-produccion.md`):
+El backend va a Clever y la base de datos a **Supabase** (solo como base de datos). La comparativa de
+abajo queda como justificación de esa decisión (detalle completo en
+`docs/superpowers/plans/2026-10-21-despliegue-produccion.md`):
 
 | | BD en **Clever** (add-on) | **Supabase Free** | **Supabase Pro** |
 |---|---|---|---|
@@ -37,9 +38,9 @@ comparativa completa en `docs/superpowers/plans/2026-10-21-despliegue-produccion
 | Trabajo extra | Ninguno (ya hecho) | SSL + pooler sesión + revisar `ALTER DATABASE` | Igual |
 | Riesgo | Bajo | Medio | Medio |
 
-**Recomendación para demo/piloto: Clever** (barato, ya probado, no se rehace nada). Supabase solo si
-va a ser la infraestructura definitiva. **Lo decide Antonio.** El resto del runbook marca con
-**[Clever]** / **[Supabase]** lo que cambia según la opción.
+**Decidido el 19/10: Supabase** (como base de datos), con el backend en Clever y la app en Vercel. El
+resto del runbook marca con **[Clever]** / **[Supabase]** lo que cambia según la opción; **se sigue la
+rama [Supabase]**. Los pasos **[Clever]** quedan solo como referencia.
 
 ---
 
@@ -248,8 +249,8 @@ y solo añadir `&sslmode=require` al final de la `url` actual.
 -9. `clever deploy --alias api`, revisar en `clever logs --alias api` que Flyway aplica V1–V22 y que arranca; luego
 +9. `clever deploy --alias api`, revisar en `clever logs --alias api` que Flyway aplica V1–V23 y que arranca; luego
 ```
-Y añadir, al principio de la sección, una nota: *"Infraestructura revisada el 2026-10-21: frontend en
-Vercel, backend en Clever, base de datos POR DECIDIR (Clever add-on vs. Supabase). Ver
+Y añadir, al principio de la sección, una nota: *"Infraestructura decidida el 2026-10-19: frontend en
+Vercel, backend en Clever, base de datos en Supabase. Ver
 `docs/referencias/despliegue.md` y `docs/superpowers/plans/2026-10-21-despliegue-produccion.md`."*
 
 ### 8.3 `CLAUDE.md`
@@ -257,10 +258,10 @@ Añadir un apartado nuevo (o una nota bajo "C mínimo — demo deployed in the E
 > **Despliegue en producción (2026-10-21, `feat/despliegue`).** El frontend se sirve desde **Vercel**
 > (Root Directory `frontend/`, `VITE_API_BASE_URL` pública, `frontend/vercel.json` con rewrite SPA y
 > `engines.node >= 22.12`; en producción `httpClient.ts` no cae a localhost y falla ruidoso si falta
-> `VITE_API_BASE_URL`). El backend sigue en **Clever** con el perfil `clever`. **La base de datos
-> está sin decidir** entre el add-on de Clever y **Supabase** (propuesta); comparativa de coste en el
-> plan de esa fecha. Runbook: `docs/referencias/despliegue.md`. El runtime Static de Clever para el
-> frontend queda superado por Vercel.
+> `VITE_API_BASE_URL`). El backend sigue en **Clever** con el perfil `clever`. **La base de datos va
+> en Supabase** (decidido el 19/10); comparativa de coste en el plan de esa fecha. Runbook:
+> `docs/referencias/despliegue.md`. El runtime Static de Clever (frontend) y el add-on de Clever
+> (base de datos) quedan superados por Vercel y Supabase.
 
 ---
 
