@@ -38,10 +38,10 @@ class SeguridadEsquemaPostgresTest {
         String baseDeDatos = migrarComoPropietario();
         JdbcTemplate jdbc = new JdbcTemplate(PostgresEmbebido.dataSource(baseDeDatos));
 
-        // No vacuo: las 23 migraciones estan en ganera, aplicadas por el propietario.
+        // No vacuo: las 24 migraciones estan en ganera, aplicadas por el propietario.
         assertThat(jdbc.queryForObject("select count(*) from ganera.flyway_schema_history "
                 + "where success and installed_by = 'ganera_propietario' and version is not null", Integer.class))
-                .isEqualTo(23);
+                .isEqualTo(24);
         assertThat(problemas(baseDeDatos)).isEmpty();
     }
 
@@ -58,6 +58,13 @@ class SeguridadEsquemaPostgresTest {
             List<Map<String, Object>> politicas = politicas(jdbc, tabla);
             if (tabla.equals("flyway_schema_history")) {
                 assertThat(politicas).as(tabla).isEmpty();
+            } else if (tabla.equals("auditoria")) {
+                // Auditoria base, T1: desde V24 la tabla de «solo insercion» es real; sus dos politicas exactas.
+                assertThat(politicas).as(tabla).containsExactly(
+                        Map.of("policyname", "ganera_app_insercion", "permissive", "PERMISSIVE", "cmd", "INSERT",
+                                "roles", "{ganera_app}", "qual", "", "with_check", "true"),
+                        Map.of("policyname", "ganera_app_lectura", "permissive", "PERMISSIVE", "cmd", "SELECT",
+                                "roles", "{ganera_app}", "qual", "true", "with_check", ""));
             } else {
                 assertThat(politicas).as(tabla).containsExactly(Map.of(
                         "policyname", "ganera_app_todo", "permissive", "PERMISSIVE", "cmd", "ALL",
@@ -72,8 +79,12 @@ class SeguridadEsquemaPostgresTest {
         JdbcTemplate jdbc = new JdbcTemplate(PostgresEmbebido.dataSource(baseDeDatos));
 
         for (String tabla : tablas(jdbc)) {
-            List<String> esperados = tabla.equals("flyway_schema_history")
-                    ? List.of() : List.of("DELETE", "INSERT", "SELECT", "UPDATE");
+            // auditoria (V24, «solo insercion» del callback): nunca UPDATE ni DELETE.
+            List<String> esperados = switch (tabla) {
+                case "flyway_schema_history" -> List.of();
+                case "auditoria" -> List.of("INSERT", "SELECT");
+                default -> List.of("DELETE", "INSERT", "SELECT", "UPDATE");
+            };
             assertThat(privilegiosDeGaneraApp(jdbc, tabla, 'r')).as(tabla).isEqualTo(esperados);
         }
         List<String> secuencias = jdbc.queryForList("select c.relname from pg_class c join pg_namespace n "
@@ -145,13 +156,32 @@ class SeguridadEsquemaPostgresTest {
 
         DataSource app = PostgresEmbebido.dataSourceComo(PostgresEmbebido.APP, baseDeDatos);
         JdbcTemplate comoApp = new JdbcTemplate(app);
-        comoApp.update("insert into ganera.auditoria (detalle) values ('uno')");
+        // Desde V24 la tabla auditoria es la real (antes la creaba V9999 de mentira): una fila valida minima.
+        Long gestoria = comoApp.queryForObject(
+                "insert into ganera.gestoria (nombre) values ('Gestoria auditoria') returning id", Long.class);
+        comoApp.update("insert into ganera.auditoria (gestoria_id, actor_tipo, accion, entidad_tipo, creado_en) "
+                + "values (?, 'SISTEMA', 'GESTORIA_CREADA', 'GESTORIA', now())", gestoria);
         comoApp.update("insert into ganera.tabla_futura (nombre) values ('uno')");
         comoApp.update("update ganera.tabla_futura set nombre = 'dos'");
         assertThat(comoApp.queryForObject("select count(*) from ganera.auditoria", Integer.class)).isEqualTo(1);
-        assertSinPermiso(app, "update ganera.auditoria set detalle = 'cambiado'");
+        assertSinPermiso(app, "update ganera.auditoria set accion = 'CAMBIADA'");
         assertSinPermiso(app, "delete from ganera.auditoria");
+        assertSinPermiso(app, "truncate ganera.auditoria");
 
+        assertThat(problemas(baseDeDatos)).isEmpty();
+    }
+
+    /** Auditoria base, T1: la tabla real de V24 cae en la lista «solo insercion» del callback sin tocarlo. */
+    @Test
+    void laTablaAuditoriaDeV24SoloAdmiteLecturaEInsercionParaLaApp() {
+        String baseDeDatos = migrarComoPropietario();
+        JdbcTemplate jdbc = new JdbcTemplate(PostgresEmbebido.dataSource(baseDeDatos));
+
+        assertThat(jdbc.queryForObject("select relrowsecurity from pg_class where oid = 'ganera.auditoria'::regclass",
+                Boolean.class)).isTrue();
+        assertThat(privilegiosDeGaneraApp(jdbc, "auditoria", 'r')).containsExactly("INSERT", "SELECT");
+        assertThat(politicas(jdbc, "auditoria")).extracting(p -> p.get("policyname"))
+                .containsExactly("ganera_app_insercion", "ganera_app_lectura");
         assertThat(problemas(baseDeDatos)).isEmpty();
     }
 
@@ -371,7 +401,7 @@ class SeguridadEsquemaPostgresTest {
     private static String migrarComoPropietario() {
         String baseDeDatos = PostgresEmbebido.nuevaBaseDeDatos();
         assertThat(PostgresEmbebido.flywayPropietario(baseDeDatos).load().migrate().migrationsExecuted)
-                .isEqualTo(23);
+                .isEqualTo(24);
         return baseDeDatos;
     }
 

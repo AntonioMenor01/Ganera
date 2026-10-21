@@ -53,3 +53,10 @@ stripe:
   checkout:
     success-url: http://localhost:5173/facturacion?checkout=exito
     cancel-url: http://localhost:5173/facturacion?checkout=cancelado
+
+logging:
+  pattern:
+    # requestId de la peticion (ContextoPeticionFilter lo pone en el MDC y lo devuelve en X-Request-Id; plan
+    # 2026-10-21, D10) en cada linea de log, para que soporte encuentre los logs de un X-Request-Id. Boot lo intercala
+    # en el patron por defecto; fuera de una peticion sale "[] ".
+    correlation: "[%X{requestId:-}] "

@@ -1456,3 +1456,18 @@ revisiones en `.superpowers/sdd/su-t1-*` … `su-t4-*`.
 - **Copias de seguridad en el plan Free:** Antonio lo comprueba en el panel; probablemente no hay copias descargables
   (ni PITR) hasta el plan Pro. Afecta a la retención de copias (D4) que se decide antes de los datos reales.
 - **Riesgo de demo:** en el plan Free el proyecto **se pausa tras 7 días sin actividad**.
+
+### Auditoría base — en curso (2026-10-21, rama `feat/auditoria`, sin push)
+
+Plan aprobado: `docs/superpowers/plans/2026-10-21-auditoria-base.md` (D1–D10 y las precisiones de Antonio al
+principio). Parte de `main` = `32b6d3f` (backend 1075: 1074 + 1 omitido con JDK 21, 4 min 51 s; frontend 1084 en 50;
+lint 3 avisos). Commit local por tarea cerrada, sin push. Álvaro en `feat/mistral` (sin migraciones); esta tarea
+reserva V24 (tabla) y V25 (triggers, solo PostgreSQL). Informes en `.superpowers/sdd/au-*`.
+
+- **Riesgo aceptado (D3, MVP sin limitar):** los accesos a un recurso de otra gestoría dejan una fila
+  `ACCESO_OTRA_GESTORIA` cada uno, sin límite de frecuencia; un usuario autenticado podría llenar la tabla con intentos
+  (ids de otras gestorías que existen). La fila no se puede borrar (trigger). Revisar con un límite por usuario y
+  minuto si se ve en el piloto.
+- **Para el abogado — plazo de conservación de `auditoria`** (A1): sin plazo. La tabla guarda la IP (dato personal) y
+  el `usuario_id`; hoy no se puede borrar ninguna fila. El trigger de DELETE va por fila para que un proceso de
+  retención futuro (solo `ganera_propietario`) pueda borrar las más antiguas que el plazo sin tocar nada más.
