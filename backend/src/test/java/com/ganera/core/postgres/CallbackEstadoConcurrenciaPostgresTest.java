@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Callback de estado (B2 reducido, T4) sobre PostgreSQL 16 real: el UPDATE condicional por SID no retrocede
+ * Callback de estado (B2 reducido, T4) sobre PostgreSQL 17 real: el UPDATE condicional por SID no retrocede
  * aunque dos callbacks lleguen a la vez. Determinista: una transaccion JDBC deja la fila en LEIDO SIN confirmar
  * (con el bloqueo de fila); el {@code delivered} de la aplicacion se queda esperando ese bloqueo y, al confirmarse
  * la primera, PostgreSQL (READ COMMITTED) vuelve a evaluar el WHERE sobre la fila nueva: 0 filas, sigue LEIDO.

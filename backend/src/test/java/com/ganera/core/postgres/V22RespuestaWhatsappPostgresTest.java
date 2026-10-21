@@ -1,6 +1,5 @@
 package com.ganera.core.postgres;
 
-import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.junit.jupiter.api.Test;
 
@@ -14,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * V22 (respuesta_whatsapp) sobre PostgreSQL 16 real. Mismo patron que V22RespuestaWhatsappMigracionTest
+ * V22 (respuesta_whatsapp) sobre PostgreSQL 17 real. Mismo patron que V22RespuestaWhatsappMigracionTest
  * (H2): migrar hasta la 21, sembrar, migrar al final; los UNIQUE con nombre fallan con el SQLState de
  * unicidad (23505), las claves ajenas con 23503 y los NOT NULL con 23502.
  */
@@ -83,6 +82,6 @@ class V22RespuestaWhatsappPostgresTest {
     /** Hasta la V22 como mucho (la que prueba este test): asi «una sola migracion» y «nada pendiente» siguen
      * siendo ciertos aunque se anadan migraciones posteriores (V23). */
     private static FluentConfiguration flyway(DataSource dataSource) {
-        return Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").target("22");
+        return PostgresEmbebido.flyway(dataSource).target("22");
     }
 }

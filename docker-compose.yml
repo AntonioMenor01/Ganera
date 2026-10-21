@@ -1,6 +1,7 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # La misma version mayor que Supabase (PostgreSQL 17).
+    image: postgres:17-alpine
     environment:
       POSTGRES_DB: ${DATABASE_NAME:-ganera}
       POSTGRES_USER: ${DATABASE_USERNAME:-ganera}
@@ -9,6 +10,10 @@ services:
       - "5432:5432"
     volumes:
       - ganera_postgres_data:/var/lib/postgresql/data
+      # Roles (ganera_propietario, ganera_app, anon, authenticated, service_role), esquema ganera y zona UTC.
+      # Sin esos roles el callback de Flyway afterMigrate__seguridad_esquema.sql no deja migrar. Solo se ejecuta
+      # al crear el volumen: con un volumen anterior, borrarlo (docker-compose down -v) o ejecutar el script a mano.
+      - ./backend/supabase/01-preparar-roles-y-esquema.sql:/docker-entrypoint-initdb.d/01-preparar-roles-y-esquema.sql:ro
 
 volumes:
   ganera_postgres_data:

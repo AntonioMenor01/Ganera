@@ -1,16 +1,12 @@
 package com.ganera.core.postgres;
 
-import com.ganera.core.GaneraApplication;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.util.ArrayList;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -66,20 +62,8 @@ class CorsPerfilCleverPostgresTest {
     }
 
     private static ConfigurableApplicationContext arrancar(String... extra) {
-        String baseDeDatos = PostgresEmbebido.nuevaBaseDeDatos();
-        URI uri = URI.create(PostgresEmbebido.jdbcUrl(baseDeDatos).substring("jdbc:".length()));
-        List<String> argumentos = new ArrayList<>(List.of(
-                "--spring.profiles.active=clever",
-                "--POSTGRESQL_ADDON_HOST=" + uri.getHost(),
-                "--POSTGRESQL_ADDON_PORT=" + uri.getPort(),
-                "--POSTGRESQL_ADDON_DB=" + baseDeDatos,
-                "--POSTGRESQL_ADDON_USER=" + PostgresEmbebido.USUARIO,
-                "--POSTGRESQL_ADDON_PASSWORD=",
-                "--server.port=0",
-                "--spring.datasource.hikari.pool-name=pg-cors-" + baseDeDatos,
-                "--spring.jmx.enabled=false"));
-        argumentos.addAll(List.of(extra));
-        return new SpringApplicationBuilder(GaneraApplication.class).run(argumentos.toArray(String[]::new));
+        return PostgresEmbebido.arrancarPerfilClever(
+                PostgresEmbebido.variablesSupabase(PostgresEmbebido.nuevaBaseDeDatos()), extra);
     }
 
     private static HttpResponse<String> preflight(HttpClient cliente, String base, String origen) throws Exception {

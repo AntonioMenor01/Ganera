@@ -27,8 +27,8 @@
         <poi.version>5.3.0</poi.version>
         <commons-io.version>2.16.1</commons-io.version>
         <embedded-postgres.version>2.2.2</embedded-postgres.version>
-        <!-- PostgreSQL 16, la version del add-on de Clever (D2). -->
-        <embedded-postgres-binaries.version>16.15.0</embedded-postgres-binaries.version>
+        <!-- PostgreSQL 17.11, la version de Supabase (migracion a Supabase, T1). -->
+        <embedded-postgres-binaries.version>17.11.0</embedded-postgres-binaries.version>
     </properties>
 
     <dependencyManagement>

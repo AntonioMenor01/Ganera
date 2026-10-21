@@ -1,8 +1,6 @@
 package com.ganera.core.postgres;
 
-import com.ganera.core.GaneraApplication;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 
 import java.net.URI;
@@ -25,20 +23,8 @@ class HstsPerfilCleverPostgresTest {
 
     @Test
     void conElPerfilCleverLaApiMandaHstsEnTodasLasRespuestas() throws Exception {
-        String baseDeDatos = PostgresEmbebido.nuevaBaseDeDatos();
-        URI uri = URI.create(PostgresEmbebido.jdbcUrl(baseDeDatos).substring("jdbc:".length()));
-
-        try (ConfigurableApplicationContext contexto = new SpringApplicationBuilder(GaneraApplication.class).run(
-                "--spring.profiles.active=clever",
-                "--POSTGRESQL_ADDON_HOST=" + uri.getHost(),
-                "--POSTGRESQL_ADDON_PORT=" + uri.getPort(),
-                "--POSTGRESQL_ADDON_DB=" + baseDeDatos,
-                "--POSTGRESQL_ADDON_USER=" + PostgresEmbebido.USUARIO,
-                "--POSTGRESQL_ADDON_PASSWORD=",
-                "--FRONTEND_ORIGEN=https://app.ganera.es",
-                "--server.port=0",
-                "--spring.datasource.hikari.pool-name=pg-hsts-" + baseDeDatos,
-                "--spring.jmx.enabled=false")) {
+        try (ConfigurableApplicationContext contexto =
+                PostgresEmbebido.arrancarPerfilClever(PostgresEmbebido.nuevaBaseDeDatos())) {
 
             String base = "http://localhost:" + contexto.getEnvironment().getProperty("local.server.port");
             HttpClient cliente = HttpClient.newHttpClient();

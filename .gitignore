@@ -14,3 +14,10 @@ dist/
 .clever.json
 # Manuales de terceros (p. ej. el de OVZNET): binarios pesados y ajenos; el análisis va en docs/referencias/*.md
 docs/referencias/*.pdf
+# Informes de trabajo de Superpowers (briefs, informes y revisiones de cada tarea): no se commitean; solo progress.md
+.superpowers/sdd/*
+!.superpowers/sdd/progress.md
+# Capturas y borradores sueltos en la raiz (preview.png nunca se sube)
+/capturaTramites.jpeg
+/logo.jpg
+/preview.png
