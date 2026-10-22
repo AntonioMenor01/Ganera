@@ -19,6 +19,11 @@ import com.ganera.core.gestoria.Usuario;
 import com.ganera.core.gestoria.UsuarioRepository;
 import com.ganera.core.tramite.IaDePruebaConfig.RelojAjustable;
 import com.ganera.core.whatsapp.EnvioWhatsappFalso;
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.ActorTipo;
+import com.ganera.core.shared.auditoria.Auditoria;
+import com.ganera.core.shared.auditoria.AuditoriaRepository;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
 import com.ganera.core.whatsapp.EstadoRespuestaWhatsapp;
 import com.ganera.core.whatsapp.RespuestaWhatsapp;
 import com.ganera.core.whatsapp.RespuestaWhatsappRepository;
@@ -40,6 +45,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import com.ganera.core.shared.auditoria.LimpiezaAuditoria;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -86,6 +92,8 @@ class RespuestaWhatsappEndToEndTest {
     private ObjectMapper objectMapper;
     @Autowired
     private JdbcTemplate jdbcTemplate;
+    @Autowired
+    private AuditoriaRepository auditoriaRepository;
     @Autowired
     private PasswordEncoder passwordEncoder;
     @Autowired
@@ -149,6 +157,7 @@ class RespuestaWhatsappEndToEndTest {
 
     @AfterEach
     void limpiar() {
+        LimpiezaAuditoria.borrar(jdbcTemplate);
         jdbcTemplate.update("delete from respuesta_whatsapp");
         jdbcTemplate.update("delete from tramite_evento");
         mensajeCampoRepository.deleteAll();
@@ -210,6 +219,28 @@ class RespuestaWhatsappEndToEndTest {
         // El tramite no cambia: ni estado ni version.
         assertThat(fila(tramite)).isEqualTo(antes);
 
+        // Auditoria (T3): dos filas en la gestoria del actor, RESPUESTA_WHATSAPP_CREADA (ENVIANDO) y
+        // RESPUESTA_WHATSAPP_RESULTADO (ENVIANDO -> ENVIADO), con el usuario del JWT. Ninguna en B.
+        long respuestaId = cuerpo.get("id").asLong();
+        List<Auditoria> filasA = auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaA.getId());
+        List<Auditoria> delaRespuesta = filasA.stream()
+                .filter(f -> f.getEntidadTipo() == EntidadAuditada.RESPUESTA_WHATSAPP
+                        && Long.valueOf(respuestaId).equals(f.getEntidadId()))
+                .toList();
+        assertThat(delaRespuesta).hasSize(2);
+        assertThat(delaRespuesta).allSatisfy(f -> {
+            assertThat(f.getActorTipo()).isEqualTo(ActorTipo.USUARIO);
+            assertThat(f.getUsuarioId()).isEqualTo(anaA.getId());
+        });
+        assertThat(delaRespuesta.get(0).getAccion()).isEqualTo(AccionAuditoria.RESPUESTA_WHATSAPP_CREADA);
+        assertThat(delaRespuesta.get(0).getDespues()).isEqualTo("{\"estado\":\"ENVIANDO\"}");
+        assertThat(delaRespuesta.get(1).getAccion()).isEqualTo(AccionAuditoria.RESPUESTA_WHATSAPP_RESULTADO);
+        assertThat(delaRespuesta.get(1).getAntes()).isEqualTo("{\"estado\":\"ENVIANDO\"}");
+        assertThat(delaRespuesta.get(1).getDespues()).isEqualTo("{\"estado\":\"ENVIADO\"}");
+        // B no tiene ninguna fila de respuesta (su login de setup deja otra cosa, no de este tramite).
+        assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaB.getId()))
+                .noneMatch(f -> f.getEntidadTipo() == EntidadAuditada.RESPUESTA_WHATSAPP);
+
         // El detalle lo muestra.
         JsonNode whatsapp = detalle(tramite.getId(), tokenAna).get("whatsapp");
         assertThat(whatsapp.get("respuestas")).hasSize(1);
@@ -257,6 +288,15 @@ class RespuestaWhatsappEndToEndTest {
         assertThat(objectMapper.readTree(segunda.getBody())).isEqualTo(objectMapper.readTree(primera.getBody()));
         assertThat(envio.llamadas()).hasSize(1);
         assertThat(cuantasRespuestas()).isEqualTo(1);
+        // Auditoria (T3): la repeticion idempotente no escribe fila -> siguen exactamente las 2 del primer
+        // envio (RESPUESTA_WHATSAPP_CREADA + RESPUESTA_WHATSAPP_RESULTADO), ninguna de la segunda llamada.
+        long respuestaId = objectMapper.readTree(primera.getBody()).get("id").asLong();
+        List<Auditoria> delaRespuesta = auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaA.getId()).stream()
+                .filter(f -> f.getEntidadTipo() == EntidadAuditada.RESPUESTA_WHATSAPP
+                        && Long.valueOf(respuestaId).equals(f.getEntidadId()))
+                .toList();
+        assertThat(delaRespuesta).extracting(Auditoria::getAccion).containsExactly(
+                AccionAuditoria.RESPUESTA_WHATSAPP_CREADA, AccionAuditoria.RESPUESTA_WHATSAPP_RESULTADO);
     }
 
     @Test

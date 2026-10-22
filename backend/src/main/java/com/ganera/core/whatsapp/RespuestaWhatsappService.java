@@ -4,6 +4,12 @@ import com.ganera.core.contacto.Contacto;
 import com.ganera.core.contacto.RecursoNoEncontradoException;
 import com.ganera.core.gestoria.Usuario;
 import com.ganera.core.gestoria.UsuarioRepository;
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.Actor;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.auditoria.Clave;
+import com.ganera.core.shared.auditoria.DatosAuditoria;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
 import com.ganera.core.tramite.Tramite;
 import com.ganera.core.tramite.TramiteRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -50,6 +56,7 @@ public class RespuestaWhatsappService {
     private final RespuestaWhatsappRepository respuestaWhatsappRepository;
     private final EnvioWhatsapp envioWhatsapp;
     private final Clock reloj;
+    private final AuditoriaService auditoriaService;
     private final TransactionTemplate transaccion;
 
     public RespuestaWhatsappService(TramiteRepository tramiteRepository,
@@ -58,6 +65,7 @@ public class RespuestaWhatsappService {
                                     RespuestaWhatsappRepository respuestaWhatsappRepository,
                                     EnvioWhatsapp envioWhatsapp,
                                     Clock reloj,
+                                    AuditoriaService auditoriaService,
                                     PlatformTransactionManager transactionManager) {
         this.tramiteRepository = tramiteRepository;
         this.usuarioRepository = usuarioRepository;
@@ -65,6 +73,7 @@ public class RespuestaWhatsappService {
         this.respuestaWhatsappRepository = respuestaWhatsappRepository;
         this.envioWhatsapp = envioWhatsapp;
         this.reloj = reloj;
+        this.auditoriaService = auditoriaService;
         this.transaccion = new TransactionTemplate(transactionManager);
     }
 
@@ -161,6 +170,11 @@ public class RespuestaWhatsappService {
         respuesta.setEstado(EstadoRespuestaWhatsapp.ENVIANDO);
         respuesta.setClaveIdempotencia(clave);
         respuestaWhatsappRepository.saveAndFlush(respuesta);
+        // Fila dentro de esta transaccion corta: si el UNIQUE de la clave la revierte, la auditoria se va con
+        // ella. La repeticion con la misma clave (arriba) devuelve la fila existente sin pasar por aqui -> sin fila.
+        auditoriaService.registrar(AccionAuditoria.RESPUESTA_WHATSAPP_CREADA, gestoriaId, Actor.usuario(usuarioId),
+                EntidadAuditada.RESPUESTA_WHATSAPP, respuesta.getId(), null,
+                DatosAuditoria.con(Clave.ESTADO, EstadoRespuestaWhatsapp.ENVIANDO));
         return new Preparada(null, respuesta.getId(), contacto.getTelefono());
     }
 
@@ -184,6 +198,14 @@ public class RespuestaWhatsappService {
         Instant ahora = ahora();
         respuesta.setActualizadoEn(ahora);
         respuestaWhatsappRepository.saveAndFlush(respuesta);
+        DatosAuditoria despues = DatosAuditoria.con(Clave.ESTADO, respuesta.getEstado());
+        if (respuesta.getCodigoErrorTwilio() != null) {
+            // El codigo de error de Twilio es un numero; nunca su texto en ingles ni el cuerpo de la respuesta.
+            despues = despues.y(Clave.CODIGO_ERROR, respuesta.getCodigoErrorTwilio());
+        }
+        auditoriaService.registrar(AccionAuditoria.RESPUESTA_WHATSAPP_RESULTADO, gestoriaId, Actor.usuario(usuarioId),
+                EntidadAuditada.RESPUESTA_WHATSAPP, respuestaId,
+                DatosAuditoria.con(Clave.ESTADO, EstadoRespuestaWhatsapp.ENVIANDO), despues);
         log.info("Respuesta por WhatsApp: respuestaId={}, tramiteId={}, usuarioId={}, sid={}, estado={}, codigo={}",
                 respuestaId, tramiteId, usuarioId, respuesta.getTwilioMessageSid(), respuesta.getEstado(),
                 respuesta.getCodigoErrorTwilio());

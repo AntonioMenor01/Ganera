@@ -33,6 +33,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import com.ganera.core.shared.auditoria.LimpiezaAuditoria;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.util.LinkedMultiValueMap;
@@ -138,6 +139,7 @@ class WhatsAppRecepcionEndToEndTest {
 
     @AfterEach
     void limpiar() {
+        LimpiezaAuditoria.borrar(jdbcTemplate);
         mensajeCampoRepository.deleteAll();
         tramiteCrotalRepository.deleteAll();
         tramiteRepository.deleteAll();

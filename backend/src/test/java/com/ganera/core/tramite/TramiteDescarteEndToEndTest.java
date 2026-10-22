@@ -33,6 +33,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import com.ganera.core.shared.auditoria.LimpiezaAuditoria;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -141,6 +142,7 @@ class TramiteDescarteEndToEndTest {
 
     @AfterEach
     void limpiar() {
+        LimpiezaAuditoria.borrar(jdbcTemplate);
         jdbcTemplate.update("delete from tramite_evento");
         jdbcTemplate.update("delete from respuesta_whatsapp");
         mensajeCampoRepository.deleteAll();

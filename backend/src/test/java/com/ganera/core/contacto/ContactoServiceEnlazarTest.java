@@ -34,8 +34,12 @@ class ContactoServiceEnlazarTest {
     private final ExplotacionRepository explotacionRepository = mock(ExplotacionRepository.class);
     private final GestoriaRepository gestoriaRepository = mock(GestoriaRepository.class);
 
+    private final com.ganera.core.shared.auditoria.AuditoriaService auditoriaService =
+            mock(com.ganera.core.shared.auditoria.AuditoriaService.class);
+
     private final ContactoService servicio = new ContactoService(
-            contactoRepository, contactoExplotacionRepository, explotacionRepository, gestoriaRepository);
+            contactoRepository, contactoExplotacionRepository, explotacionRepository, gestoriaRepository,
+            auditoriaService);
 
     @Test
     void enlazarRechazaUnaExplotacionDeOtraGestoriaAunqueElFinderLaDevuelvaYNoGuardaNada() {
@@ -44,7 +48,7 @@ class ContactoServiceEnlazarTest {
         when(explotacionRepository.findByIdAndGestoriaId(EXPLOTACION_ID, GESTORIA_A))
                 .thenReturn(Optional.of(explotacion(GESTORIA_B)));
 
-        assertThatThrownBy(() -> servicio.enlazar(GESTORIA_A, CONTACTO_ID, EXPLOTACION_ID, RolContacto.TITULAR))
+        assertThatThrownBy(() -> servicio.enlazar(GESTORIA_A, 99L, CONTACTO_ID, EXPLOTACION_ID, RolContacto.TITULAR))
                 .isInstanceOf(RecursoNoEncontradoException.class);
 
         verify(contactoExplotacionRepository, never()).save(any());

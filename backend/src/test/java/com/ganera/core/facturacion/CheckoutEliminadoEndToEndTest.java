@@ -9,7 +9,9 @@ import com.ganera.core.gestoria.UsuarioRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import com.ganera.core.shared.auditoria.LimpiezaAuditoria;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpEntity;
@@ -63,8 +65,13 @@ class CheckoutEliminadoEndToEndTest {
         usuarioRepository.save(usuario);
     }
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     @AfterEach
     void limpiar() {
+        // El login deja una fila de auditoria LOGIN_CORRECTO (FK a usuario y gestoria): se borra antes.
+        LimpiezaAuditoria.borrar(jdbcTemplate);
         suscripcionRepository.findByGestoriaId(gestoria.getId()).ifPresent(suscripcionRepository::delete);
         usuarioRepository.findByEmail(EMAIL).ifPresent(usuarioRepository::delete);
         gestoriaRepository.delete(gestoria);

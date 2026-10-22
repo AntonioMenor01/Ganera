@@ -54,7 +54,9 @@ import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTest
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = NONE)
 @Import({ExplotacionImportService.class, ExplotacionImportFilaService.class,
-        com.ganera.core.tramite.TramiteCrotalService.class})
+        com.ganera.core.tramite.TramiteCrotalService.class,
+        com.ganera.core.shared.auditoria.AuditoriaService.class,
+        com.ganera.core.shared.tiempo.RelojConfig.class})
 class ExplotacionImportServiceTest {
 
     @Autowired

@@ -30,6 +30,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import com.ganera.core.shared.auditoria.LimpiezaAuditoria;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -134,6 +135,7 @@ class TramiteRevisionEndToEndTest {
 
     @AfterEach
     void limpiar() {
+        LimpiezaAuditoria.borrar(jdbcTemplate);
         // tramite_crotal antes que tramite (FK), igual que en el resto de E2E.
         tramiteCrotalRepository.deleteAll();
         tramiteRepository.deleteAll();

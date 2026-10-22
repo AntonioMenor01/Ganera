@@ -32,6 +32,16 @@ public enum Clave {
     ERRORES,
     CROTALES_DESCARTADOS,
     INTENTOS,
+    // Recuentos por hoja de la fila resumen de una importacion de Excel (IMPORTACION_EXCEL).
+    EXPLOTACIONES_CREADAS,
+    EXPLOTACIONES_ACTUALIZADAS,
+    EXPLOTACIONES_ERRORES,
+    ANIMALES_CREADOS,
+    ANIMALES_ACTUALIZADOS,
+    ANIMALES_ERRORES,
+    CONTACTOS_CREADOS,
+    CONTACTOS_ACTUALIZADOS,
+    CONTACTOS_ERRORES,
     /** La pone DatosAuditoria sola cuando recorta una lista de ids (maximo 50 en total). */
     TRUNCADO;
 

@@ -39,6 +39,7 @@ import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTest
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = NONE)
 @Import({TramiteCrotalService.class, TramiteRevisionService.class, RelojConfig.class,
+        com.ganera.core.shared.auditoria.AuditoriaService.class,
         com.ganera.core.whatsapp.WhatsappDetalleService.class})
 class TramiteControllerTest {
 
@@ -117,7 +118,7 @@ class TramiteControllerTest {
 
         TramiteController controller = nuevoController();
         ResponseEntity<?> respuesta = controller.aprobar(
-                new GaneraUserPrincipal(1L, gestoria.getId(), "empleado@test.com"), tramite.getId(), aprobarCon(tramite));
+                principal(gestoria), tramite.getId(), aprobarCon(tramite));
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
         assertThat(((TramiteResponse) respuesta.getBody()).estado()).isEqualTo("APROBADO");
@@ -166,7 +167,7 @@ class TramiteControllerTest {
 
         TramiteController controller = nuevoController();
         ResponseEntity<?> respuesta = controller.rechazar(
-                new GaneraUserPrincipal(1L, gestoria.getId(), "empleado@test.com"), tramite.getId(), rechazarCon(tramite));
+                principal(gestoria), tramite.getId(), rechazarCon(tramite));
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
         assertThat(((TramiteResponse) respuesta.getBody()).estado()).isEqualTo("RECHAZADO");
@@ -865,8 +866,13 @@ class TramiteControllerTest {
         return usuarioRepository.save(usuario);
     }
 
-    private static GaneraUserPrincipal principal(Gestoria gestoria) {
-        return new GaneraUserPrincipal(1L, gestoria.getId(), "empleado@test.com");
+    /** Principal con un Usuario REAL de la gestoria (lo crea o lo reutiliza): desde T3 las escrituras dejan
+     * fila de auditoria con el usuario del JWT, y AuditoriaService exige que ese usuario sea de la gestoria. */
+    private GaneraUserPrincipal principal(Gestoria gestoria) {
+        String email = "empleado-" + gestoria.getId() + "@test.com";
+        Usuario usuario = usuarioRepository.findByEmail(email)
+                .orElseGet(() -> nuevoUsuario(gestoria, email, "Empleado de prueba"));
+        return new GaneraUserPrincipal(usuario.getId(), gestoria.getId(), email);
     }
 
     private Animal nuevoAnimal(Gestoria gestoria, Explotacion explotacion, String crotal) {

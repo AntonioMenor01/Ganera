@@ -74,7 +74,8 @@ public class ContactoController {
             return invalido.get();
         }
         return conTelefonoUnico(() -> ResponseEntity.status(HttpStatus.CREATED)
-                .body(contactoService.crear(principal.gestoriaId(), telefono.get(), request.nombre().strip())));
+                .body(contactoService.crear(principal.gestoriaId(), principal.usuarioId(), telefono.get(),
+                        request.nombre().strip())));
     }
 
     @PutMapping("/contactos/{id}")
@@ -88,7 +89,8 @@ public class ContactoController {
             return invalido.get();
         }
         return conTelefonoUnico(() -> ResponseEntity.ok(
-                contactoService.actualizar(principal.gestoriaId(), id, telefono.get(), request.nombre().strip())));
+                contactoService.actualizar(principal.gestoriaId(), principal.usuarioId(), id, telefono.get(),
+                        request.nombre().strip())));
     }
 
     @DeleteMapping("/contactos/{id}")
@@ -96,7 +98,7 @@ public class ContactoController {
             @AuthenticationPrincipal GaneraUserPrincipal principal,
             @PathVariable Long id) {
         try {
-            contactoService.desactivar(principal.gestoriaId(), id);
+            contactoService.desactivar(principal.gestoriaId(), principal.usuarioId(), id);
             return ResponseEntity.noContent().build();
         } catch (RecursoNoEncontradoException e) {
             return ResponseEntity.notFound().build();
@@ -108,7 +110,7 @@ public class ContactoController {
             @AuthenticationPrincipal GaneraUserPrincipal principal,
             @PathVariable Long id) {
         try {
-            return ResponseEntity.ok(contactoService.reactivar(principal.gestoriaId(), id));
+            return ResponseEntity.ok(contactoService.reactivar(principal.gestoriaId(), principal.usuarioId(), id));
         } catch (RecursoNoEncontradoException e) {
             return ResponseEntity.notFound().build();
         }
@@ -128,7 +130,8 @@ public class ContactoController {
         }
         try {
             return ResponseEntity.ok(
-                    contactoService.enlazar(principal.gestoriaId(), id, request.explotacionId(), rol.get()));
+                    contactoService.enlazar(principal.gestoriaId(), principal.usuarioId(), id,
+                            request.explotacionId(), rol.get()));
         } catch (RecursoNoEncontradoException e) {
             return ResponseEntity.notFound().build();
         } catch (ContactoInactivoException e) {
@@ -142,7 +145,7 @@ public class ContactoController {
             @PathVariable Long id,
             @PathVariable Long explotacionId) {
         try {
-            contactoService.desenlazar(principal.gestoriaId(), id, explotacionId);
+            contactoService.desenlazar(principal.gestoriaId(), principal.usuarioId(), id, explotacionId);
             return ResponseEntity.noContent().build();
         } catch (RecursoNoEncontradoException e) {
             return ResponseEntity.notFound().build();

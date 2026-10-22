@@ -150,7 +150,8 @@ public class TramiteController {
         }
         TipoTramite tipoFinal = tipo;
         return traducirErrores(() -> ResponseEntity.ok(tramiteRevisionService.actualizar(
-                principal.gestoriaId(), id, request.version(), request.explotacionId(), tipoFinal, request.crotales())));
+                principal.gestoriaId(), principal.usuarioId(), id, request.version(), request.explotacionId(),
+                tipoFinal, request.crotales())));
     }
 
     /**
@@ -176,7 +177,8 @@ public class TramiteController {
         if (version == null) {
             return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_FALTA_VERSION));
         }
-        return traducirErrores(() -> ResponseEntity.ok(tramiteRevisionService.aprobar(principal.gestoriaId(), id, version)));
+        return traducirErrores(() -> ResponseEntity.ok(
+                tramiteRevisionService.aprobar(principal.gestoriaId(), principal.usuarioId(), id, version)));
     }
 
     /**
@@ -198,7 +200,8 @@ public class TramiteController {
         if (version == null) {
             return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_FALTA_VERSION));
         }
-        return traducirErrores(() -> ResponseEntity.ok(tramiteRevisionService.rechazar(principal.gestoriaId(), id, version)));
+        return traducirErrores(() -> ResponseEntity.ok(
+                tramiteRevisionService.rechazar(principal.gestoriaId(), principal.usuarioId(), id, version)));
     }
 
     /**

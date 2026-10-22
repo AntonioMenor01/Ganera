@@ -103,20 +103,22 @@ class TramiteControllerErroresTest {
     }
 
     private static TramiteController controllerQueLanza(Supplier<RuntimeException> fallo) {
-        TramiteRevisionService servicio = new TramiteRevisionService(null, null, null, null, null, null, null, null, null) {
+        TramiteRevisionService servicio = new TramiteRevisionService(
+                null, null, null, null, null, null, null, null, null, null) {
+            // El controlador llama a las sobrecargas CON usuarioId (T3): se sobreescriben esas.
             @Override
-            public TramiteDetalleResponse actualizar(Long gestoriaId, Long tramiteId, Long versionVista,
+            public TramiteDetalleResponse actualizar(Long gestoriaId, Long usuarioId, Long tramiteId, Long versionVista,
                                                      Long explotacionId, TipoTramite tipoTramite, List<String> crotales) {
                 throw fallo.get();
             }
 
             @Override
-            public TramiteResponse aprobar(Long gestoriaId, Long tramiteId, Long versionVista) {
+            public TramiteResponse aprobar(Long gestoriaId, Long usuarioId, Long tramiteId, Long versionVista) {
                 throw fallo.get();
             }
 
             @Override
-            public TramiteResponse rechazar(Long gestoriaId, Long tramiteId, Long versionVista) {
+            public TramiteResponse rechazar(Long gestoriaId, Long usuarioId, Long tramiteId, Long versionVista) {
                 throw fallo.get();
             }
 
