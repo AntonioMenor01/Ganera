@@ -14,8 +14,14 @@ import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.tramite.IaDePruebaConfig.IaProgramable;
 import com.ganera.core.tramite.IaDePruebaConfig.RelojAjustable;
 import com.ganera.core.tramite.TramiteExtractionService.TramiteExtraido;
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.ActorTipo;
+import com.ganera.core.shared.auditoria.Auditoria;
+import com.ganera.core.shared.auditoria.AuditoriaRepository;
+import com.ganera.core.shared.auditoria.LimpiezaAuditoria;
 import com.ganera.core.whatsapp.MensajeCampo;
 import com.ganera.core.whatsapp.MensajeCampoRepository;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -81,6 +87,10 @@ class ExtraccionTramiteServiceTest {
     private GanaderoRepository ganaderoRepository;
     @Autowired
     private GestoriaRepository gestoriaRepository;
+    @Autowired
+    private AuditoriaRepository auditoriaRepository;
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private Gestoria gestoriaA;
     private Gestoria gestoriaB;
@@ -104,6 +114,8 @@ class ExtraccionTramiteServiceTest {
 
     @AfterEach
     void limpiar() {
+        // La extraccion deja filas de auditoria (actor PLANIFICADOR) que referencian la gestoria (FK sin ON DELETE).
+        LimpiezaAuditoria.borrar(jdbcTemplate);
         mensajeCampoRepository.deleteAll();
         tramiteCrotalRepository.deleteAll();
         tramiteRepository.deleteAll();
@@ -269,6 +281,56 @@ class ExtraccionTramiteServiceTest {
         List<TramiteCrotal> crotales = crotales(recargar(tramite));
         assertThat(crotales).singleElement()
                 .extracting(TramiteCrotal::getResolucion).isEqualTo(ResolucionCrotal.SIN_EXPLOTACION);
+    }
+
+    // ------------------------------------------------------------------ auditoria (T4, PLANIFICADOR)
+
+    @Test
+    void elExitoDejaUnaFilaExtraccionAplicadaEnLaGestoriaDelTramiteConIpNull() {
+        animal(gestoriaA, explotacionA, "ES010000001234");
+        Tramite tramite = tramitePendiente(gestoriaA, contactoA, explotacionA, TEXTO);
+        ia.devolver(TipoTramite.BAJA_MUERTE, "1234");
+
+        servicio.procesarPendientes();
+
+        List<Auditoria> filas = auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaA.getId());
+        assertThat(filas).extracting(Auditoria::getAccion).containsExactly(AccionAuditoria.EXTRACCION_APLICADA);
+        Auditoria fila = filas.get(0);
+        assertThat(fila.getActorTipo()).isEqualTo(ActorTipo.PLANIFICADOR);
+        assertThat(fila.getUsuarioId()).isNull();
+        assertThat(fila.getIp()).isNull();
+        assertThat(fila.getRequestId()).isNull();
+        assertThat(fila.getEntidadId()).isEqualTo(tramite.getId());
+        assertThat(fila.getDespues()).contains("\"estado_extraccion\":\"COMPLETADA\"");
+        assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaB.getId())).isEmpty();
+    }
+
+    @Test
+    void elPlanificadorProcesaLasDosGestoriasYCadaFilaCaeEnLaSuya() {
+        tramitePendiente(gestoriaA, contactoA, explotacionA, TEXTO);
+        tramitePendiente(gestoriaB, contactoB, explotacionB, TEXTO);
+        ia.devolver(TipoTramite.BAJA_MUERTE, "1234");
+
+        servicio.procesarPendientes();
+
+        assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaA.getId()))
+                .extracting(Auditoria::getAccion).containsExactly(AccionAuditoria.EXTRACCION_APLICADA);
+        assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaB.getId()))
+                .extracting(Auditoria::getAccion).containsExactly(AccionAuditoria.EXTRACCION_APLICADA);
+    }
+
+    @Test
+    void elPrimerFalloDejaUnaFilaExtraccionFallida() {
+        Tramite tramite = tramitePendiente(gestoriaA, contactoA, explotacionA, TEXTO);
+        ia.lanzar(new ExtraccionFallidaException("caida simulada"));
+
+        servicio.procesarPendientes();
+
+        List<Auditoria> filas = auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaA.getId());
+        assertThat(filas).extracting(Auditoria::getAccion).containsExactly(AccionAuditoria.EXTRACCION_FALLIDA);
+        assertThat(filas.get(0).getActorTipo()).isEqualTo(ActorTipo.PLANIFICADOR);
+        assertThat(filas.get(0).getEntidadId()).isEqualTo(tramite.getId());
+        assertThat(filas.get(0).getDespues()).contains("\"estado_extraccion\":\"FALLIDA\"").contains("\"intentos\":1");
     }
 
     // ------------------------------------------------------------------ fallos y reintentos

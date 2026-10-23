@@ -5,10 +5,13 @@ import com.ganera.core.facturacion.SuscripcionRepository;
 import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.gestoria.Usuario;
 import com.ganera.core.gestoria.UsuarioRepository;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.tiempo.RelojConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -18,6 +21,7 @@ import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTest
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = NONE)
+@Import({AuditoriaService.class, RelojConfig.class})
 class OnboardingControllerTest {
 
     @Autowired
@@ -26,13 +30,15 @@ class OnboardingControllerTest {
     private UsuarioRepository usuarioRepository;
     @Autowired
     private SuscripcionRepository suscripcionRepository;
+    @Autowired
+    private AuditoriaService auditoriaService;
 
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     @Test
     void secretoCorrectoEsValido() {
         OnboardingController controller = new OnboardingController(
-                gestoriaRepository, usuarioRepository, suscripcionRepository, passwordEncoder, "secreto-correcto");
+                gestoriaRepository, usuarioRepository, suscripcionRepository, passwordEncoder, auditoriaService, "secreto-correcto");
 
         assertThat(controller.secretoValido("secreto-correcto")).isTrue();
     }
@@ -40,7 +46,7 @@ class OnboardingControllerTest {
     @Test
     void secretoIncorrectoNoEsValido() {
         OnboardingController controller = new OnboardingController(
-                gestoriaRepository, usuarioRepository, suscripcionRepository, passwordEncoder, "secreto-correcto");
+                gestoriaRepository, usuarioRepository, suscripcionRepository, passwordEncoder, auditoriaService, "secreto-correcto");
 
         assertThat(controller.secretoValido("otro-secreto")).isFalse();
     }
@@ -48,7 +54,7 @@ class OnboardingControllerTest {
     @Test
     void cabeceraAusenteNoEsValida() {
         OnboardingController controller = new OnboardingController(
-                gestoriaRepository, usuarioRepository, suscripcionRepository, passwordEncoder, "secreto-correcto");
+                gestoriaRepository, usuarioRepository, suscripcionRepository, passwordEncoder, auditoriaService, "secreto-correcto");
 
         assertThat(controller.secretoValido(null)).isFalse();
     }
@@ -56,7 +62,7 @@ class OnboardingControllerTest {
     @Test
     void secretoConfiguradoEnBlancoFallaCerradoAunqueLaCabeceraTambienEsteEnBlanco() {
         OnboardingController controller = new OnboardingController(
-                gestoriaRepository, usuarioRepository, suscripcionRepository, passwordEncoder, "");
+                gestoriaRepository, usuarioRepository, suscripcionRepository, passwordEncoder, auditoriaService, "");
 
         assertThat(controller.secretoValido("")).isFalse();
     }
@@ -64,7 +70,7 @@ class OnboardingControllerTest {
     @Test
     void creaGestoriaUsuarioYSuscripcionActivaEnUnaTransaccion() {
         OnboardingController controller = new OnboardingController(
-                gestoriaRepository, usuarioRepository, suscripcionRepository, passwordEncoder, "secreto-onboarding");
+                gestoriaRepository, usuarioRepository, suscripcionRepository, passwordEncoder, auditoriaService, "secreto-onboarding");
 
         OnboardingRequest request = new OnboardingRequest(
                 "Gestoria Piloto", "primer.empleado@piloto.com", "password-en-claro", "Primer Empleado");
@@ -89,7 +95,7 @@ class OnboardingControllerTest {
     @Test
     void secretoInvalidoRechazaConHttp401YNoCreaNada() {
         OnboardingController controller = new OnboardingController(
-                gestoriaRepository, usuarioRepository, suscripcionRepository, passwordEncoder, "secreto-onboarding");
+                gestoriaRepository, usuarioRepository, suscripcionRepository, passwordEncoder, auditoriaService, "secreto-onboarding");
 
         OnboardingRequest request = new OnboardingRequest(
                 "Gestoria Rechazada", "rechazado@piloto.com", "password", "Nombre");

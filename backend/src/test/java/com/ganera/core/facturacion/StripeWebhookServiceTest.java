@@ -2,7 +2,15 @@ package com.ganera.core.facturacion;
 
 import com.ganera.core.gestoria.Gestoria;
 import com.ganera.core.gestoria.GestoriaRepository;
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.ActorTipo;
+import com.ganera.core.shared.auditoria.Auditoria;
+import com.ganera.core.shared.auditoria.AuditoriaRepository;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.tiempo.RelojConfig;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -22,7 +30,7 @@ import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTest
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = NONE)
-@Import({SuscripcionService.class, StripeWebhookService.class})
+@Import({SuscripcionService.class, StripeWebhookService.class, AuditoriaService.class, RelojConfig.class})
 class StripeWebhookServiceTest {
 
     @Autowired
@@ -31,6 +39,8 @@ class StripeWebhookServiceTest {
     private SuscripcionRepository suscripcionRepository;
     @Autowired
     private StripeWebhookService stripeWebhookService;
+    @Autowired
+    private AuditoriaRepository auditoriaRepository;
 
     // ---- calcularEstadoTrasActualizacion: los 8+1 casos del mapa (Decision de diseño 4) ----
 
@@ -231,6 +241,47 @@ class StripeWebhookServiceTest {
         Suscripcion trasReentrega = suscripcionRepository.findByStripeSubscriptionId("sub_guard").orElseThrow();
         assertThat(trasReentrega.getEstado()).isEqualTo(EstadoSuscripcion.ACTIVA);
         assertThat(trasReentrega.getStripeUltimoEventoEpoch()).isEqualTo(2_000L);
+    }
+
+    // ---- auditoria (T4, WEBHOOK_STRIPE): SUSCRIPCION_ESTADO_CAMBIADO solo si cambia el estado ----
+
+    @Test
+    void unCambioDeEstadoDejaUnaFilaWebhookStripeEnLaGestoriaDeLaSuscripcion() {
+        Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria auditoria stripe"));
+        nuevaSuscripcion(gestoria, EstadoSuscripcion.TRIAL, "sub_aud");
+
+        stripeWebhookService.procesarPagoExitoso("sub_aud", 1_000L);
+
+        List<Auditoria> filas = auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoria.getId());
+        assertThat(filas).extracting(Auditoria::getAccion)
+                .containsExactly(AccionAuditoria.SUSCRIPCION_ESTADO_CAMBIADO);
+        Auditoria fila = filas.get(0);
+        assertThat(fila.getActorTipo()).isEqualTo(ActorTipo.WEBHOOK_STRIPE);
+        assertThat(fila.getUsuarioId()).isNull();
+        assertThat(fila.getAntes()).contains("\"estado\":\"TRIAL\"");
+        assertThat(fila.getDespues()).contains("\"estado\":\"ACTIVA\"");
+    }
+
+    @Test
+    void unEventoSinCambioDeEstadoNoDejaFila() {
+        Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria sin cambio"));
+        nuevaSuscripcion(gestoria, EstadoSuscripcion.ACTIVA, "sub_igual");
+
+        stripeWebhookService.procesarPagoExitoso("sub_igual", 1_000L); // ya ACTIVA -> mismo estado
+
+        assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoria.getId())).isEmpty();
+    }
+
+    @Test
+    void unEventoObsoletoNoDejaFila() {
+        Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria obsoleto"));
+        Suscripcion suscripcion = nuevaSuscripcion(gestoria, EstadoSuscripcion.TRIAL, "sub_obs");
+        suscripcion.setStripeUltimoEventoEpoch(2_000L);
+        suscripcionRepository.save(suscripcion);
+
+        stripeWebhookService.procesarPagoExitoso("sub_obs", 1_000L); // created menor -> obsoleto
+
+        assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoria.getId())).isEmpty();
     }
 
     private Suscripcion nuevaSuscripcion(Gestoria gestoria, EstadoSuscripcion estado, String stripeSubscriptionId) {
