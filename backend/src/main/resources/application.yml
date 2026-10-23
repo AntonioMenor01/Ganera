@@ -62,9 +62,20 @@ ganera:
     # validan contra ella. Vacia -> se envia sin callback (la respuesta se queda en ENVIADO) y el endpoint
     # responde 503 (fail-closed).
     status-callback-url: ${TWILIO_STATUS_CALLBACK_URL:}
+  ai:
+    # Proveedor de IA activo para la extraccion: anthropic (por defecto) o mistral. Sirve para poder
+    # comparar Mistral con Haiku; no cambia el proveedor de produccion. Un valor ausente o no
+    # reconocido usa anthropic y se registra en el log (ProveedorIaConfig).
+    provider: ${AI_PROVIDER:anthropic}
   anthropic:
     # Vacia -> la app arranca igual; cada extraccion falla con ExtraccionFallidaException.
     api-key: ${ANTHROPIC_API_KEY:}
+  mistral:
+    # Solo se usa si AI_PROVIDER=mistral. Vacia -> la app arranca igual; si mistral esta activo, cada
+    # extraccion falla con ExtraccionFallidaException (igual criterio que la clave de Anthropic).
+    api-key: ${MISTRAL_API_KEY:}
+    # Modelo comparable a Haiku en coste/rendimiento; se puede fijar con MISTRAL_MODEL.
+    model: ${MISTRAL_MODEL:mistral-small-latest}
   extraccion:
     # Planificador de la extraccion por IA en segundo plano (B1, T2).
     planificador:
