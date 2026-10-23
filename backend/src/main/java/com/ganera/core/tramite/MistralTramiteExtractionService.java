@@ -17,10 +17,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Extraccion con Mistral mediante su API de chat completions (compatible con el estilo OpenAI). Es la
- * segunda implementacion elegible de {@link TramiteExtractionService}: existe para poder comparar
- * Mistral con Haiku, no para sustituirlo. Anthropic sigue siendo el proveedor por defecto; esta solo
- * se usa cuando {@code AI_PROVIDER=mistral} (ver {@link ProveedorIaConfig}).
+ * Extraccion con Mistral mediante su API de chat completions (compatible con el estilo OpenAI). Es una
+ * de las dos implementaciones elegibles de {@link TramiteExtractionService} y el proveedor por defecto
+ * cuando {@code AI_PROVIDER} no esta definida; Anthropic queda como fallback y se elige con
+ * {@code AI_PROVIDER=anthropic} (ver {@link ProveedorIaConfig}).
  *
  * <p>Mistral no tiene salida estructurada nativa por esquema como Anthropic, asi que se pide
  * {@code response_format: json_object} y se valida el JSON aqui: el {@code content} del mensaje debe

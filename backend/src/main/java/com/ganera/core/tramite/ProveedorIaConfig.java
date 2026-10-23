@@ -18,8 +18,9 @@ import org.springframework.context.annotation.Configuration;
  * </ul>
  *
  * <p>El proveedor se elige con la variable de entorno {@code AI_PROVIDER}
- * ({@code anthropic} | {@code mistral}); por defecto {@code anthropic}. Un valor ausente o no
- * reconocido usa {@code anthropic} y se registra en el log (ver {@link ProveedorIa#resolver}).
+ * ({@code mistral} | {@code anthropic}); por defecto {@code mistral}. Si {@code AI_PROVIDER} no esta
+ * definida se usa {@code mistral}; {@code anthropic} queda como fallback (valor vacio o no reconocido,
+ * ver {@link ProveedorIa#resolver}) y se puede elegir a mano con {@code AI_PROVIDER=anthropic}.
  */
 @Configuration
 public class ProveedorIaConfig {
@@ -28,7 +29,7 @@ public class ProveedorIaConfig {
 
     @Bean
     public TramiteExtractionService tramiteExtractionService(
-            @Value("${ganera.ai.provider:anthropic}") String proveedorConfigurado,
+            @Value("${ganera.ai.provider:mistral}") String proveedorConfigurado,
             @Value("${ganera.anthropic.api-key:}") String anthropicApiKey,
             @Value("${ganera.anthropic.base-url:}") String anthropicBaseUrl,
             @Value("${ganera.anthropic.max-reintentos:2}") int anthropicMaxReintentos,
