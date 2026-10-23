@@ -15,8 +15,6 @@ import com.anthropic.models.messages.StructuredTextBlock;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import jakarta.annotation.PreDestroy;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.util.List;
@@ -30,8 +28,11 @@ import java.util.Optional;
  * <p>El cliente se construye la primera vez que se usa, no al arrancar: la app tiene que levantar
  * sin {@code ANTHROPIC_API_KEY} (mismo criterio que Twilio y Stripe). Sin clave, cada llamada es una
  * {@link ExtraccionFallidaException} y no sale ninguna peticion.
+ *
+ * <p>No es un bean por si mismo: lo instancia {@link ProveedorIaConfig} cuando es el proveedor de IA
+ * activo (ver {@code AI_PROVIDER}). Asi solo existe un bean de {@link TramiteExtractionService}, el del
+ * proveedor elegido, y la seleccion no choca con la IA falsa de los tests.
  */
-@Service
 public class AnthropicTramiteExtractionService implements TramiteExtractionService {
 
     /** Snapshot con fecha, nunca el alias: el modelo no puede cambiar por debajo sin que lo decidamos. */
@@ -73,10 +74,7 @@ public class AnthropicTramiteExtractionService implements TramiteExtractionServi
     private final int maxReintentos;
     private volatile AnthropicClient cliente;
 
-    public AnthropicTramiteExtractionService(
-            @Value("${ganera.anthropic.api-key:}") String apiKey,
-            @Value("${ganera.anthropic.base-url:}") String baseUrl,
-            @Value("${ganera.anthropic.max-reintentos:2}") int maxReintentos) {
+    public AnthropicTramiteExtractionService(String apiKey, String baseUrl, int maxReintentos) {
         this.apiKey = apiKey == null ? "" : apiKey.trim();
         this.baseUrl = baseUrl == null ? "" : baseUrl.trim();
         this.maxReintentos = maxReintentos;
