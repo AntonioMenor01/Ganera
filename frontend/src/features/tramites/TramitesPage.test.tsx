@@ -124,7 +124,7 @@ describe("TramitesPage: etiquetas legibles", () => {
     await screen.findByRole("button", { name: "Revisar trámite #1" })
     const tabla = screen.getByRole("table")
     expect(within(tabla).getByText("Pendiente de revisión")).toHaveClass("bg-warning")
-    expect(within(tabla).getByText("Ejecutado en OVZ.net")).toHaveClass("bg-success")
+    expect(within(tabla).getByText("Hecho en OVZ.net")).toHaveClass("bg-success")
     expect(screen.getByText("Solicitud de movimiento")).toBeInTheDocument()
     expect(screen.getByText("Alta por nacimiento")).toBeInTheDocument()
     for (const enumCrudo of ["PENDIENTE_REVISION", "EJECUTADO_OVZ", "SOLICITUD_MOVIMIENTO", "ALTA_NACIMIENTO"]) {
@@ -437,7 +437,7 @@ describe("TramitesPage: filtro y paginación", () => {
       "Hecho en OVZ",
       ESTADOS_TRAMITE.RECHAZADO.etiqueta,
     ])
-    for (const fuera of ["En proceso", "Ejecutado en OVZ.net", "Error en OVZ.net"]) {
+    for (const fuera of ["En proceso", "Hecho en OVZ.net", "Error en OVZ.net"]) {
       expect(screen.queryByRole("option", { name: fuera })).not.toBeInTheDocument()
     }
   })
