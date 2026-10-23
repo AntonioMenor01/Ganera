@@ -1395,7 +1395,7 @@ describe("useRevisionTramite: red o 5xx al aprobar o rechazar (M5)", () => {
   // un aprobar que sí se aplicó), el aviso no dice "no se ha aprobado": dice que cambió de estado.
   for (const caso of [
     { estado: "RECHAZADO", etiqueta: "rechazado" },
-    { estado: "EJECUTADO_OVZ", etiqueta: "ejecutado en OVZ.net" },
+    { estado: "EJECUTADO_OVZ", etiqueta: "hecho en OVZ.net" },
   ] as const) {
     it(`N2/m4: si la recarga lo muestra en ${caso.estado}, aviso neutro de cambio de estado`, async () => {
       detallesEnOrden(
