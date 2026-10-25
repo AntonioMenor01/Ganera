@@ -142,6 +142,10 @@ class WhatsAppRecepcionEndToEndTest {
         nuevoContacto(gestoriaA, TEL_A_INACTIVO, false);
         Contacto contactoB = nuevoContacto(gestoriaB, TEL_B, true);
         enlazar(gestoriaB, contactoB, explotacionB);
+
+        // Los login() de arriba auditan LOGIN_CORRECTO (T3); los tests de auditoria de recepcion
+        // afirman sobre las filas del webhook, asi que se parte de auditoria vacia.
+        LimpiezaAuditoria.borrar(jdbcTemplate);
     }
 
     @AfterEach

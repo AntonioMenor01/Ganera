@@ -2,7 +2,9 @@ package com.ganera.core.registro;
 
 import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.gestoria.UsuarioRepository;
+import com.ganera.core.shared.auditoria.LimpiezaAuditoria;
 import org.junit.jupiter.api.AfterEach;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -38,6 +40,8 @@ class RegistroGestoriaEndToEndTest {
     private GestoriaRepository gestoriaRepository;
     @Autowired
     private UsuarioRepository usuarioRepository;
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     /** Cuerpo exacto de todo 400 de registro: {motivo} (MotivoErrorResponse), el mismo texto para
      * cualquier causa, y ninguna clave "mensaje" (el antiguo RegistroErrorResponse). */
@@ -46,6 +50,9 @@ class RegistroGestoriaEndToEndTest {
 
     @AfterEach
     void limpiar() {
+        // El registro audita (GESTORIA_CREADA/USUARIO_CREADO/SUSCRIPCION_*, T4); sin vaciar antes
+        // auditoria, el delete de gestoria falla por FK_AUDITORIA_GESTORIA (la FK no tiene ON DELETE).
+        LimpiezaAuditoria.borrar(jdbcTemplate);
         usuarioRepository.deleteAll();
         gestoriaRepository.deleteAll();
     }
