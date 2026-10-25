@@ -1471,3 +1471,38 @@ reserva V24 (tabla) y V25 (triggers, solo PostgreSQL). Informes en `.superpowers
 - **Para el abogado — plazo de conservación de `auditoria`** (A1): sin plazo. La tabla guarda la IP (dato personal) y
   el `usuario_id`; hoy no se puede borrar ninguna fila. El trigger de DELETE va por fila para que un proceso de
   retención futuro (solo `ganera_propietario`) pueda borrar las más antiguas que el plazo sin tocar nada más.
+
+### Despliegue en Clever de `main` (32b6d3f) — VERIFICADO Y ARRANCADO (2026-10-22)
+
+App `ganera-api` creada en la organización Ganera: Java + Maven, París, XS, 1 instancia (mín. = máx. = 1), **enlazada
+por GitHub a `AntonioMenor01/Ganera`, rama `main`** (opción A, panel), Force HTTPS. La base es el proyecto de Supabase
+(Irlanda); tras S7 el esquema `ganera` quedó vacío con los dos roles y sus contraseñas. Variables del perfil `clever`
+puestas (las siete `SUPABASE_*`, `SPRING_PROFILES_ACTIVE=clever`, `TZ=UTC`, `FRONTEND_ORIGEN=https://app.ganera.es`,
+`JWT_SECRET`, `ENCRYPTION_KEY` —guardada también en el gestor—, `ONBOARDING_SECRET`, y las de build/arranque). Nunca
+`GANERA_*`, `SPRING_DATASOURCE_*`, `SPRING_FLYWAY_*`, `DATABASE_*`, ni Stripe.
+
+- **FOOTGUN de `CC_RUN_COMMAND` (encontrado el 2026-10-22):** al arrancar, **Clever se queda en la raíz del repo aunque
+  `APP_FOLDER=backend`**. El jar hay que invocarlo con la ruta **con** `backend/`:
+  `java -XX:MaxRAMPercentage=70 -jar backend/target/ganera-core-0.1.0-SNAPSHOT.jar`. La ruta sin `backend/`
+  (`target/…`) falla con «Unable to access jarfile». Corregido también en el `LEEME.md` y en el plan del 14/10 (§4).
+- **Estado (verificado el 2026-10-22):** la app arranca y está **Running**; último despliegue en verde.
+  - **Arranque:** conectado a **PostgreSQL 17.11 de Supabase**, `Started GaneraApplication`, los dos `WARN` esperados de
+    Twilio sin configurar (webhook y status-callback → 503), y el health-check de Clever `GET /` responde **401**
+    (seguridad activa). Las líneas tempranas del log (perfil, Flyway) ya no estaban en el tail en vivo; se confirmó por
+    otras vías.
+  - **Migraciones:** `select version, description, success from ganera.flyway_schema_history` → **23 filas, V1→V23,
+    todas `success = true`** (el perfil `clever` queda confirmado: solo él apunta a Supabase).
+  - **Script 02 (de `main`, `32b6d3f`, sin las comprobaciones de la tabla `auditoria` que aún no existe) en el editor SQL
+    de Supabase → «Success. No rows returned»** = 0 problemas (RLS, políticas exactas de `ganera_app`, sin privilegios de
+    roles ajenos, UTC, cadenas de roles limpias).
+  - **Smoke por HTTPS** (contra `…cleverapps.io`): `GET /` → 401 con `Strict-Transport-Security` y `X-Frame-Options: DENY`;
+    CORS acepta `https://app.ganera.es` (200 con `Access-Control-Allow-Origin`) y rechaza otro origen (403, sin allow-origin).
+  - **A7 (`X-Forwarded-For`) pendiente:** no se puede comprobar contra `main` (la auditoría —`ContextoPeticionFilter`/
+    `IpCliente`/tabla— está en `feat/auditoria`, sin desplegar). Va en el smoke de **T7** del plan de auditoría, con la
+    auditoría ya desplegada: que la IP guardada sea la pública real de Antonio, no la del proxy ni una falsa a la izquierda.
+- **FOOTGUN confirmado:** el arranque usa `java … -jar backend/target/ganera-core-0.1.0-SNAPSHOT.jar` (con `backend/`), no
+  `target/…` (ver arriba).
+- **Pendiente de Clever, por orden:** (1) DNS de `api.ganera.es` en **IONOS** (CNAME → `domain.par.clever-cloud.com.`) y
+  añadir el dominio en Clever; (2) **Twilio** (sandbox: `TWILIO_*`, webhook y status-callback); (3) `ANTHROPIC_API_KEY`;
+  (4) el onboarding de una gestoría de demo con datos inventados + login (cuando Antonio tenga el `ONBOARDING_SECRET` a
+  mano). Pendiente de pago: Supabase a Pro (copias descargables/PITR, sin pausa a los 7 días).
