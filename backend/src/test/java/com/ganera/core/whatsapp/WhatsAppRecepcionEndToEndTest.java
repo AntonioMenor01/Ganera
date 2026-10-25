@@ -33,6 +33,11 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.ActorTipo;
+import com.ganera.core.shared.auditoria.Auditoria;
+import com.ganera.core.shared.auditoria.AuditoriaRepository;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
 import com.ganera.core.shared.auditoria.LimpiezaAuditoria;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -84,6 +89,8 @@ class WhatsAppRecepcionEndToEndTest {
     private JdbcTemplate jdbcTemplate;
     @Autowired
     private PasswordEncoder passwordEncoder;
+    @Autowired
+    private AuditoriaRepository auditoriaRepository;
     @Autowired
     private MensajeCampoRepository mensajeCampoRepository;
     @Autowired
@@ -318,6 +325,68 @@ class WhatsAppRecepcionEndToEndTest {
         }
         assertThat(contarTramites()).isEqualTo(rondas);
         assertThat(jdbcTemplate.queryForObject("select count(*) from mensaje_campo", Long.class)).isEqualTo(rondas);
+    }
+
+    // ------------------------------------------------------------ auditoria (T4, WEBHOOK_TWILIO)
+
+    @Test
+    void recepcionDejaMensajeRecibidoYTramiteCreadoSoloEnAConIpYRequestId() throws IOException {
+        ResponseEntity<String> r = enviar(parametros("SM-aud-ok", TEL_A_UNA, "baja del 1234"));
+        assertThat(r.getStatusCode().value()).isEqualTo(200);
+
+        List<Auditoria> filasA = auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaA.getId());
+        assertThat(filasA).extracting(Auditoria::getAccion)
+                .containsExactly(AccionAuditoria.MENSAJE_RECIBIDO, AccionAuditoria.TRAMITE_CREADO);
+        for (Auditoria fila : filasA) {
+            assertThat(fila.getActorTipo()).isEqualTo(ActorTipo.WEBHOOK_TWILIO);
+            assertThat(fila.getUsuarioId()).isNull();
+            assertThat(fila.getIp()).isIn("127.0.0.1", "0:0:0:0:0:0:0:1");
+            assertThat(fila.getRequestId()).isNotBlank().isEqualTo(r.getHeaders().getFirst("X-Request-Id"));
+        }
+        Auditoria mensaje = filasA.get(0);
+        assertThat(mensaje.getEntidadTipo()).isEqualTo(EntidadAuditada.MENSAJE_CAMPO);
+        assertThat(despues(mensaje).get("resultado").asText()).isEqualTo("TRAMITE_CREADO");
+        assertThat(despues(mensaje).get("num_media").asInt()).isZero();
+        Auditoria tramite = filasA.get(1);
+        assertThat(tramite.getEntidadTipo()).isEqualTo(EntidadAuditada.TRAMITE);
+        assertThat(despues(tramite).get("estado").asText()).isEqualTo("PENDIENTE_EXTRACCION");
+        assertThat(despues(tramite).get("estado_extraccion").asText()).isEqualTo("PENDIENTE");
+        assertThat(despues(tramite).get("explotacion_id").asLong()).isEqualTo(explotacionA.getId());
+
+        assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaB.getId())).isEmpty();
+    }
+
+    @Test
+    void contactoInactivoDejaSoloMensajeRecibido() throws IOException {
+        ResponseEntity<String> r = enviar(parametros("SM-aud-inactivo", TEL_A_INACTIVO, "baja del 1234"));
+        assertThat(r.getBody()).isEqualTo(TWIML_VACIO);
+
+        List<Auditoria> filasA = auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaA.getId());
+        assertThat(filasA).extracting(Auditoria::getAccion).containsExactly(AccionAuditoria.MENSAJE_RECIBIDO);
+        assertThat(despues(filasA.get(0)).get("resultado").asText()).isEqualTo("CONTACTO_INACTIVO");
+    }
+
+    @Test
+    void numeroDesconocidoNoDejaNingunaFila() {
+        enviar(parametros("SM-aud-desc", TEL_DESCONOCIDO, "hola"));
+
+        assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaA.getId())).isEmpty();
+        assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaB.getId())).isEmpty();
+    }
+
+    @Test
+    void unaEntregaRepetidaNoDejaFilasNuevas() {
+        Map<String, String> parametros = parametros("SM-aud-dup", TEL_A_UNA, "baja del 1234");
+        enviar(parametros);
+        int antes = auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaA.getId()).size();
+
+        enviar(parametros);
+
+        assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaA.getId())).hasSize(antes);
+    }
+
+    private JsonNode despues(Auditoria fila) throws IOException {
+        return objectMapper.readTree(fila.getDespues());
     }
 
     // ------------------------------------------------------------ logs

@@ -1,6 +1,12 @@
 package com.ganera.core.facturacion;
 
 import com.ganera.core.explotacion.ExplotacionRepository;
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.Actor;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.auditoria.Clave;
+import com.ganera.core.shared.auditoria.DatosAuditoria;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
 import com.stripe.exception.StripeException;
 import com.stripe.model.Subscription;
 import com.stripe.param.SubscriptionUpdateParams;
@@ -8,6 +14,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 import java.util.function.Function;
@@ -29,13 +37,19 @@ class SuscripcionSyncScheduler {
 
     private final SuscripcionRepository suscripcionRepository;
     private final ExplotacionRepository explotacionRepository;
+    private final AuditoriaService auditoriaService;
+    private final TransactionTemplate transaccion;
     private final String apiKey;
 
     SuscripcionSyncScheduler(SuscripcionRepository suscripcionRepository,
                               ExplotacionRepository explotacionRepository,
+                              AuditoriaService auditoriaService,
+                              PlatformTransactionManager transactionManager,
                               @Value("${stripe.api-key:}") String apiKey) {
         this.suscripcionRepository = suscripcionRepository;
         this.explotacionRepository = explotacionRepository;
+        this.auditoriaService = auditoriaService;
+        this.transaccion = new TransactionTemplate(transactionManager);
         this.apiKey = apiKey;
     }
 
@@ -55,8 +69,20 @@ class SuscripcionSyncScheduler {
             // no debe abortar la reconciliacion del resto del batch: se loguea y se continua.
             try {
                 pushCantidadAStripe(ajuste.suscripcion().getStripeSubscriptionId(), ajuste.nuevaCantidad());
-                ajuste.suscripcion().setExplotacionesContratadas((int) ajuste.nuevaCantidad());
-                suscripcionRepository.save(ajuste.suscripcion());
+                // El save y su fila de auditoria van en UNA transaccion por suscripcion (registrar es MANDATORY),
+                // por eso el push a Stripe (red) queda fuera. Un fallo de una no para las demas (el catch de abajo).
+                // Actor PLANIFICADOR, sin peticion -> ip/request_id NULL; gestoria = la de la propia suscripcion.
+                Suscripcion suscripcion = ajuste.suscripcion();
+                Integer cantidadAntes = suscripcion.getExplotacionesContratadas();
+                transaccion.executeWithoutResult(estado -> {
+                    suscripcion.setExplotacionesContratadas((int) ajuste.nuevaCantidad());
+                    suscripcionRepository.save(suscripcion);
+                    auditoriaService.registrar(AccionAuditoria.SUSCRIPCION_CANTIDAD_SINCRONIZADA,
+                            suscripcion.getGestoria().getId(), Actor.planificador(), EntidadAuditada.SUSCRIPCION,
+                            suscripcion.getId(),
+                            DatosAuditoria.con(Clave.EXPLOTACIONES_CONTRATADAS, cantidadAntes),
+                            DatosAuditoria.con(Clave.EXPLOTACIONES_CONTRATADAS, (int) ajuste.nuevaCantidad()));
+                });
             } catch (Exception e) {
                 log.error("Fallo reconciliando quantity en Stripe para subscription {}",
                         ajuste.suscripcion().getStripeSubscriptionId(), e);

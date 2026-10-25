@@ -7,6 +7,12 @@ import com.ganera.core.gestoria.Gestoria;
 import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.gestoria.Usuario;
 import com.ganera.core.gestoria.UsuarioRepository;
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.Actor;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.auditoria.Clave;
+import com.ganera.core.shared.auditoria.DatosAuditoria;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -35,6 +41,7 @@ public class OnboardingController {
     private final UsuarioRepository usuarioRepository;
     private final SuscripcionRepository suscripcionRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AuditoriaService auditoriaService;
     private final String onboardingSecret;
 
     public OnboardingController(
@@ -42,11 +49,13 @@ public class OnboardingController {
             UsuarioRepository usuarioRepository,
             SuscripcionRepository suscripcionRepository,
             PasswordEncoder passwordEncoder,
+            AuditoriaService auditoriaService,
             @Value("${ganera.onboarding.secret:}") String onboardingSecret) {
         this.gestoriaRepository = gestoriaRepository;
         this.usuarioRepository = usuarioRepository;
         this.suscripcionRepository = suscripcionRepository;
         this.passwordEncoder = passwordEncoder;
+        this.auditoriaService = auditoriaService;
         this.onboardingSecret = onboardingSecret;
     }
 
@@ -74,6 +83,16 @@ public class OnboardingController {
         suscripcion.setGestoria(gestoria);
         suscripcion.setEstado(EstadoSuscripcion.ACTIVA);
         suscripcionRepository.save(suscripcion);
+
+        // Alta manual de una gestoria piloto: actor SISTEMA (no hay usuario autenticado todavia), la gestoria
+        // de las tres filas es la recien creada. Todo en la misma transaccion del controlador.
+        auditoriaService.registrar(AccionAuditoria.GESTORIA_CREADA, gestoria.getId(), Actor.sistema(),
+                EntidadAuditada.GESTORIA, gestoria.getId(), null, null);
+        auditoriaService.registrar(AccionAuditoria.USUARIO_CREADO, gestoria.getId(), Actor.sistema(),
+                EntidadAuditada.USUARIO, usuario.getId(), null, DatosAuditoria.con(Clave.ACTIVO, Boolean.TRUE));
+        auditoriaService.registrar(AccionAuditoria.SUSCRIPCION_CREADA, gestoria.getId(), Actor.sistema(),
+                EntidadAuditada.SUSCRIPCION, suscripcion.getId(), null,
+                DatosAuditoria.con(Clave.ESTADO, EstadoSuscripcion.ACTIVA));
 
         return ResponseEntity.ok(new OnboardingResponse(gestoria.getId(), usuario.getId()));
     }

@@ -6,8 +6,15 @@ import com.stripe.model.Invoice;
 import com.stripe.model.StripeObject;
 import com.stripe.model.Subscription;
 import com.stripe.model.checkout.Session;
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.Actor;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.auditoria.Clave;
+import com.ganera.core.shared.auditoria.DatosAuditoria;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
 import java.util.Optional;
@@ -32,10 +39,13 @@ class StripeWebhookService {
 
     private final SuscripcionService suscripcionService;
     private final SuscripcionRepository suscripcionRepository;
+    private final AuditoriaService auditoriaService;
 
-    StripeWebhookService(SuscripcionService suscripcionService, SuscripcionRepository suscripcionRepository) {
+    StripeWebhookService(SuscripcionService suscripcionService, SuscripcionRepository suscripcionRepository,
+                         AuditoriaService auditoriaService) {
         this.suscripcionService = suscripcionService;
         this.suscripcionRepository = suscripcionRepository;
+        this.auditoriaService = auditoriaService;
     }
 
     // ==================== Capa SDK (sin cobertura unitaria directa) ====================
@@ -49,6 +59,7 @@ class StripeWebhookService {
      * la mitigacion de re-entrega/desorden es el guard monotonico por event.created
      * (ver esEventoObsoleto), no una tabla de eventos ya vistos.
      */
+    @Transactional
     public void procesarEvento(Event evento) {
         switch (evento.getType()) {
             case "checkout.session.completed" -> manejarCheckoutCompletado(evento);
@@ -143,11 +154,13 @@ class StripeWebhookService {
             log.info("checkout.session.completed obsoleto para gestoria {}, se descarta", gestoriaId);
             return;
         }
+        EstadoSuscripcion estadoAntes = suscripcion.getEstado();
         suscripcion.setStripeCustomerId(customerId);
         suscripcion.setStripeSubscriptionId(subscriptionId);
         suscripcion.setEstado(EstadoSuscripcion.TRIAL);
         suscripcion.setStripeUltimoEventoEpoch(eventCreated);
         suscripcionRepository.save(suscripcion);
+        auditarCambioEstado(suscripcion, estadoAntes);
     }
 
     void procesarPagoExitoso(String subscriptionId, long eventCreated) {
@@ -165,12 +178,14 @@ class StripeWebhookService {
             log.info("invoice.payment_failed obsoleto para subscription {}, se descarta", subscriptionId);
             return;
         }
+        EstadoSuscripcion estadoAntes = suscripcion.getEstado();
         EstadoSuscripcion nuevoEstado = suscripcion.getEstado() == EstadoSuscripcion.TRIAL
                 ? EstadoSuscripcion.TRIAL_EXPIRADO_SIN_PAGO
                 : EstadoSuscripcion.IMPAGO_GRACIA;
         suscripcion.setEstado(nuevoEstado);
         suscripcion.setStripeUltimoEventoEpoch(eventCreated);
         suscripcionRepository.save(suscripcion);
+        auditarCambioEstado(suscripcion, estadoAntes);
     }
 
     void procesarSuscripcionActualizada(String subscriptionId, String status, String previousStatus, long eventCreated) {
@@ -184,6 +199,7 @@ class StripeWebhookService {
             log.info("customer.subscription.updated obsoleto para subscription {}, se descarta", subscriptionId);
             return;
         }
+        EstadoSuscripcion estadoAntes = suscripcion.getEstado();
         EstadoSuscripcion nuevoEstado = calcularEstadoTrasActualizacion(status, previousStatus, suscripcion.getEstado());
         if (nuevoEstado == null) {
             return;
@@ -191,6 +207,7 @@ class StripeWebhookService {
         suscripcion.setEstado(nuevoEstado);
         suscripcion.setStripeUltimoEventoEpoch(eventCreated);
         suscripcionRepository.save(suscripcion);
+        auditarCambioEstado(suscripcion, estadoAntes);
     }
 
     private void aplicarEstadoSiNoObsoleto(String subscriptionId, long eventCreated, EstadoSuscripcion nuevoEstado) {
@@ -204,9 +221,28 @@ class StripeWebhookService {
             log.info("Evento Stripe obsoleto para subscription {}, se descarta", subscriptionId);
             return;
         }
+        EstadoSuscripcion estadoAntes = suscripcion.getEstado();
         suscripcion.setEstado(nuevoEstado);
         suscripcion.setStripeUltimoEventoEpoch(eventCreated);
         suscripcionRepository.save(suscripcion);
+        auditarCambioEstado(suscripcion, estadoAntes);
+    }
+
+    /**
+     * Una fila SUSCRIPCION_ESTADO_CAMBIADO (actor WEBHOOK_STRIPE, gestoria de la propia suscripcion) solo si el
+     * estado ha cambiado de verdad: un evento que vuelve a fijar el mismo estado (p. ej. un checkout que confirma
+     * un TRIAL ya en TRIAL) no deja fila. El guard de epoch y las subscriptions desconocidas ya han salido antes.
+     * antes/despues solo llevan codigos y un recuento (D8): nunca ids de Stripe.
+     */
+    private void auditarCambioEstado(Suscripcion suscripcion, EstadoSuscripcion estadoAntes) {
+        if (estadoAntes == suscripcion.getEstado()) {
+            return;
+        }
+        auditoriaService.registrar(AccionAuditoria.SUSCRIPCION_ESTADO_CAMBIADO, suscripcion.getGestoria().getId(),
+                Actor.webhookStripe(), EntidadAuditada.SUSCRIPCION, suscripcion.getId(),
+                DatosAuditoria.con(Clave.ESTADO, estadoAntes),
+                DatosAuditoria.con(Clave.ESTADO, suscripcion.getEstado())
+                        .y(Clave.EXPLOTACIONES_CONTRATADAS, suscripcion.getExplotacionesContratadas()));
     }
 
     /**

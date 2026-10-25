@@ -1,5 +1,11 @@
 package com.ganera.core.facturacion;
 
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.Actor;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.auditoria.Clave;
+import com.ganera.core.shared.auditoria.DatosAuditoria;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
 import com.stripe.exception.StripeException;
 import com.stripe.model.checkout.Session;
 import com.stripe.param.checkout.SessionCreateParams;
@@ -21,6 +27,7 @@ public class StripeCheckoutService {
 
     private final SuscripcionService suscripcionService;
     private final SuscripcionRepository suscripcionRepository;
+    private final AuditoriaService auditoriaService;
     private final String apiKey;
     private final String priceIdExplotacion;
     private final String successUrl;
@@ -28,12 +35,14 @@ public class StripeCheckoutService {
 
     public StripeCheckoutService(SuscripcionService suscripcionService,
                                   SuscripcionRepository suscripcionRepository,
+                                  AuditoriaService auditoriaService,
                                   @Value("${stripe.api-key:}") String apiKey,
                                   @Value("${stripe.price-id-explotacion:}") String priceIdExplotacion,
                                   @Value("${stripe.checkout.success-url}") String successUrl,
                                   @Value("${stripe.checkout.cancel-url}") String cancelUrl) {
         this.suscripcionService = suscripcionService;
         this.suscripcionRepository = suscripcionRepository;
+        this.auditoriaService = auditoriaService;
         this.apiKey = apiKey;
         this.priceIdExplotacion = priceIdExplotacion;
         this.successUrl = successUrl;
@@ -67,6 +76,17 @@ public class StripeCheckoutService {
         if (suscripcion.getExplotacionesContratadas() == null) {
             suscripcion.setExplotacionesContratadas((int) cantidad);
             suscripcionRepository.save(suscripcion);
+            // Via del alta publica: la suscripcion se crea aqui en TRIAL con una cantidad estimada. Actor SISTEMA,
+            // gestoria = la del checkout. registrarAparte (REQUIRES_NEW): este servicio NO es @Transactional a
+            // proposito (obtenerOCrearSuscripcion se recupera de su propia carrera con saveAndFlush + catch), asi que
+            // no se envuelve en una transaccion exterior; cada fila va en su propia transaccion, ya con la suscripcion
+            // confirmada. No se audita cuando la suscripcion ya existia (reintento del alta): solo la creacion.
+            auditoriaService.registrarAparte(AccionAuditoria.SUSCRIPCION_CREADA, gestoriaId, Actor.sistema(),
+                    EntidadAuditada.SUSCRIPCION, suscripcion.getId(), null,
+                    DatosAuditoria.con(Clave.ESTADO, suscripcion.getEstado()));
+            auditoriaService.registrarAparte(AccionAuditoria.SUSCRIPCION_CANTIDAD_FIJADA, gestoriaId, Actor.sistema(),
+                    EntidadAuditada.SUSCRIPCION, suscripcion.getId(), null,
+                    DatosAuditoria.con(Clave.EXPLOTACIONES_CONTRATADAS, (int) cantidad));
         }
 
         SessionCreateParams params = construirParametros(gestoriaId, cantidad);

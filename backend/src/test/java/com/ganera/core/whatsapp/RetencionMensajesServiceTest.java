@@ -7,12 +7,16 @@ import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.tramite.EstadoTramite;
 import com.ganera.core.tramite.Tramite;
 import com.ganera.core.tramite.TramiteRepository;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.tiempo.RelojConfig;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -35,6 +39,7 @@ import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTest
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = NONE)
+@Import({AuditoriaService.class, RelojConfig.class})
 class RetencionMensajesServiceTest {
 
     private static final Instant AHORA = Instant.parse("2031-03-10T09:00:00Z");
@@ -56,6 +61,12 @@ class RetencionMensajesServiceTest {
     private ContactoRepository contactoRepository;
     @Autowired
     private GestoriaRepository gestoriaRepository;
+    @Autowired
+    private AuditoriaService auditoriaService;
+    @Autowired
+    private com.ganera.core.shared.auditoria.AuditoriaRepository auditoriaRepository;
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     private Gestoria gestoriaA;
     private Gestoria gestoriaB;
@@ -72,8 +83,8 @@ class RetencionMensajesServiceTest {
     }
 
     private RetencionMensajesService servicio(Instant ahora, Period sinTramite, Period conTramite) {
-        return new RetencionMensajesService(mensajeCampoRepository, respuestaWhatsappRepository, Clock.fixed(ahora, ZoneOffset.UTC),
-                sinTramite, conTramite);
+        return new RetencionMensajesService(mensajeCampoRepository, respuestaWhatsappRepository, auditoriaService,
+                transactionManager, Clock.fixed(ahora, ZoneOffset.UTC), sinTramite, conTramite);
     }
 
     private RetencionMensajesService porDefecto() {
@@ -250,6 +261,42 @@ class RetencionMensajesServiceTest {
 
         assertThat(servicio.limiteBorrado(AHORA)).isEqualTo(LIMITE_BORRADO);
         assertThat(servicio.limiteVaciado(AHORA)).isEqualTo(LIMITE_VACIADO);
+    }
+
+    // ------------------------------------------------------------ auditoria por gestoria (T4, D6)
+
+    @Test
+    void cadaSentenciaDeRetencionDejaUnaFilaDeAuditoriaEnSuGestoria() {
+        // Gestoria A: un mensaje sin tramite CON gestoria (contacto inactivo) a borrar, uno con tramite a vaciar y
+        // una respuesta a vaciar. Gestoria B: nada que caduque -> ninguna fila. Un mensaje sin gestoria se borra fuera.
+        MensajeCampo inactivoA = mensaje("inactivo-A", ResultadoMensaje.CONTACTO_INACTIVO, null,
+                LIMITE_BORRADO.minus(UN_SEGUNDO));
+        inactivoA.setGestoria(gestoriaA);
+        mensajeCampoRepository.saveAndFlush(inactivoA);
+        mensaje("desconocido", ResultadoMensaje.NUMERO_DESCONOCIDO, null, LIMITE_BORRADO.minus(UN_SEGUNDO));
+        Tramite tramiteA = tramite(contactoA);
+        mensaje("con-tramite-A", ResultadoMensaje.TRAMITE_CREADO, tramiteA, LIMITE_VACIADO.minus(UN_SEGUNDO));
+        respuesta("resp-A", tramiteA, LIMITE_VACIADO.minus(UN_SEGUNDO));
+
+        porDefecto().aplicar();
+
+        List<com.ganera.core.shared.auditoria.Auditoria> filasA =
+                auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaA.getId());
+        assertThat(filasA).extracting(com.ganera.core.shared.auditoria.Auditoria::getAccion)
+                .containsExactlyInAnyOrder(
+                        com.ganera.core.shared.auditoria.AccionAuditoria.RETENCION_MENSAJES_BORRADOS,
+                        com.ganera.core.shared.auditoria.AccionAuditoria.RETENCION_TEXTO_VACIADO,
+                        com.ganera.core.shared.auditoria.AccionAuditoria.RETENCION_RESPUESTAS_VACIADAS);
+        filasA.forEach(fila -> {
+            assertThat(fila.getActorTipo())
+                    .isEqualTo(com.ganera.core.shared.auditoria.ActorTipo.PLANIFICADOR);
+            assertThat(fila.getUsuarioId()).isNull();
+            assertThat(fila.getIp()).isNull();
+            assertThat(fila.getRequestId()).isNull();
+            assertThat(fila.getEntidadId()).isNull();
+            assertThat(fila.getDespues()).contains("\"filas\":1").contains("\"limite\":");
+        });
+        assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaB.getId())).isEmpty();
     }
 
     // ------------------------------------------------------------ respuestas enviadas (B2 reducido, D8)

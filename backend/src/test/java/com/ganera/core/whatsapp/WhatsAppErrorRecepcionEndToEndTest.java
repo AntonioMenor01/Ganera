@@ -121,6 +121,7 @@ class WhatsAppErrorRecepcionEndToEndTest {
     void limpiar() {
         FALLAR_TRAMITE.set(false);
         FALLAR_RESCATE.set(false);
+        com.ganera.core.shared.auditoria.LimpiezaAuditoria.borrar(jdbcTemplate);
         mensajeCampoRepository.deleteAll();
         tramiteRepository.deleteAll();
         contactoRepository.deleteAll();

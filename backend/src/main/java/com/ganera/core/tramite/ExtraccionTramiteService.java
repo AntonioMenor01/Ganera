@@ -1,5 +1,11 @@
 package com.ganera.core.tramite;
 
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.Actor;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.auditoria.Clave;
+import com.ganera.core.shared.auditoria.DatosAuditoria;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
 import com.ganera.core.tramite.ExtraccionValidador.ExtraccionValidada;
 import com.ganera.core.tramite.TramiteExtractionService.TramiteExtraido;
 import com.ganera.core.whatsapp.MensajeCampo;
@@ -69,6 +75,7 @@ public class ExtraccionTramiteService {
     private final TramiteCrotalRepository tramiteCrotalRepository;
     private final MensajeCampoRepository mensajeCampoRepository;
     private final TramiteExtractionService extraccion;
+    private final AuditoriaService auditoriaService;
     private final Clock reloj;
     private final TransactionTemplate transaccion;
     private final TransactionTemplate lectura;
@@ -84,6 +91,7 @@ public class ExtraccionTramiteService {
                                     TramiteCrotalRepository tramiteCrotalRepository,
                                     MensajeCampoRepository mensajeCampoRepository,
                                     TramiteExtractionService extraccion,
+                                    AuditoriaService auditoriaService,
                                     Clock reloj,
                                     PlatformTransactionManager transactionManager,
                                     @Value("${ganera.extraccion.reintentos:PT1M,PT5M,PT30M}") String reintentos,
@@ -93,6 +101,7 @@ public class ExtraccionTramiteService {
         this.tramiteCrotalRepository = tramiteCrotalRepository;
         this.mensajeCampoRepository = mensajeCampoRepository;
         this.extraccion = extraccion;
+        this.auditoriaService = auditoriaService;
         this.reloj = reloj;
         this.transaccion = new TransactionTemplate(transactionManager);
         this.lectura = new TransactionTemplate(transactionManager);
@@ -231,6 +240,7 @@ public class ExtraccionTramiteService {
             return;
         }
         long versionLeida = tramite.getVersion();
+        EstadoExtraccion extraccionAntes = tramite.getEstadoExtraccion();
 
         // Crotales ANTES de tocar el Tramite: TramiteCrotalService hace flush, y con el Tramite ya
         // modificado ese flush sacaria un UPDATE y el del commit otro (dos incrementos de version).
@@ -246,6 +256,15 @@ public class ExtraccionTramiteService {
         tramite.setEstadoExtraccion(resultado);
         tramite.setProximoIntentoExtraccion(null);
         exigirUnSoloIncremento(tramite, versionLeida);
+        auditoriaService.registrar(AccionAuditoria.EXTRACCION_APLICADA, pendiente.gestoriaId(), Actor.planificador(),
+                EntidadAuditada.TRAMITE, tramite.getId(),
+                DatosAuditoria.con(Clave.ESTADO_EXTRACCION, extraccionAntes).y(Clave.VERSION, versionLeida),
+                DatosAuditoria.con(Clave.ESTADO, tramite.getEstado())
+                        .y(Clave.ESTADO_EXTRACCION, resultado)
+                        .y(Clave.TIPO_TRAMITE, validada.tipo())
+                        .y(Clave.NUM_CROTALES, filas.size() - quitados)
+                        .y(Clave.CROTALES_DESCARTADOS, validada.descartados())
+                        .y(Clave.VERSION, tramite.getVersion()));
         log.info("Extraccion aplicada: tramiteId={}, gestoriaId={}, estadoExtraccion={}, intentos={}, crotales={}, "
                         + "descartados={}, mismoAnimal={}",
                 tramite.getId(), pendiente.gestoriaId(), resultado, tramite.getIntentosExtraccion(),
@@ -282,10 +301,17 @@ public class ExtraccionTramiteService {
             return;
         }
         long versionLeida = tramite.getVersion();
+        EstadoExtraccion extraccionAntes = tramite.getEstadoExtraccion();
         tramite.setEstado(EstadoTramite.PENDIENTE_REVISION);
         tramite.setEstadoExtraccion(EstadoExtraccion.SIN_TEXTO);
         tramite.setProximoIntentoExtraccion(null);
         exigirUnSoloIncremento(tramite, versionLeida);
+        auditoriaService.registrar(AccionAuditoria.EXTRACCION_APLICADA, pendiente.gestoriaId(), Actor.planificador(),
+                EntidadAuditada.TRAMITE, tramite.getId(),
+                DatosAuditoria.con(Clave.ESTADO_EXTRACCION, extraccionAntes).y(Clave.VERSION, versionLeida),
+                DatosAuditoria.con(Clave.ESTADO, tramite.getEstado())
+                        .y(Clave.ESTADO_EXTRACCION, EstadoExtraccion.SIN_TEXTO)
+                        .y(Clave.VERSION, tramite.getVersion()));
         log.info("Mensaje sin texto, no se llama a la IA: tramiteId={}, gestoriaId={}, estadoExtraccion={}",
                 tramite.getId(), pendiente.gestoriaId(), EstadoExtraccion.SIN_TEXTO);
     }
@@ -306,10 +332,15 @@ public class ExtraccionTramiteService {
             // Tras los UPDATE JPQL de abajo ya no se toca la entidad (clearAutomatically la desprende,
             // ver TramiteRepository): solo se leen su id y los valores calculados aqui.
             if (!procede(tramite)) {
-                tramiteRepository.registrarIntentoFallidoSinCambiarVersion(tramite.getId(), pendiente.gestoriaId(), null);
+                Long tramiteId = tramite.getId();
+                EstadoExtraccion extraccionActual = tramite.getEstadoExtraccion();
+                tramiteRepository.registrarIntentoFallidoSinCambiarVersion(tramiteId, pendiente.gestoriaId(), null);
+                auditoriaService.registrar(AccionAuditoria.EXTRACCION_INTENTO_FALLIDO, pendiente.gestoriaId(),
+                        Actor.planificador(), EntidadAuditada.TRAMITE, tramiteId, null,
+                        DatosAuditoria.con(Clave.ESTADO_EXTRACCION, extraccionActual).y(Clave.INTENTOS, intentos));
                 log.info("Fallo de extraccion sobre un tramite que ya no procede, no se reintenta: tramiteId={}, "
                                 + "gestoriaId={}, intentos={}, excepcion={}",
-                        tramite.getId(), pendiente.gestoriaId(), intentos, fallo.getClass().getSimpleName());
+                        tramiteId, pendiente.gestoriaId(), intentos, fallo.getClass().getSimpleName());
                 return;
             }
             Instant proximo = siguienteIntento(intentos);
@@ -323,8 +354,19 @@ public class ExtraccionTramiteService {
                 // flush ensuciaria el Tramite otra vez y saldria un segundo incremento en el commit.
                 tramite.setVersionTrasFallo(versionLeida + 1);
                 exigirUnSoloIncremento(tramite, versionLeida);
+                auditoriaService.registrar(AccionAuditoria.EXTRACCION_FALLIDA, pendiente.gestoriaId(),
+                        Actor.planificador(), EntidadAuditada.TRAMITE, tramite.getId(),
+                        DatosAuditoria.con(Clave.ESTADO_EXTRACCION, EstadoExtraccion.PENDIENTE).y(Clave.VERSION, versionLeida),
+                        DatosAuditoria.con(Clave.ESTADO, tramite.getEstado())
+                                .y(Clave.ESTADO_EXTRACCION, EstadoExtraccion.FALLIDA)
+                                .y(Clave.INTENTOS, intentos)
+                                .y(Clave.VERSION, tramite.getVersion()));
             } else {
-                tramiteRepository.registrarIntentoFallidoSinCambiarVersion(tramite.getId(), pendiente.gestoriaId(), proximo);
+                Long tramiteId = tramite.getId();
+                tramiteRepository.registrarIntentoFallidoSinCambiarVersion(tramiteId, pendiente.gestoriaId(), proximo);
+                auditoriaService.registrar(AccionAuditoria.EXTRACCION_INTENTO_FALLIDO, pendiente.gestoriaId(),
+                        Actor.planificador(), EntidadAuditada.TRAMITE, tramiteId, null,
+                        DatosAuditoria.con(Clave.ESTADO_EXTRACCION, EstadoExtraccion.FALLIDA).y(Clave.INTENTOS, intentos));
             }
             log.warn("Fallo de extraccion: tramiteId={}, gestoriaId={}, estadoExtraccion={}, intentos={}, "
                             + "proximoIntento={}, excepcion={}",
@@ -341,6 +383,8 @@ public class ExtraccionTramiteService {
     /** Sin tocar la version (UPDATE JPQL): nada visible cambia. */
     private void dejarDeReintentar(TramitePendienteExtraccion pendiente, String motivo) {
         tramiteRepository.dejarDeReintentarExtraccion(pendiente.tramiteId(), pendiente.gestoriaId());
+        auditoriaService.registrar(AccionAuditoria.EXTRACCION_REINTENTOS_DETENIDOS, pendiente.gestoriaId(),
+                Actor.planificador(), EntidadAuditada.TRAMITE, pendiente.tramiteId(), null, null);
         log.info("Extraccion detenida ({}): tramiteId={}, gestoriaId={}", motivo, pendiente.tramiteId(), pendiente.gestoriaId());
     }
 

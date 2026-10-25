@@ -1,9 +1,17 @@
 package com.ganera.core.whatsapp;
 
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.Actor;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.auditoria.Clave;
+import com.ganera.core.shared.auditoria.DatosAuditoria;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -53,6 +61,8 @@ public class RetencionMensajesService {
 
     private final MensajeCampoRepository mensajeCampoRepository;
     private final RespuestaWhatsappRepository respuestaWhatsappRepository;
+    private final AuditoriaService auditoriaService;
+    private final TransactionTemplate transaccion;
     private final Clock reloj;
     private final Period plazoSinTramite;
     private final Period plazoTextoConTramite;
@@ -61,11 +71,15 @@ public class RetencionMensajesService {
     public RetencionMensajesService(
             MensajeCampoRepository mensajeCampoRepository,
             RespuestaWhatsappRepository respuestaWhatsappRepository,
+            AuditoriaService auditoriaService,
+            PlatformTransactionManager transactionManager,
             Clock reloj,
             @Value("${ganera.retencion.mensajes-sin-tramite:P30D}") Period plazoSinTramite,
             @Value("${ganera.retencion.texto-con-tramite:P12M}") Period plazoTextoConTramite) {
         this.mensajeCampoRepository = mensajeCampoRepository;
         this.respuestaWhatsappRepository = respuestaWhatsappRepository;
+        this.auditoriaService = auditoriaService;
+        this.transaccion = new TransactionTemplate(transactionManager);
         this.reloj = reloj;
         this.plazoSinTramite = plazoSinTramite;
         this.plazoTextoConTramite = plazoTextoConTramite;
@@ -75,32 +89,89 @@ public class RetencionMensajesService {
      * sentencia que fallo). */
     public Resultado aplicar() {
         Instant ahora = reloj.instant();
-        int borrados = -1;
-        int vaciados = -1;
-        int respuestasVaciadas = -1;
-        try {
-            borrados = mensajeCampoRepository.borrarSinTramiteRecibidosAntesDe(limiteBorrado(ahora));
-        } catch (RuntimeException e) {
-            log.error("Retencion de mensajes: fallo al borrar los mensajes sin tramite: excepcion={}",
-                    e.getClass().getName());
-        }
-        try {
-            vaciados = mensajeCampoRepository.vaciarTextoConTramiteRecibidosAntesDe(
-                    limiteVaciado(ahora), TEXTO_ELIMINADO);
-        } catch (RuntimeException e) {
-            log.error("Retencion de mensajes: fallo al vaciar el texto de los mensajes con tramite: excepcion={}",
-                    e.getClass().getName());
-        }
-        try {
-            respuestasVaciadas = respuestaWhatsappRepository.vaciarTextoYTelefonoEnviadasAntesDe(
-                    limiteVaciado(ahora), TEXTO_ELIMINADO);
-        } catch (RuntimeException e) {
-            log.error("Retencion de mensajes: fallo al vaciar las respuestas enviadas por WhatsApp: excepcion={}",
-                    e.getClass().getName());
-        }
+        int borrados = borrarSinTramite(limiteBorrado(ahora));
+        int vaciados = vaciarTextoConTramite(limiteVaciado(ahora));
+        int respuestasVaciadas = vaciarRespuestas(limiteVaciado(ahora));
         log.info("Retencion de mensajes: borrados={}, vaciados={}, respuestasVaciadas={}", borrados, vaciados,
                 respuestasVaciadas);
         return new Resultado(borrados, vaciados, respuestasVaciadas);
+    }
+
+    /**
+     * Borrado POR GESTORIA (D6): una transaccion por gestoria con su fila RETENCION_MENSAJES_BORRADOS (filas, limite)
+     * si borro algo (0 filas -> sin fila). Los mensajes SIN gestoria se borran en una sentencia aparte SIN auditoria.
+     * El total que devuelve es el mismo de siempre (suma de todas las gestorias + los sin gestoria); -1 si falla.
+     */
+    private int borrarSinTramite(Instant limite) {
+        try {
+            int total = 0;
+            for (Long gestoriaId : mensajeCampoRepository.gestoriasConMensajesSinTramiteAntesDe(limite)) {
+                total += transaccion.execute(estado -> {
+                    int filas = mensajeCampoRepository.borrarSinTramiteDeGestoriaAntesDe(gestoriaId, limite);
+                    auditar(AccionAuditoria.RETENCION_MENSAJES_BORRADOS, gestoriaId, EntidadAuditada.MENSAJE_CAMPO,
+                            filas, limite);
+                    return filas;
+                });
+            }
+            total += mensajeCampoRepository.borrarSinTramiteSinGestoriaAntesDe(limite);
+            return total;
+        } catch (RuntimeException e) {
+            log.error("Retencion de mensajes: fallo al borrar los mensajes sin tramite: excepcion={}",
+                    e.getClass().getName());
+            return -1;
+        }
+    }
+
+    /** Vaciado del texto de mensajes con Tramite POR GESTORIA (D6): fila RETENCION_TEXTO_VACIADO. -1 si falla. */
+    private int vaciarTextoConTramite(Instant limite) {
+        try {
+            int total = 0;
+            for (Long gestoriaId : mensajeCampoRepository.gestoriasConTextoPorVaciarAntesDe(limite, TEXTO_ELIMINADO)) {
+                total += transaccion.execute(estado -> {
+                    int filas = mensajeCampoRepository.vaciarTextoConTramiteDeGestoriaAntesDe(
+                            gestoriaId, limite, TEXTO_ELIMINADO);
+                    auditar(AccionAuditoria.RETENCION_TEXTO_VACIADO, gestoriaId, EntidadAuditada.MENSAJE_CAMPO,
+                            filas, limite);
+                    return filas;
+                });
+            }
+            return total;
+        } catch (RuntimeException e) {
+            log.error("Retencion de mensajes: fallo al vaciar el texto de los mensajes con tramite: excepcion={}",
+                    e.getClass().getName());
+            return -1;
+        }
+    }
+
+    /** Vaciado de respuestas por WhatsApp POR GESTORIA (D6): fila RETENCION_RESPUESTAS_VACIADAS. -1 si falla. */
+    private int vaciarRespuestas(Instant limite) {
+        try {
+            int total = 0;
+            for (Long gestoriaId : respuestaWhatsappRepository.gestoriasConRespuestasPorVaciarAntesDe(limite)) {
+                total += transaccion.execute(estado -> {
+                    int filas = respuestaWhatsappRepository.vaciarTextoYTelefonoDeGestoriaAntesDe(
+                            gestoriaId, limite, TEXTO_ELIMINADO);
+                    auditar(AccionAuditoria.RETENCION_RESPUESTAS_VACIADAS, gestoriaId,
+                            EntidadAuditada.RESPUESTA_WHATSAPP, filas, limite);
+                    return filas;
+                });
+            }
+            return total;
+        } catch (RuntimeException e) {
+            log.error("Retencion de mensajes: fallo al vaciar las respuestas enviadas por WhatsApp: excepcion={}",
+                    e.getClass().getName());
+            return -1;
+        }
+    }
+
+    /** Una fila de retencion (actor PLANIFICADOR, sin peticion -> ip/request_id NULL; entidad_id NULL) con el numero
+     * de filas y el limite, dentro de la misma transaccion que la sentencia. 0 filas -> sin fila. */
+    private void auditar(AccionAuditoria accion, Long gestoriaId, EntidadAuditada entidad, int filas, Instant limite) {
+        if (filas <= 0) {
+            return;
+        }
+        auditoriaService.registrar(accion, gestoriaId, Actor.planificador(), entidad, null, null,
+                DatosAuditoria.con(Clave.FILAS, filas).y(Clave.LIMITE, limite));
     }
 
     Instant limiteBorrado(Instant ahora) {

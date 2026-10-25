@@ -1,7 +1,9 @@
 package com.ganera.core.whatsapp;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -44,6 +46,32 @@ public interface RespuestaWhatsappRepository extends JpaRepository<RespuestaWhat
             + "r.textoVaciado = true where r.createdAt < :limite and r.textoVaciado = false")
     int vaciarTextoYTelefonoEnviadasAntesDe(@Param("limite") Instant limite,
                                             @Param("textoEliminado") String textoEliminado);
+
+    /** Gestorias con respuestas por vaciar antes de {@code limite} (D6 de auditoria): una sentencia por gestoria. */
+    @Query("select distinct r.gestoria.id from RespuestaWhatsapp r where r.createdAt < :limite and r.textoVaciado = false")
+    List<Long> gestoriasConRespuestasPorVaciarAntesDe(@Param("limite") Instant limite);
+
+    /** Vacia el texto y el telefono de destino de las respuestas de UNA gestoria creadas antes de {@code limite}. */
+    @Transactional
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update RespuestaWhatsapp r set r.cuerpo = :textoEliminado, r.telefonoDestino = null, r.textoVaciado = true "
+            + "where r.gestoria.id = :gestoriaId and r.createdAt < :limite and r.textoVaciado = false")
+    int vaciarTextoYTelefonoDeGestoriaAntesDe(@Param("gestoriaId") Long gestoriaId, @Param("limite") Instant limite,
+                                              @Param("textoEliminado") String textoEliminado);
+
+    /**
+     * Callback de estado de Twilio (D7 de auditoria): bloquea con {@code SELECT … FOR UPDATE} la respuesta de ese SID
+     * dentro de la transaccion del callback, para leer su estado ANTERIOR exacto y su gestoria antes del UPDATE
+     * condicional y dejar la fila de auditoria con el antes/despues exactos. Devuelve la entidad entera (no tiene
+     * columnas cifradas); el id, la gestoria y el estado bastan.
+     *
+     * <p><b>Busqueda SIN gestoria, a proposito:</b> es la segunda excepcion tenant-unscoped por SID, junto a
+     * {@link #actualizarEstadoPorSid} y {@code ContactoRepository.findByTelefono}; reservada a
+     * EstadoRespuestaWhatsappService. El SID es {@code UNIQUE}.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select r from RespuestaWhatsapp r where r.twilioMessageSid = :sid")
+    Optional<RespuestaWhatsapp> bloquearPorSid(@Param("sid") String sid);
 
     /**
      * Callback de estado de Twilio (B2 reducido, T4): UNA sola sentencia que cambia el estado y el codigo de error

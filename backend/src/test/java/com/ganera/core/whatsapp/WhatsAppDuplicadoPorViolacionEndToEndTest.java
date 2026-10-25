@@ -106,6 +106,7 @@ class WhatsAppDuplicadoPorViolacionEndToEndTest {
     @AfterEach
     void limpiar() {
         CEGAR_UNA_COMPROBACION.set(false);
+        com.ganera.core.shared.auditoria.LimpiezaAuditoria.borrar(jdbcTemplate);
         mensajeCampoRepository.deleteAll();
         tramiteRepository.deleteAll();
         contactoRepository.deleteAll();
