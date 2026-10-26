@@ -38,10 +38,10 @@ class SeguridadEsquemaPostgresTest {
         String baseDeDatos = migrarComoPropietario();
         JdbcTemplate jdbc = new JdbcTemplate(PostgresEmbebido.dataSource(baseDeDatos));
 
-        // No vacuo: las 23 migraciones estan en ganera, aplicadas por el propietario.
+        // No vacuo: las 24 migraciones estan en ganera, aplicadas por el propietario.
         assertThat(jdbc.queryForObject("select count(*) from ganera.flyway_schema_history "
                 + "where success and installed_by = 'ganera_propietario' and version is not null", Integer.class))
-                .isEqualTo(23);
+                .isEqualTo(24);
         assertThat(problemas(baseDeDatos)).isEmpty();
     }
 
@@ -371,7 +371,7 @@ class SeguridadEsquemaPostgresTest {
     private static String migrarComoPropietario() {
         String baseDeDatos = PostgresEmbebido.nuevaBaseDeDatos();
         assertThat(PostgresEmbebido.flywayPropietario(baseDeDatos).load().migrate().migrationsExecuted)
-                .isEqualTo(23);
+                .isEqualTo(24);
         return baseDeDatos;
     }
 

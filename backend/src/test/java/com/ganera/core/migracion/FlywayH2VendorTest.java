@@ -49,11 +49,11 @@ class FlywayH2VendorTest {
 
             MigrationInfo[] aplicadas = flyway.info().applied();
             assertThat(Arrays.stream(aplicadas).map(m -> m.getVersion().getVersion()).toList())
-                    .containsExactlyElementsOf(IntStream.rangeClosed(1, 23).mapToObj(String::valueOf).toList());
+                    .containsExactlyElementsOf(IntStream.rangeClosed(1, 24).mapToObj(String::valueOf).toList());
             assertThat(aplicadas).allSatisfy(m -> assertThat(m.getState()).isEqualTo(MigrationState.SUCCESS));
 
             // Comprobacion de que de verdad se ha capturado el log de Flyway; si no, la siguiente no probaria nada.
-            assertThat(salida.getAll()).contains("Successfully applied 23 migrations");
+            assertThat(salida.getAll()).contains("Successfully applied 24 migrations");
             assertThat(salida.getAll()).contains("classpath:db/h2");
             // («Unable to resolve location classpath:db/callback.» sale siempre en DEBUG: es la ubicacion de callbacks
             // por defecto de Flyway y no la usamos.)
