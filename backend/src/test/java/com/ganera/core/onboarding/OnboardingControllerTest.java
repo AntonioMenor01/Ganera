@@ -1,5 +1,7 @@
 package com.ganera.core.onboarding;
 
+import com.ganera.core.facturacion.AltaPendienteRepository;
+import com.ganera.core.facturacion.EnlaceStripeService;
 import com.ganera.core.facturacion.EstadoSuscripcion;
 import com.ganera.core.facturacion.SuscripcionRepository;
 import com.ganera.core.gestoria.GestoriaRepository;
@@ -26,13 +28,20 @@ class OnboardingControllerTest {
     private UsuarioRepository usuarioRepository;
     @Autowired
     private SuscripcionRepository suscripcionRepository;
+    @Autowired
+    private AltaPendienteRepository altaPendienteRepository;
 
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+
+    /** Enlace a Stripe SIN configurar (clave vacia): los tests de aqui usan el alta directa, sin stripeSubscriptionId. */
+    private EnlaceStripeService enlaceStripeSinConfigurar() {
+        return new EnlaceStripeService(altaPendienteRepository, "", "");
+    }
 
     @Test
     void secretoCorrectoEsValido() {
         OnboardingController controller = new OnboardingController(
-                gestoriaRepository, usuarioRepository, suscripcionRepository, passwordEncoder, "secreto-correcto");
+                gestoriaRepository, usuarioRepository, suscripcionRepository, enlaceStripeSinConfigurar(), passwordEncoder, "secreto-correcto");
 
         assertThat(controller.secretoValido("secreto-correcto")).isTrue();
     }
@@ -40,7 +49,7 @@ class OnboardingControllerTest {
     @Test
     void secretoIncorrectoNoEsValido() {
         OnboardingController controller = new OnboardingController(
-                gestoriaRepository, usuarioRepository, suscripcionRepository, passwordEncoder, "secreto-correcto");
+                gestoriaRepository, usuarioRepository, suscripcionRepository, enlaceStripeSinConfigurar(), passwordEncoder, "secreto-correcto");
 
         assertThat(controller.secretoValido("otro-secreto")).isFalse();
     }
@@ -48,7 +57,7 @@ class OnboardingControllerTest {
     @Test
     void cabeceraAusenteNoEsValida() {
         OnboardingController controller = new OnboardingController(
-                gestoriaRepository, usuarioRepository, suscripcionRepository, passwordEncoder, "secreto-correcto");
+                gestoriaRepository, usuarioRepository, suscripcionRepository, enlaceStripeSinConfigurar(), passwordEncoder, "secreto-correcto");
 
         assertThat(controller.secretoValido(null)).isFalse();
     }
@@ -56,7 +65,7 @@ class OnboardingControllerTest {
     @Test
     void secretoConfiguradoEnBlancoFallaCerradoAunqueLaCabeceraTambienEsteEnBlanco() {
         OnboardingController controller = new OnboardingController(
-                gestoriaRepository, usuarioRepository, suscripcionRepository, passwordEncoder, "");
+                gestoriaRepository, usuarioRepository, suscripcionRepository, enlaceStripeSinConfigurar(), passwordEncoder, "");
 
         assertThat(controller.secretoValido("")).isFalse();
     }
@@ -64,7 +73,7 @@ class OnboardingControllerTest {
     @Test
     void creaGestoriaUsuarioYSuscripcionActivaEnUnaTransaccion() {
         OnboardingController controller = new OnboardingController(
-                gestoriaRepository, usuarioRepository, suscripcionRepository, passwordEncoder, "secreto-onboarding");
+                gestoriaRepository, usuarioRepository, suscripcionRepository, enlaceStripeSinConfigurar(), passwordEncoder, "secreto-onboarding");
 
         OnboardingRequest request = new OnboardingRequest(
                 "Gestoria Piloto", "primer.empleado@piloto.com", "password-en-claro", "Primer Empleado");
@@ -89,7 +98,7 @@ class OnboardingControllerTest {
     @Test
     void secretoInvalidoRechazaConHttp401YNoCreaNada() {
         OnboardingController controller = new OnboardingController(
-                gestoriaRepository, usuarioRepository, suscripcionRepository, passwordEncoder, "secreto-onboarding");
+                gestoriaRepository, usuarioRepository, suscripcionRepository, enlaceStripeSinConfigurar(), passwordEncoder, "secreto-onboarding");
 
         OnboardingRequest request = new OnboardingRequest(
                 "Gestoria Rechazada", "rechazado@piloto.com", "password", "Nombre");

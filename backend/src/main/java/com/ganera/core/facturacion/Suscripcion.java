@@ -32,6 +32,18 @@ public class Suscripcion extends GestoriaScopedEntity {
     private Integer explotacionesContratadas;
 
     /**
+     * Plan de precio fijo contratado desde la landing ({@code base}/{@code gestion}/{@code plus}).
+     * Cuando NO es null, la suscripcion cobra un precio fijo (no por numero de explotaciones) y
+     * SuscripcionSyncScheduler la EXCLUYE de la reconciliacion nocturna de quantity con Stripe.
+     */
+    @Column(name = "plan")
+    private String plan;
+
+    /** Periodo del plan fijo ({@code mensual}/{@code anual}); solo informativo. */
+    @Column(name = "periodo")
+    private String periodo;
+
+    /**
      * Guard monotonico contra re-entrega tardia / desorden de webhooks de Stripe:
      * epoch-seconds del event.created mas reciente aplicado a esta Suscripcion.
      */

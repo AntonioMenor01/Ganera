@@ -275,21 +275,73 @@ approval step before anything is written to OVZ.net.
   the subscription actually reaches `ACTIVA`/`IMPAGO_GRACIA` — or until a future manual adjustment
   screen exists (deliberately out of scope for now). Don't assume `explotacionesContratadas` is
   accurate for a `TRIAL` subscription.
-  **Known bugs, detected 2026-09-25 in a full-project review, PENDING (not fixed yet):**
-  1. *`invoice.payment_failed` on an already-`TRIAL_EXPIRADO_SIN_PAGO` subscription.*
-     `StripeWebhookService.procesarPagoFallido` only maps a stored `TRIAL` to
-     `TRIAL_EXPIRADO_SIN_PAGO`; any other stored state goes to `IMPAGO_GRACIA`. The Prompt 2.7 plan
-     (Decision 4) says `TRIAL` **or** `TRIAL_EXPIRADO_SIN_PAGO` → `TRIAL_EXPIRADO_SIN_PAGO`. Stripe
-     retries failed charges, so the second failed retry after an unpaid trial flips the
-     subscription to `IMPAGO_GRACIA` — which **re-enables** `puedeAprobarTramites`. No test covers
-     that transition today. Fix test-first.
-  2. *Abandoned trial never expires.* `SuscripcionService.obtenerOCrearSuscripcion` creates the
+  **Known bugs, detected 2026-09-25 in a full-project review:**
+  1. *`invoice.payment_failed` on an already-`TRIAL_EXPIRADO_SIN_PAGO` subscription.* **FIXED
+     (2026-10-26, `feat/stripe-enlace-alta`, test-first.)** `StripeWebhookService.procesarPagoFallido`
+     now maps `TRIAL` **or** `TRIAL_EXPIRADO_SIN_PAGO` → `TRIAL_EXPIRADO_SIN_PAGO` (Prompt 2.7 plan,
+     Decision 4); any other stored state still → `IMPAGO_GRACIA`. Before, the second failed retry after
+     an unpaid trial flipped the subscription to `IMPAGO_GRACIA`, which **re-enabled**
+     `puedeAprobarTramites`. Covered by
+     `StripeWebhookServiceTest.procesarPagoFallidoDesdeTrialExpiradoSinPagoSeQuedaIgualYNoPasaAImpagoGracia`.
+  2. *Abandoned trial never expires.* (Still PENDING.) `SuscripcionService.obtenerOCrearSuscripcion` creates the
      `Suscripcion` row in `TRIAL` **before** the Checkout Session is completed (from
      `POST /gestorias/registro`; until 2026-10-04 also from the app's `POST /facturacion/checkout`).
      If the Gestoría abandons
      Stripe Checkout, no webhook ever arrives and nothing local expires the row, so it stays in
      `TRIAL` — with full approval rights — indefinitely. Needs a design decision (e.g. don't grant
      `TRIAL` until `checkout.session.completed`, or a local trial-expiry check) before fixing.
+- **Landing payment linking — `alta_pendiente` + onboarding link (2026-10-26, `feat/stripe-enlace-alta`;
+  phase 1 of the "billing from the landing" flow, pilot / semi-manual).** Ganera now charges from the
+  landing (`ganera-web`), which creates Checkout Sessions with a **fixed price per plan** (Base/Gestión/Plus,
+  monthly/annual), **not per Explotación**, carrying `metadata {plan, periodo, prueba, source:"ganera-web"}`
+  and **no `client_reference_id`**. Contract in `ganera-web/docs/INTEGRACION-APP.md`. This task wires the
+  payment to the app **safely**, without yet creating the Usuario or sending any email (that is the automatic
+  phase, below).
+  - **API-version mismatch (critical).** The live webhook is created with API `2026-09-30.endive`; the SDK
+    (stripe-java 28.2.0) is `2024-12-18.acacia`. With that mismatch
+    `evento.getDataObjectDeserializer().getObject()` comes back **empty** and the SDK types
+    (Session/Invoice/Subscription) can't be deserialized from the event, so `manejarXxx` was silently
+    dropping events. The SDK was **not** bumped. Instead all five handled events
+    (`checkout.session.completed`, `invoice.payment_succeeded`, `invoice.payment_failed`,
+    `customer.subscription.updated/deleted`) extract their fields from the **raw JSON**
+    (`getDataObjectDeserializer().getRawJson()` + `getData().getPreviousAttributes()`) with pure static
+    extractors (`extraerCheckout`, `extraerSubscriptionIdDeInvoice`, `extraerSuscripcion` — tested with
+    endive fixtures). Outgoing calls (`Session.listLineItems`, `Subscription.retrieve`) keep using the SDK
+    (Stripe answers in the SDK's version). The invoice's subscription id supports both the old top-level
+    `subscription` and the new `parent.subscription_details.subscription`. **If an essential field can't be
+    extracted → ERROR log (event id + type) + `EventoStripeNoProcesableException` → 5xx so Stripe retries;
+    never a silent 200** (`StripeWebhookController` catches it).
+  - **`alta_pendiente` table (migration `V24`, non-tenant — no `gestoria_id`, exists before the Gestoría):**
+    on `checkout.session.completed` without `client_reference_id`, if `source=="ganera-web"` **or** a session
+    price is in the configurable map (Payment Links), a row is saved (PENDIENTE) with session/customer/
+    subscription ids, email, name, NIF (`customer_details.tax_ids`), billing address, plan, periodo, prueba.
+    Idempotent by `stripe_session_id` UNIQUE. **No message bodies or card data; logs carry ids only.** Each
+    new row logs **WARN with ids only** for Antonio/Adolfo to see in Clever. The RLS `afterMigrate` callback
+    covers it as a normal table (`ganera_app_todo`). Price map: single env var **`STRIPE_PRICE_PLAN_MAP`**
+    (`ganera.stripe.precio-plan-map`), format `priceId=plan:periodo,...`, **empty default, nothing
+    hardcoded**; `source=ganera-web` is recognised without it, the map is only for Payment Links.
+  - **`POST /internal/onboarding/gestoria` accepts an optional `stripeSubscriptionId`:** if present it links
+    the new Gestoría's `Suscripcion` (`stripeCustomerId`, `stripeSubscriptionId`, `plan`/`periodo` from the
+    `alta_pendiente` row or the Subscription metadata) and **recomputes the estado by retrieving the
+    Subscription from Stripe** (`EnlaceStripeService`: `trialing→TRIAL`, `active→ACTIVA`, `past_due→IMPAGO_GRACIA`,
+    `unpaid→SUSPENDIDA`, `canceled→CANCELADA`), then marks the `alta_pendiente` ENLAZADA. **Stripe not
+    configured → 503** (checked before creating anything); a Stripe call failure → 502 **and rolls back** the
+    whole `@Transactional` (Gestoría + Usuario + Suscripción). Recomputing the estado from Stripe at link time
+    means a `invoice.payment_succeeded` that arrived **before** the link isn't lost (order-independent).
+  - **Fixed-plan marker (double-charge guard):** `Suscripcion.plan`/`periodo` columns (migration `V24`).
+    When `plan != null` (a landing/fixed-price subscription), `SuscripcionSyncScheduler.calcularAjustes`
+    **excludes it** from the nightly quantity reconciliation — otherwise the job would push
+    quantity = number of Explotaciones to a fixed price and multiply the charge. `plan == null` keeps the
+    legacy per-Explotación behaviour. Covered by
+    `SuscripcionSyncSchedulerTest.excluyeLasSuscripcionesDePlanFijoAunqueLaCantidadDifiera`.
+  - **Still pending — automatic phase (not built on purpose for the pilot):** create the Usuario and send an
+    **activation email with Ganera's own password-reset token (JWT-based, NOT Supabase Auth)** on
+    `checkout.session.completed`, so the customer who paid gets the account the landing's `/gracias` page
+    promises. Today that email is **not** sent and the Usuario is **not** created automatically — Antonio
+    links each payment by hand via `/internal/onboarding/gestoria`, so a paying customer sees the "we've
+    emailed you" promise but gets nothing until then (accepted gap for the pilot). The `INTEGRACION-APP.md`
+    contract still says Supabase Auth `inviteUserByEmail`; that is **obsolete** (the app uses its own JWT),
+    and the landing's copy of the doc will be corrected by Antonio.
 - **Public self-registration** (`registro` package) — **closed by default since C mínimo
   (2026-10-06)**: `ganera.registro.abierto` is `false` in `application.yml` and only
   `RegistroGestoriaEndToEndTest` opens it; while closed, `RegistroCerradoFilter` answers `404` with no

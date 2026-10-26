@@ -34,7 +34,13 @@ public class StripeWebhookController {
             return ResponseEntity.badRequest().build();
         }
 
-        stripeWebhookService.procesarEvento(evento);
+        try {
+            stripeWebhookService.procesarEvento(evento);
+        } catch (EventoStripeNoProcesableException e) {
+            // Falta un campo imprescindible: 5xx para que Stripe reintente, nunca un 200 silencioso.
+            // El motivo ya se registro en ERROR (con id y tipo del evento) en el servicio.
+            return ResponseEntity.status(500).build();
+        }
         return ResponseEntity.ok().build();
     }
 }
