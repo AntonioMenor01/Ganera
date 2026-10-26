@@ -5,8 +5,15 @@ import com.ganera.core.facturacion.SuscripcionRepository;
 import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.gestoria.Usuario;
 import com.ganera.core.gestoria.UsuarioRepository;
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.ActorTipo;
+import com.ganera.core.shared.auditoria.Auditoria;
+import com.ganera.core.shared.auditoria.AuditoriaRepository;
 import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
 import com.ganera.core.shared.tiempo.RelojConfig;
+
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -32,6 +39,8 @@ class OnboardingControllerTest {
     private SuscripcionRepository suscripcionRepository;
     @Autowired
     private AuditoriaService auditoriaService;
+    @Autowired
+    private AuditoriaRepository auditoriaRepository;
 
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -90,6 +99,36 @@ class OnboardingControllerTest {
 
         assertThat(suscripcionRepository.findByGestoriaId(cuerpo.gestoriaId()).orElseThrow().getEstado())
                 .isEqualTo(EstadoSuscripcion.ACTIVA);
+    }
+
+    @Test
+    void elAltaDejaFilasDeAuditoriaGestoriaCreadaUsuarioCreadoYSuscripcionCreadaConActorSistema() {
+        OnboardingController controller = new OnboardingController(
+                gestoriaRepository, usuarioRepository, suscripcionRepository, passwordEncoder, auditoriaService, "secreto-onboarding");
+        OnboardingRequest request = new OnboardingRequest(
+                "Gestoria Auditada", "auditada@piloto.com", "password-en-claro", "Empleado Auditado");
+
+        OnboardingResponse cuerpo = controller.crearGestoria("secreto-onboarding", request).getBody();
+
+        Long suscripcionId = suscripcionRepository.findByGestoriaId(cuerpo.gestoriaId()).orElseThrow().getId();
+        List<Auditoria> filas = auditoriaRepository.findByGestoriaIdOrderByIdAsc(cuerpo.gestoriaId());
+        assertThat(filas).extracting(Auditoria::getAccion).containsExactly(
+                AccionAuditoria.GESTORIA_CREADA, AccionAuditoria.USUARIO_CREADO, AccionAuditoria.SUSCRIPCION_CREADA);
+        filas.forEach(fila -> assertThat(fila.getActorTipo()).isEqualTo(ActorTipo.SISTEMA));
+        // Alta manual (sin peticion HTTP): sin ip ni request_id.
+        filas.forEach(fila -> {
+            assertThat(fila.getUsuarioId()).isNull();
+            assertThat(fila.getIp()).isNull();
+            assertThat(fila.getRequestId()).isNull();
+        });
+        assertThat(filas.get(0).getEntidadTipo()).isEqualTo(EntidadAuditada.GESTORIA);
+        assertThat(filas.get(0).getEntidadId()).isEqualTo(cuerpo.gestoriaId());
+        assertThat(filas.get(1).getEntidadTipo()).isEqualTo(EntidadAuditada.USUARIO);
+        assertThat(filas.get(1).getEntidadId()).isEqualTo(cuerpo.usuarioId());
+        assertThat(filas.get(1).getDespues()).contains("\"activo\":true");
+        assertThat(filas.get(2).getEntidadTipo()).isEqualTo(EntidadAuditada.SUSCRIPCION);
+        assertThat(filas.get(2).getEntidadId()).isEqualTo(suscripcionId);
+        assertThat(filas.get(2).getDespues()).contains("\"estado\":\"ACTIVA\"");
     }
 
     @Test

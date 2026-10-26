@@ -18,8 +18,10 @@ import java.time.temporal.ChronoUnit;
  *   <li>{@link #registrar}: {@code MANDATORY}, EXIGE la transaccion de la escritura de negocio. La fila se confirma o
  *       se deshace con ella; llamarlo fuera de una transaccion es un error (falla en el test, no se pierde en
  *       silencio).</li>
- *   <li>{@link #registrarAparte}: {@code REQUIRES_NEW}, solo para lecturas sensibles (D4), accesos a otra gestoria
- *       (D3) y logins (A2), que deben quedar aunque la operacion termine en 404/401/rollback.</li>
+ *   <li>{@link #registrarAparte}: {@code REQUIRES_NEW}, para lecturas sensibles (D4), accesos a otra gestoria
+ *       (D3) y logins (A2), que deben quedar aunque la operacion termine en 404/401/rollback; y para el alta
+ *       publica + checkout (registro), cuyo servicio no es {@code @Transactional} a proposito, asi que cada fila
+ *       va en su propia transaccion ya con la suscripcion confirmada (ver {@code StripeCheckoutService}).</li>
  * </ul>
  *
  * <p>La gestoria SIEMPRE la pasa quien llama, sacada de la entidad tocada (o del JWT), nunca de un contexto. Con

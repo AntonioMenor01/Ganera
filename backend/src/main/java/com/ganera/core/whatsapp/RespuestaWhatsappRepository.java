@@ -65,9 +65,9 @@ public interface RespuestaWhatsappRepository extends JpaRepository<RespuestaWhat
      * condicional y dejar la fila de auditoria con el antes/despues exactos. Devuelve la entidad entera (no tiene
      * columnas cifradas); el id, la gestoria y el estado bastan.
      *
-     * <p><b>Busqueda SIN gestoria, a proposito:</b> es la segunda excepcion tenant-unscoped por SID, junto a
-     * {@link #actualizarEstadoPorSid} y {@code ContactoRepository.findByTelefono}; reservada a
-     * EstadoRespuestaWhatsappService. El SID es {@code UNIQUE}.
+     * <p><b>Busqueda SIN gestoria, a proposito:</b> las dos consultas por SID (esta y {@link #actualizarEstadoPorSid})
+     * son tenant-unscoped a proposito -- el callback no trae tenant y el SID es {@code UNIQUE} --, como
+     * {@code ContactoRepository.findByTelefono}; reservadas a EstadoRespuestaWhatsappService.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select r from RespuestaWhatsapp r where r.twilioMessageSid = :sid")
