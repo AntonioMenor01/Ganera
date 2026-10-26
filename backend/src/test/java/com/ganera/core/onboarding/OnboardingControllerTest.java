@@ -35,7 +35,7 @@ class OnboardingControllerTest {
 
     /** Enlace a Stripe SIN configurar (clave vacia): los tests de aqui usan el alta directa, sin stripeSubscriptionId. */
     private EnlaceStripeService enlaceStripeSinConfigurar() {
-        return new EnlaceStripeService(altaPendienteRepository, "");
+        return new EnlaceStripeService(altaPendienteRepository, "", "");
     }
 
     @Test

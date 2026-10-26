@@ -63,7 +63,10 @@ class StripeWebhookService {
                          SuscripcionRepository suscripcionRepository,
                          AltaPendienteRepository altaPendienteRepository,
                          Clock reloj,
-                         @Value("${ganera.stripe.precio-plan-map:}") String precioPlanMap) {
+                         // Lee la variable de entorno STRIPE_PRICE_PLAN_MAP directamente (application.yml no la
+                         // mapea y tiene cambios ajenos sin commitear): si la propiedad ganera.stripe.precio-plan-map
+                         // existe, se usa; si no, la variable de entorno; si no, vacio.
+                         @Value("${ganera.stripe.precio-plan-map:${STRIPE_PRICE_PLAN_MAP:}}") String precioPlanMap) {
         this.suscripcionService = suscripcionService;
         this.suscripcionRepository = suscripcionRepository;
         this.altaPendienteRepository = altaPendienteRepository;
@@ -312,6 +315,11 @@ class StripeWebhookService {
     private static String texto(JsonNode nodo, String campo) {
         JsonNode valor = nodo.get(campo);
         return valor == null || valor.isNull() ? null : valor.asText();
+    }
+
+    /** El mapa de precios ya parseado (para tests de que STRIPE_PRICE_PLAN_MAP llega al bean). */
+    Map<String, PlanPeriodo> mapaPrecios() {
+        return mapaPrecios;
     }
 
     record PlanPeriodo(String plan, String periodo) {

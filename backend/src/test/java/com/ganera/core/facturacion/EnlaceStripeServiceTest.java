@@ -2,6 +2,8 @@ package com.ganera.core.facturacion;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -27,5 +29,26 @@ class EnlaceStripeServiceTest {
                 .isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> EnlaceStripeService.estadoInicialDesdeStatus("incomplete"))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    // ---- resolverPlan: plan de una suscripcion de plan fijo, NUNCA null ----
+
+    @Test
+    void resolverPlanDevuelveElConocidoCuandoLoHay() {
+        assertThat(EnlaceStripeService.resolverPlan("gestion", "price_x", Map.of())).isEqualTo("gestion");
+    }
+
+    @Test
+    void resolverPlanCaeEnElMapaDePreciosCuandoNoHayConocido() {
+        Map<String, StripeWebhookService.PlanPeriodo> mapa =
+                StripeWebhookService.parsearMapaPrecios("price_x=plus:mensual");
+
+        assertThat(EnlaceStripeService.resolverPlan(null, "price_x", mapa)).isEqualTo("plus");
+    }
+
+    @Test
+    void resolverPlanCaeEnDesconocidoSinConocidoNiPriceNiMapa() {
+        assertThat(EnlaceStripeService.resolverPlan(null, null, Map.of())).isEqualTo("desconocido");
+        assertThat(EnlaceStripeService.resolverPlan(null, "price_no_mapeado", Map.of())).isEqualTo("desconocido");
     }
 }
