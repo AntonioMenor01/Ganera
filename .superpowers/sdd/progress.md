@@ -1514,3 +1514,20 @@ puestas (las siete `SUPABASE_*`, `SPRING_PROFILES_ACTIVE=clever`, `TZ=UTC`, `FRO
 - **Auditoria T5 — deliberado (D3):** el `explotacionId` **de ruta** en `DELETE /contactos/{id}/explotaciones/{explotacionId}`
   no se audita como `ACCESO_OTRA_GESTORIA` si es ajeno (solo se audita el contacto de la ruta). D3 enumera ids de **cuerpo**
   solo para el PATCH de trámites y el vínculo de contactos; vector marginal, decisión de alcance, no un fallo.
+
+## Refundición de `main` (PR #7 Stripe) en `feat/auditoria` (2026-10-29)
+
+Fusionada `origin/main` (PR #7: enlace del pago de la landing con la app — `alta_pendiente`, `EnlaceStripeService`,
+mapa de precios, fix del Bug 1 de `invoice.payment_failed`) sobre `feat/auditoria`. Migraciones de auditoría
+renumeradas por detrás de la V24 de producción (`alta_pendiente_y_plan_suscripcion`): `auditoria` V24->V25, inmutable
+V25->V26; etiquetas de versión del callback/02/`Auditoria.java`/tests puestas al día (tabla la crea V25, triggers V26).
+La auditoría de T4 se re-enganchó sobre el `StripeWebhookService`/`OnboardingController` nuevos; suite 1275 verde.
+
+- **Pendiente T6 (a) — auditar las escrituras nuevas de la PR #7:** `EnlaceStripeService.enlazar`, el alta de
+  `AltaPendiente` (`StripeWebhookService.registrarAltaPendiente`, camino `checkout.session.completed` de la landing sin
+  `client_reference_id`) y los eventos de Stripe nuevos **no dejan fila de auditoría todavía**. Se decidió dejarlas sin
+  auditar en la fusión (solo se re-enganchó lo que ya auditaba T4). Añadir sus ganchos en T6.
+- **Pendiente T6 (b) — `SUSCRIPCION_CREADA` del onboarding con ESTADO fijo:** `OnboardingController` registra la fila de
+  auditoría `SUSCRIPCION_CREADA` con `ESTADO=ACTIVA` fijo, pero en el camino con `stripeSubscriptionId` la suscripción se
+  crea vía `EnlaceStripeService.enlazar` y su estado real viene de Stripe (puede no ser ACTIVA). Corregir en T6 para que
+  la fila refleje el estado real persistido, no el literal.

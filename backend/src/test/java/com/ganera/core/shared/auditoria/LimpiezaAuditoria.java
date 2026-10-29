@@ -8,7 +8,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * {@code @AfterEach} de esos tests fallan por {@code fk_auditoria_usuario} / {@code fk_auditoria_gestoria}:
  * la FK NO tiene {@code ON DELETE} (a proposito), y las filas que confirman los tests sin transaccion quedan
  * en la base compartida. {@code auditoria} tampoco tiene un repositorio con {@code delete} (a proposito), asi
- * que la unica salida es borrar por JDBC. En H2 no hay trigger de inmutabilidad (V25 solo en PostgreSQL), asi
+ * que la unica salida es borrar por JDBC. En H2 no hay trigger de inmutabilidad (V26 solo en PostgreSQL), asi
  * que este {@code delete} funciona; en PostgreSQL embebido cada test usa una base nueva y no hace falta.
  *
  * <p>Se llama SIEMPRE antes de borrar usuarios y gestorias. Borra la tabla entera (no por gestoria): cada

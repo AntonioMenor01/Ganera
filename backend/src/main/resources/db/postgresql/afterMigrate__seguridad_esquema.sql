@@ -12,7 +12,7 @@
 --                               (FOR INSERT); nunca UPDATE ni DELETE (la futura tabla de auditoria)
 --       flyway_schema_history   nada para ganera_app (RLS activada y sin politica)
 --   - secuencias: solo USAGE para ganera_app (las tablas usan BIGSERIAL);
---   - funciones y procedimientos: sin EXECUTE para los ajenos (las dos funciones de los triggers de auditoria, V25,
+--   - funciones y procedimientos: sin EXECUTE para los ajenos (las dos funciones de los triggers de auditoria, V26,
 --     tampoco las necesitan: PostgreSQL comprueba EXECUTE al CREAR el trigger, que lo hace el propietario);
 --   - vistas: nada para los ajenos;
 --   - esquema: sin nada para los ajenos; ganera_app solo USAGE, nunca CREATE.
@@ -24,11 +24,11 @@
 -- authenticated, service_role): nunca deja tablas sin proteger en silencio. authenticator NO es obligatorio. Los
 -- crea backend/supabase/01-preparar-roles-y-esquema.sql.
 --
--- Inmutabilidad de auditoria (D2): si la tabla auditoria existe (desde V24), al final se comprueba que tiene
--- EXACTAMENTE sus dos triggers de V25 activos y correctos (auditoria_sin_cambios BEFORE UPDATE OR TRUNCATE por
+-- Inmutabilidad de auditoria (D2): si la tabla auditoria existe (desde V25), al final se comprueba que tiene
+-- EXACTAMENTE sus dos triggers de V26 activos y correctos (auditoria_sin_cambios BEFORE UPDATE OR TRUNCATE por
 -- sentencia; auditoria_sin_borrado BEFORE DELETE por fila; cada uno llamando a su funcion del esquema). Si alguien los
 -- ha borrado, desactivado o cambiado -> RAISE EXCEPTION (la migracion y el arranque fallan). Nunca se recrean en
--- silencio (los crea V25). Si la tabla no existe (bases migradas con target < 24), no se comprueba.
+-- silencio (los crea V26). Si la tabla no existe (bases migradas con target < 25), no se comprueba.
 --
 -- La lista de tablas «solo insercion y lectura» es la MISMA que en backend/supabase/02-comprobar-seguridad.sql.
 -- Hoy solo tiene el nombre reservado de la futura tabla de auditoria; si esa tarea la renombra, se cambia aqui y
@@ -159,11 +159,11 @@ BEGIN
         EXECUTE format('REVOKE ALL ON ROUTINE %s FROM %s CASCADE', t.relname, ajenos);
     END LOOP;
 
-    -- Inmutabilidad de auditoria (D2): si la tabla existe (V24), tiene que tener EXACTAMENTE sus dos triggers de
-    -- V25, activos (tgenabled = 'O') y con su definicion exacta (BEFORE; auditoria_sin_cambios por sentencia, eventos
+    -- Inmutabilidad de auditoria (D2): si la tabla existe (V25), tiene que tener EXACTAMENTE sus dos triggers de
+    -- V26, activos (tgenabled = 'O') y con su definicion exacta (BEFORE; auditoria_sin_cambios por sentencia, eventos
     -- UPDATE y TRUNCATE, tgtype = 50; auditoria_sin_borrado por fila, evento DELETE, tgtype = 11; sin WHEN, sin
     -- columnas, llamando a su funcion del esquema), y ningun otro. Si no, la migracion y el arranque fallan: nunca se
-    -- recrean en silencio (los crea V25). Sin la tabla (target < 24) no se comprueba.
+    -- recrean en silencio (los crea V26). Sin la tabla (target < 25) no se comprueba.
     tabla_auditoria := to_regclass(format('%I.auditoria', esquema));
     IF tabla_auditoria IS NOT NULL THEN
         SELECT string_agg(problema, ', ' ORDER BY problema) INTO problemas_triggers
@@ -190,8 +190,8 @@ BEGIN
         WHERE problema IS NOT NULL;
 
         IF problemas_triggers IS NOT NULL THEN
-            RAISE EXCEPTION 'La tabla auditoria no tiene exactamente sus dos triggers de V25 (%). Los crea '
-                'db/postgresql/V25__auditoria_inmutable.sql; restauralos (nunca se recrean en silencio).',
+            RAISE EXCEPTION 'La tabla auditoria no tiene exactamente sus dos triggers de V26 (%). Los crea '
+                'db/postgresql/V26__auditoria_inmutable.sql; restauralos (nunca se recrean en silencio).',
                 problemas_triggers;
         END IF;
     END IF;

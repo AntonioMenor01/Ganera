@@ -20,8 +20,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Auditoria base, T2: la tabla {@code auditoria} es inmutable en PostgreSQL. Dos capas: {@code ganera_app} no tiene
  * UPDATE, DELETE ni TRUNCATE (callback, lista «solo insercion») y al propietario lo paran los dos triggers de
- * {@code db/postgresql/V25__auditoria_inmutable.sql}. Ademas, el callback {@code afterMigrate__seguridad_esquema.sql}
- * falla cerrado si los triggers faltan, estan desactivados o no son los de V25 (D2), revoca tambien a
+ * {@code db/postgresql/V26__auditoria_inmutable.sql}. Ademas, el callback {@code afterMigrate__seguridad_esquema.sql}
+ * falla cerrado si los triggers faltan, estan desactivados o no son los de V26 (D2), revoca tambien a
  * {@code authenticator} cuando existe, y el script 02 marca cada problema nuevo con una fila.
  */
 class AuditoriaInmutablePostgresTest {
@@ -32,8 +32,8 @@ class AuditoriaInmutablePostgresTest {
     /** SQLState de un RAISE EXCEPTION sin codigo propio (raise_exception). */
     private static final String EXCEPCION_DEL_TRIGGER = "P0001";
 
-    /** Principio del mensaje del callback cuando los triggers no son los de V25. */
-    private static final String MENSAJE_D2 = "La tabla auditoria no tiene exactamente sus dos triggers de V25";
+    /** Principio del mensaje del callback cuando los triggers no son los de V26. */
+    private static final String MENSAJE_D2 = "La tabla auditoria no tiene exactamente sus dos triggers de V26";
 
     /** Una base migrada hasta la ultima, con una fila de auditoria, para los casos que no cambian nada. */
     private static String baseComun;
@@ -156,7 +156,7 @@ class AuditoriaInmutablePostgresTest {
                     + " | otro_mas: no esperado"
                     + " | trigger auditoria.otro_mas: no esperado"
     })
-    void siLosTriggersNoSonLosDeV25ElCallbackFallaYEl02LoMarca(String preparar, String enElCallback,
+    void siLosTriggersNoSonLosDeV26ElCallbackFallaYEl02LoMarca(String preparar, String enElCallback,
             String filaDel02) throws SQLException {
         String baseDeDatos = migrarComoPropietario();
         ejecutar(PostgresEmbebido.dataSourceComo(PostgresEmbebido.PROPIETARIO, baseDeDatos), preparar);
@@ -191,7 +191,7 @@ class AuditoriaInmutablePostgresTest {
      */
     @ParameterizedTest
     @CsvSource(delimiter = '|', quoteCharacter = '"', value = {
-            "drop table ganera.auditoria | - | tabla auditoria: no existe (la crea V24)",
+            "drop table ganera.auditoria | - | tabla auditoria: no existe (la crea V25)",
             // Cambiar el dueno de una funcion exige CREATE sobre el esquema para el nuevo dueno (se concede y se
             // revoca aqui; CREATE para admin_supabase no lo mira el 02). El superusuario ejecuta el ALTER.
             "grant create on schema ganera to admin_supabase;"
@@ -317,7 +317,7 @@ class AuditoriaInmutablePostgresTest {
                     .dataSource(aparte.getDatabase(PostgresEmbebido.PROPIETARIO, "sin_authenticator"))
                     .locations(PostgresEmbebido.UBICACIONES_FLYWAY)
                     .defaultSchema(PostgresEmbebido.ESQUEMA).schemas(PostgresEmbebido.ESQUEMA).createSchemas(false)
-                    .load().migrate().migrationsExecuted).isEqualTo(25);
+                    .load().migrate().migrationsExecuted).isEqualTo(26);
 
             assertThat(superusuario.query(PostgresEmbebido.leer(PostgresEmbebido.SCRIPT_COMPROBAR),
                     (fila, i) -> fila.getString("objeto") + ": " + fila.getString("problema"))).isEmpty();
@@ -329,7 +329,7 @@ class AuditoriaInmutablePostgresTest {
     private static String migrarComoPropietario() {
         String baseDeDatos = PostgresEmbebido.nuevaBaseDeDatos();
         assertThat(PostgresEmbebido.flywayPropietario(baseDeDatos).load().migrate().migrationsExecuted)
-                .isEqualTo(25);
+                .isEqualTo(26);
         return baseDeDatos;
     }
 

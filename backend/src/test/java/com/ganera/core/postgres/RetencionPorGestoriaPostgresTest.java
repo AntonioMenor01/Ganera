@@ -38,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Retencion POR GESTORIA (T4, D6) contra PostgreSQL 17 real: los mismos totales que en H2 y una fila de auditoria por
  * gestoria y sentencia, cada una en la gestoria de su grupo. Complementa a RetencionMensajesServiceTest (H2); aqui lo
  * que importa es que el agrupado por gestoria y el conteo de filas se comportan igual sobre PostgreSQL. El trigger de
- * inmutabilidad de V25 no estorba: solo se INSERTAn filas de auditoria (nunca UPDATE/DELETE) y la base es nueva.
+ * inmutabilidad de V26 no estorba: solo se INSERTAn filas de auditoria (nunca UPDATE/DELETE) y la base es nueva.
  */
 class RetencionPorGestoriaPostgresTest {
 

@@ -16,8 +16,8 @@ import org.hibernate.annotations.Immutable;
 import java.time.Instant;
 
 /**
- * Una fila de auditoria (tabla de V24, plan 2026-10-21). Solo insercion: {@code @Immutable} y todas las columnas
- * {@code updatable = false}; en PostgreSQL ademas lo imponen los permisos de ganera_app y los triggers de V25. Solo la
+ * Una fila de auditoria (tabla de V25, plan 2026-10-21). Solo insercion: {@code @Immutable} y todas las columnas
+ * {@code updatable = false}; en PostgreSQL ademas lo imponen los permisos de ganera_app y los triggers de V26. Solo la
  * construye {@link AuditoriaService}.
  *
  * <p>{@code usuario_id} se mapea como {@code Long} y no como {@code @ManyToOne Usuario}: la fila nunca navega al

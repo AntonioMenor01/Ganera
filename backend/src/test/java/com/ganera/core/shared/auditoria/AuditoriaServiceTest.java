@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase.Replace.NONE;
 
 /**
- * AuditoriaService sobre H2 con las migraciones reales (V24). "Ahora" sale de un Clock fijo con nanosegundos: la
+ * AuditoriaService sobre H2 con las migraciones reales (V25). "Ahora" sale de un Clock fijo con nanosegundos: la
  * fila tiene que llevarlo truncado a microsegundos (una implementacion con Instant.now() no daria ese valor).
  */
 @DataJpaTest

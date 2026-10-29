@@ -84,6 +84,24 @@ class SuscripcionSyncSchedulerTest {
         assertThat(ajustes.get(0).nuevaCantidad()).isEqualTo(6L);
     }
 
+    @Test
+    void excluyeLasSuscripcionesDePlanFijoAunqueLaCantidadDifiera() {
+        // Plan fijo (plan != null, alta de la landing): cobra precio fijo por plan, NO por numero de
+        // explotaciones. Reconciliar quantity aqui multiplicaria el cobro, asi que debe quedar fuera.
+        Suscripcion planFijo = suscripcion(1L, "sub_fijo", 1);
+        planFijo.setPlan("gestion");
+        planFijo.setPeriodo("mensual");
+        Suscripcion porExplotaciones = suscripcion(2L, "sub_var", 2);
+
+        List<SuscripcionSyncScheduler.Ajuste> ajustes = SuscripcionSyncScheduler.calcularAjustes(
+                List.of(planFijo, porExplotaciones),
+                contador(Map.of(1L, 50L, 2L, 7L)));
+
+        assertThat(ajustes).hasSize(1);
+        assertThat(ajustes.get(0).suscripcion()).isSameAs(porExplotaciones);
+        assertThat(ajustes.get(0).nuevaCantidad()).isEqualTo(7L);
+    }
+
     private static java.util.function.Function<Long, Long> contador(Map<Long, Long> counts) {
         return counts::get;
     }

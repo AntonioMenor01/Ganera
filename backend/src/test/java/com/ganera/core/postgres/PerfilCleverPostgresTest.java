@@ -66,17 +66,17 @@ class PerfilCleverPostgresTest {
             assertThat(((SimpleDriverDataSource) deFlyway).getUrl()).isEqualTo(urlEsperada);
             assertThat(((SimpleDriverDataSource) deFlyway).getUsername()).isEqualTo(PostgresEmbebido.PROPIETARIO);
 
-            // V1-V25 aplicadas en ganera, todas por ganera_propietario. La app no puede leer flyway_schema_history
+            // V1-V26 aplicadas en ganera, todas por ganera_propietario. La app no puede leer flyway_schema_history
             // (el callback se lo quita): se mira como superusuario.
             JdbcTemplate admin = new JdbcTemplate(PostgresEmbebido.dataSource(baseDeDatos));
             List<String> versiones = admin.queryForList("select version from ganera.flyway_schema_history "
                     + "where success order by installed_rank", String.class);
             assertThat(versiones).containsExactlyElementsOf(
-                    IntStream.rangeClosed(1, 25).mapToObj(String::valueOf).toList());
+                    IntStream.rangeClosed(1, 26).mapToObj(String::valueOf).toList());
             assertThat(admin.queryForList("select distinct installed_by from ganera.flyway_schema_history",
                     String.class)).containsExactly(PostgresEmbebido.PROPIETARIO);
             assertThat(admin.queryForObject("select count(*) from ganera.flyway_schema_history", Long.class))
-                    .isEqualTo(25);
+                    .isEqualTo(26);
 
             // Las tablas de negocio son del propietario (ninguna de la app).
             List<String> duenos = admin.queryForList("select distinct tableowner from pg_tables "

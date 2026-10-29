@@ -37,7 +37,7 @@ import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTest
  *
  * <p>Todo con {@code NOT_SUPPORTED}: {@code registrarAparte} es REQUIRES_NEW y CONFIRMA su fila en una transaccion
  * nueva; sin transaccion exterior, las entidades que crea cada test tambien se confirman (si no, la fila no veria su
- * gestoria por la FK). Se limpia por JDBC en {@code @AfterEach} (en H2 no hay trigger de inmutabilidad, V25 solo en
+ * gestoria por la FK). Se limpia por JDBC en {@code @AfterEach} (en H2 no hay trigger de inmutabilidad, V26 solo en
  * PostgreSQL; el repositorio de auditoria no tiene delete a proposito).
  */
 @DataJpaTest

@@ -95,11 +95,14 @@ class SuscripcionSyncScheduler {
      * candidatas y una funcion gestoriaId -> count real de Explotaciones, devuelve solo los
      * ajustes necesarios (cantidad nueva != explotacionesContratadas almacenada), con
      * max(1, count) porque Stripe exige quantity >= 1. Ignora suscripciones sin
-     * stripeSubscriptionId (nunca llegaron a completar un checkout).
+     * stripeSubscriptionId (nunca llegaron a completar un checkout) y las de PLAN FIJO
+     * (plan != null, altas de la landing): esas cobran un precio fijo por plan, no por numero de
+     * explotaciones, asi que empujarles quantity=nº de explotaciones multiplicaria el cobro.
      */
     static List<Ajuste> calcularAjustes(List<Suscripcion> suscripciones, Function<Long, Long> contadorExplotaciones) {
         return suscripciones.stream()
                 .filter(s -> s.getStripeSubscriptionId() != null)
+                .filter(s -> s.getPlan() == null)
                 .map(s -> new Ajuste(s, Math.max(1L, contadorExplotaciones.apply(s.getGestoria().getId()))))
                 .filter(a -> a.suscripcion().getExplotacionesContratadas() == null
                         || a.suscripcion().getExplotacionesContratadas() != a.nuevaCantidad())

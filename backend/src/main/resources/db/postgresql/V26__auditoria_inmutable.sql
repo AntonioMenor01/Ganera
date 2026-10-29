@@ -1,5 +1,5 @@
 -- Auditoria base (docs/superpowers/plans/2026-10-21-auditoria-base.md, T2). Inmutabilidad de la tabla auditoria en
--- PostgreSQL (solo aqui; en H2 queda el hueco de V25, que Flyway admite: regla de numeracion global de db/{vendor}).
+-- PostgreSQL (solo aqui; en H2 queda el hueco de V26, que Flyway admite: regla de numeracion global de db/{vendor}).
 --
 -- Dos capas protegen la tabla:
 --   1. Permisos: ganera_app (el usuario de la aplicacion) solo tiene SELECT e INSERT (lista «solo insercion» del
@@ -28,7 +28,7 @@
 -- GRANT SET ON PARAMETER session_replication_role a cualquier rol de Ganera o de Supabase.
 --
 -- SET search_path = pg_catalog en las dos funciones: no dependen de ningun objeto del esquema, y asi un search_path
--- hostil no puede cambiar lo que hacen. Los nombres van sin esquema (como V24): la migracion se ejecuta en el esquema
+-- hostil no puede cambiar lo que hacen. Los nombres van sin esquema (como V25): la migracion se ejecuta en el esquema
 -- por defecto de Flyway (ganera en el perfil clever, public en los demas tests de PostgreSQL).
 CREATE FUNCTION auditoria_sin_cambios() RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog AS $$
 BEGIN
