@@ -8,6 +8,12 @@ spring:
     open-in-view: true
     hibernate:
       ddl-auto: none
+    properties:
+      hibernate:
+        # Guardia DML de la auditoria (plan 2026-10-21, T6): solo en tests. InspectorDml anota las tablas
+        # escritas para que GuardiaDml exija su fila de auditoria. Pasivo salvo entre armar()/desarmar().
+        session_factory:
+          statement_inspector: com.ganera.core.shared.auditoria.InspectorDml
   flyway:
     enabled: true
     # {vendor} lo resuelve Boot a "postgresql" o "h2": las migraciones y callbacks solo-Postgres van en

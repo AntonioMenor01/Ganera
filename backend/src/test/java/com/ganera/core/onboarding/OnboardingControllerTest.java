@@ -1,8 +1,10 @@
 package com.ganera.core.onboarding;
 
 import com.ganera.core.facturacion.AltaPendienteRepository;
+import com.ganera.core.facturacion.EnlaceStripeFake;
 import com.ganera.core.facturacion.EnlaceStripeService;
 import com.ganera.core.facturacion.EstadoSuscripcion;
+import com.ganera.core.facturacion.Suscripcion;
 import com.ganera.core.facturacion.SuscripcionRepository;
 import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.gestoria.Usuario;
@@ -13,10 +15,12 @@ import com.ganera.core.shared.auditoria.Auditoria;
 import com.ganera.core.shared.auditoria.AuditoriaRepository;
 import com.ganera.core.shared.auditoria.AuditoriaService;
 import com.ganera.core.shared.auditoria.EntidadAuditada;
+import com.ganera.core.shared.auditoria.GuardiaDmlExtension;
 import com.ganera.core.shared.tiempo.RelojConfig;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -31,6 +35,7 @@ import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTest
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = NONE)
 @Import({AuditoriaService.class, RelojConfig.class})
+@ExtendWith(GuardiaDmlExtension.class)
 class OnboardingControllerTest {
 
     @Autowired
@@ -138,6 +143,30 @@ class OnboardingControllerTest {
         assertThat(filas.get(2).getEntidadTipo()).isEqualTo(EntidadAuditada.SUSCRIPCION);
         assertThat(filas.get(2).getEntidadId()).isEqualTo(suscripcionId);
         assertThat(filas.get(2).getDespues()).contains("\"estado\":\"ACTIVA\"");
+    }
+
+    @Test
+    void elAltaConStripeRegistraSuscripcionCreadaConElEstadoRealPersistidoNoElLiteralActiva() {
+        // Stripe devuelve past_due -> la Suscripcion queda IMPAGO_GRACIA, no ACTIVA. La fila
+        // SUSCRIPCION_CREADA debe reflejar el estado REALMENTE persistido (pendiente T6 b).
+        EnlaceStripeService enlace = new EnlaceStripeFake(altaPendienteRepository, "past_due", "plus", "mensual");
+        OnboardingController controller = new OnboardingController(
+                gestoriaRepository, usuarioRepository, suscripcionRepository, enlace, passwordEncoder, auditoriaService, "secreto-onboarding");
+        OnboardingRequest request = new OnboardingRequest(
+                "Gestoria Landing", "landing@piloto.com", "password-en-claro", "Empleado Landing", "sub_landing_1");
+
+        OnboardingResponse cuerpo = controller.crearGestoria("secreto-onboarding", request).getBody();
+
+        Suscripcion suscripcion = suscripcionRepository.findByGestoriaId(cuerpo.gestoriaId()).orElseThrow();
+        assertThat(suscripcion.getEstado()).isEqualTo(EstadoSuscripcion.IMPAGO_GRACIA);
+
+        Auditoria suscripcionCreada = auditoriaRepository.findByGestoriaIdOrderByIdAsc(cuerpo.gestoriaId()).stream()
+                .filter(f -> f.getAccion() == AccionAuditoria.SUSCRIPCION_CREADA)
+                .findFirst().orElseThrow();
+        assertThat(suscripcionCreada.getDespues()).contains("\"estado\":\"IMPAGO_GRACIA\"");
+        assertThat(suscripcionCreada.getDespues()).doesNotContain("ACTIVA");
+        // La fila lleva el id generado por el save de la suscripcion: prueba que la auditoria va DESPUES del save.
+        assertThat(suscripcionCreada.getEntidadId()).isEqualTo(suscripcion.getId());
     }
 
     @Test

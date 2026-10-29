@@ -30,6 +30,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -60,6 +61,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * version, DELETE de un contacto ya inactivo, 404) no dejan fila. El login va en AuditoriaLoginEndToEndTest.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@ExtendWith(GuardiaDmlExtension.class)
 class AuditoriaUsuarioEndToEndTest {
 
     @Autowired
@@ -254,6 +256,8 @@ class AuditoriaUsuarioEndToEndTest {
     }
 
     @Test
+    @SinGuardiaDml(value = "El escenario siembra trámites en el cuerpo; el 409 de versión no escribe ni "
+            + "audita nada (eso es justo lo que comprueba).", tablas = "tramite")
     void un409DeVersionNoDejaFila() {
         Tramite tramite = nuevoTramite(gestoriaA, EstadoTramite.PENDIENTE_REVISION, null);
         long vieja = version(tramite);

@@ -117,9 +117,12 @@ public class OnboardingController {
                 EntidadAuditada.GESTORIA, gestoria.getId(), null, null);
         auditoriaService.registrar(AccionAuditoria.USUARIO_CREADO, gestoria.getId(), Actor.sistema(),
                 EntidadAuditada.USUARIO, usuario.getId(), null, DatosAuditoria.con(Clave.ACTIVO, Boolean.TRUE));
+        // El estado sale de lo REALMENTE persistido (suscripcion.getEstado()), no de un literal: en el
+        // camino con stripeSubscriptionId lo fija EnlaceStripeService.enlazar desde Stripe y puede no ser
+        // ACTIVA. Las filas van despues del save, asi que getEstado()/getId() ya son los definitivos.
         auditoriaService.registrar(AccionAuditoria.SUSCRIPCION_CREADA, gestoria.getId(), Actor.sistema(),
                 EntidadAuditada.SUSCRIPCION, suscripcion.getId(), null,
-                DatosAuditoria.con(Clave.ESTADO, EstadoSuscripcion.ACTIVA));
+                DatosAuditoria.con(Clave.ESTADO, suscripcion.getEstado()));
 
         return ResponseEntity.ok(new OnboardingResponse(gestoria.getId(), usuario.getId()));
     }

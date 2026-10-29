@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * va a la fila de auditoria, nunca al cliente).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@ExtendWith(OutputCaptureExtension.class)
+@ExtendWith({OutputCaptureExtension.class, GuardiaDmlExtension.class})
 class AuditoriaLoginEndToEndTest {
 
     private static final String EMAIL_ACTIVO = "login-activo@test.com";
