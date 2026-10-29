@@ -919,13 +919,17 @@ class TramiteControllerTest {
     }
 
     private TramiteController nuevoController() {
+        // La auditoria (lecturas D4 y acceso ajeno D3) se cubre en los tests E2E de T5; aqui se finge para no
+        // escribir filas en la transaccion del @DataJpaTest (registrarAparte es REQUIRES_NEW).
         return new TramiteController(
                 tramiteRepository,
                 new SuscripcionService(suscripcionRepository, gestoriaRepository),
                 mensajeCampoRepository,
                 tramiteCrotalService,
                 tramiteRevisionService,
-                whatsappDetalleService);
+                whatsappDetalleService,
+                org.mockito.Mockito.mock(com.ganera.core.shared.auditoria.AuditoriaService.class),
+                org.mockito.Mockito.mock(com.ganera.core.shared.auditoria.AccesoAjeno.class));
     }
 
     private void suscripcionActiva(Gestoria gestoria) {

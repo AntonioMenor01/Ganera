@@ -150,6 +150,8 @@ class TramiteControllerErroresTest {
                 return true;
             }
         };
-        return new TramiteController(null, suscripcionActiva, null, null, servicio, null);
+        return new TramiteController(null, suscripcionActiva, null, null, servicio, null,
+                org.mockito.Mockito.mock(com.ganera.core.shared.auditoria.AuditoriaService.class),
+                org.mockito.Mockito.mock(com.ganera.core.shared.auditoria.AccesoAjeno.class));
     }
 }

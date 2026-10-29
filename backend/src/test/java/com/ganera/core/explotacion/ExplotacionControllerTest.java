@@ -57,7 +57,7 @@ class ExplotacionControllerTest {
         entityManager.flush();
         entityManager.clear();
 
-        ExplotacionController controller = new ExplotacionController(explotacionRepository, animalRepository);
+        ExplotacionController controller = new ExplotacionController(explotacionRepository, animalRepository, org.mockito.Mockito.mock(com.ganera.core.shared.auditoria.AccesoAjeno.class));
 
         Page<ExplotacionResponse> pagina = pagina(controller.listar(principal(gestoriaA), null, PageRequest.of(0, 10)));
         Page<ExplotacionResponse> paginaB = pagina(controller.listar(principal(gestoriaB), null, PageRequest.of(0, 10)));
@@ -69,7 +69,7 @@ class ExplotacionControllerTest {
     @Test
     void ordenarPorUnCampoNoPermitidoDevuelve400ConMotivo() {
         Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria orden no permitido"));
-        ExplotacionController controller = new ExplotacionController(explotacionRepository, animalRepository);
+        ExplotacionController controller = new ExplotacionController(explotacionRepository, animalRepository, org.mockito.Mockito.mock(com.ganera.core.shared.auditoria.AccesoAjeno.class));
 
         ResponseEntity<?> respuesta = controller.listar(principal(gestoria), null,
                 PageRequest.of(0, 10, Sort.by("ganadero.ovzUsuario")));
@@ -84,7 +84,7 @@ class ExplotacionControllerTest {
         Ganadero ganadero = nuevoGanadero(gestoria, "Ganadero Paginado");
         nuevaExplotacion(gestoria, ganadero, "ES030000000001", "Finca Paginada");
 
-        ExplotacionController controller = new ExplotacionController(explotacionRepository, animalRepository);
+        ExplotacionController controller = new ExplotacionController(explotacionRepository, animalRepository, org.mockito.Mockito.mock(com.ganera.core.shared.auditoria.AccesoAjeno.class));
 
         Page<ExplotacionResponse> pagina = pagina(controller.listar(principal(gestoria), null, PageRequest.of(0, 10)));
 
@@ -429,7 +429,10 @@ class ExplotacionControllerTest {
     }
 
     private ExplotacionController controlador() {
-        return new ExplotacionController(explotacionRepository, animalRepository);
+        // La auditoria del acceso ajeno (D3) se cubre en los tests E2E de T5; aqui se finge AccesoAjeno para no
+        // escribir en la transaccion del @DataJpaTest (registrarAparte es REQUIRES_NEW).
+        return new ExplotacionController(explotacionRepository, animalRepository,
+                org.mockito.Mockito.mock(com.ganera.core.shared.auditoria.AccesoAjeno.class));
     }
 
     private static GaneraUserPrincipal principal(Gestoria gestoria) {

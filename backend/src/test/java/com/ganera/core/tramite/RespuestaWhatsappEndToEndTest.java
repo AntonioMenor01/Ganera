@@ -710,7 +710,9 @@ class RespuestaWhatsappEndToEndTest {
         List<String> sql = SqlCapturadoInspector.capturado().stream().map(s -> s.toLowerCase(Locale.ROOT)).toList();
         assertThat(sql).filteredOn(s -> s.contains("from respuesta_whatsapp ")).hasSize(1)
                 .allSatisfy(s -> assertThat(s).contains("join usuario "));
-        assertThat(sql).filteredOn(s -> s.contains("from usuario ")).isEmpty();
+        // La unica consulta suelta 'from usuario' es la comprobacion de actor de la lectura auditada (D4/T5:
+        // LECTURA_TRAMITE, en su REQUIRES_NEW); nunca una por respuesta (un N+1 con 3 respuestas daria mas).
+        assertThat(sql).filteredOn(s -> s.contains("from usuario ")).hasSizeLessThanOrEqualTo(1);
 
         // El resto del contrato del detalle no cambia.
         assertThat(campos(cuerpo)).containsExactlyInAnyOrder("id", "tipoTramite", "estado", "motivoError",

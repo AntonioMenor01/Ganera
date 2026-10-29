@@ -1,5 +1,7 @@
 package com.ganera.core.explotacion;
 
+import com.ganera.core.shared.auditoria.AccesoAjeno;
+import com.ganera.core.shared.auditoria.OperacionAuditada;
 import com.ganera.core.shared.security.GaneraUserPrincipal;
 import com.ganera.core.shared.texto.NormalizadorBusqueda;
 import com.ganera.core.shared.web.MotivoErrorResponse;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 @RestController
@@ -22,10 +25,13 @@ public class ExplotacionController {
 
     private final ExplotacionRepository explotacionRepository;
     private final AnimalRepository animalRepository;
+    private final AccesoAjeno accesoAjeno;
 
-    public ExplotacionController(ExplotacionRepository explotacionRepository, AnimalRepository animalRepository) {
+    public ExplotacionController(ExplotacionRepository explotacionRepository, AnimalRepository animalRepository,
+                                 AccesoAjeno accesoAjeno) {
         this.explotacionRepository = explotacionRepository;
         this.animalRepository = animalRepository;
+        this.accesoAjeno = accesoAjeno;
     }
 
     /** Decision 21: solo se puede ordenar por estos campos (nunca por el Ganadero ni sus
@@ -90,10 +96,15 @@ public class ExplotacionController {
     public ResponseEntity<ExplotacionResponse> detalle(
             @AuthenticationPrincipal GaneraUserPrincipal principal,
             @PathVariable Long id) {
-        return explotacionRepository.findByIdAndGestoriaId(id, principal.gestoriaId())
-                .map(ExplotacionResponse::from)
-                .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        Optional<ExplotacionResponse> explotacion = explotacionRepository.findByIdAndGestoriaId(id,
+                principal.gestoriaId()).map(ExplotacionResponse::from);
+        if (explotacion.isEmpty()) {
+            // El 404 no cambia; si el id es de otra Gestoria se deja ACCESO_OTRA_GESTORIA (D3).
+            accesoAjeno.explotacion(principal.usuarioId(), principal.gestoriaId(), id,
+                    OperacionAuditada.VER_EXPLOTACION);
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(explotacion.get());
     }
 
     /** Solo se puede ordenar los Animales por estos campos (crotal es UNIQUE: orden estable). */
@@ -112,6 +123,8 @@ public class ExplotacionController {
         }
         Long gestoriaId = principal.gestoriaId();
         if (explotacionRepository.findByIdAndGestoriaId(id, gestoriaId).isEmpty()) {
+            // El 404 no cambia; si el id es de otra Gestoria se deja ACCESO_OTRA_GESTORIA (D3).
+            accesoAjeno.explotacion(principal.usuarioId(), gestoriaId, id, OperacionAuditada.VER_ANIMALES);
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(

@@ -1,5 +1,11 @@
 package com.ganera.core.contacto;
 
+import com.ganera.core.shared.auditoria.AccesoAjeno;
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.Actor;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
+import com.ganera.core.shared.auditoria.OperacionAuditada;
 import com.ganera.core.shared.security.GaneraUserPrincipal;
 import com.ganera.core.shared.web.MotivoErrorResponse;
 import com.ganera.core.shared.web.OrdenacionPermitida;
@@ -40,9 +46,14 @@ public class ContactoController {
     static final String MOTIVO_CONTACTO_INACTIVO = "El contacto está dado de baja; reactívalo antes de enlazarlo.";
 
     private final ContactoService contactoService;
+    private final AuditoriaService auditoriaService;
+    private final AccesoAjeno accesoAjeno;
 
-    public ContactoController(ContactoService contactoService) {
+    public ContactoController(ContactoService contactoService, AuditoriaService auditoriaService,
+                              AccesoAjeno accesoAjeno) {
         this.contactoService = contactoService;
+        this.auditoriaService = auditoriaService;
+        this.accesoAjeno = accesoAjeno;
     }
 
     /** Revision 7a M1 (como la decision 21): solo se ordena por campos que el DTO ya expone y que
@@ -61,6 +72,10 @@ public class ContactoController {
         if (!OrdenacionPermitida.esValida(pageable.getSort(), CAMPOS_ORDENACION)) {
             return ResponseEntity.badRequest().body(new MotivoErrorResponse(OrdenacionPermitida.MOTIVO));
         }
+        // Lectura sensible (D4): el listado trae los telefonos. Una fila LECTURA_CONTACTOS por GET servido,
+        // sin id de entidad (es un listado, no un recurso concreto).
+        auditoriaService.registrarAparte(AccionAuditoria.LECTURA_CONTACTOS, principal.gestoriaId(),
+                Actor.usuario(principal.usuarioId()), EntidadAuditada.CONTACTO, null, null, null);
         return ResponseEntity.ok(contactoService.listar(principal.gestoriaId(), incluirInactivos, pageable));
     }
 
@@ -73,7 +88,8 @@ public class ContactoController {
         if (invalido.isPresent()) {
             return invalido.get();
         }
-        return conTelefonoUnico(() -> ResponseEntity.status(HttpStatus.CREATED)
+        // crear no tiene id de ruta: nunca hay acceso a otra Gestoria que auditar (no-op en el 404).
+        return conTelefonoUnico(() -> { }, () -> ResponseEntity.status(HttpStatus.CREATED)
                 .body(contactoService.crear(principal.gestoriaId(), principal.usuarioId(), telefono.get(),
                         request.nombre().strip())));
     }
@@ -88,9 +104,12 @@ public class ContactoController {
         if (invalido.isPresent()) {
             return invalido.get();
         }
-        return conTelefonoUnico(() -> ResponseEntity.ok(
-                contactoService.actualizar(principal.gestoriaId(), principal.usuarioId(), id, telefono.get(),
-                        request.nombre().strip())));
+        return conTelefonoUnico(
+                () -> accesoAjeno.contacto(principal.usuarioId(), principal.gestoriaId(), id,
+                        OperacionAuditada.EDITAR_CONTACTO),
+                () -> ResponseEntity.ok(
+                        contactoService.actualizar(principal.gestoriaId(), principal.usuarioId(), id, telefono.get(),
+                                request.nombre().strip())));
     }
 
     @DeleteMapping("/contactos/{id}")
@@ -101,6 +120,8 @@ public class ContactoController {
             contactoService.desactivar(principal.gestoriaId(), principal.usuarioId(), id);
             return ResponseEntity.noContent().build();
         } catch (RecursoNoEncontradoException e) {
+            accesoAjeno.contacto(principal.usuarioId(), principal.gestoriaId(), id,
+                    OperacionAuditada.DESACTIVAR_CONTACTO);
             return ResponseEntity.notFound().build();
         }
     }
@@ -112,6 +133,8 @@ public class ContactoController {
         try {
             return ResponseEntity.ok(contactoService.reactivar(principal.gestoriaId(), principal.usuarioId(), id));
         } catch (RecursoNoEncontradoException e) {
+            accesoAjeno.contacto(principal.usuarioId(), principal.gestoriaId(), id,
+                    OperacionAuditada.REACTIVAR_CONTACTO);
             return ResponseEntity.notFound().build();
         }
     }
@@ -133,6 +156,8 @@ public class ContactoController {
                     contactoService.enlazar(principal.gestoriaId(), principal.usuarioId(), id,
                             request.explotacionId(), rol.get()));
         } catch (RecursoNoEncontradoException e) {
+            // Primero el Contacto de la ruta; si es propio, el explotacionId del cuerpo (D3).
+            accesoAjeno.vinculo(principal.usuarioId(), principal.gestoriaId(), id, request.explotacionId());
             return ResponseEntity.notFound().build();
         } catch (ContactoInactivoException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(new MotivoErrorResponse(MOTIVO_CONTACTO_INACTIVO));
@@ -148,6 +173,9 @@ public class ContactoController {
             contactoService.desenlazar(principal.gestoriaId(), principal.usuarioId(), id, explotacionId);
             return ResponseEntity.noContent().build();
         } catch (RecursoNoEncontradoException e) {
+            // Se audita el Contacto de la ruta (D3); el explotacionId es de la ruta, no del cuerpo.
+            accesoAjeno.contacto(principal.usuarioId(), principal.gestoriaId(), id,
+                    OperacionAuditada.DESVINCULAR_EXPLOTACION);
             return ResponseEntity.notFound().build();
         }
     }
@@ -157,10 +185,12 @@ public class ContactoController {
      * servicio (ya revertido) y se captura aqui, fuera de la transaccion -- mismo patron que
      * RegistroGestoriaController. Sin consulta previa: nunca se pregunta si el telefono existe.
      */
-    private static ResponseEntity<?> conTelefonoUnico(Supplier<ResponseEntity<?>> operacion) {
+    private static ResponseEntity<?> conTelefonoUnico(Runnable auditarAccesoAjeno,
+                                                     Supplier<ResponseEntity<?>> operacion) {
         try {
             return operacion.get();
         } catch (RecursoNoEncontradoException e) {
+            auditarAccesoAjeno.run();
             return ResponseEntity.notFound().build();
         } catch (DataIntegrityViolationException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(new MotivoErrorResponse(ContactoService.MOTIVO_TELEFONO_EN_USO));

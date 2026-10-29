@@ -1506,3 +1506,11 @@ puestas (las siete `SUPABASE_*`, `SPRING_PROFILES_ACTIVE=clever`, `TZ=UTC`, `FRO
   añadir el dominio en Clever; (2) **Twilio** (sandbox: `TWILIO_*`, webhook y status-callback); (3) `ANTHROPIC_API_KEY`;
   (4) el onboarding de una gestoría de demo con datos inventados + login (cuando Antonio tenga el `ONBOARDING_SECRET` a
   mano). Pendiente de pago: Supabase a Pro (copias descargables/PITR, sin pausa a los 7 días).
+
+- **Auditoria T5 — riesgo D3:** un usuario autenticado puede llenar la tabla `auditoria` probando ids ajenos (una
+  fila `ACCESO_OTRA_GESTORIA` por intento que cae en un recurso de otra gestoria). **No se limita en el MVP**
+  (futuro: rate-limit o dedupe por usuario/entidad/ventana).
+
+- **Auditoria T5 — deliberado (D3):** el `explotacionId` **de ruta** en `DELETE /contactos/{id}/explotaciones/{explotacionId}`
+  no se audita como `ACCESO_OTRA_GESTORIA` si es ajeno (solo se audita el contacto de la ruta). D3 enumera ids de **cuerpo**
+  solo para el PATCH de trámites y el vínculo de contactos; vector marginal, decisión de alcance, no un fallo.
