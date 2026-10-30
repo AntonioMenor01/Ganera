@@ -1,10 +1,11 @@
 import { useLayoutEffect, useRef } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { ClipboardListIcon, UsersIcon, WarehouseIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/shared/auth/AuthContext";
 import { LogoGanera } from "@/shared/brand/LogoGanera";
+import { BuscadorGlobal } from "@/features/search/BuscadorGlobal";
 import { SuscripcionBanner } from "@/features/facturacion/SuscripcionBanner";
 import { useSuscripcionEstado } from "@/features/facturacion/useSuscripcionEstado";
 import { iniciales } from "./iniciales";
@@ -79,10 +80,23 @@ export function AppLayout() {
     <div className="flex min-h-screen flex-col bg-background text-foreground lg:pl-60">
       <header className="border-b-2 border-divisor bg-sidebar px-4 pt-3 pb-1 text-sidebar-foreground md:px-6 md:py-4 lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-60 lg:flex-col lg:border-r-2 lg:border-b-0 lg:p-0">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 md:flex md:gap-6 lg:min-h-0 lg:flex-1 lg:flex-col lg:items-stretch lg:gap-0">
-          <div className="col-start-1 row-start-1 flex items-center gap-2 md:shrink-0 lg:h-16 lg:gap-2.5 lg:border-b-2 lg:border-divisor lg:px-5">
-            <LogoGanera decorativo className="size-5 text-marca lg:size-[22px]" />
-            <span className="font-bold tracking-wide text-foreground lg:text-base">GANERA</span>
+          <div className="col-start-1 row-start-1 md:shrink-0 lg:h-16 lg:border-b-2 lg:border-divisor lg:px-5">
+            {/* La marca lleva al inicio (el panel de resumen). Enlace con nombre accesible propio
+                («Ir al inicio»): «GANERA» como texto de enlace se leería raro. Vive fuera del <nav>
+                principal, así que no cuenta como un enlace más de la tira de navegación. */}
+            <Link
+              to="/"
+              aria-label="Ir al inicio"
+              className="flex h-full items-center gap-2 rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-ring lg:gap-2.5"
+            >
+              <LogoGanera decorativo className="size-5 text-marca lg:size-[22px]" />
+              <span className="font-bold tracking-wide text-foreground lg:text-base">GANERA</span>
+            </Link>
           </div>
+          {/* Buscador global: en móvil, fila propia a todo el ancho bajo la nav; de md a lg, un
+              campo en la barra; desde lg, en la columna de la barra lateral, bajo la marca. El
+              atajo Ctrl/⌘+K lo abre desde cualquier parte. */}
+          <BuscadorGlobal className="col-span-2 row-start-3 w-full md:w-56 lg:mx-3 lg:mt-3 lg:w-auto" />
           {/* Móvil: a sangre (-mx-4) con el margen interior de 16 px dentro (px-4) y 4 px arriba y
               abajo (py-1) para que el anillo de foco de 3 px no lo recorte el overflow. Desde `lg`,
               columna con scroll vertical propio y 12 px de margen (p-3), que también deja sitio al
