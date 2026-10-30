@@ -225,7 +225,8 @@ describe("GanaderosPage: navegación al detalle", () => {
     montar()
     await screen.findByRole("link", { name: "Ana Ruiz" })
 
-    // Tab: botón Nombre, botón NIF, enlace del primer ganadero.
+    // Tab: botón «Añadir ganadero», botón Nombre, botón NIF, enlace del primer ganadero.
+    await user.tab()
     await user.tab()
     await user.tab()
     await user.tab()
@@ -345,7 +346,7 @@ describe("GanaderosPage: estados", () => {
 
     expect(
       await screen.findByText(
-        "Todavía no hay ganaderos. Se crean al importar el Excel de explotaciones.",
+        "Todavía no hay ganaderos. Añade uno o impórtalos con el Excel de explotaciones.",
       ),
     ).toBeInTheDocument()
     expect(screen.getByText("0 ganaderos")).toBeInTheDocument()

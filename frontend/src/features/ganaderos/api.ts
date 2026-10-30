@@ -25,3 +25,13 @@ export async function obtenerGanadero(id: number, signal?: AbortSignal): Promise
   const { data } = await httpClient.get<GanaderoDetalle>(`/ganaderos/${id}`, { signal });
   return data;
 }
+
+/**
+ * Alta manual de un ganadero (POST /ganaderos). El backend valida el NIF y la unicidad y responde
+ * 400/409 con `{ motivo }`; httpClient lo convierte en ErrorApi. Devuelve la fila creada (con
+ * numeroExplotaciones 0).
+ */
+export async function crearGanadero(nombre: string, nif: string): Promise<GanaderoResumen> {
+  const { data } = await httpClient.post<GanaderoResumen>("/ganaderos", { nombre, nif });
+  return data;
+}

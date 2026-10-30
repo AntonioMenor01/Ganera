@@ -5,8 +5,11 @@ package com.ganera.core.shared.auditoria;
  * {@code ORIGEN}, plan 2026-10-21). {@code IMPORTACION}: una entidad creada o enlazada por el importador de
  * Excel, para distinguirla de la misma accion hecha desde un endpoint. {@code REGISTRO}: un alta por el
  * registro publico ({@code POST /gestorias/registro}), para distinguirla del onboarding interno.
+ * {@code MANUAL}: un alta hecha a mano desde un endpoint de la UI (p. ej. {@code POST /ganaderos}),
+ * para distinguirla de la misma accion llegada por el importador de Excel.
  */
 public enum OrigenAuditoria {
     IMPORTACION,
-    REGISTRO
+    REGISTRO,
+    MANUAL
 }
