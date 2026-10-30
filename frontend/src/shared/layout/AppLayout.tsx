@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/shared/auth/AuthContext";
 import { LogoGanera } from "@/shared/brand/LogoGanera";
+import { BuscadorGlobal } from "@/features/search/BuscadorGlobal";
 import { SuscripcionBanner } from "@/features/facturacion/SuscripcionBanner";
 import { useSuscripcionEstado } from "@/features/facturacion/useSuscripcionEstado";
 import { iniciales } from "./iniciales";
@@ -92,6 +93,10 @@ export function AppLayout() {
               <span className="font-bold tracking-wide text-foreground lg:text-base">GANERA</span>
             </Link>
           </div>
+          {/* Buscador global: en móvil, fila propia a todo el ancho bajo la nav; de md a lg, un
+              campo en la barra; desde lg, en la columna de la barra lateral, bajo la marca. El
+              atajo Ctrl/⌘+K lo abre desde cualquier parte. */}
+          <BuscadorGlobal className="col-span-2 row-start-3 w-full md:w-56 lg:mx-3 lg:mt-3 lg:w-auto" />
           {/* Móvil: a sangre (-mx-4) con el margen interior de 16 px dentro (px-4) y 4 px arriba y
               abajo (py-1) para que el anillo de foco de 3 px no lo recorte el overflow. Desde `lg`,
               columna con scroll vertical propio y 12 px de margen (p-3), que también deja sitio al

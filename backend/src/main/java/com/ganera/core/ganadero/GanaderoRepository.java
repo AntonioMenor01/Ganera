@@ -3,10 +3,11 @@ package com.ganera.core.ganadero;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 import java.util.Optional;
 
-public interface GanaderoRepository extends JpaRepository<Ganadero, Long> {
+public interface GanaderoRepository extends JpaRepository<Ganadero, Long>, JpaSpecificationExecutor<Ganadero> {
     /** Upsert del importador por NIF (UNIQUE global), con gestoriaId explicito: vacio tanto si no
      * existe como si es de otra Gestoria -- no depende del gestoriaFilter ambiente. */
     Optional<Ganadero> findByNifAndGestoriaId(String nif, Long gestoriaId);
