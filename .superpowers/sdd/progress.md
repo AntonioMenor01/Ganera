@@ -1531,3 +1531,52 @@ La auditoría de T4 se re-enganchó sobre el `StripeWebhookService`/`OnboardingC
   auditoría `SUSCRIPCION_CREADA` con `ESTADO=ACTIVA` fijo, pero en el camino con `stripeSubscriptionId` la suscripción se
   crea vía `EnlaceStripeService.enlazar` y su estado real viene de Stripe (puede no ser ACTIVA). Corregir en T6 para que
   la fila refleje el estado real persistido, no el literal.
+
+## Auditoría base — T6 (inventario cerrado + pendientes PR #7) — hecho, commit `78aa3cd` (2026-10-29)
+
+Rama `feat/auditoria`. Flujo desde la sesión principal (sin subagentes); TDD rojo→verde, mutaciones con `cp`+`cmp`
+(nunca git). **Cierra los dos pendientes de la refundición PR #7** de arriba.
+
+- **Fix (b):** `OnboardingController` registra `SUSCRIPCION_CREADA` con `suscripcion.getEstado()` (lo realmente
+  persistido), no el literal `ACTIVA`. Test `OnboardingControllerTest.elAltaConStripeRegistra…EstadoRealPersistido…`
+  (doble `EnlaceStripeFake` sin SDK, `past_due → IMPAGO_GRACIA`) visto rojo (literal) → verde; afirma además que la fila
+  lleva el id generado por el `save` (orden save→auditoría). El camino sin Stripe sigue `ACTIVA` (tests existentes).
+- **Pendiente (a):** `EnlaceStripeService.enlazar` **sin acción propia** (su resultado va en la `SUSCRIPCION_CREADA`
+  corregida); los cambios de estado de Stripe ya los auditaba T4 (`SUSCRIPCION_ESTADO_CAMBIADO`); **`AltaPendiente`** =
+  **exclusión documentada** (pre-tenant), vigilada por la guardia. `StripeWebhookEndToEndTest` comprueba que el checkout
+  de la landing deja la fila `alta_pendiente` y **cero** filas de auditoría.
+- **Inventario cerrado** `InventarioAuditoriaTest`: 21 rutas de escritura + 3 `@Scheduled` + 10 `@Modifying` enumerados
+  del contexto (los `@Scheduled`/`@Modifying` por escaneo de classpath, para ver los planificadores desactivados por
+  `@ConditionalOnProperty`) contra una lista declarada (auditada→su clase de test / exenta→razón), con verificación por
+  reflexión de que cada clase de test existe y tiene `@Test`, y de que ninguna entrada sobra.
+- **Guardia DML reutilizable:** `InspectorDml` (`StatementInspector` solo en test, registrado en el `application.yml` de
+  test; acumulador estático, **asume tests en serie**), `GuardiaDml` (lógica pura + `TABLAS_NEGOCIO`/`TABLAS_EXENTAS`),
+  `GuardiaDmlExtension` (`InvocationInterceptor`: arma **después** de `@BeforeEach`, mide solo el cuerpo), `@SinGuardiaDml`
+  para las excepciones. Conectada a 6 clases E2E de auditoría (un único opt-out: `un409DeVersionNoDejaFila`, siembra en
+  el cuerpo). `alta_pendiente` en `TABLAS_NEGOCIO` ∧ `TABLAS_EXENTAS` (exención vigilada).
+- **Mutaciones demostradas (cp+cmp):** quitar `auditarCambioEstado` del camino del invoice → rojo la guardia (aunque la
+  aserción propia del test pasaba); quitar `alta_pendiente` de `TABLAS_EXENTAS` → rojo el checkout de la landing y los
+  tests puros; añadir un `@PostMapping` de prueba → rojo el inventario; volver `SUSCRIPCION_CREADA` al literal `ACTIVA` →
+  rojo el test de onboarding.
+- **Verificación:** `./mvnw clean test` **1287** (0 fallos, 1 omitido: la evaluación Haiku), JDK 21, BUILD SUCCESS
+  (1275 → 1287, +12). Frontend sin tocar, sin migraciones, sin tocar IA. 15 ficheros (1 de main: `OnboardingController`).
+
+## Auditoría base — T7 (documentación, skill, authenticator, smoke) (2026-10-30)
+
+**Solo docs/skill + 1 test de regresión** (sin código de negocio, migraciones, IA ni frontend).
+
+- **`authenticator` ya revocado en T2** (callback: `ajenos` lo incluye condicionalmente + todos los `REVOKE`; lo vigila
+  el 02 y `SeguridadEsquemaPostgresTest`). Cierra el pendiente de la migración a Supabase («el callback no revocaba a
+  `authenticator`»). **Faltaba el test concreto** «concesión hostil a `authenticator` → migrar la quita → 02 a 0 filas»:
+  añadido (`SeguridadEsquemaPostgresTest.unaConcesionHostilAAuthenticatorQuedaRevocadaTrasMigrar`), con su mutación
+  demostrada (quitar `authenticator` de `ajenos` → rojo). PostgreSQL embebido: **31 → 32**.
+- **Skill `nueva-entidad-tenant`:** reescrito el punto 4 (`gestoriaId` explícito en toda consulta, nunca fiarse solo del
+  filtro ambiente, `findById` por id controlado por el atacante = hallazgo bloqueante) y añadido el punto 6 (cada
+  escritura deja fila de auditoría + entrada en el inventario).
+- **`CLAUDE.md`:** bullet «Auditoría» nuevo en Technical decisions con la regla no-negociable, las consultas sin tenant
+  (incl. `bloquearPorSid` de D7, nueva), `existsByIdAndGestoriaIdNot`/`AccesoAjeno`, la propiedad de IP y «nunca
+  `GANERA_AUDITORIA_*` en Clever», las exclusiones (`AltaPendiente`, mensajes sin gestoría) y `authenticator`.
+- **Smoke:** parte local/Supabase lista ahora; el tramo de Clever con `X-Forwarded-For` queda como **gate posterior**
+  al despliegue (post PR→main). Si en ese gate la fila guardara la IP falsa o la del proxy, el valor seguro por defecto
+  es `ip-desde-x-forwarded-for=false`.
+- **Kit `ganera-clever`** (fuera del repo): se le pasa el diff a Antonio antes de que ejecute nada.

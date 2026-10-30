@@ -129,6 +129,31 @@ class SeguridadEsquemaPostgresTest {
                 "create table ganera.x (id int)");
     }
 
+    /**
+     * authenticator es el rol con LOGIN de la Data API de Supabase. Una concesion hecha a mano a authenticator
+     * (tabla, esquema, secuencia) debe desaparecer al migrar — el callback lo incluye en «ajenos» si existe — y el
+     * 02 volver a 0 filas. Cierra el pendiente de Supabase «el callback no revocaba a authenticator» (tarea de
+     * auditoria): el resto del test de concesiones hostiles no incluye authenticator en sus grants.
+     */
+    @Test
+    void unaConcesionHostilAAuthenticatorQuedaRevocadaTrasMigrar() throws SQLException {
+        String baseDeDatos = migrarComoPropietario();
+        DataSource propietario = PostgresEmbebido.dataSourceComo(PostgresEmbebido.PROPIETARIO, baseDeDatos);
+        ejecutar(propietario,
+                "grant select on table ganera.gestoria to authenticator",
+                "grant usage on schema ganera to authenticator",
+                "grant usage on sequence ganera.gestoria_id_seq to authenticator");
+        // No vacuo: la guardia (02) ve la concesion a authenticator antes de migrar.
+        assertThat(problemas(baseDeDatos)).anyMatch(p -> p.contains("authenticator"));
+
+        PostgresEmbebido.flywayPropietario(baseDeDatos).load().migrate();
+
+        assertThat(problemas(baseDeDatos)).isEmpty();
+        JdbcTemplate jdbc = new JdbcTemplate(PostgresEmbebido.dataSource(baseDeDatos));
+        assertThat(jdbc.queryForObject("select has_table_privilege('authenticator', 'ganera.gestoria', 'SELECT') "
+                + "or has_schema_privilege('authenticator', 'ganera', 'USAGE')", Boolean.class)).isFalse();
+    }
+
     @Test
     void unaTablaFuturaQuedaProtegidaYLaAuditoriaSoloAdmiteLecturaEInsercion() throws SQLException {
         String baseDeDatos = PostgresEmbebido.nuevaBaseDeDatos();

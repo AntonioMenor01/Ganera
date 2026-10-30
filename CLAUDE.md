@@ -1115,6 +1115,53 @@ approval step before anything is written to OVZ.net.
     for a missing variable carries the property's **unresolved** raw value (a secret would only show if a variable's
     value itself contained `${…}` — M4). The real pooler (`rol.<ref>` users), the real CA and `ALTER DATABASE` as
     Supabase's `postgres` can only be checked by the real smoke (T5).
+- **Auditoría — tabla `auditoria` inmutable + inventario cerrado** (2026-10-21 → 2026-10-30, rama
+  `feat/auditoria`; plan `docs/superpowers/plans/2026-10-21-auditoria-base.md`, decisiones D1–D10). Registra quién
+  hizo qué y cuándo, sin datos personales en el contenido. **Tabla `auditoria`** (`shared/auditoria`, `V25` común
+  H2/PostgreSQL): `gestoria_id` **NOT NULL** + FK a `gestoria`/`usuario` (sin `ON DELETE`), `actor_tipo`
+  (`USUARIO`/`SISTEMA`/`WEBHOOK_TWILIO`/`WEBHOOK_STRIPE`/`PLANIFICADOR`), `accion`/`entidad_tipo` (sin `CHECK`: los
+  cierran los enums `AccionAuditoria`/`EntidadAuditada` y el inventario), `antes`/`despues` (`VARCHAR(4000)`,
+  `DatosAuditoria` con vocabulario `Clave` cerrado — **ningún `String` libre**, un test por reflexión lo vigila),
+  `ip`/`request_id` (NULL en planificadores), `creado_en` (`Instant` del `Clock`, micros). Entidad `Auditoria`
+  `@Immutable`; `AuditoriaRepository extends Repository<…>` — **solo `save` y lecturas con `gestoriaId` explícito**,
+  sin `delete*`. **Inmutabilidad en PostgreSQL** (`V26`, `db/postgresql`): dos triggers `BEFORE` —
+  `auditoria_sin_cambios` (UPDATE/TRUNCATE por sentencia) y `auditoria_sin_borrado` (DELETE por fila, por si un futuro
+  proceso de retención quisiera borrar fila a fila); el callback de seguridad **falla el arranque** si la tabla existe
+  sin sus dos triggers exactos (D2), y RLS deja la tabla «solo inserción» para `ganera_app` (SELECT+INSERT, nunca
+  UPDATE/DELETE). **`AuditoriaService`**: `registrar(...)` (`MANDATORY`, exige la transacción de la escritura) y
+  `registrarAparte(...)` (`REQUIRES_NEW`, para lecturas sensibles, accesos a otra gestoría y login, que deben quedar
+  aunque la operación termine en 404/401/rollback). La gestoría la pasa siempre quien llama desde la entidad tocada;
+  con `Actor.usuario` se comprueba que el usuario es de esa gestoría. **IP y `request_id`**: `ContextoPeticionFilter`
+  (`HIGHEST_PRECEDENCE`) pone un UUID por petición en el MDC y en la cabecera `X-Request-Id`; `IpCliente` es puro y la
+  IP **nunca** decide nada de seguridad. Propiedad `ganera.auditoria.ip-desde-x-forwarded-for`: `false` por defecto
+  (local/tests: `getRemoteAddr()`), `true` **solo** en `application-clever.yml`, **sin placeholder** — y **nunca
+  definas `GANERA_AUDITORIA_*` en Clever** (relaxed binding abriría el `X-Forwarded-For`). **Regla no-negociable:**
+  toda escritura nueva deja su fila de auditoría **y** su entrada en el **inventario cerrado**
+  (`InventarioAuditoriaTest`, T6): enumera del contexto todas las rutas de escritura, los `@Scheduled` y los
+  `@Modifying`, y los compara con una lista declarada (cada una *auditada→su test* o *exenta→su razón*); una ruta,
+  planificador o `@Modifying` nuevo sin declarar pone la suite en rojo. La **guardia DML** (`InspectorDml`,
+  `StatementInspector` solo de tests registrado en el `application.yml` de test, + `GuardiaDml`/`GuardiaDmlExtension`
+  con `@SinGuardiaDml` para las excepciones) exige, por escenario, que toda escritura de negocio no exenta lleve una
+  fila `insert into auditoria`; el acumulador es estático y **asume ejecución de tests en serie** (no actives
+  paralelismo de JUnit sin rehacerlo). **Accesos a otra gestoría (D3):** `existsByIdAndGestoriaIdNot` (en los repos de
+  `Tramite`/`Contacto`/`Explotacion`/`Ganadero`) + `AccesoAjeno`; cuando un recurso existe en otra gestoría se deja
+  una fila `ACCESO_OTRA_GESTORIA` en la gestoría **del actor** (nunca el id de la ajena) y la respuesta **no cambia**
+  (sigue `404` sin cuerpo). **Lecturas sensibles (D4):** `GET /tramites/{id}`, `GET /ganaderos/{id}`, `GET /contactos`
+  dejan `LECTURA_*` (los listados sin texto ni teléfonos, no). **Consultas sin tenant** (globalmente `UNIQUE`, el
+  request no trae gestoría): `ContactoRepository.findByTelefono` (webhook 3b) y las **dos por SID** de
+  `RespuestaWhatsappRepository` — `actualizarEstadoPorSid` (B2) y `bloquearPorSid` (`SELECT … FOR UPDATE` que D7 añadió
+  para leer el estado anterior exacto y la gestoría de la fila del callback de estado de Twilio). **Exclusiones
+  documentadas (escriben sin auditar):** los mensajes sin gestoría (`mensaje_campo` de número desconocido /
+  `ERROR_RECEPCION`, D6) y **`AltaPendiente`** (pre-tenant: el checkout de la landing sin `client_reference_id` crea la
+  fila antes de que exista la Gestoría; su transición a una Gestoría real sí se audita en el onboarding). La exclusión
+  de `alta_pendiente` queda **vigilada** por la guardia (está en `TABLAS_NEGOCIO` ∧ `TABLAS_EXENTAS`; quitarla pone
+  rojo el checkout). **`authenticator`** (rol LOGIN de la Data API de Supabase) lo **revoca el callback** de seguridad
+  (incluido en `ajenos` si existe; cierra el pendiente de la migración a Supabase) y lo vigila el 02. **PR #7
+  (landing/Stripe):** los cambios de estado de suscripción dejan `SUSCRIPCION_ESTADO_CAMBIADO` (actor `WEBHOOK_STRIPE`,
+  gestoría de la suscripción); `EnlaceStripeService.enlazar` no tiene acción propia — su resultado va en la fila
+  `SUSCRIPCION_CREADA` del onboarding, que desde esta tarea usa el **estado realmente persistido**
+  (`suscripcion.getEstado()`), no el literal `ACTIVA` (el camino con `stripeSubscriptionId` puede quedar en otro
+  estado según Stripe).
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)
