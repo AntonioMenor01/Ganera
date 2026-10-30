@@ -3,10 +3,13 @@ package com.ganera.core.whatsapp;
 import com.ganera.core.contacto.ContactoExplotacionRepository;
 import com.ganera.core.contacto.ContactoRepository;
 import com.ganera.core.tramite.TramiteRepository;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.tiempo.RelojConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.context.annotation.Import;
 
 import java.time.Clock;
 
@@ -16,6 +19,7 @@ import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTest
 /** Comprobacion previa barata: un MessageSid ya guardado es un duplicado y no se vuelve a guardar. */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = NONE)
+@Import({AuditoriaService.class, RelojConfig.class})
 class TwilioWebhookIdempotencyTest {
 
     @Autowired
@@ -26,11 +30,13 @@ class TwilioWebhookIdempotencyTest {
     private ContactoExplotacionRepository contactoExplotacionRepository;
     @Autowired
     private TramiteRepository tramiteRepository;
+    @Autowired
+    private AuditoriaService auditoriaService;
 
     @Test
     void unMessageSidYaGuardadoNoDebeVolverAGuardarse() {
         MensajeEntranteService servicio = new MensajeEntranteService(mensajeCampoRepository, contactoRepository,
-                contactoExplotacionRepository, tramiteRepository, Clock.systemUTC());
+                contactoExplotacionRepository, tramiteRepository, auditoriaService, Clock.systemUTC());
 
         MensajeCampo existente = new MensajeCampo();
         existente.setMessageSid("SM999");

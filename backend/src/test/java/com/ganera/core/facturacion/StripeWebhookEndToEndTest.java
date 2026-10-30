@@ -2,8 +2,11 @@ package com.ganera.core.facturacion;
 
 import com.ganera.core.gestoria.Gestoria;
 import com.ganera.core.gestoria.GestoriaRepository;
+import com.ganera.core.shared.auditoria.GuardiaDmlExtension;
+import com.ganera.core.shared.auditoria.LimpiezaAuditoria;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -12,6 +15,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -32,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "stripe.webhook-secret=whsec_test_e2e_secret")
+@ExtendWith(GuardiaDmlExtension.class)
 class StripeWebhookEndToEndTest {
 
     private static final String SECRETO = "whsec_test_e2e_secret";
@@ -44,11 +49,16 @@ class StripeWebhookEndToEndTest {
     private SuscripcionRepository suscripcionRepository;
     @Autowired
     private GestoriaRepository gestoriaRepository;
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private Gestoria gestoria;
 
     @AfterEach
     void limpiar() {
+        // El webhook audita los cambios de estado de la suscripcion (T4), asi que hay que vaciar auditoria
+        // antes de borrar la gestoria: la FK fk_auditoria_gestoria no tiene ON DELETE (a proposito).
+        LimpiezaAuditoria.borrar(jdbcTemplate);
         altaPendienteRepository.findByStripeSessionId("cs_e2e").ifPresent(altaPendienteRepository::delete);
         suscripcionRepository.findByStripeSubscriptionId("sub_linked").ifPresent(suscripcionRepository::delete);
         if (gestoria != null) {
@@ -70,6 +80,9 @@ class StripeWebhookEndToEndTest {
                   }
                 }""");
 
+        // Baseline limpio para contar filas de auditoria sin depender del orden de los tests.
+        LimpiezaAuditoria.borrar(jdbcTemplate);
+
         ResponseEntity<String> respuesta = enviar(payload);
 
         assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
@@ -79,6 +92,10 @@ class StripeWebhookEndToEndTest {
         assertThat(alta.getPlan()).isEqualTo("base");
         assertThat(alta.getPeriodo()).isEqualTo("mensual");
         assertThat(alta.getNif()).isEqualTo("B11111111");
+        // Exclusion documentada (T6 a): el alta de la landing es pre-tenant (sin gestoria), asi que NO deja
+        // fila de auditoria; su transicion a una Gestoria real se audita en el onboarding. La guardia DML da
+        // por buena esta escritura solo porque alta_pendiente esta en TABLAS_EXENTAS (exencion vigilada).
+        assertThat(jdbcTemplate.queryForObject("select count(*) from auditoria", Long.class)).isZero();
     }
 
     @Test

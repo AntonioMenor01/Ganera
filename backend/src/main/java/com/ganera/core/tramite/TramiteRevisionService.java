@@ -5,6 +5,12 @@ import com.ganera.core.explotacion.Explotacion;
 import com.ganera.core.explotacion.ExplotacionRepository;
 import com.ganera.core.gestoria.Usuario;
 import com.ganera.core.gestoria.UsuarioRepository;
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.Actor;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.auditoria.Clave;
+import com.ganera.core.shared.auditoria.DatosAuditoria;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
 import com.ganera.core.tramite.CrotalNormalizador.TipoCrotal;
 import com.ganera.core.whatsapp.MensajeCampo;
 import com.ganera.core.whatsapp.MensajeCampoRepository;
@@ -87,6 +93,7 @@ public class TramiteRevisionService {
     private final Clock clock;
     private final WhatsappDetalleService whatsappDetalleService;
     private final TramiteEventoRepository tramiteEventoRepository;
+    private final AuditoriaService auditoriaService;
 
     /** Proxy compartido: dentro de la transaccion es el EntityManager de la peticion (OSIV). */
     @PersistenceContext
@@ -101,7 +108,8 @@ public class TramiteRevisionService {
             UsuarioRepository usuarioRepository,
             Clock clock,
             WhatsappDetalleService whatsappDetalleService,
-            TramiteEventoRepository tramiteEventoRepository) {
+            TramiteEventoRepository tramiteEventoRepository,
+            AuditoriaService auditoriaService) {
         this.tramiteRepository = tramiteRepository;
         this.explotacionRepository = explotacionRepository;
         this.tramiteCrotalService = tramiteCrotalService;
@@ -111,6 +119,7 @@ public class TramiteRevisionService {
         this.clock = clock;
         this.whatsappDetalleService = whatsappDetalleService;
         this.tramiteEventoRepository = tramiteEventoRepository;
+        this.auditoriaService = auditoriaService;
     }
 
     /**
@@ -121,6 +130,21 @@ public class TramiteRevisionService {
     @Transactional
     public TramiteDetalleResponse actualizar(Long gestoriaId, Long tramiteId, Long versionVista,
                                              Long explotacionId, TipoTramite tipoTramite, List<String> crotales) {
+        // Overload sin usuario: solo lo usa la invocacion directa del servicio en tests (no un endpoint real).
+        // No deja fila de auditoria (no hay actor); el endpoint siempre pasa el usuario del JWT.
+        return actualizarInterno(gestoriaId, null, tramiteId, versionVista, explotacionId, tipoTramite, crotales);
+    }
+
+    /** PATCH /tramites/{id} del endpoint: igual que el otro, pero deja fila TRAMITE_EDITADO (actor = JWT). */
+    @Transactional
+    public TramiteDetalleResponse actualizar(Long gestoriaId, Long usuarioId, Long tramiteId, Long versionVista,
+                                             Long explotacionId, TipoTramite tipoTramite, List<String> crotales) {
+        return actualizarInterno(gestoriaId, usuarioId, tramiteId, versionVista, explotacionId, tipoTramite, crotales);
+    }
+
+    private TramiteDetalleResponse actualizarInterno(Long gestoriaId, Long usuarioId, Long tramiteId,
+                                                     Long versionVista, Long explotacionId, TipoTramite tipoTramite,
+                                                     List<String> crotales) {
         Tramite tramite = cargarConBloqueo(gestoriaId, tramiteId);
         if (tramite.getEstado() == EstadoTramite.HECHO_EN_OVZ) {
             // Motivo propio: el gestor debe saber que hay que quitar la marca primero.
@@ -129,6 +153,11 @@ public class TramiteRevisionService {
         exigirPendienteRevision(tramite, MOTIVO_EDITAR_SOLO_PENDIENTE);
         exigirVersion(tramite, versionVista);
         long versionLeida = tramite.getVersion();
+        Long explotacionIdAntes = tramite.getExplotacion() != null ? tramite.getExplotacion().getId() : null;
+        TipoTramite tipoAntes = tramite.getTipoTramite();
+        List<TramiteCrotal> filasAntes = filasDe(tramite, gestoriaId);
+        int numCrotalesAntes = filasAntes.size();
+        List<Long> animalIdsAntes = idsDeAnimales(filasAntes);
 
         boolean explotacionCambiada = false;
         if (explotacionId != null) {
@@ -155,6 +184,21 @@ public class TramiteRevisionService {
         tramiteRepository.save(tramite);
         incrementarVersion(tramite, versionLeida);
 
+        if (usuarioId != null) {
+            Long explotacionIdDespues = tramite.getExplotacion() != null ? tramite.getExplotacion().getId() : null;
+            auditoriaService.registrar(AccionAuditoria.TRAMITE_EDITADO, gestoriaId, Actor.usuario(usuarioId),
+                    EntidadAuditada.TRAMITE, tramite.getId(),
+                    DatosAuditoria.con(Clave.VERSION, versionLeida)
+                            .y(Clave.EXPLOTACION_ID, explotacionIdAntes)
+                            .y(Clave.TIPO_TRAMITE, tipoAntes)
+                            .y(Clave.NUM_CROTALES, numCrotalesAntes)
+                            .y(Clave.ANIMAL_IDS, animalIdsAntes),
+                    DatosAuditoria.con(Clave.VERSION, tramite.getVersion())
+                            .y(Clave.EXPLOTACION_ID, explotacionIdDespues)
+                            .y(Clave.TIPO_TRAMITE, tramite.getTipoTramite())
+                            .y(Clave.NUM_CROTALES, filas.size())
+                            .y(Clave.ANIMAL_IDS, idsDeAnimales(filas)));
+        }
         return detalle(tramite, gestoriaId, filas);
     }
 
@@ -172,6 +216,18 @@ public class TramiteRevisionService {
      */
     @Transactional(noRollbackFor = ResolucionCrotalesCambiadaException.class)
     public TramiteResponse aprobar(Long gestoriaId, Long tramiteId, Long versionVista) {
+        // Overload sin usuario: solo la invocacion directa del servicio en tests. Sin fila de auditoria.
+        return aprobarInterno(gestoriaId, null, tramiteId, versionVista);
+    }
+
+    /** POST /tramites/{id}/aprobar del endpoint: deja fila TRAMITE_APROBADO (y TRAMITE_CROTALES_RERESUELTOS
+     * en el 409 que confirma la re-resolucion), actor = usuario del JWT. */
+    @Transactional(noRollbackFor = ResolucionCrotalesCambiadaException.class)
+    public TramiteResponse aprobar(Long gestoriaId, Long usuarioId, Long tramiteId, Long versionVista) {
+        return aprobarInterno(gestoriaId, usuarioId, tramiteId, versionVista);
+    }
+
+    private TramiteResponse aprobarInterno(Long gestoriaId, Long usuarioId, Long tramiteId, Long versionVista) {
         Tramite tramite = cargarConBloqueo(gestoriaId, tramiteId);
         exigirPendienteRevision(tramite, MOTIVO_APROBAR_SOLO_PENDIENTE);
         exigirVersion(tramite, versionVista);
@@ -200,6 +256,14 @@ public class TramiteRevisionService {
             // (decision 27), asi la pantalla que vio la resolucion anterior ya no puede aprobar.
             tramiteCrotalRepository.flush();
             incrementarVersion(tramite, versionLeida);
+            if (usuarioId != null) {
+                // Unico 409 que PERSISTE (noRollbackFor): la fila de auditoria se escribe en esta misma
+                // transaccion, que se confirma al salir, igual que la version incrementada.
+                auditoriaService.registrar(AccionAuditoria.TRAMITE_CROTALES_RERESUELTOS, gestoriaId,
+                        Actor.usuario(usuarioId), EntidadAuditada.TRAMITE, tramite.getId(),
+                        DatosAuditoria.con(Clave.VERSION, versionLeida).y(Clave.NUM_CROTALES, filas.size()),
+                        DatosAuditoria.con(Clave.VERSION, tramite.getVersion()).y(Clave.NUM_CROTALES, filas.size()));
+            }
             throw new ResolucionCrotalesCambiadaException(
                     "La resolución de los crotales ha cambiado desde la revisión (inventario actualizado): "
                             + String.join("; ", cambios) + ". Revisa el trámite antes de aprobarlo.");
@@ -223,6 +287,12 @@ public class TramiteRevisionService {
         tramite.setEstado(EstadoTramite.APROBADO);
         tramiteRepository.save(tramite);
         incrementarVersion(tramite, versionLeida);
+        if (usuarioId != null) {
+            auditoriaService.registrar(AccionAuditoria.TRAMITE_APROBADO, gestoriaId, Actor.usuario(usuarioId),
+                    EntidadAuditada.TRAMITE, tramite.getId(),
+                    DatosAuditoria.con(Clave.ESTADO, EstadoTramite.PENDIENTE_REVISION).y(Clave.VERSION, versionLeida),
+                    DatosAuditoria.con(Clave.ESTADO, EstadoTramite.APROBADO).y(Clave.VERSION, tramite.getVersion()));
+        }
         return TramiteResponse.from(tramite, respuestas(filas));
     }
 
@@ -232,6 +302,17 @@ public class TramiteRevisionService {
      * toda escritura aceptada, la incrementa exactamente en 1. */
     @Transactional
     public TramiteResponse rechazar(Long gestoriaId, Long tramiteId, Long versionVista) {
+        // Overload sin usuario: solo la invocacion directa del servicio en tests. Sin fila de auditoria.
+        return rechazarInterno(gestoriaId, null, tramiteId, versionVista);
+    }
+
+    /** POST /tramites/{id}/rechazar del endpoint: deja fila TRAMITE_RECHAZADO (actor = usuario del JWT). */
+    @Transactional
+    public TramiteResponse rechazar(Long gestoriaId, Long usuarioId, Long tramiteId, Long versionVista) {
+        return rechazarInterno(gestoriaId, usuarioId, tramiteId, versionVista);
+    }
+
+    private TramiteResponse rechazarInterno(Long gestoriaId, Long usuarioId, Long tramiteId, Long versionVista) {
         Tramite tramite = cargarConBloqueo(gestoriaId, tramiteId);
         exigirPendienteRevision(tramite, MOTIVO_RECHAZAR_SOLO_PENDIENTE);
         exigirVersion(tramite, versionVista);
@@ -241,6 +322,12 @@ public class TramiteRevisionService {
         tramite.setMotivoRechazo(null);
         tramiteRepository.save(tramite);
         incrementarVersion(tramite, versionLeida);
+        if (usuarioId != null) {
+            auditoriaService.registrar(AccionAuditoria.TRAMITE_RECHAZADO, gestoriaId, Actor.usuario(usuarioId),
+                    EntidadAuditada.TRAMITE, tramite.getId(),
+                    DatosAuditoria.con(Clave.ESTADO, EstadoTramite.PENDIENTE_REVISION).y(Clave.VERSION, versionLeida),
+                    DatosAuditoria.con(Clave.ESTADO, EstadoTramite.RECHAZADO).y(Clave.VERSION, tramite.getVersion()));
+        }
         return TramiteResponse.from(tramite, respuestas(filasDe(tramite, gestoriaId)));
     }
 
@@ -272,6 +359,10 @@ public class TramiteRevisionService {
         tramite.setHechoEnOvzEn(Instant.now(clock).truncatedTo(ChronoUnit.MICROS));
         tramiteRepository.save(tramite);
         incrementarVersion(tramite, versionLeida);
+        auditoriaService.registrar(AccionAuditoria.TRAMITE_MARCADO_HECHO_OVZ, gestoriaId, Actor.usuario(usuarioId),
+                EntidadAuditada.TRAMITE, tramite.getId(),
+                DatosAuditoria.con(Clave.ESTADO, EstadoTramite.APROBADO).y(Clave.VERSION, versionLeida),
+                DatosAuditoria.con(Clave.ESTADO, EstadoTramite.HECHO_EN_OVZ).y(Clave.VERSION, tramite.getVersion()));
         return TramiteResponse.from(tramite, respuestas(filasDe(tramite, gestoriaId)));
     }
 
@@ -294,6 +385,10 @@ public class TramiteRevisionService {
         tramite.setHechoEnOvzEn(null);
         tramiteRepository.save(tramite);
         incrementarVersion(tramite, versionLeida);
+        auditoriaService.registrar(AccionAuditoria.TRAMITE_DESMARCADO_HECHO_OVZ, gestoriaId, Actor.usuario(usuarioId),
+                EntidadAuditada.TRAMITE, tramite.getId(),
+                DatosAuditoria.con(Clave.ESTADO, EstadoTramite.HECHO_EN_OVZ).y(Clave.VERSION, versionLeida),
+                DatosAuditoria.con(Clave.ESTADO, EstadoTramite.APROBADO).y(Clave.VERSION, tramite.getVersion()));
         log.info("Marca de hecho en OVZ quitada: tramiteId={} usuarioId={}", tramite.getId(), usuarioId);
         return TramiteResponse.from(tramite, respuestas(filasDe(tramite, gestoriaId)));
     }
@@ -322,6 +417,11 @@ public class TramiteRevisionService {
         tramiteRepository.save(tramite);
         registrarEvento(tramite, usuario, TipoEventoTramite.DESCARTADO);
         incrementarVersion(tramite, versionLeida);
+        auditoriaService.registrar(AccionAuditoria.TRAMITE_DESCARTADO, gestoriaId, Actor.usuario(usuarioId),
+                EntidadAuditada.TRAMITE, tramite.getId(),
+                DatosAuditoria.con(Clave.ESTADO, EstadoTramite.PENDIENTE_REVISION).y(Clave.VERSION, versionLeida),
+                DatosAuditoria.con(Clave.ESTADO, EstadoTramite.RECHAZADO).y(Clave.VERSION, tramite.getVersion())
+                        .y(Clave.MOTIVO, MotivoRechazo.SIN_TRAMITE));
         return detalle(tramite, gestoriaId, filas);
     }
 
@@ -346,6 +446,11 @@ public class TramiteRevisionService {
         tramiteRepository.save(tramite);
         registrarEvento(tramite, usuario, TipoEventoTramite.DESCARTE_DESHECHO);
         incrementarVersion(tramite, versionLeida);
+        auditoriaService.registrar(AccionAuditoria.TRAMITE_DESCARTE_DESHECHO, gestoriaId, Actor.usuario(usuarioId),
+                EntidadAuditada.TRAMITE, tramite.getId(),
+                DatosAuditoria.con(Clave.ESTADO, EstadoTramite.RECHAZADO).y(Clave.VERSION, versionLeida)
+                        .y(Clave.MOTIVO, MotivoRechazo.SIN_TRAMITE),
+                DatosAuditoria.con(Clave.ESTADO, EstadoTramite.PENDIENTE_REVISION).y(Clave.VERSION, tramite.getVersion()));
         return detalle(tramite, gestoriaId, filasDe(tramite, gestoriaId));
     }
 
@@ -469,6 +574,15 @@ public class TramiteRevisionService {
 
     private static List<TramiteCrotalResponse> respuestas(List<TramiteCrotal> filas) {
         return filas.stream().map(TramiteCrotalResponse::from).toList();
+    }
+
+    /** Ids de los Animales a los que resuelven las filas (solo las resueltas EN_INVENTARIO), para el
+     * animal_ids de TRAMITE_EDITADO (D8 permite listas de ids). */
+    private static List<Long> idsDeAnimales(List<TramiteCrotal> filas) {
+        return filas.stream()
+                .filter(fila -> fila.getAnimal() != null)
+                .map(fila -> fila.getAnimal().getId())
+                .toList();
     }
 
     /**

@@ -2,7 +2,14 @@ package com.ganera.core.registro;
 
 import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.gestoria.UsuarioRepository;
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.ActorTipo;
+import com.ganera.core.shared.auditoria.Auditoria;
+import com.ganera.core.shared.auditoria.AuditoriaRepository;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
+import com.ganera.core.shared.auditoria.LimpiezaAuditoria;
 import org.junit.jupiter.api.AfterEach;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -38,6 +45,10 @@ class RegistroGestoriaEndToEndTest {
     private GestoriaRepository gestoriaRepository;
     @Autowired
     private UsuarioRepository usuarioRepository;
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+    @Autowired
+    private AuditoriaRepository auditoriaRepository;
 
     /** Cuerpo exacto de todo 400 de registro: {motivo} (MotivoErrorResponse), el mismo texto para
      * cualquier causa, y ninguna clave "mensaje" (el antiguo RegistroErrorResponse). */
@@ -46,6 +57,9 @@ class RegistroGestoriaEndToEndTest {
 
     @AfterEach
     void limpiar() {
+        // El registro audita (GESTORIA_CREADA/USUARIO_CREADO/SUSCRIPCION_*, T4); sin vaciar antes
+        // auditoria, el delete de gestoria falla por FK_AUDITORIA_GESTORIA (la FK no tiene ON DELETE).
+        LimpiezaAuditoria.borrar(jdbcTemplate);
         usuarioRepository.deleteAll();
         gestoriaRepository.deleteAll();
     }
@@ -66,6 +80,30 @@ class RegistroGestoriaEndToEndTest {
         assertThat(respuesta.getStatusCode().value()).isNotEqualTo(401);
         assertThat(respuesta.getStatusCode().value()).isEqualTo(503);
         assertThat(usuarioRepository.findByEmail("e2e-registro@gestoria.com")).isPresent();
+    }
+
+    @Test
+    void elRegistroDejaFilasGestoriaCreadaYUsuarioCreadoConOrigenRegistroYActorSistema() {
+        registrar("""
+                {"nombreGestoria":"Gestoria E2E Auditoria","nombreUsuario":"Empleado Auditoria",
+                 "email":"e2e-auditoria@gestoria.com","password":"password123","rangoClientes":"UNO_A_DIEZ"}
+                """);
+
+        Long gestoriaId = usuarioRepository.findByEmail("e2e-auditoria@gestoria.com").orElseThrow().getGestoria().getId();
+        Long usuarioId = usuarioRepository.findByEmail("e2e-auditoria@gestoria.com").orElseThrow().getId();
+        List<Auditoria> filas = auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaId);
+        assertThat(filas).extracting(Auditoria::getAccion)
+                .containsExactly(AccionAuditoria.GESTORIA_CREADA, AccionAuditoria.USUARIO_CREADO);
+        filas.forEach(fila -> {
+            assertThat(fila.getActorTipo()).isEqualTo(ActorTipo.SISTEMA);
+            assertThat(fila.getUsuarioId()).isNull();
+            assertThat(fila.getDespues()).contains("\"origen\":\"REGISTRO\"");
+        });
+        assertThat(filas.get(0).getEntidadTipo()).isEqualTo(EntidadAuditada.GESTORIA);
+        assertThat(filas.get(0).getEntidadId()).isEqualTo(gestoriaId);
+        assertThat(filas.get(1).getEntidadTipo()).isEqualTo(EntidadAuditada.USUARIO);
+        assertThat(filas.get(1).getEntidadId()).isEqualTo(usuarioId);
+        assertThat(filas.get(1).getDespues()).contains("\"activo\":true");
     }
 
     @Test

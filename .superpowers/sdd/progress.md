@@ -1456,3 +1456,127 @@ revisiones en `.superpowers/sdd/su-t1-*` … `su-t4-*`.
 - **Copias de seguridad en el plan Free:** Antonio lo comprueba en el panel; probablemente no hay copias descargables
   (ni PITR) hasta el plan Pro. Afecta a la retención de copias (D4) que se decide antes de los datos reales.
 - **Riesgo de demo:** en el plan Free el proyecto **se pausa tras 7 días sin actividad**.
+
+### Auditoría base — en curso (2026-10-21, rama `feat/auditoria`, sin push)
+
+Plan aprobado: `docs/superpowers/plans/2026-10-21-auditoria-base.md` (D1–D10 y las precisiones de Antonio al
+principio). Parte de `main` = `32b6d3f` (backend 1075: 1074 + 1 omitido con JDK 21, 4 min 51 s; frontend 1084 en 50;
+lint 3 avisos). Commit local por tarea cerrada, sin push. Álvaro en `feat/mistral` (sin migraciones); esta tarea
+reserva V24 (tabla) y V25 (triggers, solo PostgreSQL). Informes en `.superpowers/sdd/au-*`.
+
+- **Riesgo aceptado (D3, MVP sin limitar):** los accesos a un recurso de otra gestoría dejan una fila
+  `ACCESO_OTRA_GESTORIA` cada uno, sin límite de frecuencia; un usuario autenticado podría llenar la tabla con intentos
+  (ids de otras gestorías que existen). La fila no se puede borrar (trigger). Revisar con un límite por usuario y
+  minuto si se ve en el piloto.
+- **Para el abogado — plazo de conservación de `auditoria`** (A1): sin plazo. La tabla guarda la IP (dato personal) y
+  el `usuario_id`; hoy no se puede borrar ninguna fila. El trigger de DELETE va por fila para que un proceso de
+  retención futuro (solo `ganera_propietario`) pueda borrar las más antiguas que el plazo sin tocar nada más.
+
+### Despliegue en Clever de `main` (32b6d3f) — VERIFICADO Y ARRANCADO (2026-10-22)
+
+App `ganera-api` creada en la organización Ganera: Java + Maven, París, XS, 1 instancia (mín. = máx. = 1), **enlazada
+por GitHub a `AntonioMenor01/Ganera`, rama `main`** (opción A, panel), Force HTTPS. La base es el proyecto de Supabase
+(Irlanda); tras S7 el esquema `ganera` quedó vacío con los dos roles y sus contraseñas. Variables del perfil `clever`
+puestas (las siete `SUPABASE_*`, `SPRING_PROFILES_ACTIVE=clever`, `TZ=UTC`, `FRONTEND_ORIGEN=https://app.ganera.es`,
+`JWT_SECRET`, `ENCRYPTION_KEY` —guardada también en el gestor—, `ONBOARDING_SECRET`, y las de build/arranque). Nunca
+`GANERA_*`, `SPRING_DATASOURCE_*`, `SPRING_FLYWAY_*`, `DATABASE_*`, ni Stripe.
+
+- **FOOTGUN de `CC_RUN_COMMAND` (encontrado el 2026-10-22):** al arrancar, **Clever se queda en la raíz del repo aunque
+  `APP_FOLDER=backend`**. El jar hay que invocarlo con la ruta **con** `backend/`:
+  `java -XX:MaxRAMPercentage=70 -jar backend/target/ganera-core-0.1.0-SNAPSHOT.jar`. La ruta sin `backend/`
+  (`target/…`) falla con «Unable to access jarfile». Corregido también en el `LEEME.md` y en el plan del 14/10 (§4).
+- **Estado (verificado el 2026-10-22):** la app arranca y está **Running**; último despliegue en verde.
+  - **Arranque:** conectado a **PostgreSQL 17.11 de Supabase**, `Started GaneraApplication`, los dos `WARN` esperados de
+    Twilio sin configurar (webhook y status-callback → 503), y el health-check de Clever `GET /` responde **401**
+    (seguridad activa). Las líneas tempranas del log (perfil, Flyway) ya no estaban en el tail en vivo; se confirmó por
+    otras vías.
+  - **Migraciones:** `select version, description, success from ganera.flyway_schema_history` → **23 filas, V1→V23,
+    todas `success = true`** (el perfil `clever` queda confirmado: solo él apunta a Supabase).
+  - **Script 02 (de `main`, `32b6d3f`, sin las comprobaciones de la tabla `auditoria` que aún no existe) en el editor SQL
+    de Supabase → «Success. No rows returned»** = 0 problemas (RLS, políticas exactas de `ganera_app`, sin privilegios de
+    roles ajenos, UTC, cadenas de roles limpias).
+  - **Smoke por HTTPS** (contra `…cleverapps.io`): `GET /` → 401 con `Strict-Transport-Security` y `X-Frame-Options: DENY`;
+    CORS acepta `https://app.ganera.es` (200 con `Access-Control-Allow-Origin`) y rechaza otro origen (403, sin allow-origin).
+  - **A7 (`X-Forwarded-For`) pendiente:** no se puede comprobar contra `main` (la auditoría —`ContextoPeticionFilter`/
+    `IpCliente`/tabla— está en `feat/auditoria`, sin desplegar). Va en el smoke de **T7** del plan de auditoría, con la
+    auditoría ya desplegada: que la IP guardada sea la pública real de Antonio, no la del proxy ni una falsa a la izquierda.
+- **FOOTGUN confirmado:** el arranque usa `java … -jar backend/target/ganera-core-0.1.0-SNAPSHOT.jar` (con `backend/`), no
+  `target/…` (ver arriba).
+- **Pendiente de Clever, por orden:** (1) DNS de `api.ganera.es` en **IONOS** (CNAME → `domain.par.clever-cloud.com.`) y
+  añadir el dominio en Clever; (2) **Twilio** (sandbox: `TWILIO_*`, webhook y status-callback); (3) `ANTHROPIC_API_KEY`;
+  (4) el onboarding de una gestoría de demo con datos inventados + login (cuando Antonio tenga el `ONBOARDING_SECRET` a
+  mano). Pendiente de pago: Supabase a Pro (copias descargables/PITR, sin pausa a los 7 días).
+
+- **Auditoria T5 — riesgo D3:** un usuario autenticado puede llenar la tabla `auditoria` probando ids ajenos (una
+  fila `ACCESO_OTRA_GESTORIA` por intento que cae en un recurso de otra gestoria). **No se limita en el MVP**
+  (futuro: rate-limit o dedupe por usuario/entidad/ventana).
+
+- **Auditoria T5 — deliberado (D3):** el `explotacionId` **de ruta** en `DELETE /contactos/{id}/explotaciones/{explotacionId}`
+  no se audita como `ACCESO_OTRA_GESTORIA` si es ajeno (solo se audita el contacto de la ruta). D3 enumera ids de **cuerpo**
+  solo para el PATCH de trámites y el vínculo de contactos; vector marginal, decisión de alcance, no un fallo.
+
+## Refundición de `main` (PR #7 Stripe) en `feat/auditoria` (2026-10-29)
+
+Fusionada `origin/main` (PR #7: enlace del pago de la landing con la app — `alta_pendiente`, `EnlaceStripeService`,
+mapa de precios, fix del Bug 1 de `invoice.payment_failed`) sobre `feat/auditoria`. Migraciones de auditoría
+renumeradas por detrás de la V24 de producción (`alta_pendiente_y_plan_suscripcion`): `auditoria` V24->V25, inmutable
+V25->V26; etiquetas de versión del callback/02/`Auditoria.java`/tests puestas al día (tabla la crea V25, triggers V26).
+La auditoría de T4 se re-enganchó sobre el `StripeWebhookService`/`OnboardingController` nuevos; suite 1275 verde.
+
+- **Pendiente T6 (a) — auditar las escrituras nuevas de la PR #7:** `EnlaceStripeService.enlazar`, el alta de
+  `AltaPendiente` (`StripeWebhookService.registrarAltaPendiente`, camino `checkout.session.completed` de la landing sin
+  `client_reference_id`) y los eventos de Stripe nuevos **no dejan fila de auditoría todavía**. Se decidió dejarlas sin
+  auditar en la fusión (solo se re-enganchó lo que ya auditaba T4). Añadir sus ganchos en T6.
+- **Pendiente T6 (b) — `SUSCRIPCION_CREADA` del onboarding con ESTADO fijo:** `OnboardingController` registra la fila de
+  auditoría `SUSCRIPCION_CREADA` con `ESTADO=ACTIVA` fijo, pero en el camino con `stripeSubscriptionId` la suscripción se
+  crea vía `EnlaceStripeService.enlazar` y su estado real viene de Stripe (puede no ser ACTIVA). Corregir en T6 para que
+  la fila refleje el estado real persistido, no el literal.
+
+## Auditoría base — T6 (inventario cerrado + pendientes PR #7) — hecho, commit `78aa3cd` (2026-10-29)
+
+Rama `feat/auditoria`. Flujo desde la sesión principal (sin subagentes); TDD rojo→verde, mutaciones con `cp`+`cmp`
+(nunca git). **Cierra los dos pendientes de la refundición PR #7** de arriba.
+
+- **Fix (b):** `OnboardingController` registra `SUSCRIPCION_CREADA` con `suscripcion.getEstado()` (lo realmente
+  persistido), no el literal `ACTIVA`. Test `OnboardingControllerTest.elAltaConStripeRegistra…EstadoRealPersistido…`
+  (doble `EnlaceStripeFake` sin SDK, `past_due → IMPAGO_GRACIA`) visto rojo (literal) → verde; afirma además que la fila
+  lleva el id generado por el `save` (orden save→auditoría). El camino sin Stripe sigue `ACTIVA` (tests existentes).
+- **Pendiente (a):** `EnlaceStripeService.enlazar` **sin acción propia** (su resultado va en la `SUSCRIPCION_CREADA`
+  corregida); los cambios de estado de Stripe ya los auditaba T4 (`SUSCRIPCION_ESTADO_CAMBIADO`); **`AltaPendiente`** =
+  **exclusión documentada** (pre-tenant), vigilada por la guardia. `StripeWebhookEndToEndTest` comprueba que el checkout
+  de la landing deja la fila `alta_pendiente` y **cero** filas de auditoría.
+- **Inventario cerrado** `InventarioAuditoriaTest`: 21 rutas de escritura + 3 `@Scheduled` + 10 `@Modifying` enumerados
+  del contexto (los `@Scheduled`/`@Modifying` por escaneo de classpath, para ver los planificadores desactivados por
+  `@ConditionalOnProperty`) contra una lista declarada (auditada→su clase de test / exenta→razón), con verificación por
+  reflexión de que cada clase de test existe y tiene `@Test`, y de que ninguna entrada sobra.
+- **Guardia DML reutilizable:** `InspectorDml` (`StatementInspector` solo en test, registrado en el `application.yml` de
+  test; acumulador estático, **asume tests en serie**), `GuardiaDml` (lógica pura + `TABLAS_NEGOCIO`/`TABLAS_EXENTAS`),
+  `GuardiaDmlExtension` (`InvocationInterceptor`: arma **después** de `@BeforeEach`, mide solo el cuerpo), `@SinGuardiaDml`
+  para las excepciones. Conectada a 6 clases E2E de auditoría (un único opt-out: `un409DeVersionNoDejaFila`, siembra en
+  el cuerpo). `alta_pendiente` en `TABLAS_NEGOCIO` ∧ `TABLAS_EXENTAS` (exención vigilada).
+- **Mutaciones demostradas (cp+cmp):** quitar `auditarCambioEstado` del camino del invoice → rojo la guardia (aunque la
+  aserción propia del test pasaba); quitar `alta_pendiente` de `TABLAS_EXENTAS` → rojo el checkout de la landing y los
+  tests puros; añadir un `@PostMapping` de prueba → rojo el inventario; volver `SUSCRIPCION_CREADA` al literal `ACTIVA` →
+  rojo el test de onboarding.
+- **Verificación:** `./mvnw clean test` **1287** (0 fallos, 1 omitido: la evaluación Haiku), JDK 21, BUILD SUCCESS
+  (1275 → 1287, +12). Frontend sin tocar, sin migraciones, sin tocar IA. 15 ficheros (1 de main: `OnboardingController`).
+
+## Auditoría base — T7 (documentación, skill, authenticator, smoke) (2026-10-30)
+
+**Solo docs/skill + 1 test de regresión** (sin código de negocio, migraciones, IA ni frontend).
+
+- **`authenticator` ya revocado en T2** (callback: `ajenos` lo incluye condicionalmente + todos los `REVOKE`; lo vigila
+  el 02 y `SeguridadEsquemaPostgresTest`). Cierra el pendiente de la migración a Supabase («el callback no revocaba a
+  `authenticator`»). **Faltaba el test concreto** «concesión hostil a `authenticator` → migrar la quita → 02 a 0 filas»:
+  añadido (`SeguridadEsquemaPostgresTest.unaConcesionHostilAAuthenticatorQuedaRevocadaTrasMigrar`), con su mutación
+  demostrada (quitar `authenticator` de `ajenos` → rojo). PostgreSQL embebido: **31 → 32**.
+- **Skill `nueva-entidad-tenant`:** reescrito el punto 4 (`gestoriaId` explícito en toda consulta, nunca fiarse solo del
+  filtro ambiente, `findById` por id controlado por el atacante = hallazgo bloqueante) y añadido el punto 6 (cada
+  escritura deja fila de auditoría + entrada en el inventario).
+- **`CLAUDE.md`:** bullet «Auditoría» nuevo en Technical decisions con la regla no-negociable, las consultas sin tenant
+  (incl. `bloquearPorSid` de D7, nueva), `existsByIdAndGestoriaIdNot`/`AccesoAjeno`, la propiedad de IP y «nunca
+  `GANERA_AUDITORIA_*` en Clever», las exclusiones (`AltaPendiente`, mensajes sin gestoría) y `authenticator`.
+- **Smoke:** parte local/Supabase lista ahora; el tramo de Clever con `X-Forwarded-For` queda como **gate posterior**
+  al despliegue (post PR→main). Si en ese gate la fila guardara la IP falsa o la del proxy, el valor seguro por defecto
+  es `ip-desde-x-forwarded-for=false`.
+- **Kit `ganera-clever`** (fuera del repo): se le pasa el diff a Antonio antes de que ejecute nada.

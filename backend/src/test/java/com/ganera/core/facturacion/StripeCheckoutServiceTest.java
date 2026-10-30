@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class StripeCheckoutServiceTest {
 
     private StripeCheckoutService construirServicio(String apiKey, String priceIdExplotacion) {
-        return new StripeCheckoutService(null, null, apiKey, priceIdExplotacion,
+        return new StripeCheckoutService(null, null, null, apiKey, priceIdExplotacion,
                 "https://ganera.test/facturacion/exito", "https://ganera.test/facturacion/cancelado");
     }
 

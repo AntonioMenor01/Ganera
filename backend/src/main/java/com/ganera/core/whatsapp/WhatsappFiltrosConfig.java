@@ -17,7 +17,8 @@ public class WhatsappFiltrosConfig {
         FilterRegistrationBean<LimiteCuerpoCallbackEstadoFilter> registro =
                 new FilterRegistrationBean<>(new LimiteCuerpoCallbackEstadoFilter());
         registro.addUrlPatterns(LimiteCuerpoCallbackEstadoFilter.RUTA);
-        registro.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        // + 1: justo detras de ContextoPeticionFilter (auditoria), que va el primero para poner X-Request-Id.
+        registro.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
         registro.setName("limiteCuerpoCallbackEstado");
         return registro;
     }

@@ -2,6 +2,12 @@ package com.ganera.core.tramite;
 
 import com.ganera.core.contacto.RecursoNoEncontradoException;
 import com.ganera.core.facturacion.SuscripcionService;
+import com.ganera.core.shared.auditoria.AccesoAjeno;
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.Actor;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
+import com.ganera.core.shared.auditoria.OperacionAuditada;
 import com.ganera.core.shared.security.GaneraUserPrincipal;
 import com.ganera.core.shared.web.MotivoErrorResponse;
 import com.ganera.core.shared.web.OrdenacionPermitida;
@@ -55,6 +61,8 @@ public class TramiteController {
     private final TramiteCrotalService tramiteCrotalService;
     private final TramiteRevisionService tramiteRevisionService;
     private final WhatsappDetalleService whatsappDetalleService;
+    private final AuditoriaService auditoriaService;
+    private final AccesoAjeno accesoAjeno;
 
     public TramiteController(
             TramiteRepository tramiteRepository,
@@ -62,13 +70,17 @@ public class TramiteController {
             MensajeCampoRepository mensajeCampoRepository,
             TramiteCrotalService tramiteCrotalService,
             TramiteRevisionService tramiteRevisionService,
-            WhatsappDetalleService whatsappDetalleService) {
+            WhatsappDetalleService whatsappDetalleService,
+            AuditoriaService auditoriaService,
+            AccesoAjeno accesoAjeno) {
         this.tramiteRepository = tramiteRepository;
         this.suscripcionService = suscripcionService;
         this.mensajeCampoRepository = mensajeCampoRepository;
         this.tramiteCrotalService = tramiteCrotalService;
         this.tramiteRevisionService = tramiteRevisionService;
         this.whatsappDetalleService = whatsappDetalleService;
+        this.auditoriaService = auditoriaService;
+        this.accesoAjeno = accesoAjeno;
     }
 
     /** Decision 21: solo se puede ordenar por estos campos (nunca por el Contacto, la
@@ -110,8 +122,13 @@ public class TramiteController {
             @PathVariable Long id) {
         Optional<Tramite> tramite = tramiteRepository.findByIdAndGestoriaId(id, principal.gestoriaId());
         if (tramite.isEmpty()) {
+            // El 404 no cambia; si el id es de otra Gestoria se deja una fila ACCESO_OTRA_GESTORIA (D3).
+            accesoAjeno.tramite(principal.usuarioId(), principal.gestoriaId(), id, OperacionAuditada.VER_TRAMITE);
             return ResponseEntity.notFound().build();
         }
+        // Lectura sensible servida (D4): texto del mensaje, NIF del titular, contacto. Una fila por GET servido.
+        auditoriaService.registrarAparte(AccionAuditoria.LECTURA_TRAMITE, principal.gestoriaId(),
+                Actor.usuario(principal.usuarioId()), EntidadAuditada.TRAMITE, id, null, null);
         // gestoriaId explicito: un mensaje enlazado al Tramite pero de otra gestoria nunca se muestra.
         String mensajeOriginal = mensajeCampoRepository
                 .findFirstByTramiteIdAndGestoriaIdOrderByCreatedAtDesc(id, principal.gestoriaId())
@@ -149,8 +166,13 @@ public class TramiteController {
             tipo = parseado.get();
         }
         TipoTramite tipoFinal = tipo;
-        return traducirErrores(() -> ResponseEntity.ok(tramiteRevisionService.actualizar(
-                principal.gestoriaId(), id, request.version(), request.explotacionId(), tipoFinal, request.crotales())));
+        // En el 404, primero el Tramite de la ruta; si es propio, el explotacionId del cuerpo (D3).
+        return traducirErrores(
+                () -> accesoAjeno.patchTramite(principal.usuarioId(), principal.gestoriaId(), id,
+                        request.explotacionId()),
+                () -> ResponseEntity.ok(tramiteRevisionService.actualizar(
+                        principal.gestoriaId(), principal.usuarioId(), id, request.version(), request.explotacionId(),
+                        tipoFinal, request.crotales())));
     }
 
     /**
@@ -176,7 +198,10 @@ public class TramiteController {
         if (version == null) {
             return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_FALTA_VERSION));
         }
-        return traducirErrores(() -> ResponseEntity.ok(tramiteRevisionService.aprobar(principal.gestoriaId(), id, version)));
+        return traducirErrores(
+                () -> accesoAjeno.tramite(principal.usuarioId(), principal.gestoriaId(), id, OperacionAuditada.APROBAR),
+                () -> ResponseEntity.ok(
+                        tramiteRevisionService.aprobar(principal.gestoriaId(), principal.usuarioId(), id, version)));
     }
 
     /**
@@ -198,7 +223,11 @@ public class TramiteController {
         if (version == null) {
             return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_FALTA_VERSION));
         }
-        return traducirErrores(() -> ResponseEntity.ok(tramiteRevisionService.rechazar(principal.gestoriaId(), id, version)));
+        return traducirErrores(
+                () -> accesoAjeno.tramite(principal.usuarioId(), principal.gestoriaId(), id,
+                        OperacionAuditada.RECHAZAR),
+                () -> ResponseEntity.ok(
+                        tramiteRevisionService.rechazar(principal.gestoriaId(), principal.usuarioId(), id, version)));
     }
 
     /**
@@ -218,8 +247,11 @@ public class TramiteController {
         if (version == null) {
             return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_FALTA_VERSION));
         }
-        return traducirErrores(() -> ResponseEntity.ok(tramiteRevisionService.marcarHechoEnOvz(
-                principal.gestoriaId(), principal.usuarioId(), id, version)));
+        return traducirErrores(
+                () -> accesoAjeno.tramite(principal.usuarioId(), principal.gestoriaId(), id,
+                        OperacionAuditada.MARCAR_HECHO_OVZ),
+                () -> ResponseEntity.ok(tramiteRevisionService.marcarHechoEnOvz(
+                        principal.gestoriaId(), principal.usuarioId(), id, version)));
     }
 
     /**
@@ -235,8 +267,11 @@ public class TramiteController {
         if (version == null) {
             return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_FALTA_VERSION));
         }
-        return traducirErrores(() -> ResponseEntity.ok(tramiteRevisionService.desmarcarHechoEnOvz(
-                principal.gestoriaId(), principal.usuarioId(), id, version)));
+        return traducirErrores(
+                () -> accesoAjeno.tramite(principal.usuarioId(), principal.gestoriaId(), id,
+                        OperacionAuditada.DESMARCAR_HECHO_OVZ),
+                () -> ResponseEntity.ok(tramiteRevisionService.desmarcarHechoEnOvz(
+                        principal.gestoriaId(), principal.usuarioId(), id, version)));
     }
 
     /**
@@ -254,8 +289,11 @@ public class TramiteController {
         if (version == null) {
             return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_FALTA_VERSION));
         }
-        return traducirErrores(() -> ResponseEntity.ok(tramiteRevisionService.descartar(
-                principal.gestoriaId(), principal.usuarioId(), id, version)));
+        return traducirErrores(
+                () -> accesoAjeno.tramite(principal.usuarioId(), principal.gestoriaId(), id,
+                        OperacionAuditada.DESCARTAR),
+                () -> ResponseEntity.ok(tramiteRevisionService.descartar(
+                        principal.gestoriaId(), principal.usuarioId(), id, version)));
     }
 
     /**
@@ -272,8 +310,11 @@ public class TramiteController {
         if (version == null) {
             return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_FALTA_VERSION));
         }
-        return traducirErrores(() -> ResponseEntity.ok(tramiteRevisionService.deshacerDescarte(
-                principal.gestoriaId(), principal.usuarioId(), id, version)));
+        return traducirErrores(
+                () -> accesoAjeno.tramite(principal.usuarioId(), principal.gestoriaId(), id,
+                        OperacionAuditada.DESHACER_DESCARTE),
+                () -> ResponseEntity.ok(tramiteRevisionService.deshacerDescarte(
+                        principal.gestoriaId(), principal.usuarioId(), id, version)));
     }
 
     /**
@@ -281,11 +322,18 @@ public class TramiteController {
      * ConcurrencyFailureException cubre el bloqueo que no se consigue a tiempo y los conflictos
      * optimistas/filas obsoletas; DataIntegrityViolationException, un UNIQUE pisado por una
      * edicion simultanea. Ambos son conflictos de concurrencia -> 409, nunca 500.
+     *
+     * <p>{@code auditarAccesoAjeno} corre en el 404 ANTES de responder (T5/D3): el servicio ya
+     * revirtio su transaccion al propagar RecursoNoEncontradoException, asi que la fila
+     * ACCESO_OTRA_GESTORIA (registrarAparte, REQUIRES_NEW) sobrevive. La respuesta NO cambia: sigue
+     * 404 sin cuerpo, igual para un recurso ajeno que para uno inexistente.
      */
-    private static ResponseEntity<?> traducirErrores(Supplier<ResponseEntity<?>> operacion) {
+    private static ResponseEntity<?> traducirErrores(Runnable auditarAccesoAjeno,
+                                                     Supplier<ResponseEntity<?>> operacion) {
         try {
             return operacion.get();
         } catch (RecursoNoEncontradoException e) {
+            auditarAccesoAjeno.run();
             return ResponseEntity.notFound().build();
         } catch (CrotalInvalidoException e) {
             return ResponseEntity.badRequest().body(new MotivoErrorResponse(e.getMessage()));

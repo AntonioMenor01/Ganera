@@ -11,6 +11,13 @@ import com.ganera.core.ganadero.Ganadero;
 import com.ganera.core.ganadero.GanaderoRepository;
 import com.ganera.core.gestoria.Gestoria;
 import com.ganera.core.gestoria.GestoriaRepository;
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.Actor;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.auditoria.Clave;
+import com.ganera.core.shared.auditoria.DatosAuditoria;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
+import com.ganera.core.shared.auditoria.OrigenAuditoria;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.hibernate.Session;
@@ -18,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -49,6 +57,7 @@ class ExplotacionImportFilaService {
     private final GestoriaRepository gestoriaRepository;
     private final ContactoRepository contactoRepository;
     private final ContactoExplotacionRepository contactoExplotacionRepository;
+    private final AuditoriaService auditoriaService;
 
     static final String MOTIVO_CONTACTO_INACTIVO = "El contacto con ese teléfono está dado de baja";
 
@@ -61,13 +70,44 @@ class ExplotacionImportFilaService {
             GanaderoRepository ganaderoRepository,
             GestoriaRepository gestoriaRepository,
             ContactoRepository contactoRepository,
-            ContactoExplotacionRepository contactoExplotacionRepository) {
+            ContactoExplotacionRepository contactoExplotacionRepository,
+            AuditoriaService auditoriaService) {
         this.explotacionRepository = explotacionRepository;
         this.animalRepository = animalRepository;
         this.ganaderoRepository = ganaderoRepository;
         this.gestoriaRepository = gestoriaRepository;
         this.contactoRepository = contactoRepository;
         this.contactoExplotacionRepository = contactoExplotacionRepository;
+        this.auditoriaService = auditoriaService;
+    }
+
+    /**
+     * Fila de auditoria de una entidad creada o cambiada por el importador (D9), dentro de la transaccion
+     * REQUIRES_NEW de la fila: si la fila del Excel hace rollback, su auditoria se va con ella. {@code usuarioId}
+     * null (la sobrecarga de importar sin usuario, solo en tests) -> sin fila. {@code despues} lleva solo el
+     * codigo ORIGEN=IMPORTACION, para distinguir la misma accion hecha desde un endpoint.
+     */
+    private void auditar(Long usuarioId, AccionAuditoria accion, Long gestoriaId, EntidadAuditada tipo,
+                         Long entidadId, DatosAuditoria despues) {
+        if (usuarioId == null) {
+            return;
+        }
+        auditoriaService.registrar(accion, gestoriaId, Actor.usuario(usuarioId), tipo, entidadId, null, despues);
+    }
+
+    private static DatosAuditoria origenImportacion() {
+        return DatosAuditoria.con(Clave.ORIGEN, OrigenAuditoria.IMPORTACION);
+    }
+
+    /** Fila resumen IMPORTACION_EXCEL (D9), en su propia transaccion REQUIRES_NEW; los recuentos los arma
+     * ExplotacionImportService, que tiene las tres hojas y los errores. Sin fila si no hay usuario. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    void registrarResumenImportacion(Long gestoriaId, Long usuarioId, DatosAuditoria recuentos) {
+        if (usuarioId == null) {
+            return;
+        }
+        auditoriaService.registrar(AccionAuditoria.IMPORTACION_EXCEL, gestoriaId, Actor.usuario(usuarioId),
+                EntidadAuditada.IMPORTACION, null, null, recuentos);
     }
 
     private void activarFiltroDeTenant(Long gestoriaId) {
@@ -82,18 +122,31 @@ class ExplotacionImportFilaService {
      * global en saveAndFlush y ExplotacionImportService lo convierte en un error de fila NEUTRO.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    ImportFilaResultado procesarExplotacion(Long gestoriaId, String codigoRega, String nombre, String nif, String nombreGanadero) {
+    ImportFilaResultado procesarExplotacion(Long gestoriaId, Long usuarioId, String codigoRega, String nombre,
+                                            String nif, String nombreGanadero) {
         activarFiltroDeTenant(gestoriaId);
         Gestoria gestoria = gestoriaRepository.getReferenceById(gestoriaId);
-        Ganadero ganadero = ganaderoRepository.findByNifAndGestoriaId(nif, gestoriaId)
-                .orElseGet(() -> crearGanadero(gestoria, nif, nombreGanadero));
+        Optional<Ganadero> ganaderoExistente = ganaderoRepository.findByNifAndGestoriaId(nif, gestoriaId);
+        Ganadero ganadero = ganaderoExistente.orElseGet(() -> crearGanadero(gestoria, nif, nombreGanadero));
+        if (ganaderoExistente.isEmpty()) {
+            auditar(usuarioId, AccionAuditoria.GANADERO_CREADO, gestoriaId, EntidadAuditada.GANADERO,
+                    ganadero.getId(), origenImportacion());
+        }
 
         Optional<Explotacion> existente = explotacionRepository.findByCodigoRegaAndGestoriaId(codigoRega, gestoriaId);
         if (existente.isPresent()) {
             Explotacion explotacion = existente.get();
+            Long ganaderoAntes = explotacion.getGanadero() != null ? explotacion.getGanadero().getId() : null;
+            boolean cambia = !Objects.equals(explotacion.getNombre(), nombre)
+                    || !Objects.equals(ganaderoAntes, ganadero.getId());
             explotacion.setNombre(nombre);
             explotacion.setGanadero(ganadero);
             explotacionRepository.saveAndFlush(explotacion);
+            // D9: una reimportacion que no cambia nada no deja fila por entidad (solo el resumen).
+            if (cambia) {
+                auditar(usuarioId, AccionAuditoria.EXPLOTACION_MODIFICADA, gestoriaId, EntidadAuditada.EXPLOTACION,
+                        explotacion.getId(), origenImportacion());
+            }
             return ImportFilaResultado.ACTUALIZADA;
         }
 
@@ -103,6 +156,8 @@ class ExplotacionImportFilaService {
         nueva.setNombre(nombre);
         nueva.setGanadero(ganadero);
         explotacionRepository.saveAndFlush(nueva);
+        auditar(usuarioId, AccionAuditoria.EXPLOTACION_CREADA, gestoriaId, EntidadAuditada.EXPLOTACION,
+                nueva.getId(), origenImportacion());
         return ImportFilaResultado.CREADA;
     }
 
@@ -113,7 +168,7 @@ class ExplotacionImportFilaService {
      * un crotal de OTRA Gestoria no se ve, choca con el UNIQUE global y acaba en error neutro.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    ImportFilaResultado procesarAnimal(Long gestoriaId, String crotal, String codigoRegaExplotacion) {
+    ImportFilaResultado procesarAnimal(Long gestoriaId, Long usuarioId, String crotal, String codigoRegaExplotacion) {
         activarFiltroDeTenant(gestoriaId);
         Explotacion explotacion = explotacionRepository.findByCodigoRegaAndGestoriaId(codigoRegaExplotacion, gestoriaId)
                 .orElseThrow(() -> new IllegalStateException("La explotacion '" + codigoRegaExplotacion + "' no existe"));
@@ -122,9 +177,17 @@ class ExplotacionImportFilaService {
         Optional<Animal> existente = animalRepository.findByCrotalAndGestoriaId(crotal, gestoriaId);
         if (existente.isPresent()) {
             Animal animal = existente.get();
+            Long explotacionAntes = animal.getExplotacion() != null ? animal.getExplotacion().getId() : null;
+            boolean cambia = !Objects.equals(explotacionAntes, explotacion.getId())
+                    || !Objects.equals(animal.getCrotalUltimosDigitos(), ultimosDigitos);
             animal.setExplotacion(explotacion);
             animal.setCrotalUltimosDigitos(ultimosDigitos);
             animalRepository.saveAndFlush(animal);
+            // D9: sin cambios reales, sin fila por entidad (solo el resumen de la reimportacion).
+            if (cambia) {
+                auditar(usuarioId, AccionAuditoria.ANIMAL_MODIFICADO, gestoriaId, EntidadAuditada.ANIMAL,
+                        animal.getId(), origenImportacion());
+            }
             return ImportFilaResultado.ACTUALIZADA;
         }
 
@@ -134,6 +197,8 @@ class ExplotacionImportFilaService {
         nuevo.setCrotal(crotal);
         nuevo.setCrotalUltimosDigitos(ultimosDigitos);
         animalRepository.saveAndFlush(nuevo);
+        auditar(usuarioId, AccionAuditoria.ANIMAL_CREADO, gestoriaId, EntidadAuditada.ANIMAL,
+                nuevo.getId(), origenImportacion());
         return ImportFilaResultado.CREADA;
     }
 
@@ -152,7 +217,7 @@ class ExplotacionImportFilaService {
      * inactivo: error de fila, ni se enlaza ni se reactiva. No existe: se crea -> CREADA.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    ImportFilaResultado procesarContacto(Long gestoriaId, String telefonoNormalizado, String nombre,
+    ImportFilaResultado procesarContacto(Long gestoriaId, Long usuarioId, String telefonoNormalizado, String nombre,
                                          String codigoRega, RolContacto rol) {
         activarFiltroDeTenant(gestoriaId);
         Explotacion explotacion = explotacionRepository.findByCodigoRegaAndGestoriaId(codigoRega, gestoriaId)
@@ -161,22 +226,29 @@ class ExplotacionImportFilaService {
         Optional<Contacto> existente = contactoRepository.findByGestoriaIdAndTelefono(gestoriaId, telefonoNormalizado);
         ImportFilaResultado resultado;
         Contacto contacto;
+        boolean contactoCreado;
         if (existente.isPresent()) {
             contacto = existente.get();
             if (!contacto.isActivo()) {
                 throw new FilaImportacionException(MOTIVO_CONTACTO_INACTIVO);
             }
             resultado = ImportFilaResultado.ACTUALIZADA;
+            contactoCreado = false;
         } else {
             contacto = new Contacto();
             contacto.setGestoria(gestoriaRepository.getReferenceById(gestoriaId));
             contacto.setTelefono(telefonoNormalizado);
             contacto.setActivo(true);
             resultado = ImportFilaResultado.CREADA;
+            contactoCreado = true;
         }
 
         contacto.setNombre(nombre);
         contactoRepository.saveAndFlush(contacto);
+        if (contactoCreado) {
+            auditar(usuarioId, AccionAuditoria.CONTACTO_CREADO, gestoriaId, EntidadAuditada.CONTACTO,
+                    contacto.getId(), DatosAuditoria.con(Clave.ACTIVO, true).y(Clave.ORIGEN, OrigenAuditoria.IMPORTACION));
+        }
 
         // Decision 15, antes de crear/actualizar el enlace: Contacto, Explotacion y usuario de la
         // misma Gestoria. Si falla, la excepcion revierte la fila entera (tambien el nombre).
@@ -186,18 +258,30 @@ class ExplotacionImportFilaService {
             throw new FilaImportacionException("La explotacion '" + codigoRega + "' no existe");
         }
 
-        ContactoExplotacion enlace = contactoExplotacionRepository
-                .findByContactoIdAndExplotacionIdAndGestoriaId(contacto.getId(), explotacion.getId(), gestoriaId)
-                .orElseGet(() -> {
-                    ContactoExplotacion nuevo = new ContactoExplotacion();
-                    // La Gestoria del enlace sale del gestoriaId del JWT, nunca de los extremos.
-                    nuevo.setGestoria(gestoriaRepository.getReferenceById(gestoriaId));
-                    nuevo.setContacto(contacto);
-                    nuevo.setExplotacion(explotacion);
-                    return nuevo;
-                });
-        enlace.setRol(rol);
-        contactoExplotacionRepository.saveAndFlush(enlace);
+        Optional<ContactoExplotacion> enlaceExistente = contactoExplotacionRepository
+                .findByContactoIdAndExplotacionIdAndGestoriaId(contacto.getId(), explotacion.getId(), gestoriaId);
+        if (enlaceExistente.isEmpty()) {
+            ContactoExplotacion nuevo = new ContactoExplotacion();
+            // La Gestoria del enlace sale del gestoriaId del JWT, nunca de los extremos.
+            nuevo.setGestoria(gestoriaRepository.getReferenceById(gestoriaId));
+            nuevo.setContacto(contacto);
+            nuevo.setExplotacion(explotacion);
+            nuevo.setRol(rol);
+            contactoExplotacionRepository.saveAndFlush(nuevo);
+            auditar(usuarioId, AccionAuditoria.CONTACTO_VINCULADO, gestoriaId, EntidadAuditada.CONTACTO,
+                    contacto.getId(), DatosAuditoria.con(Clave.EXPLOTACION_ID, explotacion.getId()).y(Clave.ROL, rol)
+                            .y(Clave.ORIGEN, OrigenAuditoria.IMPORTACION));
+        } else {
+            ContactoExplotacion enlace = enlaceExistente.get();
+            RolContacto rolAntes = enlace.getRol();
+            enlace.setRol(rol);
+            contactoExplotacionRepository.saveAndFlush(enlace);
+            if (rolAntes != rol) {
+                auditar(usuarioId, AccionAuditoria.CONTACTO_ROL_CAMBIADO, gestoriaId, EntidadAuditada.CONTACTO,
+                        contacto.getId(), DatosAuditoria.con(Clave.EXPLOTACION_ID, explotacion.getId()).y(Clave.ROL, rol)
+                                .y(Clave.ORIGEN, OrigenAuditoria.IMPORTACION));
+            }
+        }
         return resultado;
     }
 

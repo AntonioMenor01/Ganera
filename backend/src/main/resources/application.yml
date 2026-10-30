@@ -43,6 +43,11 @@ ganera:
     # Strict-Transport-Security en todas las respuestas. Solo en produccion (application-clever.yml la pone a
     # true, ver SecurityConfig): en local se sirve por HTTP y no aporta nada.
     hsts-siempre: false
+  auditoria:
+    # IP de las filas de auditoria (plan 2026-10-21, D5). false: la de la conexion (getRemoteAddr()), que en local y
+    # en los tests es la del cliente. Solo application-clever.yml la pone a true (detras del proxy de Clever: el
+    # ultimo elemento de X-Forwarded-For). Sin placeholder a proposito; nunca definir GANERA_AUDITORIA_* en Clever.
+    ip-desde-x-forwarded-for: false
   registro:
     # Registro publico (POST /gestorias/registro). CERRADO por defecto (Prompt C, D4, fail-closed):
     # cerrado responde 404 sin cuerpo y no crea nada. Sin placeholder ${...} a proposito; solo lo
@@ -107,3 +112,10 @@ stripe:
   checkout:
     success-url: http://localhost:5173/facturacion?checkout=exito
     cancel-url: http://localhost:5173/facturacion?checkout=cancelado
+
+logging:
+  pattern:
+    # requestId de la peticion (ContextoPeticionFilter lo pone en el MDC y lo devuelve en X-Request-Id; plan
+    # 2026-10-21, D10) en cada linea de log, para que soporte encuentre los logs de un X-Request-Id. Boot lo intercala
+    # en el patron por defecto; fuera de una peticion sale "[] ".
+    correlation: "[%X{requestId:-}] "

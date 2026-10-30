@@ -4,6 +4,8 @@ import com.ganera.core.contacto.ContactoService;
 import com.ganera.core.contacto.RolContacto;
 import com.ganera.core.contacto.TelefonoNormalizador;
 import com.ganera.core.gestoria.Gestoria;
+import com.ganera.core.shared.auditoria.Clave;
+import com.ganera.core.shared.auditoria.DatosAuditoria;
 import com.ganera.core.tramite.CrotalInvalidoException;
 import com.ganera.core.tramite.CrotalNormalizador;
 import org.apache.poi.EmptyFileException;
@@ -76,7 +78,16 @@ public class ExplotacionImportService {
         this.filaService = filaService;
     }
 
+    /** Sobrecarga sin usuario: solo la invocacion directa del servicio en tests (@DataJpaTest). No deja
+     * auditoria (no hay actor); el endpoint siempre pasa el usuario del JWT. */
     public ImportResumenResponse importar(MultipartFile archivo, Gestoria gestoria) throws IOException {
+        return importar(archivo, gestoria, null);
+    }
+
+    /** POST /explotaciones/importar del endpoint: ademas de importar, deja una fila de auditoria por entidad
+     * creada o cambiada (dentro de la transaccion REQUIRES_NEW de su fila) y una fila resumen IMPORTACION_EXCEL
+     * con los recuentos de las tres hojas (D9). Actor = usuario del JWT. */
+    public ImportResumenResponse importar(MultipartFile archivo, Gestoria gestoria, Long usuarioId) throws IOException {
         Long gestoriaId = gestoria.getId();
         List<ImportErrorDto> errores = new ArrayList<>();
         try (InputStream inputStream = archivo.getInputStream();
@@ -91,15 +102,35 @@ public class ExplotacionImportService {
                 throw new FicheroImportacionInvalidoException("Falta la hoja '" + HOJA_ANIMALES + "' en el Excel");
             }
 
-            ImportHojaResumen resumenExplotaciones = importarExplotaciones(hojaExplotaciones, gestoriaId, errores);
-            ImportHojaResumen resumenAnimales = importarAnimales(hojaAnimales, gestoriaId, errores);
+            ImportHojaResumen resumenExplotaciones = importarExplotaciones(hojaExplotaciones, gestoriaId, usuarioId, errores);
+            ImportHojaResumen resumenAnimales = importarAnimales(hojaAnimales, gestoriaId, usuarioId, errores);
             Sheet hojaContactos = workbook.getSheet(HOJA_CONTACTOS);
             ImportHojaResumen resumenContactos = hojaContactos == null
                     ? new ImportHojaResumen(0, 0, 0)
-                    : importarContactos(hojaContactos, gestoriaId, errores);
+                    : importarContactos(hojaContactos, gestoriaId, usuarioId, errores);
 
-            return new ImportResumenResponse(resumenExplotaciones, resumenAnimales, resumenContactos, errores);
+            ImportResumenResponse resumen = new ImportResumenResponse(
+                    resumenExplotaciones, resumenAnimales, resumenContactos, errores);
+            filaService.registrarResumenImportacion(gestoriaId, usuarioId, recuentos(resumen));
+            return resumen;
         }
+    }
+
+    /** Recuentos por hoja (creadas/actualizadas/errores) para la fila resumen IMPORTACION_EXCEL. */
+    private static DatosAuditoria recuentos(ImportResumenResponse resumen) {
+        return DatosAuditoria.con(Clave.EXPLOTACIONES_CREADAS, resumen.explotaciones().creadas())
+                .y(Clave.EXPLOTACIONES_ACTUALIZADAS, resumen.explotaciones().actualizadas())
+                .y(Clave.EXPLOTACIONES_ERRORES, erroresDe(resumen, HOJA_EXPLOTACIONES))
+                .y(Clave.ANIMALES_CREADOS, resumen.animales().creadas())
+                .y(Clave.ANIMALES_ACTUALIZADOS, resumen.animales().actualizadas())
+                .y(Clave.ANIMALES_ERRORES, erroresDe(resumen, HOJA_ANIMALES))
+                .y(Clave.CONTACTOS_CREADOS, resumen.contactos().creadas())
+                .y(Clave.CONTACTOS_ACTUALIZADOS, resumen.contactos().actualizadas())
+                .y(Clave.CONTACTOS_ERRORES, erroresDe(resumen, HOJA_CONTACTOS));
+    }
+
+    private static int erroresDe(ImportResumenResponse resumen, String hoja) {
+        return (int) resumen.errores().stream().filter(e -> hoja.equals(e.hoja())).count();
     }
 
     /**
@@ -128,7 +159,7 @@ public class ExplotacionImportService {
         }
     }
 
-    private ImportHojaResumen importarExplotaciones(Sheet hoja, Long gestoriaId, List<ImportErrorDto> errores) {
+    private ImportHojaResumen importarExplotaciones(Sheet hoja, Long gestoriaId, Long usuarioId, List<ImportErrorDto> errores) {
         DataFormatter formatter = new DataFormatter();
         int procesadas = 0;
         int creadas = 0;
@@ -153,7 +184,7 @@ public class ExplotacionImportService {
                     continue;
                 }
 
-                ImportFilaResultado resultado = filaService.procesarExplotacion(gestoriaId, codigoRega, nombre, nif, nombreGanadero);
+                ImportFilaResultado resultado = filaService.procesarExplotacion(gestoriaId, usuarioId, codigoRega, nombre, nif, nombreGanadero);
                 if (resultado == ImportFilaResultado.CREADA) {
                     creadas++;
                 } else {
@@ -166,7 +197,7 @@ public class ExplotacionImportService {
         return new ImportHojaResumen(procesadas, creadas, actualizadas);
     }
 
-    private ImportHojaResumen importarAnimales(Sheet hoja, Long gestoriaId, List<ImportErrorDto> errores) {
+    private ImportHojaResumen importarAnimales(Sheet hoja, Long gestoriaId, Long usuarioId, List<ImportErrorDto> errores) {
         DataFormatter formatter = new DataFormatter();
         int procesadas = 0;
         int creadas = 0;
@@ -199,7 +230,7 @@ public class ExplotacionImportService {
                 // guiones, puntos, barras, mayusculas). Invalido -> error de fila con el motivo del
                 // normalizador (CrotalInvalidoException) y a la siguiente fila.
                 String crotalNormalizado = normalizarCrotalDeAnimal(crotal);
-                ImportFilaResultado resultado = filaService.procesarAnimal(gestoriaId, crotalNormalizado, codigoRegaExplotacion);
+                ImportFilaResultado resultado = filaService.procesarAnimal(gestoriaId, usuarioId, crotalNormalizado, codigoRegaExplotacion);
                 if (resultado == ImportFilaResultado.CREADA) {
                     creadas++;
                 } else {
@@ -218,7 +249,7 @@ public class ExplotacionImportService {
      * no motivoDe: el texto generico de motivoDe menciona "gestorias" y aqui revelaria que el
      * telefono ya existe en otra Gestoria (decision 11).
      */
-    private ImportHojaResumen importarContactos(Sheet hoja, Long gestoriaId, List<ImportErrorDto> errores) {
+    private ImportHojaResumen importarContactos(Sheet hoja, Long gestoriaId, Long usuarioId, List<ImportErrorDto> errores) {
         DataFormatter formatter = new DataFormatter();
         int procesadas = 0;
         int creadas = 0;
@@ -244,7 +275,7 @@ public class ExplotacionImportService {
                 }
 
                 ImportFilaResultado resultado = filaService.procesarContacto(
-                        gestoriaId, telefono.get(), nombre, codigoRega, rol.get());
+                        gestoriaId, usuarioId, telefono.get(), nombre, codigoRega, rol.get());
                 if (resultado == ImportFilaResultado.CREADA) {
                     creadas++;
                 } else {

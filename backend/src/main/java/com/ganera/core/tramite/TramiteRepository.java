@@ -42,6 +42,19 @@ public interface TramiteRepository extends JpaRepository<Tramite, Long> {
     Optional<Tramite> findByIdAndGestoriaId(Long id, Long gestoriaId);
 
     /**
+     * ¿Existe un Tramite con este id en OTRA Gestoria (distinta del gestoriaId del JWT)? Solo para auditar el acceso
+     * a un recurso ajeno (T5/D3): se ejecuta DESPUES de no encontrarlo en la propia, devuelve un booleano (nunca la
+     * entidad) y no cambia la respuesta (sigue 404 sin cuerpo). gestoriaId explicito, nunca findById a secas.
+     *
+     * <p>Consulta NATIVA a proposito: tiene que ver filas de OTRA Gestoria, justo lo que el {@code gestoriaFilter}
+     * (activo en toda peticion) oculta -- un {@code existsBy...} derivado se filtraria a la Gestoria propia y nunca
+     * encontraria la ajena. El filtro de Hibernate no se aplica a las consultas nativas. Portable H2/PostgreSQL.
+     */
+    @Query(value = "select case when count(*) > 0 then true else false end from tramite "
+            + "where id = :id and gestoria_id <> :gestoriaId", nativeQuery = true)
+    boolean existsByIdAndGestoriaIdNot(@Param("id") Long id, @Param("gestoriaId") Long gestoriaId);
+
+    /**
      * Igual que findByIdAndGestoriaId pero con bloqueo de fila (SELECT ... FOR UPDATE) hasta el
      * final de la transaccion: dos ediciones/aprobaciones simultaneas del mismo Tramite se
      * serializan en vez de pisarse (decision 26). Solo para TramiteRevisionService, que abre la

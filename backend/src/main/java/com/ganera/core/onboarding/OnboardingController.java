@@ -8,6 +8,12 @@ import com.ganera.core.gestoria.Gestoria;
 import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.gestoria.Usuario;
 import com.ganera.core.gestoria.UsuarioRepository;
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.Actor;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.auditoria.Clave;
+import com.ganera.core.shared.auditoria.DatosAuditoria;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
 import com.stripe.exception.StripeException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -40,6 +46,7 @@ public class OnboardingController {
     private final SuscripcionRepository suscripcionRepository;
     private final EnlaceStripeService enlaceStripeService;
     private final PasswordEncoder passwordEncoder;
+    private final AuditoriaService auditoriaService;
     private final String onboardingSecret;
 
     public OnboardingController(
@@ -48,12 +55,14 @@ public class OnboardingController {
             SuscripcionRepository suscripcionRepository,
             EnlaceStripeService enlaceStripeService,
             PasswordEncoder passwordEncoder,
+            AuditoriaService auditoriaService,
             @Value("${ganera.onboarding.secret:}") String onboardingSecret) {
         this.gestoriaRepository = gestoriaRepository;
         this.usuarioRepository = usuarioRepository;
         this.suscripcionRepository = suscripcionRepository;
         this.enlaceStripeService = enlaceStripeService;
         this.passwordEncoder = passwordEncoder;
+        this.auditoriaService = auditoriaService;
         this.onboardingSecret = onboardingSecret;
     }
 
@@ -101,6 +110,19 @@ public class OnboardingController {
             }
         }
         suscripcionRepository.save(suscripcion);
+
+        // Alta manual de una gestoria piloto: actor SISTEMA (no hay usuario autenticado todavia), la gestoria
+        // de las tres filas es la recien creada. Todo en la misma transaccion del controlador.
+        auditoriaService.registrar(AccionAuditoria.GESTORIA_CREADA, gestoria.getId(), Actor.sistema(),
+                EntidadAuditada.GESTORIA, gestoria.getId(), null, null);
+        auditoriaService.registrar(AccionAuditoria.USUARIO_CREADO, gestoria.getId(), Actor.sistema(),
+                EntidadAuditada.USUARIO, usuario.getId(), null, DatosAuditoria.con(Clave.ACTIVO, Boolean.TRUE));
+        // El estado sale de lo REALMENTE persistido (suscripcion.getEstado()), no de un literal: en el
+        // camino con stripeSubscriptionId lo fija EnlaceStripeService.enlazar desde Stripe y puede no ser
+        // ACTIVA. Las filas van despues del save, asi que getEstado()/getId() ya son los definitivos.
+        auditoriaService.registrar(AccionAuditoria.SUSCRIPCION_CREADA, gestoria.getId(), Actor.sistema(),
+                EntidadAuditada.SUSCRIPCION, suscripcion.getId(), null,
+                DatosAuditoria.con(Clave.ESTADO, suscripcion.getEstado()));
 
         return ResponseEntity.ok(new OnboardingResponse(gestoria.getId(), usuario.getId()));
     }

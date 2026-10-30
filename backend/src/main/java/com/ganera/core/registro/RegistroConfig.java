@@ -7,7 +7,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 
 /**
- * Registra {@link RegistroCerradoFilter} solo para /gestorias/registro y con la maxima prioridad,
+ * Registra {@link RegistroCerradoFilter} solo para /gestorias/registro y con la maxima prioridad (salvo
+ * ContextoPeticionFilter, que pone X-Request-Id y va antes),
  * por delante de la cadena de Spring Security (orden -100): asi el 404 del registro cerrado es el
  * mismo con o sin JWT, y con un JWT invalido.
  *
@@ -25,7 +26,8 @@ class RegistroConfig {
         FilterRegistrationBean<RegistroCerradoFilter> registro =
                 new FilterRegistrationBean<>(new RegistroCerradoFilter(registroAbierto));
         registro.addUrlPatterns(RUTA_REGISTRO);
-        registro.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        // + 1: justo detras de ContextoPeticionFilter (auditoria), que va el primero para poner X-Request-Id.
+        registro.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
         return registro;
     }
 }

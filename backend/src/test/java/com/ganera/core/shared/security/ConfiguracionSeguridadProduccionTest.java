@@ -39,4 +39,28 @@ class ConfiguracionSeguridadProduccionTest {
         assertThat(String.valueOf(valor("application-clever.yml", "ganera.frontend.origen")))
                 .isEqualTo("${FRONTEND_ORIGEN}");
     }
+
+    /**
+     * Auditoria base, revision de T1 (menor 1, D10): el requestId del MDC sale en cada linea de log del application.yml
+     * de verdad (el de test lo repite para ContextoPeticionFilterEndToEndTest), y el perfil clever no lo pisa.
+     */
+    @Test
+    void losLogsLlevanElRequestIdDelMdc() throws IOException {
+        assertThat(String.valueOf(valor("application.yml", "logging.pattern.correlation")))
+                .isEqualTo("[%X{requestId:-}] ");
+        assertThat(valor("application-clever.yml", "logging.pattern.correlation")).isNull();
+    }
+
+    /**
+     * Auditoria base, T1 (D5): la IP de la auditoria sale de X-Forwarded-For SOLO en el perfil clever (detras del
+     * proxy de Clever), con el valor fijo y sin placeholder; en el application.yml de verdad, false (local y tests:
+     * la IP de la conexion).
+     */
+    @Test
+    void laIpDeLaAuditoriaSoloSeLeeDeXForwardedForEnElPerfilClever() throws IOException {
+        assertThat(String.valueOf(valor("application.yml", "ganera.auditoria.ip-desde-x-forwarded-for")))
+                .isEqualTo("false");
+        assertThat(String.valueOf(valor("application-clever.yml", "ganera.auditoria.ip-desde-x-forwarded-for")))
+                .isEqualTo("true");
+    }
 }
