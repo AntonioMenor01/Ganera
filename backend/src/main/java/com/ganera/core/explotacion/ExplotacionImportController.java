@@ -38,7 +38,7 @@ public class ExplotacionImportController {
             @RequestPart("archivo") MultipartFile archivo) throws IOException {
         Gestoria gestoria = gestoriaRepository.getReferenceById(principal.gestoriaId());
         try {
-            ImportResumenResponse resumen = explotacionImportService.importar(archivo, gestoria);
+            ImportResumenResponse resumen = explotacionImportService.importar(archivo, gestoria, principal.usuarioId());
             return ResponseEntity.ok(resumen);
         } catch (FicheroImportacionInvalidoException e) {
             return ResponseEntity.badRequest().body(new MotivoErrorResponse(e.getMessage()));

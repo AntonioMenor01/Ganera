@@ -2,8 +2,14 @@ package com.ganera.core.explotacion;
 
 import com.ganera.core.gestoria.Gestoria;
 import com.ganera.core.gestoria.GestoriaRepository;
+import com.ganera.core.gestoria.Usuario;
+import com.ganera.core.gestoria.UsuarioRepository;
+import com.ganera.core.shared.auditoria.LimpiezaAuditoria;
 import com.ganera.core.shared.security.GaneraUserPrincipal;
 import com.ganera.core.shared.web.MotivoErrorResponse;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+import javax.sql.DataSource;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -33,7 +39,9 @@ import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTest
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = NONE)
-@Import({ExplotacionImportService.class, ExplotacionImportFilaService.class})
+@Import({ExplotacionImportService.class, ExplotacionImportFilaService.class,
+        com.ganera.core.shared.auditoria.AuditoriaService.class,
+        com.ganera.core.shared.tiempo.RelojConfig.class})
 class ExplotacionImportControllerTest {
 
     @Autowired
@@ -42,13 +50,21 @@ class ExplotacionImportControllerTest {
     private ExplotacionRepository explotacionRepository;
     @Autowired
     private ExplotacionImportService explotacionImportService;
+    @Autowired
+    private UsuarioRepository usuarioRepository;
+    @Autowired
+    private DataSource dataSource;
 
     @AfterEach
     void limpiarDatosComprometidos() {
         if (TestTransaction.isActive()) {
             TestTransaction.end();
         }
+        // Una importacion real deja la fila resumen IMPORTACION_EXCEL (y, con datos, filas por entidad):
+        // se borra antes que usuarios y gestorias por la FK sin ON DELETE.
+        LimpiezaAuditoria.borrar(new JdbcTemplate(dataSource));
         explotacionRepository.deleteAll();
+        usuarioRepository.deleteAll();
         gestoriaRepository.deleteAll();
     }
 
@@ -158,7 +174,7 @@ class ExplotacionImportControllerTest {
     void unErrorInesperadoDelProcesadoNoSeConvierteEn400() {
         ExplotacionImportService servicioQueFalla = new ExplotacionImportService(null) {
             @Override
-            public ImportResumenResponse importar(MultipartFile archivo, Gestoria gestoria) {
+            public ImportResumenResponse importar(MultipartFile archivo, Gestoria gestoria, Long usuarioId) {
                 throw new IllegalArgumentException("fallo interno inesperado");
             }
         };
@@ -172,11 +188,19 @@ class ExplotacionImportControllerTest {
 
     private ResponseEntity<?> importarComo(MockMultipartFile archivo) throws IOException {
         Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria import controller"));
+        // Usuario real de la gestoria: la fila resumen de auditoria lleva el usuario del JWT y
+        // AuditoriaService exige que sea de esa gestoria.
+        Usuario usuario = new Usuario();
+        usuario.setGestoria(gestoria);
+        usuario.setEmail("import-controller@test.com");
+        usuario.setPasswordHash("x");
+        usuario.setNombre("Empleado de prueba");
+        usuarioRepository.save(usuario);
         TestTransaction.flagForCommit();
         TestTransaction.end();
 
         ExplotacionImportController controller = new ExplotacionImportController(explotacionImportService, gestoriaRepository);
-        return controller.importar(new GaneraUserPrincipal(1L, gestoria.getId(), "empleado@test.com"), archivo);
+        return controller.importar(new GaneraUserPrincipal(usuario.getId(), gestoria.getId(), "import-controller@test.com"), archivo);
     }
 
     private static void assertNoEsXlsxValido(ResponseEntity<?> respuesta) {

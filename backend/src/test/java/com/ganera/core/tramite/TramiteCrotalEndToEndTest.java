@@ -22,7 +22,9 @@ import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import com.ganera.core.shared.auditoria.LimpiezaAuditoria;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpEntity;
@@ -104,8 +106,12 @@ class TramiteCrotalEndToEndTest {
         contactoB = nuevoContacto(gestoriaB, "+34600960002");
     }
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     @AfterEach
     void limpiar() {
+        LimpiezaAuditoria.borrar(jdbcTemplate);
         tramiteCrotalRepository.deleteAll();
         tramiteRepository.deleteAll();
         animalRepository.deleteAll();

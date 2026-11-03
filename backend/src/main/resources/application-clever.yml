@@ -54,3 +54,10 @@ ganera:
     # ninguna variable. No definir GANERA_SEGURIDAD_HSTSSIEMPRE ni GANERA_FRONTEND_EXIGIRHTTPS en Clever (por el
     # binding relajado de Spring pisarian estos valores).
     hsts-siempre: true
+  auditoria:
+    # IP de las filas de auditoria (plan 2026-10-21, D5): detras del proxy de Clever getRemoteAddr() es la del proxy,
+    # asi que se toma el ULTIMO elemento de X-Forwarded-For (el que anade Clever; lo que el cliente mete a la izquierda
+    # no cuenta) si es una IP literal. Solo entra en la auditoria, nunca decide nada de seguridad. Sin placeholder a
+    # proposito; no definir GANERA_AUDITORIA_* en Clever (el binding relajado de Spring pisaria este valor). Que
+    # Clever anade la cabecera (y no hay otro proxy delante) se comprueba en el smoke real (T7).
+    ip-desde-x-forwarded-for: true

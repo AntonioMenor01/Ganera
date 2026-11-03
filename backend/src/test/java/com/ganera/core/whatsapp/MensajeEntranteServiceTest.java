@@ -17,12 +17,15 @@ import com.ganera.core.tramite.OrigenTramite;
 import com.ganera.core.tramite.Tramite;
 import com.ganera.core.tramite.TramiteCrotalRepository;
 import com.ganera.core.tramite.TramiteRepository;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.tiempo.RelojConfig;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.context.annotation.Import;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -38,6 +41,7 @@ import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTest
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = NONE)
+@Import({AuditoriaService.class, RelojConfig.class})
 class MensajeEntranteServiceTest {
 
     private static final Instant AHORA = Instant.parse("2026-10-05T10:15:30Z");
@@ -60,6 +64,8 @@ class MensajeEntranteServiceTest {
     private GanaderoRepository ganaderoRepository;
     @Autowired
     private ExplotacionRepository explotacionRepository;
+    @Autowired
+    private AuditoriaService auditoriaService;
 
     private MensajeEntranteService servicio;
     private Gestoria gestoriaA;
@@ -68,7 +74,7 @@ class MensajeEntranteServiceTest {
     @BeforeEach
     void preparar() {
         servicio = new MensajeEntranteService(mensajeCampoRepository, contactoRepository,
-                contactoExplotacionRepository, tramiteRepository, Clock.fixed(AHORA, ZoneOffset.UTC));
+                contactoExplotacionRepository, tramiteRepository, auditoriaService, Clock.fixed(AHORA, ZoneOffset.UTC));
         gestoriaA = gestoriaRepository.save(new Gestoria("Gestoria mensajes A"));
         gestoriaB = gestoriaRepository.save(new Gestoria("Gestoria mensajes B"));
     }

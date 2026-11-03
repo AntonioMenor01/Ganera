@@ -46,7 +46,7 @@ tests (`SeguridadEsquemaPostgresTest`) y se ejecuta en el editor SQL de Supabase
 ## Regla de numeración
 
 - La versión es **global** entre `db/migration`, `db/postgresql` y `db/h2`: una migración versionada
-  de esta carpeta toma el siguiente número libre (p. ej. `V24__...sql`) y deja un hueco en H2, que
+  de esta carpeta toma el siguiente número libre (p. ej. `V27__...sql`) y deja un hueco en H2, que
   Flyway admite.
 - **Nunca** dos ficheros con la misma versión en carpetas distintas: en PostgreSQL Flyway vería las dos
   y fallaría.

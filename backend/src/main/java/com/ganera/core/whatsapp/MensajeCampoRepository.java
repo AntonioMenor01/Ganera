@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 public interface MensajeCampoRepository extends JpaRepository<MensajeCampo, Long> {
@@ -54,4 +55,39 @@ public interface MensajeCampoRepository extends JpaRepository<MensajeCampo, Long
             + "and m.cuerpo <> ''")
     int vaciarTextoConTramiteRecibidosAntesDe(@Param("limite") Instant limite,
                                               @Param("textoEliminado") String textoEliminado);
+
+    // ---------- Retencion POR GESTORIA (D6 de auditoria): una sentencia por gestoria + su fila de auditoria ----------
+
+    /** Gestorias con mensajes SIN Tramite pero CON gestoria (contacto inactivo) por borrar antes de {@code limite}. */
+    @Query("select distinct m.gestoria.id from MensajeCampo m "
+            + "where m.tramite is null and m.gestoria is not null and m.createdAt < :limite")
+    List<Long> gestoriasConMensajesSinTramiteAntesDe(@Param("limite") Instant limite);
+
+    /** Borra los mensajes SIN Tramite de UNA gestoria recibidos antes de {@code limite}. Devuelve las filas. */
+    @Transactional
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from MensajeCampo m where m.tramite is null and m.gestoria.id = :gestoriaId and m.createdAt < :limite")
+    int borrarSinTramiteDeGestoriaAntesDe(@Param("gestoriaId") Long gestoriaId, @Param("limite") Instant limite);
+
+    /** Borra los mensajes SIN Tramite y SIN gestoria (numero desconocido, ERROR_RECEPCION, filas pre-B1): fuera de
+     * auditoria por decision del plan (no tienen gestoria a la que imputar la fila). */
+    @Transactional
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from MensajeCampo m where m.tramite is null and m.gestoria is null and m.createdAt < :limite")
+    int borrarSinTramiteSinGestoriaAntesDe(@Param("limite") Instant limite);
+
+    /** Gestorias con mensajes CON Tramite cuyo texto hay que vaciar antes de {@code limite}. */
+    @Query("select distinct m.gestoria.id from MensajeCampo m "
+            + "where m.tramite is not null and m.createdAt < :limite and m.cuerpo <> :textoEliminado and m.cuerpo <> ''")
+    List<Long> gestoriasConTextoPorVaciarAntesDe(@Param("limite") Instant limite,
+                                                 @Param("textoEliminado") String textoEliminado);
+
+    /** Vacia el texto de los mensajes CON Tramite de UNA gestoria recibidos antes de {@code limite}. */
+    @Transactional
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update MensajeCampo m set m.cuerpo = :textoEliminado "
+            + "where m.tramite is not null and m.gestoria.id = :gestoriaId and m.createdAt < :limite "
+            + "and m.cuerpo <> :textoEliminado and m.cuerpo <> ''")
+    int vaciarTextoConTramiteDeGestoriaAntesDe(@Param("gestoriaId") Long gestoriaId, @Param("limite") Instant limite,
+                                               @Param("textoEliminado") String textoEliminado);
 }

@@ -1,6 +1,8 @@
 package com.ganera.core.whatsapp;
 
 import com.ganera.core.contacto.RecursoNoEncontradoException;
+import com.ganera.core.shared.auditoria.AccesoAjeno;
+import com.ganera.core.shared.auditoria.OperacionAuditada;
 import com.ganera.core.shared.security.GaneraUserPrincipal;
 import com.ganera.core.shared.web.MotivoErrorResponse;
 import org.springframework.http.HttpStatus;
@@ -42,9 +44,11 @@ public class RespuestaWhatsappController {
             Pattern.compile("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
 
     private final RespuestaWhatsappService respuestaWhatsappService;
+    private final AccesoAjeno accesoAjeno;
 
-    public RespuestaWhatsappController(RespuestaWhatsappService respuestaWhatsappService) {
+    public RespuestaWhatsappController(RespuestaWhatsappService respuestaWhatsappService, AccesoAjeno accesoAjeno) {
         this.respuestaWhatsappService = respuestaWhatsappService;
+        this.accesoAjeno = accesoAjeno;
     }
 
     /** Cuerpo opcional para Spring (required = false) a proposito: un POST sin cuerpo da nuestro 400. */
@@ -68,6 +72,9 @@ public class RespuestaWhatsappController {
             return ResponseEntity.status(resultado.nueva() ? HttpStatus.CREATED : HttpStatus.OK)
                     .body(resultado.respuesta());
         } catch (RecursoNoEncontradoException e) {
+            // El 404 no cambia; si el Tramite de la ruta es de otra Gestoria se deja ACCESO_OTRA_GESTORIA (D3).
+            accesoAjeno.tramite(principal.usuarioId(), principal.gestoriaId(), id,
+                    OperacionAuditada.RESPONDER_WHATSAPP);
             return ResponseEntity.notFound().build();
         } catch (RespuestaWhatsappConflictoException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(new MotivoErrorResponse(e.getMessage()));

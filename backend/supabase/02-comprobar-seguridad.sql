@@ -14,6 +14,12 @@
 --     DELETE en las tablas normales; SELECT, INSERT en las de «solo insercion y lectura»; nada en
 --     flyway_schema_history; USAGE en las secuencias; y que no sea dueno de nada;
 --   - ningun privilegio por columna para esos roles, ni para ganera_app en flyway_schema_history;
+--   - inmutabilidad de auditoria (si la tabla existe): sus dos triggers de V26 estan, activos (tgenabled = O),
+--     BEFORE, con su granularidad (auditoria_sin_cambios por sentencia con UPDATE y TRUNCATE; auditoria_sin_borrado
+--     por fila con DELETE), sin WHEN ni columnas, llamando cada uno a su funcion del esquema, y ningun trigger mas; y
+--     las dos funciones son de ganera_propietario;
+--   - que ningun rol vigilado (anon, authenticated, service_role, authenticator, ganera_app, ganera_propietario)
+--     pueda hacer SET sobre el parametro session_replication_role (con replica se saltaria esos triggers);
 --   - nadie hereda ni puede hacer SET ROLE a ganera_app; ganera_app no es miembro de ningun rol; nadie hereda
 --     ganera_propietario (solo SET, y nunca un rol de Supabase); ni los roles de Supabase ni los de Ganera
 --     tienen ADMIN sobre ellos; ningun rol de Supabase llega a ellos por una cadena de roles (pg_has_role);
@@ -27,6 +33,12 @@
 WITH
 solo_insercion(tabla) AS (
     VALUES ('auditoria')
+),
+-- Los dos triggers de V26 sobre auditoria: nombre, si es por fila (DELETE) o por sentencia (UPDATE+TRUNCATE), la
+-- mascara de bits de eventos esperada (pg_trigger.tgtype & 60: DELETE 8, UPDATE 16, TRUNCATE 32) y su texto.
+triggers_auditoria(nombre, es_fila, eventos_ok, eventos_texto) AS (
+    VALUES ('auditoria_sin_cambios', false, 48, 'UPDATE,TRUNCATE'),
+           ('auditoria_sin_borrado', true, 8, 'DELETE')
 ),
 esquema AS (
     SELECT n.oid, n.nspname, n.nspowner, n.nspacl FROM pg_namespace n WHERE n.nspname = 'ganera'
@@ -246,6 +258,59 @@ problemas(objeto, problema) AS (
                                ('CREATEROLE', r.rolcreaterole), ('CREATEDB', r.rolcreatedb),
                                ('REPLICATION', r.rolreplication)) AS x(atributo, activo)
     WHERE r.rolname IN ('ganera_propietario', 'ganera_app') AND x.activo
+    -- Auditoria (V25/V26): la tabla debe existir para que haya algo que proteger (solo si el esquema existe).
+    UNION ALL
+    SELECT 'tabla auditoria', 'no existe (la crea V25)'
+    FROM esquema e
+    WHERE NOT EXISTS (SELECT 1 FROM tablas t WHERE t.relname = 'auditoria')
+    -- Auditoria: cada trigger esperado que falta, esta desactivado o no es exacto (el primer motivo que aplica).
+    UNION ALL
+    SELECT objeto, problema FROM (
+        SELECT 'trigger auditoria.' || e.nombre AS objeto,
+               CASE
+                   WHEN tg.oid IS NULL THEN 'falta'
+                   WHEN tg.tgenabled <> 'O' THEN 'desactivado (tgenabled = ' || tg.tgenabled::text || ', debe ser O)'
+                   WHEN (tg.tgtype & 2) = 0 THEN 'no es BEFORE'
+                   WHEN e.es_fila AND (tg.tgtype & 1) = 0 THEN 'no es FOR EACH ROW'
+                   WHEN NOT e.es_fila AND (tg.tgtype & 1) = 1 THEN 'no es FOR EACH STATEMENT'
+                   WHEN (tg.tgtype & 60) <> e.eventos_ok THEN 'eventos ' || array_to_string(ARRAY[
+                           CASE WHEN (tg.tgtype & 4) <> 0 THEN 'INSERT' END,
+                           CASE WHEN (tg.tgtype & 8) <> 0 THEN 'DELETE' END,
+                           CASE WHEN (tg.tgtype & 16) <> 0 THEN 'UPDATE' END,
+                           CASE WHEN (tg.tgtype & 32) <> 0 THEN 'TRUNCATE' END], ',')
+                       || ' (deben ser ' || e.eventos_texto || ')'
+                   WHEN tg.tgattr::text <> '' THEN 'solo para algunas columnas'
+                   WHEN tg.tgqual IS NOT NULL THEN 'tiene condicion WHEN'
+                   WHEN tg.tgfoid IS DISTINCT FROM to_regprocedure('ganera.' || e.nombre || '()')
+                       THEN 'no llama a ganera.' || e.nombre || '()'
+                   ELSE NULL
+               END AS problema
+        FROM triggers_auditoria e
+        JOIN tablas ta ON ta.relname = 'auditoria'
+        LEFT JOIN pg_trigger tg ON tg.tgrelid = ta.oid AND NOT tg.tgisinternal AND tg.tgname = e.nombre
+    ) z WHERE problema IS NOT NULL
+    -- Auditoria: cualquier trigger que no sea uno de los dos esperados.
+    UNION ALL
+    SELECT 'trigger auditoria.' || tg.tgname, 'no esperado'
+    FROM tablas ta JOIN pg_trigger tg ON tg.tgrelid = ta.oid AND NOT tg.tgisinternal
+    WHERE ta.relname = 'auditoria'
+      AND tg.tgname NOT IN ('auditoria_sin_cambios', 'auditoria_sin_borrado')
+    -- Auditoria: las funciones de los triggers deben ser de ganera_propietario (no de ganera_app ni de otro).
+    UNION ALL
+    SELECT 'funcion ' || p.oid::regprocedure::text,
+           'es de ' || pg_get_userbyid(p.proowner) || ' (debe ser de ganera_propietario)'
+    FROM pg_proc p JOIN esquema e ON p.pronamespace = e.oid
+    WHERE p.proname IN ('auditoria_sin_cambios', 'auditoria_sin_borrado')
+      AND p.proowner <> to_regrole('ganera_propietario')
+    -- Auditoria: nadie vigilado puede hacer SET sobre session_replication_role (con replica saltaria los triggers).
+    UNION ALL
+    SELECT 'parametro session_replication_role',
+           r.rolname || ' puede cambiarlo (SET; con replica se saltaria los triggers de auditoria)'
+    FROM (VALUES ('anon'), ('authenticated'), ('service_role'), ('authenticator'),
+                 ('ganera_app'), ('ganera_propietario')) AS v(nombre)
+    JOIN pg_roles r ON r.rolname = v.nombre
+    -- Un superusuario puede cambiar cualquier parametro: ya lo marca la clausula de atributos (no se duplica aqui).
+    WHERE NOT r.rolsuper AND has_parameter_privilege(r.oid, 'session_replication_role', 'SET')
     -- Zona horaria de la base de datos
     UNION ALL
     SELECT 'base de datos ' || current_database(), 'sin TimeZone=UTC'

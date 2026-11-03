@@ -6,6 +6,12 @@ import com.ganera.core.contacto.ContactoExplotacionRepository;
 import com.ganera.core.contacto.ContactoRepository;
 import com.ganera.core.contacto.TelefonoNormalizador;
 import com.ganera.core.explotacion.Explotacion;
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.Actor;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.auditoria.Clave;
+import com.ganera.core.shared.auditoria.DatosAuditoria;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
 import com.ganera.core.tramite.EstadoExtraccion;
 import com.ganera.core.tramite.EstadoTramite;
 import com.ganera.core.tramite.OrigenTramite;
@@ -47,17 +53,20 @@ public class MensajeEntranteService {
     private final ContactoRepository contactoRepository;
     private final ContactoExplotacionRepository contactoExplotacionRepository;
     private final TramiteRepository tramiteRepository;
+    private final AuditoriaService auditoriaService;
     private final Clock reloj;
 
     public MensajeEntranteService(MensajeCampoRepository mensajeCampoRepository,
                                   ContactoRepository contactoRepository,
                                   ContactoExplotacionRepository contactoExplotacionRepository,
                                   TramiteRepository tramiteRepository,
+                                  AuditoriaService auditoriaService,
                                   Clock reloj) {
         this.mensajeCampoRepository = mensajeCampoRepository;
         this.contactoRepository = contactoRepository;
         this.contactoExplotacionRepository = contactoExplotacionRepository;
         this.tramiteRepository = tramiteRepository;
+        this.auditoriaService = auditoriaService;
         this.reloj = reloj;
     }
 
@@ -92,8 +101,12 @@ public class MensajeEntranteService {
         mensaje.setGestoria(remitente.getGestoria());
         mensaje.setContacto(remitente);
 
+        Long gestoriaId = remitente.getGestoria().getId();
         if (!remitente.isActivo()) {
             mensaje.setResultado(ResultadoMensaje.CONTACTO_INACTIVO);
+            // Contacto conocido pero inactivo: solo MENSAJE_RECIBIDO (no se crea Tramite). Actor WEBHOOK_TWILIO,
+            // gestoria = la del contacto. Numero desconocido y ERROR_RECEPCION (sin gestoria) quedan FUERA.
+            auditarMensajeRecibido(gestoriaId, mensaje);
             log.info("Mensaje de WhatsApp de un contacto inactivo: mensajeCampoId={}, contactoId={}, resultado={}",
                     mensaje.getId(), remitente.getId(), ResultadoMensaje.CONTACTO_INACTIVO);
             return new RecepcionMensaje(false, ResultadoMensaje.CONTACTO_INACTIVO, mensaje.getId(), null);
@@ -102,10 +115,25 @@ public class MensajeEntranteService {
         Tramite tramite = tramiteRepository.save(nuevoTramite(remitente, entrante));
         mensaje.setTramite(tramite);
         mensaje.setResultado(ResultadoMensaje.TRAMITE_CREADO);
+        auditarMensajeRecibido(gestoriaId, mensaje);
+        auditoriaService.registrar(AccionAuditoria.TRAMITE_CREADO, gestoriaId, Actor.webhookTwilio(),
+                EntidadAuditada.TRAMITE, tramite.getId(), null,
+                DatosAuditoria.con(Clave.ESTADO, tramite.getEstado())
+                        .y(Clave.ESTADO_EXTRACCION, tramite.getEstadoExtraccion())
+                        .y(Clave.EXPLOTACION_ID,
+                                tramite.getExplotacion() != null ? tramite.getExplotacion().getId() : null));
         log.info("Mensaje de WhatsApp recibido: mensajeCampoId={}, tramiteId={}, gestoriaId={}, estadoExtraccion={}, resultado={}",
-                mensaje.getId(), tramite.getId(), remitente.getGestoria().getId(), tramite.getEstadoExtraccion(),
+                mensaje.getId(), tramite.getId(), gestoriaId, tramite.getEstadoExtraccion(),
                 ResultadoMensaje.TRAMITE_CREADO);
         return new RecepcionMensaje(false, ResultadoMensaje.TRAMITE_CREADO, mensaje.getId(), tramite.getId());
+    }
+
+    /** Fila MENSAJE_RECIBIDO (resultado y numMedia como codigo/entero; nunca el texto ni el telefono). */
+    private void auditarMensajeRecibido(Long gestoriaId, MensajeCampo mensaje) {
+        auditoriaService.registrar(AccionAuditoria.MENSAJE_RECIBIDO, gestoriaId, Actor.webhookTwilio(),
+                EntidadAuditada.MENSAJE_CAMPO, mensaje.getId(), null,
+                DatosAuditoria.con(Clave.RESULTADO, mensaje.getResultado())
+                        .y(Clave.NUM_MEDIA, mensaje.getNumMedia()));
     }
 
     private Tramite nuevoTramite(Contacto remitente, MensajeEntrante entrante) {

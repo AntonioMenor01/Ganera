@@ -48,6 +48,14 @@ public interface ExplotacionRepository
      * Hibernate no aplica gestoriaFilter a una carga por clave primaria (ver CLAUDE.md). */
     Optional<Explotacion> findByIdAndGestoriaId(Long id, Long gestoriaId);
 
+    /** ¿Existe una Explotacion con este id en OTRA Gestoria? Solo para auditar el acceso ajeno (T5/D3), incluido el
+     * explotacionId del cuerpo del PATCH de tramites y del vinculo de contactos: booleano, nunca la entidad; la
+     * respuesta sigue siendo 404 sin cuerpo. Consulta NATIVA: tiene que ver filas de otra Gestoria, que el
+     * gestoriaFilter (activo en toda peticion) oculta a un existsBy derivado; el filtro no se aplica a lo nativo. */
+    @Query(value = "select case when count(*) > 0 then true else false end from explotacion "
+            + "where id = :id and gestoria_id <> :gestoriaId", nativeQuery = true)
+    boolean existsByIdAndGestoriaIdNot(@Param("id") Long id, @Param("gestoriaId") Long gestoriaId);
+
     /** Busqueda por codigo_rega con gestoriaId explicito (hoja Contactos del importador): no
      * depende del gestoriaFilter ambiente. Vacio tanto si no existe como si es de otra Gestoria. */
     Optional<Explotacion> findByCodigoRegaAndGestoriaId(String codigoRega, Long gestoriaId);

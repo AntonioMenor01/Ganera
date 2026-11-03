@@ -22,7 +22,9 @@ import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import com.ganera.core.shared.auditoria.LimpiezaAuditoria;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.core.io.ByteArrayResource;
@@ -140,8 +142,12 @@ class GanaderoEndToEndTest {
         }
     }
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     @AfterEach
     void limpiar() {
+        LimpiezaAuditoria.borrar(jdbcTemplate);
         contactoExplotacionRepository.deleteAll();
         contactoRepository.deleteAll();
         animalRepository.deleteAll();
@@ -340,8 +346,11 @@ class GanaderoEndToEndTest {
 
     /**
      * Listado: 1 consulta de la pagina + 1 consulta agrupada de conteos (+ como mucho 1 count de
-     * paginacion). Detalle: Ganadero + Explotaciones + Contactos en lote. Con N+1 (un conteo por
-     * Ganadero o una carga de Contacto por enlace) ambos superarian el limite.
+     * paginacion). Detalle: Ganadero + Explotaciones + Contactos en lote, mas la lectura sensible
+     * auditada (D4/T5): GET /ganaderos/{id} deja una fila LECTURA_GANADERO en su transaccion
+     * REQUIRES_NEW, que anade 2 sentencias FIJAS (comprobacion de actor 'select from usuario' +
+     * 'insert into auditoria'), nunca por fila. Con N+1 (un conteo por Ganadero o una carga de
+     * Contacto por enlace) ambos superarian el limite igualmente.
      */
     @Test
     void listadoYDetalleNoHacenNMasUno() {
@@ -356,7 +365,8 @@ class GanaderoEndToEndTest {
         long consultasDetalle = estadisticas.getPrepareStatementCount();
 
         assertThat(consultasListado).as("consultas del listado").isLessThanOrEqualTo(3);
-        assertThat(consultasDetalle).as("consultas del detalle").isLessThanOrEqualTo(3);
+        // 3 de negocio + 2 fijas de la auditoria de lectura (D4/T5); un N+1 de contactos pasaria de 5.
+        assertThat(consultasDetalle).as("consultas del detalle").isLessThanOrEqualTo(5);
     }
 
     /**

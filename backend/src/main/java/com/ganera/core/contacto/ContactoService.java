@@ -3,11 +3,18 @@ package com.ganera.core.contacto;
 import com.ganera.core.explotacion.Explotacion;
 import com.ganera.core.explotacion.ExplotacionRepository;
 import com.ganera.core.gestoria.GestoriaRepository;
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.Actor;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.auditoria.Clave;
+import com.ganera.core.shared.auditoria.DatosAuditoria;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
@@ -26,6 +33,10 @@ import java.util.stream.Collectors;
  * violacion del constraint en saveAndFlush, sin consulta previa: la DataIntegrityViolationException
  * NO se captura aqui, propaga fuera del @Transactional (rollback limpio) y la captura
  * ContactoController, igual que RegistroGestoriaService/RegistroGestoriaController.
+ *
+ * <p>Auditoria (plan 2026-10-21): cada escritura aceptada deja su fila ({@code registrar}, dentro de la
+ * transaccion del servicio). Un cambio que no cambia nada (DELETE de uno ya inactivo, reactivar uno ya
+ * activo, enlazar con el mismo rol) NO deja fila. El actor es el usuario del JWT (lo pasa el controlador).
  */
 @Service
 public class ContactoService {
@@ -38,16 +49,19 @@ public class ContactoService {
     private final ContactoExplotacionRepository contactoExplotacionRepository;
     private final ExplotacionRepository explotacionRepository;
     private final GestoriaRepository gestoriaRepository;
+    private final AuditoriaService auditoriaService;
 
     public ContactoService(
             ContactoRepository contactoRepository,
             ContactoExplotacionRepository contactoExplotacionRepository,
             ExplotacionRepository explotacionRepository,
-            GestoriaRepository gestoriaRepository) {
+            GestoriaRepository gestoriaRepository,
+            AuditoriaService auditoriaService) {
         this.contactoRepository = contactoRepository;
         this.contactoExplotacionRepository = contactoExplotacionRepository;
         this.explotacionRepository = explotacionRepository;
         this.gestoriaRepository = gestoriaRepository;
+        this.auditoriaService = auditoriaService;
     }
 
     /** Los enlaces de toda la pagina se cargan en UNA consulta (con la Explotacion en fetch join). */
@@ -62,37 +76,65 @@ public class ContactoService {
     }
 
     @Transactional
-    public ContactoResponse crear(Long gestoriaId, String telefonoNormalizado, String nombre) {
+    public ContactoResponse crear(Long gestoriaId, Long usuarioId, String telefonoNormalizado, String nombre) {
         Contacto contacto = new Contacto();
         contacto.setGestoria(gestoriaRepository.getReferenceById(gestoriaId));
         contacto.setTelefono(telefonoNormalizado);
         contacto.setNombre(nombre);
         contactoRepository.saveAndFlush(contacto);
+        auditoriaService.registrar(AccionAuditoria.CONTACTO_CREADO, gestoriaId, Actor.usuario(usuarioId),
+                EntidadAuditada.CONTACTO, contacto.getId(), null, DatosAuditoria.con(Clave.ACTIVO, true));
         return ContactoResponse.from(contacto, List.of());
     }
 
     @Transactional
-    public ContactoResponse actualizar(Long gestoriaId, Long contactoId, String telefonoNormalizado, String nombre) {
+    public ContactoResponse actualizar(Long gestoriaId, Long usuarioId, Long contactoId,
+                                       String telefonoNormalizado, String nombre) {
         Contacto contacto = buscarContacto(gestoriaId, contactoId);
+        List<CampoContacto> cambiados = new ArrayList<>();
+        if (!Objects.equals(contacto.getTelefono(), telefonoNormalizado)) {
+            cambiados.add(CampoContacto.TELEFONO);
+        }
+        if (!Objects.equals(contacto.getNombre(), nombre)) {
+            cambiados.add(CampoContacto.NOMBRE);
+        }
         contacto.setTelefono(telefonoNormalizado);
         contacto.setNombre(nombre);
         contactoRepository.saveAndFlush(contacto);
+        // Un PUT siempre deja fila CONTACTO_MODIFICADO; CAMPOS_CAMBIADOS dice cuales cambiaron (puede ir
+        // vacia si el PUT reenvia los mismos datos). Nunca el valor nuevo: solo el codigo del campo.
+        auditoriaService.registrar(AccionAuditoria.CONTACTO_MODIFICADO, gestoriaId, Actor.usuario(usuarioId),
+                EntidadAuditada.CONTACTO, contacto.getId(), null,
+                DatosAuditoria.conCodigos(Clave.CAMPOS_CAMBIADOS, cambiados));
         return responder(contacto, gestoriaId);
     }
 
-    /** Borrado logico, idempotente: los enlaces y el historial se conservan. */
+    /** Borrado logico, idempotente: los enlaces y el historial se conservan. Un DELETE de uno ya
+     * inactivo no cambia nada -> sin fila de auditoria. */
     @Transactional
-    public void desactivar(Long gestoriaId, Long contactoId) {
+    public void desactivar(Long gestoriaId, Long usuarioId, Long contactoId) {
         Contacto contacto = buscarContacto(gestoriaId, contactoId);
+        if (!contacto.isActivo()) {
+            return;
+        }
         contacto.setActivo(false);
         contactoRepository.save(contacto);
+        auditoriaService.registrar(AccionAuditoria.CONTACTO_DESACTIVADO, gestoriaId, Actor.usuario(usuarioId),
+                EntidadAuditada.CONTACTO, contacto.getId(),
+                DatosAuditoria.con(Clave.ACTIVO, true), DatosAuditoria.con(Clave.ACTIVO, false));
     }
 
+    /** Idempotente: reactivar uno ya activo no cambia nada -> sin fila. */
     @Transactional
-    public ContactoResponse reactivar(Long gestoriaId, Long contactoId) {
+    public ContactoResponse reactivar(Long gestoriaId, Long usuarioId, Long contactoId) {
         Contacto contacto = buscarContacto(gestoriaId, contactoId);
-        contacto.setActivo(true);
-        contactoRepository.save(contacto);
+        if (!contacto.isActivo()) {
+            contacto.setActivo(true);
+            contactoRepository.save(contacto);
+            auditoriaService.registrar(AccionAuditoria.CONTACTO_REACTIVADO, gestoriaId, Actor.usuario(usuarioId),
+                    EntidadAuditada.CONTACTO, contacto.getId(),
+                    DatosAuditoria.con(Clave.ACTIVO, false), DatosAuditoria.con(Clave.ACTIVO, true));
+        }
         return responder(contacto, gestoriaId);
     }
 
@@ -100,9 +142,13 @@ public class ContactoService {
      * Crea el enlace Contacto-Explotacion, o actualiza el rol si ya existe (idempotente). Ambos
      * extremos se cargan con finders con gestoriaId explicito y, ademas, comprobarMismaGestoria
      * lo verifica de forma explicita (decision 15) antes de escribir nada.
+     *
+     * <p>Fila de auditoria: CONTACTO_VINCULADO si el enlace es nuevo; CONTACTO_ROL_CAMBIADO si existia y
+     * cambia el rol; si existia con el mismo rol, no cambia nada -> sin fila.
      */
     @Transactional
-    public ContactoResponse enlazar(Long gestoriaId, Long contactoId, Long explotacionId, RolContacto rol) {
+    public ContactoResponse enlazar(Long gestoriaId, Long usuarioId, Long contactoId, Long explotacionId,
+                                    RolContacto rol) {
         Contacto contacto = buscarContacto(gestoriaId, contactoId);
         Explotacion explotacion = explotacionRepository.findByIdAndGestoriaId(explotacionId, gestoriaId)
                 .orElseThrow(RecursoNoEncontradoException::new);
@@ -111,28 +157,45 @@ public class ContactoService {
             throw new ContactoInactivoException();
         }
 
-        ContactoExplotacion enlace = contactoExplotacionRepository
+        ContactoExplotacion existente = contactoExplotacionRepository
                 .findByContactoIdAndExplotacionIdAndGestoriaId(contactoId, explotacionId, gestoriaId)
-                .orElseGet(() -> {
-                    ContactoExplotacion nuevo = new ContactoExplotacion();
-                    // La Gestoria del enlace sale del JWT, nunca de los extremos (decision 15).
-                    nuevo.setGestoria(gestoriaRepository.getReferenceById(gestoriaId));
-                    nuevo.setContacto(contacto);
-                    nuevo.setExplotacion(explotacion);
-                    return nuevo;
-                });
-        enlace.setRol(rol);
-        contactoExplotacionRepository.save(enlace);
+                .orElse(null);
+        if (existente == null) {
+            ContactoExplotacion nuevo = new ContactoExplotacion();
+            // La Gestoria del enlace sale del JWT, nunca de los extremos (decision 15).
+            nuevo.setGestoria(gestoriaRepository.getReferenceById(gestoriaId));
+            nuevo.setContacto(contacto);
+            nuevo.setExplotacion(explotacion);
+            nuevo.setRol(rol);
+            contactoExplotacionRepository.save(nuevo);
+            auditoriaService.registrar(AccionAuditoria.CONTACTO_VINCULADO, gestoriaId, Actor.usuario(usuarioId),
+                    EntidadAuditada.CONTACTO, contactoId, null,
+                    DatosAuditoria.con(Clave.EXPLOTACION_ID, explotacionId).y(Clave.ROL, rol));
+        } else {
+            RolContacto rolAntes = existente.getRol();
+            existente.setRol(rol);
+            contactoExplotacionRepository.save(existente);
+            if (rolAntes != rol) {
+                auditoriaService.registrar(AccionAuditoria.CONTACTO_ROL_CAMBIADO, gestoriaId, Actor.usuario(usuarioId),
+                        EntidadAuditada.CONTACTO, contactoId,
+                        DatosAuditoria.con(Clave.EXPLOTACION_ID, explotacionId).y(Clave.ROL, rolAntes),
+                        DatosAuditoria.con(Clave.EXPLOTACION_ID, explotacionId).y(Clave.ROL, rol));
+            }
+        }
         return responder(contacto, gestoriaId);
     }
 
     @Transactional
-    public void desenlazar(Long gestoriaId, Long contactoId, Long explotacionId) {
+    public void desenlazar(Long gestoriaId, Long usuarioId, Long contactoId, Long explotacionId) {
         buscarContacto(gestoriaId, contactoId);
         ContactoExplotacion enlace = contactoExplotacionRepository
                 .findByContactoIdAndExplotacionIdAndGestoriaId(contactoId, explotacionId, gestoriaId)
                 .orElseThrow(RecursoNoEncontradoException::new);
+        RolContacto rol = enlace.getRol();
         contactoExplotacionRepository.delete(enlace);
+        auditoriaService.registrar(AccionAuditoria.CONTACTO_DESVINCULADO, gestoriaId, Actor.usuario(usuarioId),
+                EntidadAuditada.CONTACTO, contactoId,
+                DatosAuditoria.con(Clave.EXPLOTACION_ID, explotacionId).y(Clave.ROL, rol), null);
     }
 
     /**

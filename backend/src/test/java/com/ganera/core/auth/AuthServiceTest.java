@@ -4,6 +4,7 @@ import com.ganera.core.gestoria.Gestoria;
 import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.gestoria.Usuario;
 import com.ganera.core.gestoria.UsuarioRepository;
+import com.ganera.core.shared.auditoria.AuditoriaService;
 import com.ganera.core.shared.security.JwtService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +16,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase.Replace.NONE;
 
 @DataJpaTest
@@ -30,6 +33,9 @@ class AuthServiceTest {
 
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     private final JwtService jwtService = new JwtService(JWT_SECRET_DE_PRUEBA, 480);
+    // Mock: aqui solo se comprueba la logica del token; que un login correcto/fallido deje fila y que un
+    // email desconocido NO la deje se prueba en AuditoriaLoginEndToEndTest (contexto real).
+    private final AuditoriaService auditoriaService = mock(AuditoriaService.class);
 
     private Usuario crearUsuario(String email, String passwordEnClaro, boolean activo) {
         Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria de auth " + email));
@@ -44,7 +50,7 @@ class AuthServiceTest {
 
     @Test
     void credencialesValidasYUsuarioActivoDevuelveToken() {
-        AuthService authService = new AuthService(usuarioRepository, passwordEncoder, jwtService);
+        AuthService authService = new AuthService(usuarioRepository, passwordEncoder, jwtService, auditoriaService);
         crearUsuario("valido@gestoria.com", "password-correcta", true);
 
         Optional<String> token = authService.autenticar("valido@gestoria.com", "password-correcta");
@@ -54,7 +60,7 @@ class AuthServiceTest {
 
     @Test
     void passwordIncorrectaNoDevuelveToken() {
-        AuthService authService = new AuthService(usuarioRepository, passwordEncoder, jwtService);
+        AuthService authService = new AuthService(usuarioRepository, passwordEncoder, jwtService, auditoriaService);
         crearUsuario("passwordmala@gestoria.com", "password-correcta", true);
 
         Optional<String> token = authService.autenticar("passwordmala@gestoria.com", "password-incorrecta");
@@ -64,26 +70,30 @@ class AuthServiceTest {
 
     @Test
     void emailDesconocidoNoDevuelveToken() {
-        AuthService authService = new AuthService(usuarioRepository, passwordEncoder, jwtService);
+        AuthService authService = new AuthService(usuarioRepository, passwordEncoder, jwtService, auditoriaService);
 
         Optional<String> token = authService.autenticar("no-existe@gestoria.com", "cualquier-password");
 
         assertThat(token).isEmpty();
+        // Email desconocido: ni token ni fila de auditoria (A2); el log no lleva el email.
+        verifyNoInteractions(auditoriaService);
     }
 
     @Test
     void passwordNullNoDevuelveTokenNiLanzaAunqueElEmailExista() {
-        AuthService authService = new AuthService(usuarioRepository, passwordEncoder, jwtService);
+        AuthService authService = new AuthService(usuarioRepository, passwordEncoder, jwtService, auditoriaService);
         crearUsuario("passwordnull@gestoria.com", "password-correcta", true);
 
         Optional<String> token = authService.autenticar("passwordnull@gestoria.com", null);
 
         assertThat(token).isEmpty();
+        // password null se trata como email inexistente: sin fila de auditoria.
+        verifyNoInteractions(auditoriaService);
     }
 
     @Test
     void usuarioInactivoNoDevuelveTokenAunqueLaPasswordSeaCorrecta() {
-        AuthService authService = new AuthService(usuarioRepository, passwordEncoder, jwtService);
+        AuthService authService = new AuthService(usuarioRepository, passwordEncoder, jwtService, auditoriaService);
         crearUsuario("inactivo@gestoria.com", "password-correcta", false);
 
         Optional<String> token = authService.autenticar("inactivo@gestoria.com", "password-correcta");

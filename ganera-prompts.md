@@ -693,6 +693,17 @@ Plan con las decisiones cerradas: `docs/superpowers/plans/2026-10-03-tarea-front
    ganadero/empleados → documentos → Mistral.
 5. **Prompt C**, después la app de escritorio, el MVP a la gestoría piloto y, tras el piloto, OVZ 3a/3c.
 
+**Añadido el 2026-10-21 → 2026-10-30 — auditoría base (rama `feat/auditoria`):** tabla `auditoria` inmutable
+(NOT NULL `gestoria_id` + FK, triggers `V26`, RLS «solo inserción»), `AuditoriaService` (`registrar` MANDATORY /
+`registrarAparte` REQUIRES_NEW), IP + `X-Request-Id` por petición, accesos a otra gestoría (`ACCESO_OTRA_GESTORIA`,
+respuesta sigue `404`), lecturas sensibles, e **inventario cerrado** (`InventarioAuditoriaTest` + guardia DML
+`InspectorDml`/`GuardiaDml`): toda escritura nueva lleva su fila y su entrada o pone la suite en rojo. Plan
+`docs/superpowers/plans/2026-10-21-auditoria-base.md` (D1–D10). Refundida la PR #7 (Stripe landing) dentro: sus
+escrituras auditadas/excluidas, `SUSCRIPCION_CREADA` con el estado real, `AltaPendiente` exención documentada,
+`authenticator` revocado por el callback. **T6 commiteado** (`78aa3cd`, backend 1287, 0 fallos); **T7** (docs,
+skill `nueva-entidad-tenant`, test de regresión de `authenticator`, guion de smoke) sin commitear hasta la revisión
+de Antonio. Pendiente para el gate posterior al despliegue: el smoke de Clever con `X-Forwarded-For` (A7).
+
 **Añadido el 2026-10-06 — escalón 1 de OVZ:** la **ficha lista para OVZ** (**hecha el 2026-10-07, commit `db0d234`**: backend 706/706, frontend 720/720, smoke en navegador real
 36/36 en Chromium y Firefox; análisis en
 `docs/referencias/ovz-tramites-bovino.md`, plan en `docs/superpowers/plans/2026-10-06-ficha-ovz.md`). En un

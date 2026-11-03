@@ -4,12 +4,15 @@ import com.ganera.core.facturacion.StripeCheckoutService;
 import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.gestoria.Usuario;
 import com.ganera.core.gestoria.UsuarioRepository;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.tiempo.RelojConfig;
 import com.ganera.core.shared.web.MotivoErrorResponse;
 import com.stripe.exception.StripeException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -19,12 +22,15 @@ import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTest
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = NONE)
+@Import({AuditoriaService.class, RelojConfig.class})
 class RegistroGestoriaControllerTest {
 
     @Autowired
     private GestoriaRepository gestoriaRepository;
     @Autowired
     private UsuarioRepository usuarioRepository;
+    @Autowired
+    private AuditoriaService auditoriaService;
 
     /** Unico motivo para cualquier causa de fallo (sin oraculo de enumeracion de emails). */
     private static final MotivoErrorResponse MOTIVO_UNIFORME = new MotivoErrorResponse(
@@ -33,9 +39,10 @@ class RegistroGestoriaControllerTest {
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     private RegistroGestoriaController nuevoController() {
-        RegistroGestoriaService servicio = new RegistroGestoriaService(gestoriaRepository, usuarioRepository, passwordEncoder);
+        RegistroGestoriaService servicio = new RegistroGestoriaService(
+                gestoriaRepository, usuarioRepository, passwordEncoder, auditoriaService);
         StripeCheckoutService stripeCheckoutServiceSinConfigurar = new StripeCheckoutService(
-                null, null, "", "", "", "");
+                null, null, auditoriaService, "", "", "", "");
         return new RegistroGestoriaController(servicio, stripeCheckoutServiceSinConfigurar);
     }
 

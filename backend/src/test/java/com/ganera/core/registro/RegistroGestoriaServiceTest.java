@@ -3,10 +3,13 @@ package com.ganera.core.registro;
 import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.gestoria.Usuario;
 import com.ganera.core.gestoria.UsuarioRepository;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.tiempo.RelojConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -17,17 +20,20 @@ import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTest
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = NONE)
+@Import({AuditoriaService.class, RelojConfig.class})
 class RegistroGestoriaServiceTest {
 
     @Autowired
     private GestoriaRepository gestoriaRepository;
     @Autowired
     private UsuarioRepository usuarioRepository;
+    @Autowired
+    private AuditoriaService auditoriaService;
 
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     private RegistroGestoriaService nuevoServicio() {
-        return new RegistroGestoriaService(gestoriaRepository, usuarioRepository, passwordEncoder);
+        return new RegistroGestoriaService(gestoriaRepository, usuarioRepository, passwordEncoder, auditoriaService);
     }
 
     @Test

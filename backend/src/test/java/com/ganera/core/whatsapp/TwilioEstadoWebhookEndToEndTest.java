@@ -1,7 +1,14 @@
 package com.ganera.core.whatsapp;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ganera.core.contacto.Contacto;
 import com.ganera.core.contacto.ContactoRepository;
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.ActorTipo;
+import com.ganera.core.shared.auditoria.Auditoria;
+import com.ganera.core.shared.auditoria.AuditoriaRepository;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
 import com.ganera.core.gestoria.Gestoria;
 import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.gestoria.Usuario;
@@ -81,6 +88,10 @@ class TwilioEstadoWebhookEndToEndTest {
     @Autowired
     private RespuestaWhatsappRepository respuestaWhatsappRepository;
     @Autowired
+    private AuditoriaRepository auditoriaRepository;
+    @Autowired
+    private ObjectMapper objectMapper;
+    @Autowired
     private TramiteRepository tramiteRepository;
     @Autowired
     private ContactoRepository contactoRepository;
@@ -112,6 +123,8 @@ class TwilioEstadoWebhookEndToEndTest {
 
     @AfterEach
     void limpiar() {
+        // El callback deja filas de auditoria (RESPUESTA_WHATSAPP_ESTADO_ACTUALIZADO) que referencian la gestoria.
+        com.ganera.core.shared.auditoria.LimpiezaAuditoria.borrar(jdbcTemplate);
         jdbcTemplate.update("delete from respuesta_whatsapp");
         tramiteRepository.deleteAll();
         contactoRepository.deleteAll();
@@ -249,6 +262,42 @@ class TwilioEstadoWebhookEndToEndTest {
 
         assertThat(estado(id)).isEqualTo("ENVIADO");
         assertThat(actualizadaEn(id)).isEqualTo(CREADA);
+    }
+
+    // ------------------------------------------------------------- auditoria (T4, WEBHOOK_TWILIO)
+
+    @Test
+    void deliveredDejaUnaFilaDeEstadoActualizadoSoloEnAConAntesYDespues() throws Exception {
+        long id = respuestaA(EstadoRespuestaWhatsapp.ENVIADO, SID_A, null);
+        respuestaB(EstadoRespuestaWhatsapp.ENVIADO, SID_B, null);
+
+        ResponseEntity<String> r = enviarFirmado(callback(SID_A, "delivered"));
+        assertThat(r.getStatusCode().value()).isEqualTo(200);
+
+        List<Auditoria> filasA = auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaA.getId());
+        assertThat(filasA).extracting(Auditoria::getAccion)
+                .containsExactly(AccionAuditoria.RESPUESTA_WHATSAPP_ESTADO_ACTUALIZADO);
+        Auditoria fila = filasA.get(0);
+        assertThat(fila.getActorTipo()).isEqualTo(ActorTipo.WEBHOOK_TWILIO);
+        assertThat(fila.getUsuarioId()).isNull();
+        assertThat(fila.getEntidadTipo()).isEqualTo(EntidadAuditada.RESPUESTA_WHATSAPP);
+        assertThat(fila.getEntidadId()).isEqualTo(id);
+        assertThat(fila.getIp()).isIn("127.0.0.1", "0:0:0:0:0:0:0:1");
+        assertThat(fila.getRequestId()).isNotBlank();
+        assertThat(objectMapper.readTree(fila.getAntes()).get("estado").asText()).isEqualTo("ENVIADO");
+        assertThat(objectMapper.readTree(fila.getDespues()).get("estado").asText()).isEqualTo("ENTREGADO");
+        assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaB.getId())).isEmpty();
+    }
+
+    @Test
+    void unCallbackQueNoCambiaNadaNoDejaFila() {
+        respuestaA(EstadoRespuestaWhatsapp.ENTREGADO, SID_A, null);
+
+        // delivered sobre una ya ENTREGADA no avanza -> sin fila; receiving tampoco.
+        assertThat(enviarFirmado(callback(SID_A, "delivered")).getStatusCode().value()).isEqualTo(200);
+        assertThat(enviarFirmado(callback(SID_A, "receiving")).getStatusCode().value()).isEqualTo(200);
+
+        assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaA.getId())).isEmpty();
     }
 
     // ------------------------------------------------------------- aislamiento y SID
