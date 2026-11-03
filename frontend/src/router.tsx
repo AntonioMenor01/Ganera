@@ -7,6 +7,7 @@ import { TramitesPage } from "@/features/tramites/TramitesPage";
 import { FichaOvzPage } from "@/features/tramites/FichaOvzPage";
 import { GanaderosPage } from "@/features/ganaderos/GanaderosPage";
 import { GanaderoDetallePage } from "@/features/ganaderos/GanaderoDetallePage";
+import { DashboardPage } from "@/features/dashboard/DashboardPage";
 
 /** Exportadas para que los tests monten las rutas reales en un createMemoryRouter. */
 export const routes: RouteObject[] = [
@@ -25,7 +26,9 @@ export const routes: RouteObject[] = [
         path: "/",
         element: <AppLayout />,
         children: [
-          { index: true, element: <Navigate to="/tramites" replace /> },
+          // Inicio: el panel de resumen (saludo, KPIs y la cola de trabajo). Antes «/» redirigía a
+          // «/tramites»; ahora esa cola sigue estando en su sección y el inicio la previsualiza.
+          { index: true, element: <DashboardPage /> },
           { path: "tramites", element: <TramitesPage /> },
           { path: "ganaderos", element: <GanaderosPage /> },
           { path: "ganaderos/:id", element: <GanaderoDetallePage /> },
