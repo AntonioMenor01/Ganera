@@ -82,11 +82,18 @@ class InventarioAuditoriaTest {
         RUTAS.put("POST /tramites/{id}/deshacer-descarte", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
         RUTAS.put("POST /tramites/{id}/respuestas-whatsapp", Cobertura.auditada("tramite.RespuestaWhatsappEndToEndTest"));
         RUTAS.put("POST /explotaciones/importar", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
+        RUTAS.put("POST /ganaderos", Cobertura.auditada("ganadero.GanaderoAltaEndToEndTest"));
         RUTAS.put("POST /gestorias/registro", Cobertura.auditada("registro.RegistroGestoriaEndToEndTest"));
         RUTAS.put("POST /internal/onboarding/gestoria", Cobertura.auditada("onboarding.OnboardingControllerTest"));
         RUTAS.put("POST /webhooks/stripe", Cobertura.auditada("facturacion.StripeWebhookEndToEndTest"));
         RUTAS.put("POST /webhooks/twilio/whatsapp", Cobertura.auditada("whatsapp.WhatsAppRecepcionEndToEndTest"));
         RUTAS.put("POST /webhooks/twilio/whatsapp/estado", Cobertura.auditada("whatsapp.TwilioEstadoWebhookEndToEndTest"));
+
+        // GET /buscar (buscador global de ganaderos/explotaciones/animales) NO aparece aqui a proposito: el
+        // inventario solo descubre escrituras (POST/PUT/PATCH/DELETE). Es una lectura y NO se audita, de la
+        // misma clase de dato que los listados ya exentos (GET /ganaderos, GET /explotaciones, GET /tramites):
+        // nombres/codigos de rega/crotales sin texto libre ni telefonos. Las lecturas sensibles que SI se
+        // auditan son los detalles (LECTURA_GANADERO, LECTURA_TRAMITE, LECTURA_CONTACTOS). Ver BuscadorController.
 
         // --- Planificadores ---
         PLANIFICADORES.put("SuscripcionSyncScheduler.reconciliarCantidadesConStripe",

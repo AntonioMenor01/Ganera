@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowDown, ArrowUp, ArrowUpDown, CircleAlertIcon } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, CircleAlertIcon, CircleCheckIcon, UserPlusIcon } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -14,6 +14,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { aErrorApi, mensajeDeError, type ErrorApi } from "@/shared/api/errores";
 import type { Pagina } from "@/shared/api/types";
 import { listarGanaderos } from "./api";
+import { AltaGanaderoDialog } from "./AltaGanaderoDialog";
 import type { GanaderoResumen } from "./types";
 import {
   ORDEN_INICIAL,
@@ -45,8 +46,19 @@ export function GanaderosPage() {
   // de ella (a otra página o reintentando), en vez de quedarse atascado en la que falla.
   const [totalPaginas, setTotalPaginas] = useState(0);
   const [version, setVersion] = useState(0);
+  // Alta manual (Antonio la abre): diálogo y aviso del último ganadero creado.
+  const [altaAbierta, setAltaAbierta] = useState(false);
+  const [reciénCreado, setReciénCreado] = useState<GanaderoResumen | null>(null);
 
   const recargar = useCallback(() => setVersion((v) => v + 1), []);
+
+  const alCrearGanadero = useCallback((ganadero: GanaderoResumen) => {
+    // El nuevo ganadero puede caer en otra página según el orden; en vez de buscarlo, se recarga el
+    // listado y se confirma con un aviso que enlaza a su ficha.
+    setReciénCreado(ganadero);
+    setNumeroPagina(0);
+    setVersion((v) => v + 1);
+  }, []);
 
   useEffect(() => {
     let cancelado = false;
@@ -96,10 +108,31 @@ export function GanaderosPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      <div className="min-w-0">
-        <h1 className="text-xl font-bold">Ganaderos</h1>
-        <p className="text-sm text-muted-foreground tabular-nums">{subtitulo}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold">Ganaderos</h1>
+          <p className="text-sm text-muted-foreground tabular-nums">{subtitulo}</p>
+        </div>
+        <Button onClick={() => setAltaAbierta(true)}>
+          <UserPlusIcon aria-hidden="true" />
+          Añadir ganadero
+        </Button>
       </div>
+
+      {reciénCreado && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center gap-x-2 gap-y-1 border border-success/40 bg-success/10 px-3 py-2 text-sm text-foreground"
+        >
+          <CircleCheckIcon aria-hidden="true" className="size-4 shrink-0 text-success-foreground" />
+          <span>
+            Ganadero «{reciénCreado.nombre}» añadido.
+          </span>
+          <Link to={`/ganaderos/${reciénCreado.id}`} className={CLASE_ENLACE}>
+            Ver ficha
+          </Link>
+        </div>
+      )}
 
       {errorCarga && (
         <Alert variant="destructive">
@@ -163,10 +196,16 @@ export function GanaderosPage() {
                   colSpan={COLUMNAS}
                   className="py-6 text-center whitespace-normal text-muted-foreground"
                 >
-                  <p>Todavía no hay ganaderos. Se crean al importar el Excel de explotaciones.</p>
-                  <Link to="/explotaciones" className={`mt-1 inline-block ${CLASE_ENLACE}`}>
-                    Ir a Explotaciones
-                  </Link>
+                  <p>Todavía no hay ganaderos. Añade uno o impórtalos con el Excel de explotaciones.</p>
+                  <span className="mt-2 flex flex-wrap items-center justify-center gap-3">
+                    <Button size="sm" onClick={() => setAltaAbierta(true)}>
+                      <UserPlusIcon aria-hidden="true" />
+                      Añadir ganadero
+                    </Button>
+                    <Link to="/explotaciones" className={CLASE_ENLACE}>
+                      Ir a Explotaciones
+                    </Link>
+                  </span>
                 </TableCell>
               </TableRow>
             )}
@@ -228,6 +267,8 @@ export function GanaderosPage() {
           </Button>
         </nav>
       )}
+
+      <AltaGanaderoDialog open={altaAbierta} onOpenChange={setAltaAbierta} onCreado={alCrearGanadero} />
     </div>
   );
 }
