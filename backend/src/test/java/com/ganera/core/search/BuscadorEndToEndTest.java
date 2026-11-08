@@ -14,6 +14,7 @@ import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.gestoria.UsuarioRepository;
 import com.ganera.core.onboarding.OnboardingRequest;
 import com.ganera.core.onboarding.OnboardingResponse;
+import com.ganera.core.shared.auditoria.LimpiezaAuditoria;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -29,6 +30,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 
@@ -60,6 +62,7 @@ class BuscadorEndToEndTest {
     @Autowired private SuscripcionRepository suscripcionRepository;
     @Autowired private UsuarioRepository usuarioRepository;
     @Autowired private GestoriaRepository gestoriaRepository;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     private String tokenA;
     private String tokenB;
@@ -85,6 +88,9 @@ class BuscadorEndToEndTest {
 
     @AfterEach
     void limpiar() {
+        // El onboarding, el login y la importación (auditados) dejan filas en `auditoria` con FK sin
+        // ON DELETE a usuario/gestoría: hay que vaciarla antes de borrar usuarios y gestorías.
+        LimpiezaAuditoria.borrar(jdbcTemplate);
         contactoExplotacionRepository.deleteAll();
         contactoRepository.deleteAll();
         animalRepository.deleteAll();

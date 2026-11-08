@@ -7,11 +7,21 @@ import com.ganera.core.auth.LoginResponse;
 import com.ganera.core.facturacion.SuscripcionRepository;
 import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.gestoria.UsuarioRepository;
+import com.ganera.core.gestoria.Usuario;
 import com.ganera.core.onboarding.OnboardingRequest;
 import com.ganera.core.onboarding.OnboardingResponse;
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.ActorTipo;
+import com.ganera.core.shared.auditoria.Auditoria;
+import com.ganera.core.shared.auditoria.AuditoriaRepository;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
+import com.ganera.core.shared.auditoria.GuardiaDmlExtension;
+import com.ganera.core.shared.auditoria.LimpiezaAuditoria;
+import com.ganera.core.shared.auditoria.OrigenAuditoria;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -20,6 +30,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * puede «ver» el de A ni al chocar con el UNIQUE global) y que sin token no se puede crear.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@ExtendWith(GuardiaDmlExtension.class)
 class GanaderoAltaEndToEndTest {
 
     private static final String SECRETO_ONBOARDING = "test-onboarding-secret";
@@ -51,9 +63,16 @@ class GanaderoAltaEndToEndTest {
     private UsuarioRepository usuarioRepository;
     @Autowired
     private GestoriaRepository gestoriaRepository;
+    @Autowired
+    private AuditoriaRepository auditoriaRepository;
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private String tokenA;
     private String tokenB;
+    private Long gestoriaIdA;
+    private Long gestoriaIdB;
+    private Long usuarioIdA;
 
     @BeforeEach
     void preparar() {
@@ -61,12 +80,23 @@ class GanaderoAltaEndToEndTest {
         onboarding("Gestoria Alta B", "altaB@test.com");
         tokenA = login("altaA@test.com");
         tokenB = login("altaB@test.com");
+        Usuario a = usuarioRepository.findByEmail("altaA@test.com").orElseThrow();
+        usuarioIdA = a.getId();
+        gestoriaIdA = a.getGestoria().getId();
+        gestoriaIdB = usuarioRepository.findByEmail("altaB@test.com").orElseThrow().getGestoria().getId();
+        // El onboarding y el login dejan filas de auditoría (GESTORIA_CREADA, USUARIO_CREADO,
+        // SUSCRIPCION_CREADA, LOGIN_CORRECTO): se borran para que cada test parta de auditoría vacía y
+        // las afirmaciones de «una fila» / «ninguna fila» sean exactas. Es setup (antes de que la
+        // GuardiaDmlExtension se arme), así que no cuenta como escritura del escenario.
+        LimpiezaAuditoria.borrar(jdbcTemplate);
     }
 
-    /** E2E sobre HTTP: no hay rollback por test. Se limpia en orden de claves ajenas (ganaderos y
-     * dependientes de la gestoría antes que la gestoría) para que cada método parta de cero. */
+    /** E2E sobre HTTP: no hay rollback por test. Se vacía primero `auditoria` (las filas confirmadas
+     * tienen FK sin ON DELETE a usuario/gestoría) y luego en orden de claves ajenas, para que cada
+     * método parta de cero. */
     @AfterEach
     void limpiar() {
+        LimpiezaAuditoria.borrar(jdbcTemplate);
         ganaderoRepository.deleteAll();
         suscripcionRepository.deleteAll();
         usuarioRepository.deleteAll();
@@ -88,6 +118,21 @@ class GanaderoAltaEndToEndTest {
         assertThat(nifsDe(tokenA)).contains(NIF_VALIDO);
         // Aislamiento: la gestoría B no lo ve.
         assertThat(nifsDe(tokenB)).doesNotContain(NIF_VALIDO);
+
+        // Auditoría: EXACTAMENTE una fila GANADERO_CREADO en la gestoría de A (actor USUARIO del JWT,
+        // entidad GANADERO con el id creado, origen MANUAL) y NINGUNA en B.
+        List<Auditoria> filasA = auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaIdA);
+        assertThat(filasA).hasSize(1);
+        Auditoria fila = filasA.get(0);
+        assertThat(fila.getAccion()).isEqualTo(AccionAuditoria.GANADERO_CREADO);
+        assertThat(fila.getActorTipo()).isEqualTo(ActorTipo.USUARIO);
+        assertThat(fila.getUsuarioId()).isEqualTo(usuarioIdA);
+        assertThat(fila.getEntidadTipo()).isEqualTo(EntidadAuditada.GANADERO);
+        assertThat(fila.getEntidadId()).isEqualTo(creado.get("id").asLong());
+        // El JSON canónico usa la clave en minúsculas; el valor es el name() del enum.
+        assertThat(objectMapper.readTree(fila.getDespues()).get("origen").asText())
+                .isEqualTo(OrigenAuditoria.MANUAL.name());
+        assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaIdB)).isEmpty();
     }
 
     @Test
@@ -110,6 +155,10 @@ class GanaderoAltaEndToEndTest {
         ResponseEntity<String> repetido = crear(tokenA, "Otro nombre", NIF_VALIDO);
         assertThat(repetido.getStatusCode().value()).isEqualTo(409);
         assertThat(motivo(repetido)).isEqualTo(GanaderoAltaService.MOTIVO_NIF_DUPLICADO_PROPIO);
+        // El 409 (rollback) no deja fila: solo la del alta válida del primero.
+        assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaIdA))
+                .extracting(Auditoria::getAccion)
+                .containsExactly(AccionAuditoria.GANADERO_CREADO);
     }
 
     @Test
@@ -122,6 +171,11 @@ class GanaderoAltaEndToEndTest {
         assertThat(motivo(desdeB)).isEqualTo(GanaderoAltaService.MOTIVO_NIF_NO_DISPONIBLE);
         // No se ha creado nada en B.
         assertThat(nifsDe(tokenB)).doesNotContain(NIF_VALIDO);
+        // El 409 por UNIQUE global (rollback) no deja NINGUNA fila de auditoría en B; A tiene la suya.
+        assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaIdB)).isEmpty();
+        assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaIdA))
+                .extracting(Auditoria::getAccion)
+                .containsExactly(AccionAuditoria.GANADERO_CREADO);
     }
 
     @Test

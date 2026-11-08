@@ -12,6 +12,11 @@ import org.springframework.web.bind.annotation.RestController;
  * Buscador global (GET /buscar?q=): ganaderos, explotaciones y crotales de la gestoría autenticada
  * (gestoriaId SIEMPRE del JWT). q ausente, vacío o de menos de 2 caracteres devuelve 200 con grupos
  * vacíos (no es un error: el front pregunta en cada tecla). q demasiado largo da 400.
+ *
+ * <p>Auditoría: esta lectura NO se audita (exención documentada en {@code InventarioAuditoriaTest}). Es
+ * de la misma clase de dato que los listados ya exentos ({@code GET /ganaderos}, {@code GET /explotaciones},
+ * {@code GET /tramites}): nombres, códigos REGA y crotales, sin texto libre ni teléfonos. Las lecturas
+ * sensibles que sí dejan fila son los detalles (LECTURA_GANADERO/TRAMITE/CONTACTOS), no este buscador.
  */
 @RestController
 public class BuscadorController {

@@ -144,13 +144,19 @@ approval step before anything is written to OVZ.net.
   in every state and that nothing says sent/executed/registered/processed/presented/completed. (Since Prompt A2 the review dialog sends
   the trámite's `version` with `PATCH` and `aprobar`, so approving from the UI works again — the
   breakage A1 introduced is closed.)
-- **No manual "alta de Ganadero" form in the frontend, no OVZ-credentials-onboarding screen.** The
-  only way to create Ganaderos/Explotaciones/Animales right now is the Excel importer
-  (Prompt 3d) — don't add a second, divergent creation path without an explicit decision to do so.
-  (Contactos are the exception, by an explicit A1 decision: they can come from the importer's
-  optional "Contactos" sheet **or** from the `/contactos` CRUD endpoints — backend only, no UI yet.)
-  The Ganaderos screens added in Prompt A2 are **read-only** (list, detail, animales); they don't
-  change this rule.
+- **Manual "alta de Ganadero" is allowed (nombre + NIF only); no OVZ-credentials-onboarding screen.**
+  Since the frontend-MVP merge, a Ganadero can be created by hand from the UI — `POST /ganaderos`
+  (`GanaderoAltaService`, `@Transactional`, gestoriaId **always** from the JWT) + the frontend
+  `AltaGanaderoDialog`. The model is deliberately **minimal (nombre + NIF)**: the NIF is validated
+  (`NifValidador`) and normalized, duplicates collapse into a `409` (own gestoría: clear motivo;
+  another's, via the global `UNIQUE`, a neutral "no disponible" that never reveals the other
+  gestoría — same no-enumeration principle as the importer). The alta writes its audit row
+  (`GANADERO_CREADO`, actor USUARIO from the JWT, `ORIGEN: MANUAL`, MANDATORY, inside the alta
+  transaction; the `409`/rollback leaves **no** row). Don't widen the model (extra fields, "opción B"
+  is Antonio's later call) and don't add a *second* divergent creation path for Explotaciones/Animales
+  — those still come only from the Excel importer (Prompt 3d). (Contactos are the other exception, by
+  an explicit A1 decision: importer's optional "Contactos" sheet **or** the `/contactos` CRUD
+  endpoints.) The rest of the Ganaderos screens (list, detail, animales) stay read-only.
   The OVZ-credentials screen is the screen to store OVZ credentials (encrypted), deferred to escalón
   2; whether they belong to the gestoría or to each ganadero is decided after the OVZ mapping.
 
