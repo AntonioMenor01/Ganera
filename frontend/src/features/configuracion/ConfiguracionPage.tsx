@@ -715,7 +715,7 @@ function PreferenciasOvzPanel() {
             <div className="sm:col-span-2">
               <Alert variant="destructive">
                 <AlertTitle>No se han podido guardar</AlertTitle>
-                <AlertDescription>{mensajeDeError(error, "generico")}</AlertDescription>
+                <AlertDescription>{mensajeDeError(error, "guardar-preferencias-ovz")}</AlertDescription>
               </Alert>
             </div>
           )}
