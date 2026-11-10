@@ -176,6 +176,6 @@ describe("ExplotacionesPage: tabla y paginación (Task 10)", () => {
     servir()
     montar()
 
-    expect(await screen.findByText("ES002")).toHaveClass("tabular-nums")
+    expect((await screen.findByText("ES002")).closest("td")).toHaveClass("tabular-nums")
   })
 })

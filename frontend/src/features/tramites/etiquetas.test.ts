@@ -186,9 +186,13 @@ describe("presentacionRolContacto", () => {
 })
 
 describe("ORIGENES_TRAMITE / etiquetaOrigen (B1, D7)", () => {
-  it("WhatsApp se anuncia como «Recibido por WhatsApp»", () => {
-    expect(ORIGENES_TRAMITE).toEqual({ WHATSAPP: "Recibido por WhatsApp" })
+  it("WhatsApp y MANUAL tienen etiqueta; el resto no pinta indicador", () => {
+    expect(ORIGENES_TRAMITE).toEqual({
+      WHATSAPP: "Recibido por WhatsApp",
+      MANUAL: "Creado a mano",
+    })
     expect(etiquetaOrigen("WHATSAPP")).toBe("Recibido por WhatsApp")
+    expect(etiquetaOrigen("MANUAL")).toBe("Creado a mano")
   })
 
   it("sin origen (trámite anterior a B1) o con uno desconocido no hay indicador", () => {
