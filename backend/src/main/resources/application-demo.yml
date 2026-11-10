@@ -1,0 +1,9 @@
+# Perfil local para sembrar datos inventados al arrancar.
+# Nunca activar en Clever/producción (no hay spring.profiles.include aquí).
+#
+# Arranque típico (además de JWT_SECRET, ENCRYPTION_KEY, etc.):
+#   SPRING_PROFILES_ACTIVE=demo
+# o: --spring.profiles.active=demo
+ganera:
+  demo:
+    sembrar: true
