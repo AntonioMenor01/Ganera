@@ -41,9 +41,14 @@ describe("navegación: Ganaderos", () => {
     const barra = within(screen.getByRole("banner")).getByRole("navigation")
     const enlaces = within(barra).getAllByRole("link")
     expect(enlaces.map((e) => e.textContent)).toEqual([
+      "Inicio",
+      "Bandeja",
       "Trámites",
       "Ganaderos",
       "Explotaciones",
+      "Calendario",
+      "Informes",
+      "Configuración",
     ])
     const ganaderos = within(barra).getByRole("link", { name: "Ganaderos" })
     expect(ganaderos).toHaveAttribute("href", "/ganaderos")

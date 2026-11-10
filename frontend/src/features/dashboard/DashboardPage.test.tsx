@@ -53,6 +53,7 @@ function montar() {
       { path: "/", element: <DashboardPage /> },
       { path: "/tramites", element: <h1>Cola de trámites (destino)</h1> },
       { path: "/ganaderos", element: <h1>Ganaderos (destino)</h1> },
+      { path: "/bandeja", element: <h1>Bandeja (destino)</h1> },
     ],
     { initialEntries: ["/"] },
   );
@@ -98,20 +99,31 @@ describe("DashboardPage: KPIs", () => {
     expect(ganaderos).toHaveAttribute("href", "/ganaderos");
   });
 
-  it("no inventa Mensajes ni Alertas: los marca como «Próximamente», sin número ni enlace", async () => {
+  it("cuenta WhatsApp de la cola en Mensajes y deja Alertas como «Próximamente»", async () => {
     conSesion();
     server.use(
-      http.get(apiUrl("/tramites"), () => HttpResponse.json(paginaTramites([]))),
+      http.get(apiUrl("/tramites"), () =>
+        HttpResponse.json(
+          paginaTramites(
+            [
+              tramite({ id: 1, origen: "WHATSAPP" }),
+              tramite({ id: 2, origen: null }),
+              tramite({ id: 3, origen: "WHATSAPP" }),
+            ],
+            3,
+          ),
+        ),
+      ),
       http.get(apiUrl("/ganaderos"), () => HttpResponse.json(paginaGanaderos(0))),
     );
     montar();
 
-    await screen.findByRole("link", { name: /Trámites pendientes/ });
-    expect(screen.getByText("Mensajes nuevos")).toBeInTheDocument();
+    const mensajes = await screen.findByRole("link", { name: /Mensajes WhatsApp/ });
+    expect(within(mensajes).getByText("2")).toBeInTheDocument();
+    expect(mensajes).toHaveAttribute("href", "/bandeja");
+
     expect(screen.getByText("Alertas activas")).toBeInTheDocument();
-    expect(screen.getAllByText("Próximamente")).toHaveLength(2);
-    // No son enlaces (todavía no llevan a ninguna sección real).
-    expect(screen.queryByRole("link", { name: /Mensajes nuevos/ })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Próximamente")).toHaveLength(1);
     expect(screen.queryByRole("link", { name: /Alertas activas/ })).not.toBeInTheDocument();
   });
 

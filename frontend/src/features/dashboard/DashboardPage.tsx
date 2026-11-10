@@ -65,6 +65,9 @@ export function DashboardPage() {
 
   const nombre = nombrePila(usuario?.nombre);
   const fecha = fechaLargaMadrid();
+  // Sin filtro `origen` en la API: contamos WhatsApp en la página de pendientes ya cargada.
+  const mensajesWhatsapp =
+    cola == null ? undefined : cola.content.filter((t) => t.origen === "WHATSAPP").length;
 
   return (
     <div className="flex flex-col gap-8">
@@ -95,13 +98,16 @@ export function DashboardPage() {
           error={errorGanaderos}
           valor={ganaderos ?? undefined}
         />
-        {/* Honestidad (PRODUCT.md): Mensajes y Alertas aún no existen como datos reales (bandeja de
-            WhatsApp y alertas son fases posteriores). No se inventa un número: se dice que llegará. */}
-        <TarjetaKpiProximamente
+        <TarjetaKpi
+          to="/bandeja"
           icono={InboxIcon}
-          etiqueta="Mensajes nuevos"
-          nota="La bandeja de WhatsApp llegará en una próxima versión."
+          etiqueta="Mensajes WhatsApp"
+          pie="En la cola pendiente"
+          cargando={cargando}
+          error={errorCola != null}
+          valor={mensajesWhatsapp}
         />
+        {/* Sin backend de plazos/vencimientos: no inventamos alertas. */}
         <TarjetaKpiProximamente
           icono={BellIcon}
           etiqueta="Alertas activas"

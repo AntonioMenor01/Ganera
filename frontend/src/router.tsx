@@ -8,7 +8,10 @@ import { FichaOvzPage } from "@/features/tramites/FichaOvzPage";
 import { GanaderosPage } from "@/features/ganaderos/GanaderosPage";
 import { GanaderoDetallePage } from "@/features/ganaderos/GanaderoDetallePage";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
-import { ProximamentePage } from "@/features/proximamente/ProximamentePage";
+import { BandejaPage } from "@/features/bandeja/BandejaPage";
+import { CalendarioPage } from "@/features/calendario/CalendarioPage";
+import { InformesPage } from "@/features/informes/InformesPage";
+import { ConfiguracionPage } from "@/features/configuracion/ConfiguracionPage";
 
 /** Exportadas para que los tests monten las rutas reales en un createMemoryRouter. */
 export const routes: RouteObject[] = [
@@ -27,49 +30,20 @@ export const routes: RouteObject[] = [
         path: "/",
         element: <AppLayout />,
         children: [
-          // Inicio: panel de resumen (mock v2). La cola sigue en /tramites.
+          // Inicio: panel de resumen. La cola sigue en /tramites.
           { index: true, element: <DashboardPage /> },
-          {
-            path: "bandeja",
-            element: (
-              <ProximamentePage
-                titulo="Bandeja"
-                descripcion="Aquí llegarán los mensajes de WhatsApp de tus ganaderos, aparte de la cola de trámites. Todavía no hay bandeja en el backend."
-              />
-            ),
-          },
+          // Compuestas con GET /tramites (origen WHATSAPP / hechoEnOvzEn / conteos): no hay APIs
+          // dedicadas de bandeja, calendario ni informes.
+          { path: "bandeja", element: <BandejaPage /> },
           { path: "tramites", element: <TramitesPage /> },
           { path: "ganaderos", element: <GanaderosPage /> },
           { path: "ganaderos/:id", element: <GanaderoDetallePage /> },
           { path: "explotaciones", element: <ExplotacionesPage /> },
-          {
-            path: "calendario",
-            element: (
-              <ProximamentePage
-                titulo="Calendario"
-                descripcion="Plazos y vencimientos de trámites en un solo sitio. Aún no hay datos de calendario en el backend."
-              />
-            ),
-          },
-          {
-            path: "informes",
-            element: (
-              <ProximamentePage
-                titulo="Informes"
-                descripcion="Resúmenes y exportaciones para la gestoría. Todavía no hay informes en el backend."
-              />
-            ),
-          },
-          {
-            path: "configuracion",
-            element: (
-              <ProximamentePage
-                titulo="Configuración"
-                descripcion="Datos de la gestoría, OVZ.net y preferencias. La pantalla de credenciales OVZ sigue aplazada a escalón 2."
-              />
-            ),
-          },
-          // Comodín: rutas desconocidas con sesión van al inicio (mock). Sin sesión, RequireAuth
+          { path: "calendario", element: <CalendarioPage /> },
+          { path: "informes", element: <InformesPage /> },
+          // Perfil + suscripción + CRUD contactos. Credenciales OVZ aplazadas (escalón 2).
+          { path: "configuracion", element: <ConfiguracionPage /> },
+          // Comodín: rutas desconocidas con sesión van al inicio. Sin sesión, RequireAuth
           // manda antes a /login. /facturacion ya no existe.
           { path: "*", element: <Navigate to="/" replace /> },
         ],

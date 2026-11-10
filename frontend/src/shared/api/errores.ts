@@ -175,7 +175,9 @@ export type ContextoError =
   | "responder-whatsapp"
   | "listar-ganaderos"
   | "detalle-ganadero"
-  | "animales-explotacion";
+  | "animales-explotacion"
+  | "listar-contactos"
+  | "guardar-contacto";
 
 interface TextosContexto {
   /** Texto de reserva del contexto: validación/conflicto/desconocido sin motivo. Obligatorio. */
@@ -278,6 +280,12 @@ const TEXTOS: Record<ContextoError, TextosContexto> = {
   "animales-explotacion": {
     generico: "No se han podido cargar los animales. Inténtalo de nuevo.",
     noEncontrado: TEXTO_EXPLOTACION_NO_ENCONTRADA,
+  },
+  "listar-contactos": {
+    generico: "No se han podido cargar los contactos. Inténtalo de nuevo.",
+  },
+  "guardar-contacto": {
+    generico: "No se ha podido guardar el contacto. Inténtalo de nuevo.",
   },
 };
 
