@@ -1,13 +1,6 @@
-import { useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { CircleAlertIcon, UploadIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { mensajeDeError } from "@/shared/api/errores";
@@ -53,11 +46,29 @@ function fraseResumenImportacion(resumen: ImportResumen): string {
 
 /** Vía principal para dar de alta Explotaciones/Animales mientras la sincronización con
  * OVZ.net (Prompt 3a) siga bloqueada -- se le da protagonismo a propósito, no es secundaria. */
-export function ImportarExcelSection({ onImportado }: { onImportado: () => void }) {
+export function ImportarExcelSection({
+  onImportado,
+  ocultarBotonPrincipal = false,
+  registrarAbrir,
+}: {
+  onImportado: () => void;
+  /** Si true, el botón vive en la cabecera de la página (mock v2); aquí solo el panel. */
+  ocultarBotonPrincipal?: boolean;
+  /** Registra `abrir` para que la cabecera pueda disparar el mismo input. */
+  registrarAbrir?: (abrir: () => void) => void;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [subiendo, setSubiendo] = useState(false);
   const [resumen, setResumen] = useState<ImportResumen | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  function abrirSelector() {
+    inputRef.current?.click();
+  }
+
+  useEffect(() => {
+    registrarAbrir?.(abrirSelector);
+  }, [registrarAbrir]);
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const archivo = event.target.files?.[0];
@@ -81,35 +92,47 @@ export function ImportarExcelSection({ onImportado }: { onImportado: () => void 
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Importar inventario desde Excel</CardTitle>
-        <CardDescription>
+    <section
+      aria-labelledby="importar-excel-titulo"
+      className="border border-border bg-card"
+    >
+      <div className="flex flex-wrap items-center gap-3 border-b-2 border-divisor px-5 py-3">
+        <h2 id="importar-excel-titulo" className="text-lg font-bold">
+          Importar inventario desde Excel
+        </h2>
+        {!ocultarBotonPrincipal && (
+          <Button
+            className="ml-auto"
+            onClick={abrirSelector}
+            disabled={subiendo}
+          >
+            <UploadIcon />
+            {subiendo ? "Importando…" : "Importar Excel"}
+          </Button>
+        )}
+        {ocultarBotonPrincipal && subiendo && (
+          <p className="ml-auto text-sm text-muted-foreground">Importando…</p>
+        )}
+      </div>
+      <div className="flex flex-col gap-4 px-5 py-4">
+        <p className="text-sm text-muted-foreground">
           Hoja &quot;Explotaciones&quot; (codigo_rega, nombre, nif_ganadero, nombre_ganadero) y
           hoja &quot;Animales&quot; (crotal, especie, codigo_rega_explotacion). Opcional: hoja
           &quot;Contactos&quot; (telefono, nombre, codigo_explotacion, rol). Reimportar el mismo
           fichero actualiza en vez de duplicar.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+        </p>
         {/* Siempre montado y solo cambia su texto, para que el lector de pantalla lo anuncie. El
             error no pasa por aquí: ya lo anuncia su Alert (role=alert). */}
         <p role="status" className="sr-only">
           {subiendo ? "Importando el Excel…" : resumen ? fraseResumenImportacion(resumen) : ""}
         </p>
-        <div>
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".xlsx"
-            className="hidden"
-            onChange={handleFileChange}
-          />
-          <Button onClick={() => inputRef.current?.click()} disabled={subiendo}>
-            <UploadIcon />
-            {subiendo ? "Importando…" : "Importar Excel"}
-          </Button>
-        </div>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".xlsx"
+          className="hidden"
+          onChange={handleFileChange}
+        />
 
         {error && (
           <Alert variant="destructive">
@@ -147,8 +170,8 @@ export function ImportarExcelSection({ onImportado }: { onImportado: () => void 
             )}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
