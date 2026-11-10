@@ -44,26 +44,43 @@ export function LoginPage() {
   return (
     <main className="flex min-h-screen flex-col bg-background lg:grid lg:grid-cols-2">
       {/* Panel Rojo 600: banda corta por debajo de `lg`, columna entera desde `lg`. Va antes del
-          formulario (como v2), sin encabezado ni nada enfocable. */}
+          formulario (como v2), sin encabezado ni nada enfocable. El claim grande es visual (p), no
+          un segundo heading: el h1 de la página sigue siendo «Entrar en Ganera». */}
       <div
         data-slot="login-panel"
-        className="flex h-14 shrink-0 items-center bg-primary px-4 text-primary-foreground sm:px-6 lg:h-auto lg:flex-col lg:items-stretch lg:justify-between lg:p-12 xl:px-14"
+        className="flex h-14 shrink-0 items-center bg-primary px-4 text-primary-foreground sm:px-6 lg:h-auto lg:flex-col lg:items-stretch lg:justify-between lg:px-14 lg:py-12"
       >
         <div className="flex items-center gap-2.5">
           <LogoGanera decorativo className="size-6 text-primary-foreground lg:size-7" />
-          <span className="text-lg font-bold tracking-wide">GANERA</span>
+          <span className="text-lg font-bold tracking-[0.06em]">GANERA</span>
         </div>
-        <p className="hidden max-w-md text-xl leading-snug text-pretty lg:block">
-          Los mensajes de WhatsApp de tus ganaderos llegan como trámites listos para revisar.
-        </p>
+        <div className="hidden lg:block">
+          <p
+            aria-hidden="true"
+            className="mb-7 text-[clamp(3.5rem,8vw,6rem)] leading-[0.92] font-bold tracking-[-0.04em] text-balance"
+          >
+            Tramita
+            <br />
+            el doble.
+          </p>
+          <p className="max-w-md text-xl leading-snug text-pretty">
+            Los mensajes de WhatsApp de tus ganaderos llegan como trámites listos para revisar.
+          </p>
+        </div>
+        <div className="mt-auto hidden justify-between border-t-2 border-primary-foreground pt-3.5 text-sm lg:flex">
+          <span>Software para gestorías ganaderas</span>
+          <span>ganera.es</span>
+        </div>
       </div>
       <div className="flex flex-1 items-start justify-center px-4 py-10 sm:px-6 lg:items-center lg:px-12 lg:py-12">
         <div className="w-full max-w-[400px]">
           <LogoGanera decorativo className="mb-4 size-9 text-marca" />
-          <h1 className="font-heading text-[32px] leading-tight font-bold tracking-tight">
+          <h1 className="font-heading text-[32px] leading-tight font-bold tracking-[-0.02em]">
             Entrar en Ganera
           </h1>
-          <p className="mt-1.5 text-muted-foreground">Inicia sesión con tu cuenta de gestoría.</p>
+          <p className="mt-1.5 text-[15px] text-muted-foreground">
+            Usa el email y la contraseña que te enviamos al contratar.
+          </p>
           <form className="mt-6 flex flex-col gap-4" onSubmit={handleSubmit}>
             {sesionCaducada && (
               <Alert>
@@ -84,7 +101,7 @@ export function LoginPage() {
                   required
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
-                  className="h-11 bg-card pl-10"
+                  className="h-11 bg-card pl-10 text-[15px]"
                 />
               </div>
             </div>
@@ -102,7 +119,7 @@ export function LoginPage() {
                   required
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  className="h-11 bg-card pl-10"
+                  className="h-11 bg-card pl-10 text-[15px]"
                 />
               </div>
             </div>
