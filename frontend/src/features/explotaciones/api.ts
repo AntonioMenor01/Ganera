@@ -1,6 +1,6 @@
 import { httpClient } from "@/shared/api/httpClient";
 import type { Pagina } from "@/shared/api/types";
-import type { Animal, Explotacion, ImportResumen } from "./types";
+import type { Animal, Explotacion, ExplotacionDetalle, ImportResumen } from "./types";
 
 export interface OpcionesListarExplotaciones {
   /** `campo,asc|desc`; campos permitidos por el backend: codigoRega, nombre, id. */
@@ -35,6 +35,14 @@ export async function listarExplotaciones(
  * es un desempate que no cuesta nada.
  */
 const ORDEN_ANIMALES = ["crotal,asc", "id,asc"] as const;
+
+export async function obtenerExplotacion(
+  id: number,
+  signal?: AbortSignal,
+): Promise<ExplotacionDetalle> {
+  const { data } = await httpClient.get<ExplotacionDetalle>(`/explotaciones/${id}`, { signal });
+  return data;
+}
 
 export async function listarAnimalesDeExplotacion(
   explotacionId: number,

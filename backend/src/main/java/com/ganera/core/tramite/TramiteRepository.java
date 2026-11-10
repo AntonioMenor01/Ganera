@@ -41,6 +41,18 @@ public interface TramiteRepository extends JpaRepository<Tramite, Long> {
      */
     Optional<Tramite> findByIdAndGestoriaId(Long id, Long gestoriaId);
 
+    /** Conteo de trámites de una explotación en un estado (ficha), con gestoriaId explícito. */
+    long countByExplotacionIdAndGestoriaIdAndEstado(Long explotacionId, Long gestoriaId, EstadoTramite estado);
+
+    /** Conteos de pendientes de revisión por explotación (detalle ganadero), gestoriaId explícito. */
+    @Query("select new com.ganera.core.tramite.ConteoTramitesPorExplotacion(t.explotacion.id, count(t)) "
+            + "from Tramite t where t.gestoria.id = :gestoriaId and t.estado = :estado "
+            + "and t.explotacion.id in :explotacionIds group by t.explotacion.id")
+    List<ConteoTramitesPorExplotacion> contarPorExplotacionYEstado(
+            @Param("gestoriaId") Long gestoriaId,
+            @Param("explotacionIds") Collection<Long> explotacionIds,
+            @Param("estado") EstadoTramite estado);
+
     /**
      * ¿Existe un Tramite con este id en OTRA Gestoria (distinta del gestoriaId del JWT)? Solo para auditar el acceso
      * a un recurso ajeno (T5/D3): se ejecuta DESPUES de no encontrarlo en la propia, devuelve un booleano (nunca la

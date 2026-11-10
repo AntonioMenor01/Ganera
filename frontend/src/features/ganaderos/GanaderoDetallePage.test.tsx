@@ -9,7 +9,14 @@ import { server } from "@/test/server"
 import { GanaderoDetallePage } from "./GanaderoDetallePage"
 
 function explotacion(id: number, contactos: unknown[] = []) {
-  return { id, codigoRega: `ES28079000${id}`, nombre: `Finca ${id}`, contactos }
+  return {
+    id,
+    codigoRega: `ES28079000${id}`,
+    nombre: `Finca ${id}`,
+    numeroAnimales: 0,
+    tramitesPendientesRevision: 0,
+    contactos,
+  }
 }
 
 const CONTACTOS = [

@@ -6,10 +6,22 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 public interface AnimalRepository extends JpaRepository<Animal, Long> {
+
+    /** Conteo de animales de una explotación (ficha), con gestoriaId explícito. */
+    long countByExplotacionIdAndGestoriaId(Long explotacionId, Long gestoriaId);
+
+    /** Conteos por explotación en lote (detalle de ganadero), con gestoriaId explícito. */
+    @Query("select new com.ganera.core.explotacion.ConteoAnimalesPorExplotacion(a.explotacion.id, count(a)) "
+            + "from Animal a where a.gestoria.id = :gestoriaId and a.explotacion.id in :explotacionIds "
+            + "group by a.explotacion.id")
+    List<ConteoAnimalesPorExplotacion> contarPorExplotacion(
+            @Param("gestoriaId") Long gestoriaId, @Param("explotacionIds") Collection<Long> explotacionIds);
+
     /** Upsert del importador por crotal (UNIQUE global), con gestoriaId explicito: vacio tanto si
      * no existe como si es de otra Gestoria -- no depende del gestoriaFilter ambiente. */
     Optional<Animal> findByCrotalAndGestoriaId(String crotal, Long gestoriaId);

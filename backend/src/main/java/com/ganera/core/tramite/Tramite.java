@@ -27,8 +27,9 @@ import java.time.LocalDate;
 @Table(name = "tramite")
 public class Tramite extends GestoriaScopedEntity {
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "contacto_id", nullable = false)
+    /** Null en un trámite MANUAL sin contacto asociado; obligatorio en los de WhatsApp. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "contacto_id")
     private Contacto contacto;
 
     /** Null si el contacto tiene varias explotaciones y el mensaje no desambigua. */

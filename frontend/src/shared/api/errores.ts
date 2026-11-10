@@ -175,6 +175,7 @@ export type ContextoError =
   | "responder-whatsapp"
   | "listar-ganaderos"
   | "detalle-ganadero"
+  | "detalle-explotacion"
   | "animales-explotacion"
   | "listar-contactos"
   | "guardar-contacto"
@@ -275,6 +276,10 @@ const TEXTOS: Record<ContextoError, TextosContexto> = {
     generico: "No se ha podido cargar el ganadero. Inténtalo de nuevo.",
     // El 404 no distingue "no existe" de "es de otra gestoría" (a propósito, decisión 8 de A1).
     noEncontrado: TEXTO_GANADERO_NO_ENCONTRADO,
+  },
+  "detalle-explotacion": {
+    generico: "No se ha podido cargar la explotación. Inténtalo de nuevo.",
+    noEncontrado: TEXTO_EXPLOTACION_NO_ENCONTRADA,
   },
   // Panel "Ver animales" (Explotaciones y ficha del Ganadero). El 404 tampoco distingue otra
   // gestoría de inexistente.

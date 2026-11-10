@@ -3,6 +3,7 @@ import { AppLayout } from "@/shared/layout/AppLayout";
 import { RequireAuth } from "@/shared/auth/RequireAuth";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { ExplotacionesPage } from "@/features/explotaciones/ExplotacionesPage";
+import { ExplotacionDetallePage } from "@/features/explotaciones/ExplotacionDetallePage";
 import { TramitesPage } from "@/features/tramites/TramitesPage";
 import { FichaOvzPage } from "@/features/tramites/FichaOvzPage";
 import { GanaderosPage } from "@/features/ganaderos/GanaderosPage";
@@ -39,6 +40,7 @@ export const routes: RouteObject[] = [
           { path: "ganaderos", element: <GanaderosPage /> },
           { path: "ganaderos/:id", element: <GanaderoDetallePage /> },
           { path: "explotaciones", element: <ExplotacionesPage /> },
+          { path: "explotaciones/:id", element: <ExplotacionDetallePage /> },
           { path: "calendario", element: <CalendarioPage /> },
           { path: "informes", element: <InformesPage /> },
           // Perfil + suscripción + CRUD contactos. Credenciales OVZ aplazadas (escalón 2).

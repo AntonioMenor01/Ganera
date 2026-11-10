@@ -927,6 +927,7 @@ class TramiteControllerTest {
                 mensajeCampoRepository,
                 tramiteCrotalService,
                 tramiteRevisionService,
+                org.mockito.Mockito.mock(TramiteAltaService.class),
                 whatsappDetalleService,
                 org.mockito.Mockito.mock(com.ganera.core.shared.auditoria.AuditoriaService.class),
                 org.mockito.Mockito.mock(com.ganera.core.shared.auditoria.AccesoAjeno.class));

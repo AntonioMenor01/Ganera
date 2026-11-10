@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import {
   CircleAlertIcon,
   MessageCircleIcon,
+  PlusIcon,
   SearchIcon,
   TriangleAlertIcon,
 } from "lucide-react";
@@ -32,6 +34,7 @@ import {
 } from "./etiquetas";
 import { BadgeEstadoTramite, BadgeResolucionCrotal } from "./BadgesTramite";
 import { IconoTramite } from "./IconoTramite";
+import { AltaTramiteDialog } from "./AltaTramiteDialog";
 import { TramiteReviewDialog } from "./TramiteReviewDialog";
 
 const TAMANIO_PAGINA = 20;
@@ -85,6 +88,7 @@ function textoVacio(filtro: FiltroEstado): string {
 }
 
 export function TramitesPage() {
+  const location = useLocation();
   const [pagina, setPagina] = useState<Pagina<Tramite> | null>(null);
   const [numeroPagina, setNumeroPagina] = useState(0);
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>(FILTRO_INICIAL);
@@ -95,7 +99,17 @@ export function TramitesPage() {
   const [totalPaginas, setTotalPaginas] = useState(0);
   const [version, setVersion] = useState(0);
   const [tramiteSeleccionado, setTramiteSeleccionado] = useState<number | null>(null);
+  const [altaAbierta, setAltaAbierta] = useState(false);
   const [q, setQ] = useState("");
+
+  useEffect(() => {
+    const abrir = (location.state as { abrirTramiteId?: number } | null)?.abrirTramiteId;
+    if (typeof abrir === "number") {
+      setTramiteSeleccionado(abrir);
+      setFiltroEstado("PENDIENTE_REVISION");
+      setVersion((v) => v + 1);
+    }
+  }, [location.state]);
 
   const recargar = useCallback(() => setVersion((v) => v + 1), []);
 
@@ -185,6 +199,10 @@ export function TramitesPage() {
           <p className="mb-1.5 text-[13px] font-medium text-muted-foreground">{subtitulo}</p>
           <h1 className="text-[28px] leading-tight font-bold tracking-[-0.02em]">Trámites</h1>
         </div>
+        <Button type="button" onClick={() => setAltaAbierta(true)}>
+          <PlusIcon aria-hidden="true" className="size-4" />
+          Nuevo trámite
+        </Button>
       </header>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -297,6 +315,14 @@ export function TramitesPage() {
         tramiteId={tramiteSeleccionado}
         onClose={() => setTramiteSeleccionado(null)}
         onCambiado={recargar}
+      />
+      <AltaTramiteDialog
+        open={altaAbierta}
+        onOpenChange={setAltaAbierta}
+        onCreado={(creado) => {
+          recargar();
+          setTramiteSeleccionado(creado.id);
+        }}
       />
     </div>
   );

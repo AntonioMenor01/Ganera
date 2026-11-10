@@ -14,6 +14,30 @@ export async function listarTramites(
   return data;
 }
 
+/** Cuerpo de POST /tramites (alta MANUAL). tipoTramite y explotacionId son obligatorios. */
+export interface AltaTramite {
+  tipoTramite: string;
+  explotacionId: number;
+  contactoId?: number;
+  crotales?: string[];
+  fechaHecho?: string;
+  fechaNacimiento?: string;
+  fechaIdentificacion?: string;
+  sexo?: string;
+  crotalMadreIndicado?: string;
+  numeroMer?: string;
+  destinoRega?: string;
+  destinoTexto?: string;
+  consignatario?: string;
+  aptitudMovimiento?: string;
+}
+
+/** Crea un trámite a mano (origen MANUAL, PENDIENTE_REVISION). No toca OVZ. */
+export async function crearTramite(alta: AltaTramite): Promise<TramiteDetalle> {
+  const { data } = await httpClient.post<TramiteDetalle>("/tramites", alta);
+  return data;
+}
+
 export async function obtenerDetalleTramite(
   id: number,
   signal?: AbortSignal,

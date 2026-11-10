@@ -213,17 +213,34 @@ export function ExplotacionesPage() {
                   <TableRow className={cn(abierta && "border-b-0")}>
                     {desdeSm ? (
                       <>
-                        <TableCell className="tabular-nums">{explotacion.codigoRega}</TableCell>
+                        <TableCell className="tabular-nums">
+                          <Link
+                            to={`/explotaciones/${explotacion.id}`}
+                            className={CLASE_ENLACE_TABLA}
+                          >
+                            {explotacion.codigoRega}
+                          </Link>
+                        </TableCell>
                         <TableCell className="whitespace-normal wrap-anywhere">
-                          {explotacion.nombre}
+                          <Link
+                            to={`/explotaciones/${explotacion.id}`}
+                            className={CLASE_ENLACE_TABLA}
+                          >
+                            {explotacion.nombre}
+                          </Link>
                         </TableCell>
                       </>
                     ) : (
                       <TableCell>
-                        <span className="block tabular-nums">{explotacion.codigoRega}</span>
-                        <span className="block whitespace-normal wrap-anywhere text-muted-foreground">
-                          {explotacion.nombre}
-                        </span>
+                        <Link
+                          to={`/explotaciones/${explotacion.id}`}
+                          className={cn("block", CLASE_ENLACE_TABLA)}
+                        >
+                          <span className="block tabular-nums">{explotacion.codigoRega}</span>
+                          <span className="block whitespace-normal wrap-anywhere text-muted-foreground">
+                            {explotacion.nombre}
+                          </span>
+                        </Link>
                       </TableCell>
                     )}
                     <TableCell className="whitespace-normal wrap-anywhere">
