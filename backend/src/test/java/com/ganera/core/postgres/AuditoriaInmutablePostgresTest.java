@@ -317,7 +317,7 @@ class AuditoriaInmutablePostgresTest {
                     .dataSource(aparte.getDatabase(PostgresEmbebido.PROPIETARIO, "sin_authenticator"))
                     .locations(PostgresEmbebido.UBICACIONES_FLYWAY)
                     .defaultSchema(PostgresEmbebido.ESQUEMA).schemas(PostgresEmbebido.ESQUEMA).createSchemas(false)
-                    .load().migrate().migrationsExecuted).isEqualTo(27);
+                    .load().migrate().migrationsExecuted).isEqualTo(28);
 
             assertThat(superusuario.query(PostgresEmbebido.leer(PostgresEmbebido.SCRIPT_COMPROBAR),
                     (fila, i) -> fila.getString("objeto") + ": " + fila.getString("problema"))).isEmpty();
@@ -329,7 +329,7 @@ class AuditoriaInmutablePostgresTest {
     private static String migrarComoPropietario() {
         String baseDeDatos = PostgresEmbebido.nuevaBaseDeDatos();
         assertThat(PostgresEmbebido.flywayPropietario(baseDeDatos).load().migrate().migrationsExecuted)
-                .isEqualTo(27);
+                .isEqualTo(28);
         return baseDeDatos;
     }
 

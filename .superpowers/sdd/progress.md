@@ -1580,3 +1580,41 @@ Rama `feat/auditoria`. Flujo desde la sesión principal (sin subagentes); TDD ro
   al despliegue (post PR→main). Si en ese gate la fila guardara la IP falsa o la del proxy, el valor seguro por defecto
   es `ip-desde-x-forwarded-for=false`.
 - **Kit `ganera-clever`** (fuera del repo): se le pasa el diff a Antonio antes de que ejecute nada.
+
+## Estabilización del backend de main tras #23–#28 (2026-11-10, rama `fix/estabilizar-backend-main` sobre `9f0081b`)
+
+Las PRs #23–#28 de Álvaro (trámite manual, fichas enriquecidas de explotación, preferencias OVZ, alertas, migraciones
+V27/V28, sembrador demo #28) dejaron `main` en rojo: backend **1317 run · 38 fallos · 1 error · 1 skip**, frontend
+**1130 · 63 fallos**. El backend lo arregla esta rama (solo tests); el frontend lo arregla Álvaro en la **#29**.
+
+- **G1 — recuentos de migración (solo test).** Subidos a la realidad: PostgreSQL aplica **28** (V1–V28, V26 de
+  `db/postgresql` incluida); H2 **27** ({1..25,27,28}, hueco en V26). Ficheros: `SeguridadEsquemaPostgresTest`,
+  `FlywayPostgresTest`, `FlywayH2VendorTest`, `AuditoriaInmutablePostgresTest`, `PerfilCleverPostgresTest`. **Clave:**
+  con el gate del recuento arreglado, `SeguridadEsquemaPostgresTest` vuelve a ejecutar sus 32 tests (antes abortaba en
+  la primera línea) y pasa entero → RLS/políticas/permisos cubren `preferencia_ovz` y las tablas nuevas. Concuerda con
+  la comprobación de Antonio en Supabase (02 → 0 filas). Ningún problema real de seguridad.
+- **G2 — formas/enum (solo test).** `OrigenTramite` → `{WHATSAPP, MANUAL}`; +10 campos OVZ en `RespuestaWhatsappEndToEndTest`;
+  contrato `descarte-sin-tramite.json` regenerado (los 3 objetos detalle ganan los 10 campos; se preservan
+  `_nota`/`rutas`/`cuerpo`). Revisado: los campos nuevos de `TramiteDetalleResponse` no exponen credencial OVZ,
+  teléfono ni datos de otra gestoría.
+- **G3 — cableado (solo test).** El NPE de `TramiteControllerErroresTest` no era una dependencia sin inyectar: el PATCH
+  pasó a llamar a la sobrecarga `actualizar(…, TipoTramite, TramitePatchRequest)` que el doble no sobreescribía.
+  Sobreescrita la correcta.
+- **G4 — N+1 del detalle del ganadero: legítimo, no N+1.** Las fichas enriquecidas añaden 2 consultas en lote
+  (`contarPorExplotacion`, `contarPorExplotacionYEstado`, ambas `IN :explotacionIds` + `gestoria.id`). Umbral `<=5` →
+  `<=7` con justificación escrita + **test nuevo** «mismas consultas con 1 vs 3 explotaciones». Mutación (bucle por
+  explotación) → test nuevo en rojo (`expected 7L but was 9L`), restaurada con cmp.
+- **Revisión de #23–#28 (backend):** sin bloqueantes. Aislamiento (gestoría del JWT, `findByIdAndGestoriaId`),
+  auditoría (filas + `AccesoAjeno` en los 404 ajenos del alta manual), V28 contacto nullable (sin NPE), #28 no se
+  activa en Clever. Única nota menor aceptada: `PreferenciaOvzResponse.telefonoMovimiento` es configuración de la
+  gestoría, no PII de ganaderos.
+- **Revisor independiente del diff (10 ficheros):** Approved (recuentos sin migración oculta, seguridad íntegra 32/32,
+  G4 justificado + mutación, fixture = respuesta real sin leaks).
+- **Verde:** `./mvnw clean test` **1347** (1346 + 1 skip). El salto 1317→1347: `AuditoriaInmutablePostgresTest` corría
+  solo 1 de sus 30 tests en la base (el resto abortaba tras el fallo de recuento) → +29; +1 del test nuevo de G4.
+- **#29 (Álvaro, `02efcf8`):** solo 5 `.test.*` de frontend; `npm test` 1130/1130, build/lint limpios. Su
+  `contratoDescarte.test.tsx` usa el fixture como datos de MSW (no asevera el conjunto de campos), así que es
+  resistente a los 10 campos nuevos del fixture. **Orden de fusión: primero esta PR, luego la #29.** El fixture de
+  descarte lo actualiza esta.
+- **Pendiente:** tras fusionar ambas y main en verde, retomar la #27 (teléfono del ganadero) y renumerar su migración
+  a V29.

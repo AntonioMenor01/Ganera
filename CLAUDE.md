@@ -1093,6 +1093,9 @@ approval step before anything is written to OVZ.net.
     `application.yml` (the test one shadows the main one); Boot resolves `postgresql` or `h2`. **Numbering rule:** the
     version is global across folders — a Postgres-only migration leaves a gap in H2, which Flyway accepts; never two
     files with the same version. `db/h2/` only holds a `LEEME.md` (Maven doesn't copy empty folders).
+    **Migration counts as of V28 (#23–#28):** on PostgreSQL Flyway applies **28** migrations (V1–V28; V26 lives only
+    in `db/postgresql`, so it's included on Postgres); on H2 it applies **27** (the same set minus V26, leaving a gap
+    at 26: V1–V25, V27, V28). The embedded-Postgres and H2 migration-count tests assert exactly these numbers.
     `spring.flyway.fail-on-missing-locations: true` in both YAMLs: Flyway 10 only logs a missing location at `DEBUG`,
     so a `db/postgresql` missing from the jar would silently skip the security callback.
   - **Hand-written SQL** (seed, fixes) runs as the owner: start with `SET ROLE ganera_propietario; SET search_path TO
@@ -1430,7 +1433,7 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw clean test` — runs the test suite (1001 tests after the Clever deployment tasks — 1000 run plus the skipped Haiku evaluation —; **1075** after the Supabase migration — 1074 run plus the skipped evaluation —, including the embedded-PostgreSQL ones; **1338** (1337 run plus the skipped evaluation) after M2, the on-demand OVZ decryption; also green with JDK 21 — the real `JAVA_HOME` is `~/.jdks/temurin-21/jdk-21.0.12.1+1` (the JDK sits one level below `temurin-21`; in Git Bash pass it Windows-style, `JAVA_HOME='C:\Users\Antonio\.jdks\temurin-21\jdk-21.0.12.1+1' ./mvnw clean test`, a `/c/...` path makes the wrapper fail with "JAVA_HOME is not defined correctly")); **always with `clean`**
+- `./mvnw clean test` — runs the test suite (1001 tests after the Clever deployment tasks — 1000 run plus the skipped Haiku evaluation —; **1075** after the Supabase migration — 1074 run plus the skipped evaluation —, including the embedded-PostgreSQL ones; **1338** (1337 run plus the skipped evaluation) after M2, the on-demand OVZ decryption; **1347** (1346 run plus the skipped evaluation) after the #23–#28 merge (manual trámite, enriched explotación fichas, OVZ preferences, alerts, demo seeder) and the backend stabilization that fixed the test suite; also green with JDK 21 — the real `JAVA_HOME` is `~/.jdks/temurin-21/jdk-21.0.12.1+1` (the JDK sits one level below `temurin-21`; in Git Bash pass it Windows-style, `JAVA_HOME='C:\Users\Antonio\.jdks\temurin-21\jdk-21.0.12.1+1' ./mvnw clean test`, a `/c/...` path makes the wrapper fail with "JAVA_HOME is not defined correctly")); **always with `clean`**
   (see the VS Code/ECJ note under Architecture notes). A single test:
   `./mvnw clean test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
