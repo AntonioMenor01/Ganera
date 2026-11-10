@@ -1,6 +1,15 @@
-import { useCallback, useEffect, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowDown, ArrowUp, ArrowUpDown, CircleAlertIcon, CircleCheckIcon, UserPlusIcon } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  CircleAlertIcon,
+  CircleCheckIcon,
+  FileSpreadsheetIcon,
+  SearchIcon,
+  UserPlusIcon,
+} from "lucide-react";
 import {
   Table,
   TableBody,
@@ -9,8 +18,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { cn } from "@/lib/utils";
 import { aErrorApi, mensajeDeError, type ErrorApi } from "@/shared/api/errores";
 import type { Pagina } from "@/shared/api/types";
 import { listarGanaderos } from "./api";
@@ -49,6 +60,7 @@ export function GanaderosPage() {
   // Alta manual (Antonio la abre): diálogo y aviso del último ganadero creado.
   const [altaAbierta, setAltaAbierta] = useState(false);
   const [reciénCreado, setReciénCreado] = useState<GanaderoResumen | null>(null);
+  const [q, setQ] = useState("");
 
   const recargar = useCallback(() => setVersion((v) => v + 1), []);
 
@@ -100,6 +112,23 @@ export function GanaderosPage() {
     navigate(`/ganaderos/${id}`);
   }
 
+  const textoBusqueda = q.trim().toLocaleLowerCase("es");
+  const paginaVisible = useMemo(() => {
+    if (!pagina || !textoBusqueda) return pagina;
+    const content = pagina.content.filter((g) => {
+      const haystack = [g.nombre, g.nif].filter(Boolean).join(" ").toLocaleLowerCase("es");
+      return haystack.includes(textoBusqueda);
+    });
+    return { ...pagina, content };
+  }, [pagina, textoBusqueda]);
+
+  const vacio =
+    paginaVisible?.content.length === 0 && !cargando && !errorCarga
+      ? textoBusqueda
+        ? "Ningún ganadero de esta página coincide con la búsqueda."
+        : null
+      : null;
+
   const subtitulo = pagina
     ? textoRecuento(pagina.totalElements)
     : errorCarga
@@ -107,17 +136,43 @@ export function GanaderosPage() {
       : "Cargando…";
 
   return (
-    <div className="flex min-w-0 flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="mx-auto flex w-full max-w-[1360px] min-w-0 flex-col gap-5">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b-2 border-divisor pb-5">
         <div className="min-w-0">
-          <h1 className="text-xl font-bold">Ganaderos</h1>
-          <p className="text-sm text-muted-foreground tabular-nums">{subtitulo}</p>
+          <p className="mb-1.5 text-[13px] font-medium text-muted-foreground tabular-nums">
+            {subtitulo}
+          </p>
+          <h1 className="text-[28px] leading-tight font-bold tracking-[-0.02em]">Ganaderos</h1>
         </div>
-        <Button onClick={() => setAltaAbierta(true)}>
-          <UserPlusIcon aria-hidden="true" />
-          Añadir ganadero
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {/* El Excel de inventario vive en Explotaciones; aquí solo se enlaza, no se inventa otro. */}
+          <Link
+            to="/explotaciones"
+            className={cn(buttonVariants({ variant: "outline" }))}
+          >
+            <FileSpreadsheetIcon aria-hidden="true" />
+            Importar Excel
+          </Link>
+          <Button onClick={() => setAltaAbierta(true)}>
+            <UserPlusIcon aria-hidden="true" />
+            Añadir ganadero
+          </Button>
+        </div>
       </div>
+
+      <label className="relative max-w-[420px]">
+        <span className="sr-only">Buscar en esta página</span>
+        <SearchIcon
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+        />
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Nombre o NIF"
+          className="h-[38px] bg-card pl-9"
+        />
+      </label>
 
       {reciénCreado && (
         <div
@@ -125,9 +180,7 @@ export function GanaderosPage() {
           className="flex flex-wrap items-center gap-x-2 gap-y-1 border border-success/40 bg-success/10 px-3 py-2 text-sm text-foreground"
         >
           <CircleCheckIcon aria-hidden="true" className="size-4 shrink-0 text-success-foreground" />
-          <span>
-            Ganadero «{reciénCreado.nombre}» añadido.
-          </span>
+          <span>Ganadero «{reciénCreado.nombre}» añadido.</span>
           <Link to={`/ganaderos/${reciénCreado.id}`} className={CLASE_ENLACE}>
             Ver ficha
           </Link>
@@ -148,7 +201,7 @@ export function GanaderosPage() {
       )}
 
       {/* La tabla hace scroll horizontal dentro de su contenedor, nunca la página (H12). */}
-      <div className="min-w-0 rounded-xl border bg-card">
+      <div className="min-w-0 border border-border bg-card">
         {/* WCAG 4.1.3: estado siempre montado y fuera de aria-busy; solo cambia su texto, así el
             lector de pantalla lo anuncia (uno que aparece ya lleno dentro de un contenedor ocupado
             suele perderse). */}
@@ -186,11 +239,14 @@ export function GanaderosPage() {
                     <div aria-hidden="true" className={BARRA_ESQUELETO} />
                   </TableCell>
                   <TableCell>
-                    <div aria-hidden="true" className="ml-auto h-4 w-6 rounded-sm bg-muted motion-safe:animate-pulse" />
+                    <div
+                      aria-hidden="true"
+                      className="ml-auto h-4 w-6 rounded-sm bg-muted motion-safe:animate-pulse"
+                    />
                   </TableCell>
                 </TableRow>
               ))}
-            {pagina?.content.length === 0 && !cargando && !errorCarga && (
+            {pagina?.content.length === 0 && !cargando && !errorCarga && !textoBusqueda && (
               <TableRow className="hover:bg-transparent">
                 <TableCell
                   colSpan={COLUMNAS}
@@ -209,7 +265,17 @@ export function GanaderosPage() {
                 </TableCell>
               </TableRow>
             )}
-            {pagina?.content.map((ganadero) => (
+            {vacio && (
+              <TableRow className="hover:bg-transparent">
+                <TableCell
+                  colSpan={COLUMNAS}
+                  className="py-6 text-center whitespace-normal text-muted-foreground"
+                >
+                  {vacio}
+                </TableCell>
+              </TableRow>
+            )}
+            {paginaVisible?.content.map((ganadero) => (
               <TableRow
                 key={ganadero.id}
                 className="cursor-pointer has-focus-visible:bg-muted/50"
@@ -234,9 +300,7 @@ export function GanaderosPage() {
                   )}
                 </TableCell>
                 <TableCell>
-                  <span className="block text-right tabular-nums">
-                    {ganadero.numeroExplotaciones}
-                  </span>
+                  <span className="block text-right tabular-nums">{ganadero.numeroExplotaciones}</span>
                 </TableCell>
               </TableRow>
             ))}
