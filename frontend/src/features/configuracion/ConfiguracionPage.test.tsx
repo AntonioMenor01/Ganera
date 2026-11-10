@@ -55,7 +55,7 @@ function montar() {
 }
 
 describe("ConfiguracionPage", () => {
-  it("muestra cuenta, suscripción y contactos; permite crear uno", async () => {
+  it("navega las pestañas del mock y permite crear un contacto en WhatsApp", async () => {
     conSesion();
     let creados = 0;
     server.use(
@@ -78,13 +78,17 @@ describe("ConfiguracionPage", () => {
 
     const user = userEvent.setup();
     expect(await screen.findByRole("heading", { name: "Configuración" })).toBeInTheDocument();
-    expect(await screen.findByText("Ana López")).toBeInTheDocument();
-    expect(screen.getByText("ana@gestoria.es")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Gestoría" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Datos de la gestoría" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Suscripción" }));
     expect(await screen.findByText("Activa")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Contactos WhatsApp" }));
+    await user.click(screen.getByRole("button", { name: "Cuenta" }));
+    expect(await screen.findByText("Ana López")).toBeInTheDocument();
+    expect(screen.getByText("ana@gestoria.es")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "WhatsApp" }));
     expect(await screen.findByText("Pedro Ganadero")).toBeInTheDocument();
     expect(screen.getByText(/\+34600111222/)).toBeInTheDocument();
 

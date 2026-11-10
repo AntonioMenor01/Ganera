@@ -38,7 +38,7 @@ function montar() {
 }
 
 describe("InformesPage", () => {
-  it("muestra conteos reales de trámites, ganaderos y explotaciones", async () => {
+  it("muestra KPIs reales y chrome del mock (export deshabilitado)", async () => {
     conSesion();
     server.use(
       http.get(apiUrl("/tramites"), ({ request }) => {
@@ -58,10 +58,16 @@ describe("InformesPage", () => {
     montar();
 
     expect(await screen.findByRole("heading", { name: "Informes" })).toBeInTheDocument();
-    expect(await screen.findByText("10")).toBeInTheDocument();
-    expect(screen.getByText("7")).toBeInTheDocument();
-    expect(screen.getByText("9")).toBeInTheDocument();
-    expect(screen.getByText("Pendiente de revisión")).toBeInTheDocument();
-    expect(screen.getByText("4")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "PDF" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Excel" })).toBeDisabled();
+    expect(await screen.findByText("Marcados por el equipo")).toBeInTheDocument();
+    expect(screen.getByText("En tu gestoría")).toBeInTheDocument();
+    expect(screen.getByText("Activas en inventario")).toBeInTheDocument();
+    // KPIs: 3 hechos, 4 pendientes, 7 ganaderos, 9 explotaciones (también se repiten en barras).
+    expect(screen.getAllByText("3").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("4").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("7").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("9").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Pendiente de revisión").length).toBeGreaterThanOrEqual(1);
   });
 });
