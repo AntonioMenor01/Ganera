@@ -1,5 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
-import { CircleAlertIcon, MessageCircleIcon, TriangleAlertIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  CircleAlertIcon,
+  MessageCircleIcon,
+  SearchIcon,
+  TriangleAlertIcon,
+} from "lucide-react";
 import {
   Table,
   TableBody,
@@ -8,14 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { CLASE_ENLACE_TABLA } from "@/shared/ui/enlace";
@@ -96,6 +95,7 @@ export function TramitesPage() {
   const [totalPaginas, setTotalPaginas] = useState(0);
   const [version, setVersion] = useState(0);
   const [tramiteSeleccionado, setTramiteSeleccionado] = useState<number | null>(null);
+  const [q, setQ] = useState("");
 
   const recargar = useCallback(() => setVersion((v) => v + 1), []);
 
@@ -146,9 +146,31 @@ export function TramitesPage() {
   // el DOM tiene un solo marcado, sin botones «Revisar trámite #N» duplicados para el lector.
   const conTabla = useConsultaAncho(CONSULTA_TABLA);
   const maxCrotales = useConsultaAncho(CONSULTA_DOS_CROTALES) ? 2 : 1;
+  const textoBusqueda = q.trim().toLocaleLowerCase("es");
+  const paginaVisible = useMemo(() => {
+    if (!pagina || !textoBusqueda) return pagina;
+    const content = pagina.content.filter((t) => {
+      const haystack = [
+        String(t.id),
+        t.explotacionCodigoRega,
+        t.explotacionNombre,
+        etiquetaTipoTramite(t.tipoTramite ?? ""),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase("es");
+      return haystack.includes(textoBusqueda);
+    });
+    return { ...pagina, content };
+  }, [pagina, textoBusqueda]);
+
   // Solo cuando la carga terminó bien y no hay filas (ni durante la carga ni con error).
   const vacio =
-    pagina?.content.length === 0 && !cargando && !errorCarga ? textoVacio(filtroEstado) : null;
+    paginaVisible?.content.length === 0 && !cargando && !errorCarga
+      ? textoBusqueda
+        ? "Ningún trámite de esta página coincide con la búsqueda."
+        : textoVacio(filtroEstado)
+      : null;
 
   const subtitulo = pagina
     ? textoRecuento(pagina.totalElements)
@@ -157,28 +179,55 @@ export function TramitesPage() {
       : "Cargando…";
 
   return (
-    <div className="flex min-w-0 flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-3 border-b-2 border-divisor pb-4">
+    <div className="mx-auto flex w-full max-w-[1360px] min-w-0 flex-col gap-5">
+      <header className="flex flex-wrap items-end justify-between gap-3 border-b-2 border-divisor pb-5">
         <div className="min-w-0">
-          <h1 className="text-xl font-bold">Cola de trámites</h1>
-          <p className="text-sm text-muted-foreground">{subtitulo}</p>
+          <p className="mb-1.5 text-[13px] font-medium text-muted-foreground">{subtitulo}</p>
+          <h1 className="text-[28px] leading-tight font-bold tracking-[-0.02em]">Trámites</h1>
         </div>
-        <Select value={filtroEstado} onValueChange={(value) => cambiarFiltro(value as FiltroEstado)}>
-          <SelectTrigger className="w-full data-[size=default]:h-[38px] sm:w-56" aria-label="Filtrar por estado">
-            <SelectValue>
-              {(value: FiltroEstado) =>
-                ESTADOS.find((estado) => estado.value === value)?.label ?? value
-              }
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {ESTADOS.map((estado) => (
-              <SelectItem key={estado.value} value={estado.value}>
+      </header>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div
+          role="tablist"
+          aria-label="Filtrar por estado"
+          className="flex max-w-full flex-wrap border border-input"
+        >
+          {ESTADOS.map((estado, i) => {
+            const activo = filtroEstado === estado.value;
+            return (
+              <button
+                key={estado.value}
+                type="button"
+                role="tab"
+                aria-selected={activo}
+                onClick={() => cambiarFiltro(estado.value)}
+                className={cn(
+                  "flex h-9 items-center gap-1.5 px-3 text-[13px] font-medium whitespace-nowrap outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring",
+                  i > 0 && "border-l border-input",
+                  activo
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-card text-foreground hover:bg-gris-200",
+                )}
+              >
                 {estado.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+              </button>
+            );
+          })}
+        </div>
+        <label className="relative min-w-[220px] flex-1 max-w-sm">
+          <span className="sr-only">Buscar en esta página</span>
+          <SearchIcon
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="REGA, explotación o nº de trámite"
+            className="h-[38px] bg-card pl-9"
+          />
+        </label>
       </div>
 
       {errorCarga && (
@@ -205,7 +254,7 @@ export function TramitesPage() {
         </p>
         {conTabla ? (
           <TablaTramites
-            pagina={pagina}
+            pagina={paginaVisible}
             cargando={cargando}
             textoVacio={vacio}
             maxCrotales={maxCrotales}
@@ -213,7 +262,7 @@ export function TramitesPage() {
           />
         ) : (
           <ListaTramites
-            pagina={pagina}
+            pagina={paginaVisible}
             cargando={cargando}
             textoVacio={vacio}
             maxCrotales={maxCrotales}

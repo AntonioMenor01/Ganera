@@ -420,16 +420,13 @@ describe("TramitesPage: crotales visibles en la fila", () => {
 })
 
 describe("TramitesPage: filtro y paginación", () => {
-  it("las opciones del filtro: las etiquetas de ESTADOS_TRAMITE, sin los tres de la automatización (Hecho en OVZ, D5)", async () => {
+  it("las pestañas del filtro: las etiquetas de ESTADOS_TRAMITE, sin los tres de la automatización (Hecho en OVZ, D5)", async () => {
     server.use(http.get(apiUrl("/tramites"), () => paginaTramites([], 0, 0)))
-    const user = userEvent.setup()
     render(<TramitesPage />)
     await screen.findByText("No hay trámites en «Pendiente de revisión».")
 
-    await user.click(screen.getByRole("combobox"))
-    const opciones = await screen.findAllByRole("option")
-
-    expect(opciones.map((o) => o.textContent)).toEqual([
+    const tabs = within(screen.getByRole("tablist", { name: "Filtrar por estado" })).getAllByRole("tab")
+    expect(tabs.map((o) => o.textContent)).toEqual([
       "Todos los estados",
       ESTADOS_TRAMITE.PENDIENTE_EXTRACCION.etiqueta,
       ESTADOS_TRAMITE.PENDIENTE_REVISION.etiqueta,
@@ -438,7 +435,7 @@ describe("TramitesPage: filtro y paginación", () => {
       ESTADOS_TRAMITE.RECHAZADO.etiqueta,
     ])
     for (const fuera of ["En proceso", "Hecho en OVZ.net", "Error en OVZ.net"]) {
-      expect(screen.queryByRole("option", { name: fuera })).not.toBeInTheDocument()
+      expect(screen.queryByRole("tab", { name: fuera })).not.toBeInTheDocument()
     }
   })
 
@@ -457,12 +454,11 @@ describe("TramitesPage: filtro y paginación", () => {
     render(<TramitesPage />)
     await screen.findByText("No hay trámites en «Pendiente de revisión».")
 
-    await user.click(screen.getByRole("combobox"))
-    await user.click(await screen.findByRole("option", { name: opcion }))
+    await user.click(screen.getByRole("tab", { name: opcion }))
 
     expect(await screen.findByText(vacio)).toBeInTheDocument()
     expect(pedidos).toEqual(["PENDIENTE_REVISION", estado])
-    expect(screen.getByRole("combobox", { name: "Filtrar por estado" })).toHaveTextContent(opcion)
+    expect(screen.getByRole("tab", { name: opcion })).toHaveAttribute("aria-selected", "true")
   })
 
   it("en la cola, un trámite hecho en OVZ solo lleva su badge (ni quién ni cuándo)", async () => {
@@ -484,8 +480,17 @@ describe("TramitesPage: filtro y paginación", () => {
     )
     render(<TramitesPage />)
 
-    expect(await screen.findByText("Hecho en OVZ")).toHaveClass("bg-success")
-    expect(screen.getByText("Aprobado · falta OVZ")).toHaveClass("bg-warning")
+    await screen.findByRole("button", { name: "Revisar trámite #1" })
+    const badgeHecho = screen
+      .getAllByText("Hecho en OVZ")
+      .find((el) => el.closest("[data-slot=badge]"))
+      ?.closest("[data-slot=badge]")
+    expect(badgeHecho).toHaveClass("bg-success")
+    const badgeAprobado = screen
+      .getAllByText("Aprobado · falta OVZ")
+      .find((el) => el.closest("[data-slot=badge]"))
+      ?.closest("[data-slot=badge]")
+    expect(badgeAprobado).toHaveClass("bg-warning")
     expect(screen.queryByText(/Ana Pérez/)).not.toBeInTheDocument()
     expect(screen.queryByText(/12:30|07\/10\/2026/)).not.toBeInTheDocument()
   })
@@ -514,8 +519,7 @@ describe("TramitesPage: filtro y paginación", () => {
     expect(await screen.findByText("Página 2 de 5")).toBeInTheDocument()
     expect(await screen.findByText("#2")).toBeInTheDocument()
 
-    await user.click(screen.getByRole("combobox"))
-    await user.click(await screen.findByRole("option", { name: "Rechazado" }))
+    await user.click(screen.getByRole("tab", { name: "Rechazado" }))
 
     // Task 10: la fila "Cargando trámites…" pasa a esqueleto; el texto queda en el estado.
     expect(await screen.findByRole("status")).toHaveTextContent("Cargando trámites…")
@@ -535,8 +539,7 @@ describe("TramitesPage: filtro y paginación", () => {
     render(<TramitesPage />)
     await screen.findByText("No hay trámites en «Pendiente de revisión».")
 
-    await user.click(screen.getByRole("combobox"))
-    await user.click(await screen.findByRole("option", { name: "Rechazado" }))
+    await user.click(screen.getByRole("tab", { name: "Rechazado" }))
 
     expect(await screen.findByText("No hay trámites en «Rechazado».")).toBeInTheDocument()
   })
@@ -620,9 +623,9 @@ describe("TramitesPage: filtro inicial (decisión 28)", () => {
     expect(peticiones).toHaveLength(1)
     expect(peticiones[0].get("estado")).toBe("PENDIENTE_REVISION")
     expect(peticiones[0].get("page")).toBe("0")
-    expect(screen.getByRole("combobox", { name: "Filtrar por estado" })).toHaveTextContent(
-      "Pendiente de revisión",
-    )
+    expect(
+      screen.getByRole("tab", { name: "Pendiente de revisión" }),
+    ).toHaveAttribute("aria-selected", "true")
   })
 
   it("«Todos los estados» sigue disponible y, al elegirlo, no manda estado", async () => {
@@ -637,15 +640,15 @@ describe("TramitesPage: filtro inicial (decisión 28)", () => {
     render(<TramitesPage />)
     await screen.findByText("No hay trámites en «Pendiente de revisión».")
 
-    await user.click(screen.getByRole("combobox"))
-    await user.click(await screen.findByRole("option", { name: "Todos los estados" }))
+    await user.click(screen.getByRole("tab", { name: "Todos los estados" }))
 
     expect(await screen.findByText("No hay trámites que mostrar.")).toBeInTheDocument()
     expect(peticiones).toHaveLength(2)
     expect(peticiones[1].has("estado")).toBe(false)
     expect(peticiones[1].get("page")).toBe("0")
-    expect(screen.getByRole("combobox", { name: "Filtrar por estado" })).toHaveTextContent(
-      "Todos los estados",
+    expect(screen.getByRole("tab", { name: "Todos los estados" })).toHaveAttribute(
+      "aria-selected",
+      "true",
     )
   })
 })
