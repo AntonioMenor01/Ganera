@@ -9,6 +9,28 @@ import { server } from "@/test/server"
 
 const EMAIL_LARGO = "administracion.gestoria.ejemplo@agroservicios-castilla.es"
 
+const ENLACES_ESPERADOS = [
+  "Inicio",
+  "Bandeja",
+  "Trámites",
+  "Ganaderos",
+  "Explotaciones",
+  "Calendario",
+  "Informes",
+  "Configuración",
+] as const
+
+const HREFS_ESPERADOS = [
+  "/",
+  "/bandeja",
+  "/tramites",
+  "/ganaderos",
+  "/explotaciones",
+  "/calendario",
+  "/informes",
+  "/configuracion",
+] as const
+
 /** El layout real con páginas de relleno: lo que se prueba es la barra, no las pantallas. */
 function montarLayout(url: string) {
   const relleno = (texto: string) => <p>{texto}</p>
@@ -18,9 +40,14 @@ function montarLayout(url: string) {
         path: "/",
         element: <AppLayout />,
         children: [
+          { index: true, element: relleno("pantalla inicio") },
+          { path: "bandeja", element: relleno("pantalla bandeja") },
           { path: "tramites", element: relleno("pantalla tramites") },
           { path: "ganaderos", element: relleno("pantalla ganaderos") },
           { path: "explotaciones", element: relleno("pantalla explotaciones") },
+          { path: "calendario", element: relleno("pantalla calendario") },
+          { path: "informes", element: relleno("pantalla informes") },
+          { path: "configuracion", element: relleno("pantalla configuracion") },
         ],
       },
     ],
@@ -112,30 +139,27 @@ afterEach(() => {
 })
 
 describe("AppLayout: barra de navegación", () => {
-  it("hay un solo nav, llamado Principal, con los 3 enlaces en orden de trabajo (sin Facturación)", async () => {
+  it("hay un solo nav Principal con los 8 enlaces del mock (sin Facturación)", async () => {
     montarLayout("/tramites")
     await screen.findByText("pantalla tramites")
 
     const navs = screen.getAllByRole("navigation")
     expect(navs).toHaveLength(1)
     const nav = screen.getByRole("navigation", { name: "Principal" })
-    expect(within(nav).getAllByRole("link").map((e) => e.textContent)).toEqual([
-      "Trámites",
-      "Ganaderos",
-      "Explotaciones",
-    ])
+    expect(within(nav).getAllByRole("link").map((e) => e.textContent)).toEqual([...ENLACES_ESPERADOS])
     expect(within(nav).queryByRole("link", { name: /facturaci/i })).not.toBeInTheDocument()
-    expect(within(nav).getAllByRole("link").map((e) => e.getAttribute("href"))).toEqual([
-      "/tramites",
-      "/ganaderos",
-      "/explotaciones",
-    ])
+    expect(within(nav).getAllByRole("link").map((e) => e.getAttribute("href"))).toEqual([...HREFS_ESPERADOS])
   })
 
   it.each([
+    ["/", "Inicio"],
+    ["/bandeja", "Bandeja"],
     ["/tramites", "Trámites"],
     ["/ganaderos", "Ganaderos"],
     ["/explotaciones", "Explotaciones"],
+    ["/calendario", "Calendario"],
+    ["/informes", "Informes"],
+    ["/configuracion", "Configuración"],
   ])("en %s solo %s lleva aria-current=page", async (url, activo) => {
     montarLayout(url)
     const nav = await screen.findByRole("navigation", { name: "Principal" })
@@ -158,16 +182,12 @@ describe("AppLayout: barra de navegación", () => {
     montarLayout("/tramites")
     const nombre = await screen.findByText("Ana")
     expect(nombre).toHaveAttribute("title", EMAIL_LARGO)
-    // Visible en todos los tamaños, truncado: 96 px por debajo de md (cabe a 375 px), 160 px de md
-    // a lg y el ancho de la tarjeta de la barra lateral desde lg.
     expect(nombre).toHaveClass("truncate", "min-w-0", "max-w-24", "md:max-w-40", "lg:max-w-none")
-    // Texto de interfaz: 500 en todos los tamaños (el 700 es para títulos).
     expect(nombre).toHaveClass("font-medium")
     expect(nombre.className).not.toMatch(/font-bold/)
     const email = screen.getByText(EMAIL_LARGO)
     expect(email).toHaveAttribute("title", EMAIL_LARGO)
     expect(email).toHaveClass("truncate", "min-w-0")
-    // Oculto por debajo de md; desde md, debajo del nombre y truncado.
     expect(email).toHaveClass("hidden", "md:block", "max-w-40", "lg:max-w-none")
   })
 
@@ -182,26 +202,29 @@ describe("AppLayout: barra de navegación", () => {
   it("cada enlace lleva su icono decorativo y su nombre accesible es solo el texto", async () => {
     montarLayout("/tramites")
     const nav = await screen.findByRole("navigation", { name: "Principal" })
-    for (const nombre of ["Trámites", "Ganaderos", "Explotaciones"]) {
+    for (const nombre of ENLACES_ESPERADOS) {
       const enlace = within(nav).getByRole("link", { name: nombre })
       const iconos = enlace.querySelectorAll("svg")
       expect(iconos).toHaveLength(1)
       expect(iconos[0]).toHaveAttribute("aria-hidden", "true")
     }
-    // Iconos distintos: Trámites, Ganaderos, Explotaciones.
     const clases = within(nav)
       .getAllByRole("link")
       .map((e) => e.querySelector("svg")?.getAttribute("class") ?? "")
-    expect(clases[0]).toContain("lucide-clipboard-list")
-    expect(clases[1]).toContain("lucide-users")
-    expect(clases[2]).toContain("lucide-warehouse")
+    expect(clases[0]).toContain("lucide-layout-dashboard")
+    expect(clases[1]).toContain("lucide-message-circle")
+    expect(clases[2]).toContain("lucide-clipboard-list")
+    expect(clases[3]).toContain("lucide-users")
+    expect(clases[4]).toContain("lucide-warehouse")
+    expect(clases[5]).toContain("lucide-calendar-clock")
+    expect(clases[6]).toContain("lucide-chart-column")
+    expect(clases[7]).toContain("lucide-settings")
   })
 
   it("la tira es la referencia de offsetLeft de sus enlaces (relative) y se desplaza por dentro", async () => {
     montarLayout("/tramites")
     const nav = await screen.findByRole("navigation", { name: "Principal" })
     expect(nav).toHaveClass("relative", "overflow-x-auto", "overscroll-x-contain", "scrollbar-oculta", "md:overflow-visible")
-    // Desde lg (barra lateral) la tira es una columna: no desborda en horizontal.
     expect(nav).toHaveClass("lg:flex-col", "lg:overflow-x-visible", "lg:overflow-y-auto")
   })
 
@@ -209,7 +232,7 @@ describe("AppLayout: barra de navegación", () => {
     montarLayout("/tramites")
     const nav = await screen.findByRole("navigation", { name: "Principal" })
     const salir = screen.getByRole("button", { name: "Cerrar sesión" })
-    const ultimoEnlace = within(nav).getByRole("link", { name: "Explotaciones" })
+    const ultimoEnlace = within(nav).getByRole("link", { name: "Configuración" })
     expect(ultimoEnlace.compareDocumentPosition(salir) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
@@ -219,24 +242,27 @@ describe("AppLayout: barra de navegación", () => {
     const router = montarLayout("/tramites")
     const nav = await screen.findByRole("navigation", { name: "Principal" })
 
-    // Medidas de una tira de 375 px: margen interior 16, enlaces de 80 px con 4 px de separación.
+    // Índices mock: Inicio 0, Bandeja 1, Trámites 2, Ganaderos 3, Explotaciones 4 (16+i*84).
     const medidas = simularMedidas(nav, 375)
     const scrollLeftActual = medidas.scrollLeft
 
-    // Ganaderos (100–180) ya se ve: la tira no se mueve.
+    // Ganaderos (268–348) cabe en 375: no se mueve.
     await act(() => router.navigate("/ganaderos"))
     expect(scrollLeftActual()).toBe(0)
 
-    // Explotaciones (184–264)... con 375 de ancho y margen 16 cabe hasta 359: tampoco se mueve.
-    // Se estrecha la tira para que Explotaciones quede cortada por la derecha (visible hasta 204).
+    // Explotaciones (352–432) se corta a la derecha con 375 → scroll 432-375+16 = 73.
+    await act(() => router.navigate("/explotaciones"))
+    expect(scrollLeftActual()).toBe(73)
+
+    // Tira más estrecha (220): hay que salir de la ruta para que el efecto se re-dispare.
+    await act(() => router.navigate("/ganaderos"))
     Object.defineProperty(nav, "clientWidth", { configurable: true, value: 220 })
     await act(() => router.navigate("/explotaciones"))
-    // fin 264 → 264 - 220 + 16 = 60
-    expect(scrollLeftActual()).toBe(60)
+    expect(scrollLeftActual()).toBe(228)
 
-    // De vuelta a Trámites (16–96), fuera por la izquierda: vuelve al principio.
+    // De vuelta a Trámites (184–264), fuera por la izquierda: 184-16 = 168.
     await act(() => router.navigate("/tramites"))
-    expect(scrollLeftActual()).toBe(0)
+    expect(scrollLeftActual()).toBe(168)
 
     expect(scrollIntoView).not.toHaveBeenCalled()
   })
@@ -247,20 +273,20 @@ describe("AppLayout: barra de navegación", () => {
     montarLayout("/explotaciones")
     const nav = await screen.findByRole("navigation", { name: "Principal" })
     const medidas = simularMedidas(nav, 220)
-    // La tira desplazada para enseñar Explotaciones (como tras cargar /explotaciones en una tira estrecha).
-    nav.scrollLeft = 60
+    // Como tras cargar /explotaciones en tira estrecha (índice 4 → 228).
+    nav.scrollLeft = 228
 
-    // Trámites (16–96) queda cortado por la izquierda: al enfocarlo, la tira vuelve al principio.
+    // Trámites (184–264) cortado por la izquierda → 184-16 = 168.
     act(() => within(nav).getByRole("link", { name: "Trámites" }).focus())
-    expect(medidas.scrollLeft()).toBe(0)
+    expect(medidas.scrollLeft()).toBe(168)
 
-    // Ganaderos (100–180) ya se ve entero con el margen: enfocarlo no mueve la tira.
+    // Ganaderos (268–348) ya cabe con scroll 168 y ancho 220: no mueve.
     act(() => within(nav).getByRole("link", { name: "Ganaderos" }).focus())
-    expect(medidas.scrollLeft()).toBe(0)
+    expect(medidas.scrollLeft()).toBe(168)
 
-    // Explotaciones (184–264), cortado por la derecha (visible hasta 204): 264 - 220 + 16 = 60.
+    // Explotaciones (352–432) cortado a la derecha → 228.
     act(() => within(nav).getByRole("link", { name: "Explotaciones" }).focus())
-    expect(medidas.scrollLeft()).toBe(60)
+    expect(medidas.scrollLeft()).toBe(228)
 
     expect(scrollIntoView).not.toHaveBeenCalled()
   })
@@ -272,21 +298,21 @@ describe("AppLayout: barra de navegación", () => {
     const router = montarLayout("/tramites")
     const nav = await screen.findByRole("navigation", { name: "Principal" })
     await act(() => router.navigate("/explotaciones"))
-    const medidas = simularMedidas(nav, 375)
+    const medidas = simularMedidas(nav, 500)
 
     const observador = ResizeObserverFalso.instancias.at(-1)!
     const explotaciones = within(nav).getByRole("link", { name: "Explotaciones" })
     expect(observador.observados.has(nav)).toBe(true)
     expect(observador.observados.has(explotaciones)).toBe(true)
 
-    // Con 375 px Explotaciones (184–264) se ve entera: el aviso de tamaño no mueve la tira.
+    // Con 500 px Explotaciones (352–432) se ve entera: no mueve.
     act(() => observador.disparar())
     expect(medidas.scrollLeft()).toBe(0)
 
-    // La tira se estrecha a 220 px: Explotaciones queda cortada y se trae a la vista (264 - 220 + 16).
+    // Tira a 220 px: Explotaciones cortada → 228.
     Object.defineProperty(nav, "clientWidth", { configurable: true, value: 220 })
     act(() => observador.disparar())
-    expect(medidas.scrollLeft()).toBe(60)
+    expect(medidas.scrollLeft()).toBe(228)
     expect(scrollIntoView).not.toHaveBeenCalled()
   })
 

@@ -18,7 +18,7 @@ function montarApp(url: string) {
   return router
 }
 
-/** Sesión iniciada y lo que pide la app autenticada al aterrizar en /tramites. */
+/** Sesión iniciada y lo que pide la app autenticada al aterrizar (inicio o trámites). */
 function conSesion() {
   sessionStorage.setItem("ganera.token", "tok")
   server.use(
@@ -29,18 +29,22 @@ function conSesion() {
     http.get(apiUrl("/tramites"), () =>
       HttpResponse.json({ content: [], totalElements: 0, totalPages: 0, number: 0, size: 20 }),
     ),
+    http.get(apiUrl("/ganaderos"), () =>
+      HttpResponse.json({ content: [], totalElements: 0, totalPages: 0, number: 0, size: 1 }),
+    ),
   )
 }
 
 describe("rutas: comodín del layout autenticado (D5)", () => {
   it.each(["/facturacion", "/no-existe", "/ganaderos/5/otra-cosa"])(
-    "con sesión, %s lleva a /tramites (sin la página de error de React Router)",
+    "con sesión, %s lleva a / (inicio, sin la página de error de React Router)",
     async (url) => {
       conSesion()
       const router = montarApp(url)
 
-      expect(await screen.findByRole("heading", { level: 1, name: "Cola de trámites" })).toBeInTheDocument()
-      expect(router.state.location.pathname).toBe("/tramites")
+      // El saludo del dashboard es el h1 del inicio (hora de Madrid → «Buenos…»).
+      expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(/Buenos|Buenas/)
+      expect(router.state.location.pathname).toBe("/")
       // replace: la ruta desconocida no queda en el historial.
       expect(router.state.historyAction).toBe("REPLACE")
     },

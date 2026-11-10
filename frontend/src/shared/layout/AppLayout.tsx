@@ -1,6 +1,16 @@
 import { useLayoutEffect, useRef } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import { ClipboardListIcon, UsersIcon, WarehouseIcon } from "lucide-react";
+import {
+  CalendarClockIcon,
+  ChartColumnIcon,
+  ClipboardListIcon,
+  LayoutDashboardIcon,
+  MessageCircleIcon,
+  SettingsIcon,
+  UsersIcon,
+  WarehouseIcon,
+  type LucideIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/shared/auth/AuthContext";
@@ -11,14 +21,19 @@ import { useSuscripcionEstado } from "@/features/facturacion/useSuscripcionEstad
 import { iniciales } from "./iniciales";
 import { scrollLeftParaMostrar } from "./tiraNavegacion";
 
-// Orden de trabajo: la cola (lo diario) y a quién pertenece (Ganaderos → sus explotaciones). El
-// pago ya no se gestiona en la app (se cobra desde la landing): no hay enlace de Facturación.
-// /ganaderos/:id también marca "Ganaderos" (NavLink sin `end`).
-// El icono es decorativo (aria-hidden): el nombre accesible del enlace es solo su texto.
-const ENLACES = [
+// Orden del mock «Ganera App v2»: Inicio → Bandeja → Trámites → Ganaderos → Explotaciones →
+// Calendario → Informes → Configuración. Sin Facturación (el cobro va en la landing).
+// /ganaderos/:id también marca "Ganaderos" (NavLink sin `end`). Inicio usa `end` para no
+// activarse en el resto de rutas. Icono decorativo (aria-hidden): el nombre accesible es el texto.
+const ENLACES: { to: string; label: string; Icono: LucideIcon; end?: boolean }[] = [
+  { to: "/", label: "Inicio", Icono: LayoutDashboardIcon, end: true },
+  { to: "/bandeja", label: "Bandeja", Icono: MessageCircleIcon },
   { to: "/tramites", label: "Trámites", Icono: ClipboardListIcon },
   { to: "/ganaderos", label: "Ganaderos", Icono: UsersIcon },
   { to: "/explotaciones", label: "Explotaciones", Icono: WarehouseIcon },
+  { to: "/calendario", label: "Calendario", Icono: CalendarClockIcon },
+  { to: "/informes", label: "Informes", Icono: ChartColumnIcon },
+  { to: "/configuracion", label: "Configuración", Icono: SettingsIcon },
 ];
 
 /** Margen interior de la tira de enlaces en móvil (`px-4`): el activo se trae a la vista con él. */
@@ -111,10 +126,11 @@ export function AppLayout() {
             }}
             className="relative col-span-2 row-start-2 -mx-4 flex gap-1 overflow-x-auto overscroll-x-contain px-4 py-1 scrollbar-oculta md:mx-0 md:shrink-0 md:overflow-visible md:p-0 lg:min-h-0 lg:flex-1 lg:shrink lg:flex-col lg:gap-0.5 lg:overflow-x-visible lg:overflow-y-auto lg:p-3"
           >
-            {ENLACES.map(({ to, label, Icono }) => (
+            {ENLACES.map(({ to, label, Icono, end }) => (
               <NavLink
                 key={to}
                 to={to}
+                end={end}
                 className={({ isActive }) =>
                   cn(
                     "flex shrink-0 items-center gap-2 px-2.5 py-2 text-sm font-medium whitespace-nowrap outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring md:py-1.5 lg:h-10 lg:w-full lg:gap-3 lg:py-0",
