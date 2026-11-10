@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { describe, expect, it } from "vitest";
@@ -54,7 +55,8 @@ function montar() {
 }
 
 describe("CalendarioPage", () => {
-  it("agrupa hechos en OVZ y cuenta aprobados pendientes", async () => {
+  it("muestra rejilla mock y lista con hechos en OVZ reales", async () => {
+    const user = userEvent.setup();
     conSesion();
     server.use(
       http.get(apiUrl("/tramites"), ({ request }) => {
@@ -68,23 +70,20 @@ describe("CalendarioPage", () => {
             size: 100,
           });
         }
-        if (estado === "APROBADO") {
-          return HttpResponse.json({
-            content: [],
-            totalElements: 2,
-            totalPages: 1,
-            number: 0,
-            size: 1,
-          });
-        }
         return new HttpResponse(null, { status: 500 });
       }),
     );
     montar();
 
     expect(await screen.findByRole("heading", { name: "Calendario" })).toBeInTheDocument();
-    expect(await screen.findByText(/2 trámites aprobados/)).toBeInTheDocument();
-    expect(screen.getByText(/Solicitud de movimiento/)).toBeInTheDocument();
+    expect(screen.getByText("Carencias, vencimientos, bajas y guías")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Calendario" })).toHaveAttribute("aria-selected", "true");
+
+    await user.click(screen.getByRole("tab", { name: "Lista" }));
+    expect(await screen.findByText(/Solicitud de movimiento/)).toBeInTheDocument();
     expect(screen.getByText(/Ana Pérez/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Solicitud de movimiento/ }));
+    expect(await screen.findByRole("link", { name: /Abrir trámite #9/ })).toBeInTheDocument();
   });
 });
