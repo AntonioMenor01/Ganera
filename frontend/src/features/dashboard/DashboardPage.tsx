@@ -81,8 +81,7 @@ export function DashboardPage() {
         <div className="min-w-0">
           {fecha && <p className="mb-1.5 text-[13px] font-medium text-muted-foreground">{fecha}</p>}
           <h1 className="text-[28px] leading-tight font-bold tracking-[-0.02em]">
-            {saludo()}
-            {nombre ? `, ${nombre}` : ""}
+            {nombre ? `${saludo()}, ${nombre}` : saludo()}
           </h1>
         </div>
         <div className="flex flex-wrap gap-2">
