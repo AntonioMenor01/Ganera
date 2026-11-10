@@ -61,7 +61,7 @@ function registrarPeticiones(responder: (url: URL) => Response | Promise<Respons
 }
 
 describe("GanaderosPage: listado", () => {
-  it("pinta nombre, NIF y número de explotaciones, con el recuento debajo del título", async () => {
+  it("pinta nombre, NIF y número de explotaciones, con el recuento sobre el título", async () => {
     registrarPeticiones()
     montar()
 
@@ -225,7 +225,9 @@ describe("GanaderosPage: navegación al detalle", () => {
     montar()
     await screen.findByRole("link", { name: "Ana Ruiz" })
 
-    // Tab: botón «Añadir ganadero», botón Nombre, botón NIF, enlace del primer ganadero.
+    // Tab: Importar Excel, Añadir ganadero, búsqueda, Nombre, NIF, enlace del primer ganadero.
+    await user.tab()
+    await user.tab()
     await user.tab()
     await user.tab()
     await user.tab()

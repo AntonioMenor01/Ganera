@@ -82,52 +82,67 @@ export function AltaGanaderoDialog({
       <DialogContent
         // El foco inicial va al primer campo, no al botón de cerrar.
         initialFocus={nombreRef}
-        className="sm:max-w-md"
+        className="gap-0 overflow-hidden p-0 sm:max-w-lg"
       >
-        <form onSubmit={enviar} className="grid gap-4" noValidate>
-          <DialogHeader>
-            <DialogTitle>Añadir ganadero</DialogTitle>
+        <form onSubmit={enviar} className="grid gap-0" noValidate>
+          <DialogHeader className="gap-1.5 border-b-2 border-divisor px-5 py-4 text-left">
+            <DialogTitle className="text-xl font-bold tracking-[-0.02em]">
+              Alta de ganadero
+            </DialogTitle>
             <DialogDescription>
-              Las explotaciones y los contactos de este ganadero siguen llegando por el Excel o por
-              WhatsApp; aquí solo se crea la ficha del ganadero.
+              Solo nombre y NIF. Las explotaciones y los contactos llegan por el Excel o por
+              WhatsApp.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-2">
-            <Label htmlFor="alta-ganadero-nombre">Nombre</Label>
-            <Input
-              id="alta-ganadero-nombre"
-              ref={nombreRef}
-              value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-              autoComplete="off"
-              aria-invalid={errorEnNombre || undefined}
-              required
-            />
+          <div className="grid gap-4 px-5 py-5">
+            <div className="grid gap-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="alta-ganadero-nombre">Nombre</Label>
+                <span aria-hidden="true" className="text-[13px] font-medium text-enlace">
+                  *
+                </span>
+              </div>
+              <Input
+                id="alta-ganadero-nombre"
+                ref={nombreRef}
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                autoComplete="off"
+                placeholder="Nombre y apellidos o razón social"
+                aria-invalid={errorEnNombre || undefined}
+                required
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="alta-ganadero-nif">NIF / CIF</Label>
+                <span aria-hidden="true" className="text-[13px] font-medium text-enlace">
+                  *
+                </span>
+              </div>
+              <Input
+                id="alta-ganadero-nif"
+                value={nif}
+                onChange={(e) => setNif(e.target.value)}
+                autoComplete="off"
+                inputMode="text"
+                placeholder="12345678Z"
+                aria-invalid={errorEnNif || undefined}
+                required
+              />
+            </div>
+
+            {error && (
+              <Alert variant="destructive">
+                <CircleAlertIcon />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="alta-ganadero-nif">NIF / CIF</Label>
-            <Input
-              id="alta-ganadero-nif"
-              value={nif}
-              onChange={(e) => setNif(e.target.value)}
-              autoComplete="off"
-              inputMode="text"
-              placeholder="12345678Z"
-              aria-invalid={errorEnNif || undefined}
-              required
-            />
-          </div>
-
-          {error && (
-            <Alert variant="destructive">
-              <CircleAlertIcon />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          <DialogFooter>
+          <DialogFooter className="border-t-2 border-divisor px-5 py-3 sm:justify-end">
             <DialogClose render={<Button type="button" variant="outline" />}>Cancelar</DialogClose>
             <Button type="submit" disabled={enviando}>
               {enviando ? "Añadiendo…" : "Añadir ganadero"}

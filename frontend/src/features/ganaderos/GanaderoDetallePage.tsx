@@ -82,12 +82,15 @@ export function GanaderoDetallePage() {
         : { estado: "cargando" };
 
   return (
-    <div className="flex min-w-0 flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-[1360px] min-w-0 flex-col gap-5">
       {/* En "no encontrado" la única acción es "Volver a Ganaderos", bajo el mensaje. */}
       {vista.estado !== "no-encontrado" && (
         <Link
           to="/ganaderos"
-          className={cn("inline-flex w-fit items-center gap-1 text-sm", CLASE_ENLACE)}
+          className={cn(
+            "inline-flex w-fit items-center gap-1 text-[13px] font-medium text-enlace",
+            "hover:underline focus-visible:rounded-sm focus-visible:ring-3 focus-visible:ring-ring",
+          )}
         >
           <ArrowLeft aria-hidden="true" className="size-3.5" />
           Ganaderos
@@ -98,7 +101,9 @@ export function GanaderoDetallePage() {
 
       {vista.estado === "no-encontrado" && (
         <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-bold">Ganadero no encontrado</h1>
+          <h1 className="text-[28px] leading-tight font-bold tracking-[-0.02em]">
+            Ganadero no encontrado
+          </h1>
           <p className="text-sm text-muted-foreground">{TEXTO_GANADERO_NO_ENCONTRADO}</p>
           <Link to="/ganaderos" className={cn("mt-2 w-fit", CLASE_ENLACE)}>
             Volver a Ganaderos
@@ -153,19 +158,32 @@ function Ficha({ ganadero }: { ganadero: GanaderoDetalle }) {
 
   return (
     <>
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-          <h1 className="min-w-0 text-xl font-bold break-words">{ganadero.nombre}</h1>
-          {ganadero.nif ? (
-            <span className="text-muted-foreground tabular-nums">
-              <span className="sr-only">NIF </span>
-              {ganadero.nif}
-            </span>
-          ) : (
-            <span className="text-muted-foreground">Sin NIF</span>
-          )}
+      {/* `div`, no `header`: un <header> fuera de <main>/<section> sería un landmark banner
+          y rompería getByRole("banner") de la barra de la app. */}
+      <div className="flex min-w-0 flex-wrap items-center gap-4 border-b-2 border-divisor pb-5">
+        <span
+          aria-hidden="true"
+          className="grid size-14 shrink-0 place-items-center bg-foreground text-lg font-bold text-background"
+        >
+          {iniciales(ganadero.nombre)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h1 className="min-w-0 text-[28px] leading-tight font-bold tracking-[-0.02em] break-words">
+            {ganadero.nombre}
+          </h1>
+          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+            {ganadero.nif ? (
+              <span className="tabular-nums">
+                <span aria-hidden="true">NIF </span>
+                <span className="sr-only">NIF </span>
+                {ganadero.nif}
+              </span>
+            ) : (
+              <span>Sin NIF</span>
+            )}
+            <span className="tabular-nums">{textoExplotaciones(explotaciones.length)}</span>
+          </div>
         </div>
-        <p className="text-sm text-muted-foreground tabular-nums">{textoExplotaciones(explotaciones.length)}</p>
       </div>
 
       {explotaciones.length > MAX_EXPLOTACIONES_SIN_INDICE && (
@@ -188,6 +206,14 @@ function Ficha({ ganadero }: { ganadero: GanaderoDetalle }) {
       )}
     </>
   );
+}
+
+/** Iniciales para el avatar de la ficha (mock v2). Sin inventar foto. */
+function iniciales(nombre: string): string {
+  const partes = nombre.trim().split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return "?";
+  if (partes.length === 1) return partes[0].slice(0, 2).toLocaleUpperCase("es");
+  return `${partes[0][0] ?? ""}${partes[partes.length - 1]?.[0] ?? ""}`.toLocaleUpperCase("es");
 }
 
 /** Lleva la vista y el foco al título de una sección: quien navega con teclado sigue leyendo
@@ -239,18 +265,18 @@ function SeccionExplotacion({ explotacion }: { explotacion: ExplotacionDeGanader
       aria-labelledby={idTitulo}
       className="scroll-mt-6 border border-border bg-card"
     >
-      <header className="border-b px-4 py-3">
+      <header className="flex h-14 items-center border-b-2 border-divisor px-5">
         <h2
           id={idTitulo}
           tabIndex={-1}
-          className="rounded-sm text-base font-bold break-words outline-none focus-visible:ring-3 focus-visible:ring-ring"
+          className="rounded-sm text-lg font-bold break-words outline-none focus-visible:ring-3 focus-visible:ring-ring"
         >
           <span className="tabular-nums">{explotacion.codigoRega}</span>
           <span className="font-normal"> · {explotacion.nombre}</span>
         </h2>
       </header>
 
-      <div className="px-4 py-3">
+      <div className="px-5 py-4">
         <h3 id={idContactos} className="text-sm font-bold text-muted-foreground">
           Contactos
         </h3>
@@ -267,7 +293,7 @@ function SeccionExplotacion({ explotacion }: { explotacion: ExplotacionDeGanader
         )}
       </div>
 
-      <div className="rounded-b-xl border-t bg-muted/50 px-4 py-2">
+      <div className="border-t border-border bg-muted/50 px-5 py-2">
         <Button
           variant="ghost"
           size="sm"
