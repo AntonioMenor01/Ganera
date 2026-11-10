@@ -55,7 +55,11 @@ describe("contrato SIN_TRAMITE con el backend", () => {
         HttpResponse.json({ content: [contrato.itemLista], totalElements: 1, totalPages: 1, number: 0, size: 20 }),
       ),
     )
-    render(<TramitesPage />)
+    render(
+      <MemoryRouter>
+        <TramitesPage />
+      </MemoryRouter>,
+    )
 
     const fila = (await screen.findByText("Parece un mensaje sin trámite")).closest("tr") as HTMLElement
     expect(fila).not.toBeNull()

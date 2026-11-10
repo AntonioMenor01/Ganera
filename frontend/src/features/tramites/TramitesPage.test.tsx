@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
+import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it } from "vitest"
 import { apiUrl } from "@/test/apiBaseUrl"
 import { server } from "@/test/server"
@@ -67,6 +68,14 @@ function puerta() {
   return { promesa, abrir }
 }
 
+function montar() {
+  return render(
+    <MemoryRouter>
+      <TramitesPage />
+    </MemoryRouter>,
+  )
+}
+
 describe("TramitesPage: etiquetas legibles", () => {
   it("la cola muestra la etiqueta del estado y del tipo, nunca el enum", async () => {
     server.use(
@@ -117,7 +126,7 @@ describe("TramitesPage: etiquetas legibles", () => {
         }),
       ),
     )
-    render(<TramitesPage />)
+    montar()
 
     // Decisión 28: el disparador del filtro también dice "Pendiente de revisión"; el badge se busca
     // dentro de la tabla.
@@ -163,7 +172,7 @@ describe("TramitesPage: etiquetas legibles", () => {
         }),
       ),
     )
-    render(<TramitesPage />)
+    montar()
 
     expect(await screen.findByText("PAUSADO")).toHaveClass("bg-neutral", "text-neutral-foreground")
     expect(screen.getByText("TRASLADO_FERIA")).toBeInTheDocument()
@@ -181,7 +190,7 @@ describe("TramitesPage: errores visibles", () => {
       }),
     )
     const user = userEvent.setup()
-    render(<TramitesPage />)
+    montar()
 
     expect(await screen.findByText("No se han podido cargar los trámites")).toBeInTheDocument()
     expect(screen.getByText("No se han podido cargar los trámites").closest("[role=alert]")!.firstElementChild?.matches('svg[aria-hidden="true"]')).toBe(true)
@@ -219,7 +228,7 @@ describe("TramitesPage: errores visibles", () => {
       }),
     )
     const user = userEvent.setup()
-    render(<TramitesPage />)
+    montar()
 
     await screen.findByText("#100")
     await user.click(screen.getByRole("button", { name: "Siguiente" }))
@@ -242,7 +251,7 @@ describe("TramitesPage: filas accesibles por teclado (P0 de la critique)", () =>
 
   it("cada fila tiene un botón enfocable con Tab, con nombre accesible que incluye el texto visible", async () => {
     const user = userEvent.setup()
-    render(<TramitesPage />)
+    montar()
     const boton = await screen.findByRole("button", { name: "Revisar trámite #1" })
     expect(boton).toHaveTextContent("#1")
     // Enlace en columna de tabla: Tinta en reposo; Rojo 700 solo al apuntar o con foco.
@@ -256,7 +265,7 @@ describe("TramitesPage: filas accesibles por teclado (P0 de la critique)", () =>
 
   it("Enter en la fila enfocada abre la revisión de ese trámite", async () => {
     const user = userEvent.setup()
-    render(<TramitesPage />)
+    montar()
     const boton = await screen.findByRole("button", { name: "Revisar trámite #2" })
     boton.focus()
     await user.keyboard("{Enter}")
@@ -269,7 +278,7 @@ describe("TramitesPage: filas accesibles por teclado (P0 de la critique)", () =>
 
   it("Espacio también la abre", async () => {
     const user = userEvent.setup()
-    render(<TramitesPage />)
+    montar()
     const boton = await screen.findByRole("button", { name: "Revisar trámite #1" })
     boton.focus()
     await user.keyboard(" ")
@@ -279,7 +288,7 @@ describe("TramitesPage: filas accesibles por teclado (P0 de la critique)", () =>
   })
 
   it("el recuento usa singular y plural", async () => {
-    render(<TramitesPage />)
+    montar()
     expect(await screen.findByText("2 trámites")).toBeInTheDocument()
   })
 })
@@ -307,7 +316,7 @@ describe("TramitesPage: código REGA desde el listado (punto 4)", () => {
   })
 
   it("pinta el REGA de cada trámite con el nombre en title y sr-only; null = Sin asignar; nunca el id", async () => {
-    render(<TramitesPage />)
+    montar()
 
     const rega = await screen.findByText("ES280790000123")
     expect(rega).toHaveAttribute("title", "Finca La Dehesa")
@@ -320,7 +329,7 @@ describe("TramitesPage: código REGA desde el listado (punto 4)", () => {
   })
 
   it("con el nombre vacío: solo el código, sin title ni coma para el lector de pantalla", async () => {
-    render(<TramitesPage />)
+    montar()
 
     const rega = await screen.findByText("ES990000000777")
     expect(rega).not.toHaveAttribute("title")
@@ -330,7 +339,7 @@ describe("TramitesPage: código REGA desde el listado (punto 4)", () => {
   })
 
   it("con explotación pero sin código REGA (no debería pasar): «—» y «Código REGA no disponible», nunca «Sin asignar» ni el id", async () => {
-    render(<TramitesPage />)
+    montar()
 
     const boton = await screen.findByRole("button", { name: "Revisar trámite #6" })
     const celda = within(boton.closest("tr") as HTMLElement).getAllByRole("cell")[3]
@@ -350,7 +359,7 @@ describe("TramitesPage: código REGA desde el listado (punto 4)", () => {
         return paginaExplotaciones()
       }),
     )
-    render(<TramitesPage />)
+    montar()
 
     expect(await screen.findByText("ES280790000123")).toBeInTheDocument()
     // Margen para que una petición, si la hubiera, llegara.
@@ -399,7 +408,7 @@ describe("TramitesPage: crotales visibles en la fila", () => {
         ),
       ),
     )
-    render(<TramitesPage />)
+    montar()
 
     const resuelto = await screen.findByText("ES123456789012")
     expect(resuelto).toHaveAttribute("title", "Indicado: 789012")
@@ -422,7 +431,7 @@ describe("TramitesPage: crotales visibles en la fila", () => {
 describe("TramitesPage: filtro y paginación", () => {
   it("las pestañas del filtro: las etiquetas de ESTADOS_TRAMITE, sin los tres de la automatización (Hecho en OVZ, D5)", async () => {
     server.use(http.get(apiUrl("/tramites"), () => paginaTramites([], 0, 0)))
-    render(<TramitesPage />)
+    montar()
     await screen.findByText("No hay trámites en «Pendiente de revisión».")
 
     const tabs = within(screen.getByRole("tablist", { name: "Filtrar por estado" })).getAllByRole("tab")
@@ -451,7 +460,7 @@ describe("TramitesPage: filtro y paginación", () => {
       }),
     )
     const user = userEvent.setup()
-    render(<TramitesPage />)
+    montar()
     await screen.findByText("No hay trámites en «Pendiente de revisión».")
 
     await user.click(screen.getByRole("tab", { name: opcion }))
@@ -478,7 +487,7 @@ describe("TramitesPage: filtro y paginación", () => {
         ),
       ),
     )
-    render(<TramitesPage />)
+    montar()
 
     await screen.findByRole("button", { name: "Revisar trámite #1" })
     const badgeHecho = screen
@@ -512,7 +521,7 @@ describe("TramitesPage: filtro y paginación", () => {
       }),
     )
     const user = userEvent.setup()
-    render(<TramitesPage />)
+    montar()
     expect(await screen.findByText("Página 1 de 5")).toBeInTheDocument()
     // M1 de la revisión de Task 6: se cambia de filtro desde una página posterior.
     await user.click(screen.getByRole("button", { name: "Siguiente" }))
@@ -536,7 +545,7 @@ describe("TramitesPage: filtro y paginación", () => {
   it("con un filtro activo y sin resultados, el vacío lo nombra", async () => {
     server.use(http.get(apiUrl("/tramites"), () => paginaTramites([], 0, 0)))
     const user = userEvent.setup()
-    render(<TramitesPage />)
+    montar()
     await screen.findByText("No hay trámites en «Pendiente de revisión».")
 
     await user.click(screen.getByRole("tab", { name: "Rechazado" }))
@@ -562,7 +571,7 @@ describe("TramitesPage: filtro y paginación", () => {
       }),
     )
     const user = userEvent.setup()
-    render(<TramitesPage />)
+    montar()
 
     await screen.findByText("Página 1 de 2")
     await user.click(screen.getByRole("button", { name: "Siguiente" }))
@@ -593,7 +602,7 @@ describe("TramitesPage: el selector del modal busca en el backend (T4)", () => {
       http.get(apiUrl("/tramites/1"), () => HttpResponse.json(detalle(1))),
     )
     const user = userEvent.setup()
-    render(<TramitesPage />)
+    montar()
     await user.click(await screen.findByRole("button", { name: "Revisar trámite #1" }))
     const dialogo = await screen.findByRole("dialog")
     const campo = await within(dialogo).findByRole("combobox", { name: "Explotación" })
@@ -617,7 +626,7 @@ describe("TramitesPage: filtro inicial (decisión 28)", () => {
         return paginaTramites([], 0, 0)
       }),
     )
-    render(<TramitesPage />)
+    montar()
 
     expect(await screen.findByText("No hay trámites en «Pendiente de revisión».")).toBeInTheDocument()
     expect(peticiones).toHaveLength(1)
@@ -637,7 +646,7 @@ describe("TramitesPage: filtro inicial (decisión 28)", () => {
       }),
     )
     const user = userEvent.setup()
-    render(<TramitesPage />)
+    montar()
     await screen.findByText("No hay trámites en «Pendiente de revisión».")
 
     await user.click(screen.getByRole("tab", { name: "Todos los estados" }))
@@ -693,7 +702,7 @@ describe("TramitesPage: crotal no encontrado e incompleto (completo, punto 5)", 
   })
 
   it("en la fila: ámbar con «· incompleto» si lo escrito no es completo; neutro si lo es", async () => {
-    render(<TramitesPage />)
+    montar()
     const fila = (await screen.findByText("4321")).closest("li")!
     expect(within(fila).getByText("No está en el inventario · incompleto")).toHaveClass("bg-warning")
     const completoFila = screen.getByText("ES000000000004").closest("li")!
@@ -703,7 +712,7 @@ describe("TramitesPage: crotal no encontrado e incompleto (completo, punto 5)", 
 
   it("en el desplegable «+N más» también", async () => {
     const user = userEvent.setup()
-    render(<TramitesPage />)
+    montar()
     await user.click(await screen.findByRole("button", { name: "+1 más: 1 crotal más" }))
     const fila = screen.getByText("8765").closest("li")!
     expect(within(fila).getByText("No está en el inventario · incompleto")).toHaveClass("bg-warning")
@@ -734,7 +743,7 @@ describe("TramitesPage: «+N más» despliega los crotales (Task 10)", () => {
   })
 
   it("es un botón «+2 más» plegado, con la clase de foco del sistema", async () => {
-    render(<TramitesPage />)
+    montar()
     const boton = await screen.findByRole("button", { name: "+2 más: 2 crotales más" })
     expect(boton).toHaveAttribute("aria-expanded", "false")
     expect(boton).toHaveClass("text-muted-foreground", "focus-visible:ring-3")
@@ -743,7 +752,7 @@ describe("TramitesPage: «+N más» despliega los crotales (Task 10)", () => {
 
   it("al pulsarlo enseña el resto con el mismo marcado, sin abrir el modal; luego pliega", async () => {
     const user = userEvent.setup()
-    render(<TramitesPage />)
+    montar()
     await user.click(await screen.findByRole("button", { name: "+2 más: 2 crotales más" }))
 
     const lista = screen.getByText("ES000000111111").closest("ul")!
@@ -764,7 +773,7 @@ describe("TramitesPage: «+N más» despliega los crotales (Task 10)", () => {
 
   it("con Enter también despliega, y no abre el modal", async () => {
     const user = userEvent.setup()
-    render(<TramitesPage />)
+    montar()
     const boton = await screen.findByRole("button", { name: "+2 más: 2 crotales más" })
     boton.focus()
     await user.keyboard("{Enter}")
@@ -786,7 +795,7 @@ describe("TramitesPage: estado de carga y esqueleto (Task 10)", () => {
         return paginaTramites([tramite(1)], 1, 1)
       }),
     )
-    render(<TramitesPage />)
+    montar()
 
     const estado = screen.getByRole("status")
     expect(estado).toHaveTextContent("Cargando trámites…")
@@ -822,7 +831,7 @@ describe("TramitesPage: origen y avisos de extracción (B1, T4)", () => {
 
   it("una fila de WhatsApp lleva el icono de bocadillo con texto oculto y title, fuera del botón", async () => {
     filas(tramite(1, { origen: "WHATSAPP" }), tramite(2))
-    render(<TramitesPage />)
+    montar()
     const boton = await screen.findByRole("button", { name: "Revisar trámite #1" })
     // El botón conserva su nombre accesible y no contiene el indicador.
     expect(boton).toHaveAccessibleName("Revisar trámite #1")
@@ -853,14 +862,14 @@ describe("TramitesPage: origen y avisos de extracción (B1, T4)", () => {
 
   it("un origen desconocido no pinta indicador", async () => {
     filas(tramite(1, { origen: "EMAIL" }))
-    render(<TramitesPage />)
+    montar()
     await screen.findByRole("button", { name: "Revisar trámite #1" })
     expect(celdas(1)[0].querySelector("svg")).toBeNull()
   })
 
   it("PENDIENTE: «Extracción en curso» bajo el badge de Estado, en Gris Texto y sin icono", async () => {
     filas(tramite(1, { estado: "PENDIENTE_EXTRACCION", estadoExtraccion: "PENDIENTE", tipoTramite: null }))
-    render(<TramitesPage />)
+    montar()
     await screen.findByRole("button", { name: "Revisar trámite #1" })
     const estado = celdas(1)[2]
     const linea = within(estado).getByText("Extracción en curso")
@@ -873,7 +882,7 @@ describe("TramitesPage: origen y avisos de extracción (B1, T4)", () => {
 
   it("FALLIDA: icono de aviso + «No se ha podido extraer», en el ámbar del par de aviso", async () => {
     filas(tramite(1, { estadoExtraccion: "FALLIDA" }))
-    render(<TramitesPage />)
+    montar()
     await screen.findByRole("button", { name: "Revisar trámite #1" })
     const linea = within(celdas(1)[2]).getByText("No se ha podido extraer")
     expect(linea).toHaveClass("text-xs", "text-warning-foreground")
@@ -882,7 +891,7 @@ describe("TramitesPage: origen y avisos de extracción (B1, T4)", () => {
 
   it("SIN_TEXTO: icono de aviso + «Mensaje sin texto», en ámbar", async () => {
     filas(tramite(1, { estadoExtraccion: "SIN_TEXTO" }))
-    render(<TramitesPage />)
+    montar()
     await screen.findByRole("button", { name: "Revisar trámite #1" })
     const linea = within(celdas(1)[2]).getByText("Mensaje sin texto")
     expect(linea).toHaveClass("text-xs", "text-warning-foreground")
@@ -891,7 +900,7 @@ describe("TramitesPage: origen y avisos de extracción (B1, T4)", () => {
 
   it("COMPLETADA o null no añaden línea en Estado", async () => {
     filas(tramite(1, { estadoExtraccion: "COMPLETADA" }), tramite(2))
-    render(<TramitesPage />)
+    montar()
     await screen.findByRole("button", { name: "Revisar trámite #1" })
     for (const id of [1, 2]) expect(celdas(id)[2].querySelector("svg:not([data-icono])")).toBeNull()
     expect(celdas(1)[2]).toHaveTextContent(/^Pendiente de revisión$/)
@@ -908,7 +917,7 @@ describe("TramitesPage: origen y avisos de extracción (B1, T4)", () => {
       }),
       tramite(3),
     )
-    render(<TramitesPage />)
+    montar()
     await screen.findByRole("button", { name: "Revisar trámite #1" })
     const plural = within(celdas(1)[4]).getByText("3 descartados")
     expect(plural).toHaveClass("text-xs", "text-warning-foreground")
@@ -922,7 +931,7 @@ describe("TramitesPage: origen y avisos de extracción (B1, T4)", () => {
 
   it("en un trámite APROBADO con FALLIDA y descartados no aparece ningún aviso (solo el origen)", async () => {
     filas(tramite(1, { estado: "APROBADO", estadoExtraccion: "FALLIDA", crotalesDescartados: 2, origen: "WHATSAPP" }))
-    render(<TramitesPage />)
+    montar()
     await screen.findByRole("button", { name: "Revisar trámite #1" })
     expect(screen.queryByText("No se ha podido extraer")).not.toBeInTheDocument()
     expect(screen.queryByText(/descartado/)).not.toBeInTheDocument()
@@ -932,7 +941,7 @@ describe("TramitesPage: origen y avisos de extracción (B1, T4)", () => {
 
   it("las líneas nuevas no añaden columnas ni cambian el esqueleto", async () => {
     filas(tramite(1, { origen: "WHATSAPP", estadoExtraccion: "FALLIDA", crotalesDescartados: 2 }))
-    render(<TramitesPage />)
+    montar()
     await screen.findByRole("button", { name: "Revisar trámite #1" })
     expect(screen.getAllByRole("columnheader")).toHaveLength(5)
     expect(celdas(1)).toHaveLength(5)
@@ -942,7 +951,7 @@ describe("TramitesPage: origen y avisos de extracción (B1, T4)", () => {
     filas(tramite(1, { origen: "WHATSAPP", estadoExtraccion: "FALLIDA" }))
     server.use(http.get(apiUrl("/tramites/:id"), ({ params }) => HttpResponse.json(detalle(Number(params.id)))))
     const user = userEvent.setup()
-    render(<TramitesPage />)
+    montar()
     await user.click(await screen.findByText("No se ha podido extraer"))
     expect(await screen.findByRole("dialog")).toHaveAccessibleName("Trámite #1")
   })
@@ -962,7 +971,7 @@ describe("TramitesPage: mensajes sin trámite (SIN_TRAMITE, A2: en la cola solo 
 
   it("descartable: «Parece un mensaje sin trámite» bajo el estado, neutro (Gris Texto, sin icono); sin `descartable`, nada", async () => {
     filas(tramite(1, { ...SIN_TRAMITE, descartable: true }), tramite(2, { ...SIN_TRAMITE, descartable: false }))
-    render(<TramitesPage />)
+    montar()
     await screen.findByRole("button", { name: "Revisar trámite #1" })
     const linea = within(celdas(1)[2]).getByText("Parece un mensaje sin trámite")
     expect(linea).toHaveClass("text-xs", "text-muted-foreground")
@@ -976,7 +985,7 @@ describe("TramitesPage: mensajes sin trámite (SIN_TRAMITE, A2: en la cola solo 
       tramite(1, { ...SIN_TRAMITE, estado: "RECHAZADO", motivoRechazo: "SIN_TRAMITE" }),
       tramite(2, { estado: "RECHAZADO", motivoRechazo: null }),
     )
-    render(<TramitesPage />)
+    montar()
     await screen.findByRole("button", { name: "Revisar trámite #1" })
     const descartado = within(celdas(1)[2]).getByText("Descartado")
     expect(descartado).toHaveClass("bg-neutral", "text-neutral-foreground")
@@ -987,7 +996,7 @@ describe("TramitesPage: mensajes sin trámite (SIN_TRAMITE, A2: en la cola solo 
 
   it("ningún botón nuevo en la fila: descartar solo se hace desde el modal", async () => {
     filas(tramite(1, { ...SIN_TRAMITE, descartable: true }))
-    render(<TramitesPage />)
+    montar()
     await screen.findByRole("button", { name: "Revisar trámite #1" })
     const fila = screen.getByRole("button", { name: "Revisar trámite #1" }).closest("tr") as HTMLElement
     expect(within(fila).getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual([
@@ -1009,7 +1018,7 @@ describe("TramitesPage: iconos y cabeceras (diseño de Álvaro, fase 1, T4)", ()
 
   it("la celda Tipo lleva el icono del tipo, decorativo, y la etiqueta en 500", async () => {
     filas(tramite(1, { tipoTramite: "BAJA_MUERTE" }), tramite(2, { tipoTramite: "SOLICITUD_MOVIMIENTO" }))
-    render(<TramitesPage />)
+    montar()
     await screen.findByRole("button", { name: "Revisar trámite #1" })
     const icono = celdas(1)[1].querySelector("svg")
     expect(icono).toHaveAttribute("aria-hidden", "true")
@@ -1022,7 +1031,7 @@ describe("TramitesPage: iconos y cabeceras (diseño de Álvaro, fase 1, T4)", ()
 
   it("sin tipo («Sin determinar») o con un tipo desconocido, la celda Tipo no lleva icono", async () => {
     filas(tramite(1, { tipoTramite: null }), tramite(2, { tipoTramite: "TRASLADO_FERIA" }))
-    render(<TramitesPage />)
+    montar()
     await screen.findByRole("button", { name: "Revisar trámite #1" })
     expect(celdas(1)[1].querySelector("svg")).toBeNull()
     expect(celdas(1)[1]).toHaveTextContent(/^Sin determinar$/)
@@ -1032,7 +1041,7 @@ describe("TramitesPage: iconos y cabeceras (diseño de Álvaro, fase 1, T4)", ()
 
   it("el badge de estado de la fila lleva su icono decorativo y su nombre sigue siendo la etiqueta", async () => {
     filas(tramite(1))
-    render(<TramitesPage />)
+    montar()
     await screen.findByRole("button", { name: "Revisar trámite #1" })
     const badge = within(celdas(1)[2]).getByText("Pendiente de revisión")
     expect(badge.querySelector("svg")).toHaveAttribute("aria-hidden", "true")
@@ -1042,7 +1051,7 @@ describe("TramitesPage: iconos y cabeceras (diseño de Álvaro, fase 1, T4)", ()
 
   it("las cabeceras conservan el texto en el DOM y van en mayúsculas solo por clase", async () => {
     filas(tramite(1))
-    render(<TramitesPage />)
+    montar()
     await screen.findByRole("button", { name: "Revisar trámite #1" })
     const cabeceras = screen.getAllByRole("columnheader")
     expect(cabeceras.map((c) => c.textContent)).toEqual(["Trámite", "Tipo", "Estado", "Explotación", "Crotales"])
