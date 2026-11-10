@@ -15,6 +15,7 @@ import com.ganera.core.facturacion.Suscripcion;
 import com.ganera.core.facturacion.SuscripcionRepository;
 import com.ganera.core.ganadero.Ganadero;
 import com.ganera.core.ganadero.GanaderoRepository;
+import com.ganera.core.shared.crypto.CifradorAesGcm;
 import com.ganera.core.gestoria.Gestoria;
 import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.gestoria.Usuario;
@@ -89,6 +90,8 @@ class TramiteRevisionEndToEndTest {
     @Autowired
     private GanaderoRepository ganaderoRepository;
     @Autowired
+    private CifradorAesGcm cifrador;
+    @Autowired
     private UsuarioRepository usuarioRepository;
     @Autowired
     private GestoriaRepository gestoriaRepository;
@@ -159,7 +162,7 @@ class TramiteRevisionEndToEndTest {
         ganadero.setNombre(nombre);
         ganadero.setNif(nif);
         ganadero.setOvzUsuario(OVZ_USUARIO_SEMBRADO);
-        ganadero.setOvzPasswordCifrada(OVZ_PASSWORD_SEMBRADA);
+        ganadero.setOvzPasswordCifrada(cifrador.cifrar(OVZ_PASSWORD_SEMBRADA));
         return ganaderoRepository.save(ganadero);
     }
 

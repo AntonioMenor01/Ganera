@@ -17,6 +17,7 @@ import com.ganera.core.gestoria.Gestoria;
 import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.gestoria.Usuario;
 import com.ganera.core.gestoria.UsuarioRepository;
+import com.ganera.core.shared.crypto.CifradorAesGcm;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,8 +45,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Ficha OVZ, T2b: el detalle del tramite (GET y PATCH /tramites/{id}) carga el Ganadero de la
- * explotacion -- y con el, EncryptedStringConverter descifra ovzPasswordCifrada en memoria (M2 de la
- * revision de T2, aceptado). Este E2E (HTTP real, dos gestorias) comprueba que ni la contrasena en
+ * explotacion. Desde M2 cargarlo NO descifra nada: ovzPasswordCifrada es el texto cifrado en reposo
+ * y solo DescifradoCredencialOvz descifra, bajo demanda. Este E2E (HTTP real, dos gestorias) comprueba que ni la contrasena en
  * claro, ni el texto cifrado real de la BD, ni las claves ovzPassword/ovzUsuario salen en el cuerpo
  * crudo de la respuesta ni en los logs capturados durante las peticiones.
  *
@@ -91,6 +92,8 @@ class CredencialesOvzDetalleEndToEndTest {
     private UsuarioRepository usuarioRepository;
     @Autowired
     private GestoriaRepository gestoriaRepository;
+    @Autowired
+    private CifradorAesGcm cifrador;
 
     private Gestoria gestoriaA;
     private Gestoria gestoriaB;
@@ -111,7 +114,7 @@ class CredencialesOvzDetalleEndToEndTest {
         suscripcion(gestoriaA);
         suscripcion(gestoriaB);
 
-        // La contrasena se guarda A TRAVES DE LA ENTIDAD, para que pase por EncryptedStringConverter.
+        // La contrasena se guarda A TRAVES DE LA ENTIDAD, cifrada con CifradorAesGcm.cifrar (el unico escritor).
         ganaderoA = nuevoGanadero(gestoriaA, "Titular OVZ de A", "33333333P", OVZ_PASSWORD_INVENTADA);
         explotacionA = nuevaExplotacion(gestoriaA, ganaderoA, "ES970000000001");
         Ganadero ganaderoB = nuevoGanadero(gestoriaB, "Titular OVZ de B", "44444444A", OVZ_PASSWORD_INVENTADA_B);
@@ -161,6 +164,7 @@ class CredencialesOvzDetalleEndToEndTest {
         // El detalle de verdad ha cargado el ganadero (y por tanto ha descifrado la contrasena).
         JsonNode cuerpoDetalle = objectMapper.readTree(detalle.getBody());
         JsonNode cuerpoParcheado = objectMapper.readTree(parcheado.getBody());
+        // El detalle carga el ganadero (ganaderoNombre), pero desde M2 ya NO descifra la contrasena al hacerlo.
         assertThat(cuerpoDetalle.get("ganaderoNombre").asText()).isEqualTo("Titular OVZ de A");
         assertThat(cuerpoParcheado.get("ganaderoNombre").asText()).isEqualTo("Titular OVZ de A");
 
@@ -175,11 +179,11 @@ class CredencialesOvzDetalleEndToEndTest {
     }
 
     /**
-     * Caracterizacion del M2 aceptado: con un texto cifrado corrupto el detalle da hoy 500 (al cargar
-     * el ganadero, el converter no puede descifrar). Ni el cuerpo ni los logs llevan el texto corrupto.
+     * M2: con un texto cifrado corrupto el detalle ya NO descifra al cargar el Ganadero, asi que da 200 (antes
+     * daba 500). Es justo lo que M2 arregla. Ni el cuerpo ni los logs llevan el texto corrupto ni las claves.
      */
     @Test
-    void conUnCifradoCorruptoElDetalleDa500SinSacarElCifradoNiEnElCuerpoNiEnLosLogs(CapturedOutput salida)
+    void conUnCifradoCorruptoElDetalleDa200PorqueYaNoSeDescifraAlCargar(CapturedOutput salida)
             throws IOException {
         jdbcTemplate.update("update ganadero set ovz_password_cifrada = ? where id = ?",
                 CIFRADO_CORRUPTO, ganaderoA.getId());
@@ -189,19 +193,10 @@ class CredencialesOvzDetalleEndToEndTest {
         ResponseEntity<String> respuesta = get("/tramites/" + tramite.getId(), tokenA);
         String logsDeLaPeticion = salida.getAll().substring(inicioLogs);
 
-        assertThat(respuesta.getStatusCode().value()).isEqualTo(500);
-        String cuerpo = respuesta.getBody() == null ? "" : respuesta.getBody();
-        // Cuerpo de error por defecto de Boot: sin mensaje, sin traza, sin excepcion.
-        JsonNode json = objectMapper.readTree(cuerpo);
-        assertThat(json.get("status").asInt()).isEqualTo(500);
-        assertThat(json.get("error").asText()).isEqualTo("Internal Server Error");
-        assertThat(json.get("path").asText()).isEqualTo("/tramites/" + tramite.getId());
-        assertThat(json.has("message")).isFalse();
-        assertThat(json.has("trace")).isFalse();
-        assertThat(json.has("exception")).isFalse();
-        // Tomcat registra el fallo como ERROR con la causa (Tag mismatch de GCM), no con el valor.
-        assertThat(logsDeLaPeticion).contains("Error attempting to apply AttributeConverter");
-        for (String texto : new String[] {cuerpo, logsDeLaPeticion}) {
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
+        JsonNode cuerpo = objectMapper.readTree(respuesta.getBody());
+        assertThat(cuerpo.get("ganaderoNombre").asText()).isEqualTo("Titular OVZ de A");
+        for (String texto : new String[] {respuesta.getBody(), logsDeLaPeticion}) {
             assertThat(texto).doesNotContain(CIFRADO_CORRUPTO);
             assertThat(texto).doesNotContain(OVZ_USUARIO_INVENTADO);
             assertThat(texto).doesNotContain("ovzPassword");
@@ -259,7 +254,7 @@ class CredencialesOvzDetalleEndToEndTest {
         ganadero.setNombre(nombre);
         ganadero.setNif(nif);
         ganadero.setOvzUsuario(OVZ_USUARIO_INVENTADO);
-        ganadero.setOvzPasswordCifrada(passwordOvz);
+        ganadero.setOvzPasswordCifrada(cifrador.cifrar(passwordOvz));
         return ganaderoRepository.save(ganadero);
     }
 

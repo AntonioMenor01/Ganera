@@ -70,5 +70,8 @@ public enum AccionAuditoria {
     LECTURA_TRAMITE,
     LECTURA_GANADERO,
     LECTURA_CONTACTOS,
-    ACCESO_OTRA_GESTORIA
+    ACCESO_OTRA_GESTORIA,
+
+    // Descifrado bajo demanda de la contrasena OVZ (M2), en la via de envio a OVZ. Nunca guarda la contrasena.
+    CREDENCIAL_OVZ_DESCIFRADA
 }
