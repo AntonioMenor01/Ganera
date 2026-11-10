@@ -177,7 +177,8 @@ export type ContextoError =
   | "detalle-ganadero"
   | "animales-explotacion"
   | "listar-contactos"
-  | "guardar-contacto";
+  | "guardar-contacto"
+  | "guardar-preferencias-ovz";
 
 interface TextosContexto {
   /** Texto de reserva del contexto: validación/conflicto/desconocido sin motivo. Obligatorio. */
@@ -286,6 +287,9 @@ const TEXTOS: Record<ContextoError, TextosContexto> = {
   },
   "guardar-contacto": {
     generico: "No se ha podido guardar el contacto. Inténtalo de nuevo.",
+  },
+  "guardar-preferencias-ovz": {
+    generico: "No se han podido guardar las preferencias. Inténtalo de nuevo.",
   },
 };
 
