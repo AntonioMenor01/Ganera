@@ -17,9 +17,27 @@ import { useAuth } from "@/shared/auth/AuthContext";
 import { LogoGanera } from "@/shared/brand/LogoGanera";
 import { BuscadorGlobal } from "@/features/search/BuscadorGlobal";
 import { SuscripcionBanner } from "@/features/facturacion/SuscripcionBanner";
-import { useSuscripcionEstado } from "@/features/facturacion/useSuscripcionEstado";
+import {
+  useSuscripcionEstado,
+  type SuscripcionEstadoHook,
+} from "@/features/facturacion/useSuscripcionEstado";
+import type { EstadoSuscripcion } from "@/features/facturacion/types";
 import { iniciales } from "./iniciales";
 import { scrollLeftParaMostrar } from "./tiraNavegacion";
+
+/** Etiqueta corta del estado de suscripción para la tarjeta del sidebar (dato real, no «Plan X»). */
+function etiquetaSuscripcion(hook: SuscripcionEstadoHook): string | null {
+  if (hook.cargando || hook.error || !hook.estado) return null;
+  const mapa: Record<EstadoSuscripcion, string> = {
+    TRIAL: "Prueba",
+    TRIAL_EXPIRADO_SIN_PAGO: "Prueba terminada",
+    ACTIVA: "Suscripción activa",
+    IMPAGO_GRACIA: "Impago · gracia",
+    SUSPENDIDA: "Suspendida",
+    CANCELADA: "Cancelada",
+  };
+  return mapa[hook.estado.estado];
+}
 
 // Orden del mock «Ganera App v2»: Inicio → Bandeja → Trámites → Ganaderos → Explotaciones →
 // Calendario → Informes → Configuración. Sin Facturación (el cobro va en la landing).
@@ -146,9 +164,14 @@ export function AppLayout() {
             ))}
           </nav>
           <div className="col-start-2 row-start-1 flex min-w-0 items-center justify-end md:ml-auto lg:mt-auto lg:ml-0 lg:block lg:border-t-2 lg:border-divisor lg:p-3">
+            {/* Tarjeta de usuario del mock v2: iniciales + nombre + email + estado de suscripción. */}
             <div className="flex min-w-0 items-center gap-3 lg:flex-col lg:items-stretch lg:gap-2.5 lg:border lg:border-border lg:bg-card lg:p-2.5">
               {usuario && (
-                <div className="flex min-w-0 items-center gap-2 lg:gap-2.5">
+                <Link
+                  to="/configuracion"
+                  className="flex min-w-0 items-center gap-2 rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-ring lg:gap-2.5"
+                  title="Configuración"
+                >
                   <span
                     aria-hidden="true"
                     className="grid size-8 shrink-0 place-items-center bg-rojo-100 text-xs font-bold text-rojo-800"
@@ -168,8 +191,13 @@ export function AppLayout() {
                     >
                       {usuario.email}
                     </span>
+                    {etiquetaSuscripcion(suscripcion) && (
+                      <span className="mt-0.5 hidden text-[11px] font-medium text-muted-foreground lg:block">
+                        {etiquetaSuscripcion(suscripcion)}
+                      </span>
+                    )}
                   </span>
-                </div>
+                </Link>
               )}
               <Button variant="outline" size="sm" onClick={logout} className="lg:w-full">
                 Cerrar sesión

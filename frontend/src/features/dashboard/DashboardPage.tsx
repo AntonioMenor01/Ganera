@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
-  BellIcon,
+  BellRingIcon,
   ChevronRightIcon,
   CircleAlertIcon,
-  ClipboardListIcon,
-  InboxIcon,
+  ClockIcon,
+  MessageCircleIcon,
+  UserPlusIcon,
   UsersIcon,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { CLASE_ENLACE } from "@/shared/ui/enlace";
@@ -21,17 +21,25 @@ import { etiquetaTipoTramite, iconoTipoTramite } from "@/features/tramites/etiqu
 import { BadgeEstadoTramite } from "@/features/tramites/BadgesTramite";
 import { IconoTramite } from "@/features/tramites/IconoTramite";
 import type { Tramite } from "@/features/tramites/types";
+import { AltaGanaderoDialog } from "@/features/ganaderos/AltaGanaderoDialog";
 import { cargarColaPendiente, contarGanaderos } from "./api";
 import { fechaLargaMadrid, nombrePila, saludo } from "./saludo";
 
+/**
+ * Inicio alineado al mock «Ganera App v2»: cabecera con CTAs, franja de 4 KPIs y cola + panel
+ * de alertas. Solo datos reales de GET /tramites y /ganaderos; las alertas de plazos no tienen
+ * backend → 0 honesto (sin inventar vencimientos).
+ */
 export function DashboardPage() {
   const { usuario } = useAuth();
+  const navigate = useNavigate();
   const [cola, setCola] = useState<Pagina<Tramite> | null>(null);
   const [errorCola, setErrorCola] = useState<ErrorApi | null>(null);
   const [ganaderos, setGanaderos] = useState<number | null>(null);
-  const [errorGanaderos, setErrorGanaderos] = useState<boolean>(false);
+  const [errorGanaderos, setErrorGanaderos] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [version, setVersion] = useState(0);
+  const [altaAbierta, setAltaAbierta] = useState(false);
 
   const recargar = useCallback(() => setVersion((v) => v + 1), []);
 
@@ -40,8 +48,6 @@ export function DashboardPage() {
     setCargando(true);
     setErrorCola(null);
     setErrorGanaderos(false);
-    // allSettled: que falle el conteo de ganaderos no debe vaciar la cola, ni al revés. Cada tarjeta
-    // enseña su propio valor o su propio hueco.
     Promise.allSettled([cargarColaPendiente(), contarGanaderos()]).then(([colaRes, ganaderosRes]) => {
       if (cancelado) return;
       if (colaRes.status === "fulfilled") {
@@ -65,63 +71,133 @@ export function DashboardPage() {
 
   const nombre = nombrePila(usuario?.nombre);
   const fecha = fechaLargaMadrid();
-  // Sin filtro `origen` en la API: contamos WhatsApp en la página de pendientes ya cargada.
+  const pendientes = cola?.totalElements;
   const mensajesWhatsapp =
     cola == null ? undefined : cola.content.filter((t) => t.origen === "WHATSAPP").length;
 
   return (
-    <div className="flex flex-col gap-8">
-      <header className="flex flex-col gap-1">
-        {fecha && <p className="text-sm text-muted-foreground">{fecha}</p>}
-        <h1 className="text-xl font-bold">
-          {saludo()}
-          {nombre ? `, ${nombre}` : ""}
-        </h1>
+    <div className="mx-auto flex w-full max-w-[1360px] flex-col gap-6">
+      <header className="flex flex-col gap-4 border-b-2 border-divisor pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          {fecha && <p className="mb-1.5 text-[13px] font-medium text-muted-foreground">{fecha}</p>}
+          <h1 className="text-[28px] leading-tight font-bold tracking-[-0.02em]">
+            {saludo()}
+            {nombre ? `, ${nombre}` : ""}
+          </h1>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 gap-2 bg-card px-3"
+            onClick={() => setAltaAbierta(true)}
+          >
+            <UserPlusIcon aria-hidden="true" className="size-4" />
+            Añadir ganadero
+          </Button>
+          <Button
+            type="button"
+            className="h-10 gap-2 px-3"
+            onClick={() => navigate("/bandeja")}
+          >
+            <MessageCircleIcon aria-hidden="true" className="size-4" />
+            Abrir bandeja
+          </Button>
+        </div>
       </header>
 
-      <section aria-label="Resumen" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <TarjetaKpi
+      <section aria-label="Resumen" className="grid grid-cols-1 overflow-hidden border border-border bg-card sm:grid-cols-2 lg:grid-cols-4">
+        <CeldaKpi
           to="/tramites"
-          icono={ClipboardListIcon}
+          icono={ClockIcon}
           etiqueta="Trámites pendientes"
-          pie="Por revisar"
+          pie={
+            cargando
+              ? "…"
+              : pendientes === 0
+                ? "Nada por revisar"
+                : "Por revisar"
+          }
+          valor={pendientes}
           cargando={cargando}
           error={errorCola != null}
-          valor={cola?.totalElements}
+          acento={!!pendientes && pendientes > 0}
         />
-        <TarjetaKpi
+        <CeldaKpi
+          to="/bandeja"
+          icono={MessageCircleIcon}
+          etiqueta="Mensajes nuevos"
+          pie={
+            cargando
+              ? "…"
+              : mensajesWhatsapp === 0
+                ? "Bandeja al día"
+                : "En la cola pendiente"
+          }
+          valor={mensajesWhatsapp}
+          cargando={cargando}
+          error={errorCola != null}
+        />
+        {/* Sin API de plazos: 0 real, no un «próximamente» ni cifras inventadas. */}
+        <CeldaKpi
+          to="/calendario"
+          icono={BellRingIcon}
+          etiqueta="Alertas activas"
+          pie="Sin plazos cercanos"
+          valor={0}
+          cargando={false}
+          error={false}
+        />
+        <CeldaKpi
           to="/ganaderos"
           icono={UsersIcon}
           etiqueta="Ganaderos"
           pie="Clientes de la gestoría"
+          valor={ganaderos ?? undefined}
           cargando={cargando}
           error={errorGanaderos}
-          valor={ganaderos ?? undefined}
-        />
-        <TarjetaKpi
-          to="/bandeja"
-          icono={InboxIcon}
-          etiqueta="Mensajes WhatsApp"
-          pie="En la cola pendiente"
-          cargando={cargando}
-          error={errorCola != null}
-          valor={mensajesWhatsapp}
-        />
-        {/* Sin backend de plazos/vencimientos: no inventamos alertas. */}
-        <TarjetaKpiProximamente
-          icono={BellIcon}
-          etiqueta="Alertas activas"
-          nota="Los avisos de vencimientos llegarán en una próxima versión."
         />
       </section>
 
-      <ColaDeTrabajo cola={cola} error={errorCola} cargando={cargando} onReintentar={recargar} />
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <ColaDeTrabajo cola={cola} error={errorCola} cargando={cargando} onReintentar={recargar} />
+        <aside className="flex flex-col gap-6">
+          <section
+            aria-labelledby="alertas-proximas-titulo"
+            className="border border-border bg-card"
+          >
+            <div className="flex items-center justify-between gap-2 border-b border-border px-5 py-4">
+              <h2 id="alertas-proximas-titulo" className="text-sm font-bold">
+                Alertas próximas
+              </h2>
+              <Link
+                to="/calendario"
+                className={cn(CLASE_ENLACE, "text-[13px] font-medium")}
+              >
+                Calendario
+              </Link>
+            </div>
+            <p className="px-5 py-4 text-sm text-muted-foreground">
+              Todavía no calculamos carencias ni vencimientos. Cuando haya plazos en Ganera,
+              aparecerán aquí.
+            </p>
+          </section>
+        </aside>
+      </div>
+
+      <AltaGanaderoDialog
+        open={altaAbierta}
+        onOpenChange={setAltaAbierta}
+        onCreado={(ganadero) => {
+          setAltaAbierta(false);
+          navigate(`/ganaderos/${ganadero.id}`);
+        }}
+      />
     </div>
   );
 }
 
-/** KPI con dato real y enlace a su sección. Clicable entero (el `<Link>` envuelve la tarjeta). */
-function TarjetaKpi({
+function CeldaKpi({
   to,
   icono: Icono,
   etiqueta,
@@ -129,6 +205,7 @@ function TarjetaKpi({
   valor,
   cargando,
   error,
+  acento = false,
 }: {
   to: string;
   icono: LucideIcon;
@@ -137,61 +214,38 @@ function TarjetaKpi({
   valor: number | undefined;
   cargando: boolean;
   error: boolean;
+  acento?: boolean;
 }) {
   return (
     <Link
       to={to}
-      className="group/kpi rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-ring"
+      className="group/kpi flex flex-col gap-3 border-b border-border p-5 outline-none last:border-b-0 sm:border-r sm:odd:border-b sm:even:border-b sm:[&:nth-child(2)]:border-r-0 lg:border-b-0 lg:border-r lg:last:border-r-0 lg:[&:nth-child(2)]:border-r focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring"
     >
-      <Card className="h-full transition-colors group-hover/kpi:border-gris-400">
-        <CardContent className="flex flex-col gap-2">
-          <span className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <Icono aria-hidden="true" className="size-4 shrink-0" />
-            {etiqueta}
-            <ChevronRightIcon
-              aria-hidden="true"
-              className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform group-hover/kpi:translate-x-0.5 motion-reduce:transition-none"
-            />
-          </span>
-          <span className="text-3xl font-bold tabular-nums" aria-live="polite">
-            {cargando ? (
-              <span aria-hidden="true" className="inline-block h-8 w-12 animate-pulse bg-muted align-middle" />
-            ) : error || valor === undefined ? (
-              <span title="No disponible ahora mismo">—</span>
-            ) : (
-              valor
-            )}
-          </span>
-          <span className="text-sm text-muted-foreground">{pie}</span>
-        </CardContent>
-      </Card>
+      <span className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+        <Icono aria-hidden="true" className="size-4 shrink-0" />
+        {etiqueta}
+        <ChevronRightIcon
+          aria-hidden="true"
+          className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform group-hover/kpi:translate-x-0.5 motion-reduce:transition-none"
+        />
+      </span>
+      <span
+        className={cn(
+          "text-[38px] leading-none font-bold tabular-nums tracking-tight",
+          acento && "text-primary",
+        )}
+        aria-live="polite"
+      >
+        {cargando ? (
+          <span aria-hidden="true" className="inline-block h-9 w-14 animate-pulse bg-muted align-middle" />
+        ) : error || valor === undefined ? (
+          <span title="No disponible ahora mismo">—</span>
+        ) : (
+          valor
+        )}
+      </span>
+      <span className="text-[13px] text-muted-foreground">{pie}</span>
     </Link>
-  );
-}
-
-/** KPI de una capacidad que todavía no existe: sin número inventado, con su explicación honesta. */
-function TarjetaKpiProximamente({
-  icono: Icono,
-  etiqueta,
-  nota,
-}: {
-  icono: LucideIcon;
-  etiqueta: string;
-  nota: string;
-}) {
-  return (
-    <Card className="h-full">
-      <CardContent className="flex flex-col gap-2">
-        <span className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-          <Icono aria-hidden="true" className="size-4 shrink-0" />
-          {etiqueta}
-        </span>
-        <span className="inline-flex w-fit items-center bg-neutral px-2 py-0.5 text-xs font-medium text-neutral-foreground">
-          Próximamente
-        </span>
-        <span className="text-sm text-muted-foreground">{nota}</span>
-      </CardContent>
-    </Card>
   );
 }
 
@@ -208,8 +262,11 @@ function ColaDeTrabajo({
 }) {
   const total = cola?.totalElements ?? 0;
   return (
-    <section aria-labelledby="cola-de-trabajo-titulo" className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+    <section
+      aria-labelledby="cola-de-trabajo-titulo"
+      className="flex min-w-0 flex-col border border-border bg-card"
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border px-5 py-4">
         <div className="flex items-baseline gap-2">
           <h2 id="cola-de-trabajo-titulo" className="text-base font-bold">
             Cola de trabajo
@@ -221,36 +278,36 @@ function ColaDeTrabajo({
           )}
         </div>
         <Link to="/tramites" className={cn(CLASE_ENLACE, "text-sm font-medium")}>
-          Ver todos los trámites
+          {total > 0 ? `Ver los ${total} trámites pendientes` : "Ver todos los trámites"}
         </Link>
       </div>
 
       {error ? (
-        <Alert variant="destructive">
-          <CircleAlertIcon />
-          <AlertTitle>No se ha podido cargar la cola</AlertTitle>
-          <AlertDescription>
-            <p>{mensajeDeError(error, "listar-tramites")}</p>
-            <Button variant="outline" size="sm" onClick={onReintentar} className="mt-2">
-              Reintentar
-            </Button>
-          </AlertDescription>
-        </Alert>
+        <div className="p-5">
+          <Alert variant="destructive">
+            <CircleAlertIcon />
+            <AlertTitle>No se ha podido cargar la cola</AlertTitle>
+            <AlertDescription>
+              <p>{mensajeDeError(error, "listar-tramites")}</p>
+              <Button variant="outline" size="sm" onClick={onReintentar} className="mt-2">
+                Reintentar
+              </Button>
+            </AlertDescription>
+          </Alert>
+        </div>
       ) : cargando ? (
-        <div className="flex flex-col gap-2" aria-hidden="true">
+        <div className="flex flex-col gap-0" aria-hidden="true">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-16 animate-pulse border border-border bg-card" />
+            <div key={i} className="h-16 animate-pulse border-b border-border bg-muted/40 last:border-b-0" />
           ))}
         </div>
       ) : total === 0 ? (
-        <Card>
-          <CardContent className="text-sm text-muted-foreground">
-            No hay trámites pendientes de revisión. En cuanto llegue un mensaje de WhatsApp y la IA lo
-            procese, aparecerá aquí para que lo revises.
-          </CardContent>
-        </Card>
+        <p className="px-5 py-6 text-sm text-muted-foreground">
+          No hay trámites pendientes de revisión. En cuanto llegue un mensaje de WhatsApp y la IA lo
+          procese, aparecerá aquí para que lo revises.
+        </p>
       ) : (
-        <ul className="flex flex-col border border-border bg-card">
+        <ul className="flex flex-col">
           {cola?.content.map((tramite) => (
             <li key={tramite.id} className="border-b border-border last:border-b-0">
               <FilaCola tramite={tramite} />
@@ -262,8 +319,6 @@ function ColaDeTrabajo({
   );
 }
 
-/** Una fila de la previa enlaza a la cola (donde se abre la revisión). No inventa el nombre del
- * ganadero (GET /tramites no lo trae): identifica el trámite por su explotación y su tipo. */
 function FilaCola({ tramite }: { tramite: Tramite }) {
   const icono = iconoTipoTramite(tramite.tipoTramite);
   const nombreExplotacion = tramite.explotacionNombre?.trim() || undefined;
@@ -271,7 +326,7 @@ function FilaCola({ tramite }: { tramite: Tramite }) {
   return (
     <Link
       to="/tramites"
-      className="flex items-center gap-3 px-4 py-3 outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring"
+      className="flex items-center gap-3 px-5 py-3.5 outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring"
     >
       <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="flex items-center gap-2 font-medium">

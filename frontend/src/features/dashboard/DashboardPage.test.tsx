@@ -11,7 +11,6 @@ import { DashboardPage } from "./DashboardPage";
 
 const USUARIO = { id: 1, email: "lucia@gestoria.es", nombre: "Lucía Martín", gestoriaId: 1, activo: true };
 
-/** Un trámite completo de la cola, con los valores por defecto que no afectan a lo que se prueba. */
 function tramite(partial: Partial<Tramite> & Pick<Tramite, "id">): Tramite {
   return {
     explotacionId: 10,
@@ -41,7 +40,6 @@ function paginaGanaderos(totalElements: number) {
   return { content: [], totalElements, totalPages: 1, number: 0, size: 1 };
 }
 
-/** Con sesión: /auth/me devuelve a Lucía. Cada test añade sus /tramites y /ganaderos. */
 function conSesion() {
   sessionStorage.setItem("ganera.token", "tok");
   server.use(http.get(apiUrl("/auth/me"), () => HttpResponse.json(USUARIO)));
@@ -53,7 +51,9 @@ function montar() {
       { path: "/", element: <DashboardPage /> },
       { path: "/tramites", element: <h1>Cola de trámites (destino)</h1> },
       { path: "/ganaderos", element: <h1>Ganaderos (destino)</h1> },
+      { path: "/ganaderos/:id", element: <h1>Detalle ganadero</h1> },
       { path: "/bandeja", element: <h1>Bandeja (destino)</h1> },
+      { path: "/calendario", element: <h1>Calendario (destino)</h1> },
     ],
     { initialEntries: ["/"] },
   );
@@ -65,8 +65,8 @@ function montar() {
   return router;
 }
 
-describe("DashboardPage: saludo y fecha", () => {
-  it("saluda por su nombre de pila y muestra la fecha larga", async () => {
+describe("DashboardPage: saludo y CTAs del mock v2", () => {
+  it("saluda por su nombre de pila, muestra la fecha y los botones de cabecera", async () => {
     conSesion();
     server.use(
       http.get(apiUrl("/tramites"), () => HttpResponse.json(paginaTramites([]))),
@@ -76,8 +76,9 @@ describe("DashboardPage: saludo y fecha", () => {
 
     const titulo = await screen.findByRole("heading", { level: 1 });
     expect(titulo.textContent).toMatch(/^Buen[oa]s (días|tardes|noches), Lucía$/);
-    // La fecha larga lleva «de <año>» (p. ej. «… de 2026»).
     expect(screen.getByText(/\bde \d{4}$/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Añadir ganadero" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Abrir bandeja" })).toBeInTheDocument();
   });
 });
 
@@ -94,12 +95,12 @@ describe("DashboardPage: KPIs", () => {
     expect(within(pendientes).getByText("5")).toBeInTheDocument();
     expect(pendientes).toHaveAttribute("href", "/tramites");
 
-    const ganaderos = screen.getByRole("link", { name: /Ganaderos/ });
+    const ganaderos = screen.getByRole("link", { name: /^Ganaderos/ });
     expect(within(ganaderos).getByText("42")).toBeInTheDocument();
     expect(ganaderos).toHaveAttribute("href", "/ganaderos");
   });
 
-  it("cuenta WhatsApp de la cola en Mensajes y deja Alertas como «Próximamente»", async () => {
+  it("cuenta WhatsApp en Mensajes nuevos y deja Alertas en 0 sin inventar plazos", async () => {
     conSesion();
     server.use(
       http.get(apiUrl("/tramites"), () =>
@@ -118,13 +119,14 @@ describe("DashboardPage: KPIs", () => {
     );
     montar();
 
-    const mensajes = await screen.findByRole("link", { name: /Mensajes WhatsApp/ });
+    const mensajes = await screen.findByRole("link", { name: /Mensajes nuevos/ });
     expect(within(mensajes).getByText("2")).toBeInTheDocument();
     expect(mensajes).toHaveAttribute("href", "/bandeja");
 
-    expect(screen.getByText("Alertas activas")).toBeInTheDocument();
-    expect(screen.getAllByText("Próximamente")).toHaveLength(1);
-    expect(screen.queryByRole("link", { name: /Alertas activas/ })).not.toBeInTheDocument();
+    const alertas = screen.getByRole("link", { name: /Alertas activas/ });
+    expect(within(alertas).getByText("0")).toBeInTheDocument();
+    expect(alertas).toHaveAttribute("href", "/calendario");
+    expect(screen.queryByText("Próximamente")).not.toBeInTheDocument();
   });
 
   it("si falla el conteo de ganaderos, su KPI muestra «—» pero la cola sigue cargando", async () => {
@@ -135,9 +137,8 @@ describe("DashboardPage: KPIs", () => {
     );
     montar();
 
-    const ganaderos = await screen.findByRole("link", { name: /Ganaderos/ });
+    const ganaderos = await screen.findByRole("link", { name: /^Ganaderos/ });
     expect(within(ganaderos).getByText("—")).toBeInTheDocument();
-    // La cola, independiente, sí trae su cifra.
     const pendientes = screen.getByRole("link", { name: /Trámites pendientes/ });
     expect(within(pendientes).getByText("3")).toBeInTheDocument();
   });
@@ -168,7 +169,6 @@ describe("DashboardPage: cola de trabajo", () => {
     expect(within(region).getByText("Baja por muerte")).toBeInTheDocument();
 
     const filas = within(region).getAllByRole("link");
-    // Primera fila (y «Ver todos») llevan a la cola real.
     await userEvent.click(filas[0]);
     await waitFor(() => expect(router.state.location.pathname).toBe("/tramites"));
   });
