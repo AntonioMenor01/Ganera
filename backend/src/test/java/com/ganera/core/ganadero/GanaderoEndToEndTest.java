@@ -24,6 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import com.ganera.core.shared.auditoria.LimpiezaAuditoria;
 import org.springframework.beans.factory.annotation.Autowired;
+import com.ganera.core.shared.crypto.CifradorAesGcm;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -137,13 +138,15 @@ class GanaderoEndToEndTest {
         // Credenciales OVZ reales en BD para que el chequeo "nunca contiene ovz" signifique algo.
         for (Ganadero ganadero : ganaderoRepository.findAll()) {
             ganadero.setOvzUsuario("usuario-ovz-" + ganadero.getNif());
-            ganadero.setOvzPasswordCifrada("password-ovz-secreta");
+            ganadero.setOvzPasswordCifrada(cifrador.cifrar("password-ovz-secreta"));
             ganaderoRepository.save(ganadero);
         }
     }
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+    @Autowired
+    private CifradorAesGcm cifrador;
 
     @AfterEach
     void limpiar() {

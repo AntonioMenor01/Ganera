@@ -861,8 +861,12 @@ Además del catálogo real de tipos de trámite (ver los pendientes heredados en
 
 ## Prompt C — notas acumuladas (pendiente)
 
-- **Credenciales de OVZ bajo demanda (2026-10-07, ficha OVZ T2 M2; pendiente del resto del bloque C, antes del
-  piloto):** «descifrar la contraseña de OVZ solo bajo demanda, no al cargar el ganadero; hoy una cifra corrupta o un cambio de ENCRYPTION_KEY da 500 en el detalle y en /ganaderos».
+- **Credenciales de OVZ bajo demanda (2026-10-07, ficha OVZ T2 M2) — RESUELTO (M2, 2026-11-09,
+  `feat/ovz-descifrado-bajo-demanda`):** cargar el Ganadero descifraba su contraseña de OVZ, así que una cifra
+  corrupta o un cambio de `ENCRYPTION_KEY` daba `500` en el detalle del trámite y en `/ganaderos`. El campo ya no
+  lleva `@Convert` (`EncryptedStringConverter` se borró): la cifra se queda en reposo en la entidad, esos endpoints
+  responden `200` y la contraseña solo se descifra bajo demanda en `DescifradoCredencialOvz` (ver el bullet
+  «Auditoría» de `CLAUDE.md`). Mismo formato de columna, sin migración.
 - **Stripe: bugs conocidos, pendientes (detectados el 2026-09-25; siguen fuera de "quitar el pago de la app"):**
   1. `invoice.payment_failed` sobre una suscripción que ya está en `TRIAL_EXPIRADO_SIN_PAGO` la pasa a
      `IMPAGO_GRACIA`, lo que vuelve a permitir aprobar. Arreglarlo empezando por el test.

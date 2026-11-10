@@ -102,7 +102,8 @@ approval step before anything is written to OVZ.net.
   Ganera filled in (escalón 2 (modo asistido)), after reviewing it, **one trámite at a time**.
   "Aprobar" executes nothing in OVZ; it only marks the data as reviewed, and only an approved trámite
   can reach that form. No AI confidence threshold ever skips either step.
-- OVZ.net credentials are encrypted at rest (AES-256-GCM, `EncryptedStringConverter`), key from
+- OVZ.net credentials are encrypted at rest (AES-256-GCM, `CifradorAesGcm`; decrypted only on demand, see the
+  "Auditoría" bullet), key from
   `ENCRYPTION_KEY` env var only — never hardcoded, never a silent insecure default (the app fails
   to start if it's unset).
 - Twilio webhook idempotency: dedupe by `MessageSid` (`mensaje_campo.message_sid` UNIQUE). A
@@ -833,9 +834,12 @@ approval step before anything is written to OVZ.net.
   - **`TramiteDetalleResponse` gained `ganaderoNombre`/`ganaderoNif`** (the account to log into OVZ with;
     null without explotación). Never `ovzUsuario`/`ovzPasswordCifrada`:
     `CredencialesOvzDetalleEndToEndTest` (invented password and key) checks neither the plain password
-    nor the ciphertext appears in GET/PATCH bodies or logs. **Known (accepted, pending before the pilot):**
-    loading the Ganadero decrypts its OVZ password; a corrupt ciphertext or a changed `ENCRYPTION_KEY`
-    gives `500` on the trámite detail and on `/ganaderos` — decrypt on demand instead (Prompt C notes).
+    nor the ciphertext appears in GET/PATCH bodies or logs. **RESOLVED (M2, 2026-11-09,
+    `feat/ovz-descifrado-bajo-demanda`):** loading the Ganadero used to decrypt its OVZ password, so a corrupt
+    ciphertext or a changed `ENCRYPTION_KEY` gave `500` on the trámite detail and on `/ganaderos`. The field no
+    longer has `@Convert` (`EncryptedStringConverter` was deleted): the ciphertext stays at rest in the entity,
+    those endpoints answer `200`, and the password is decrypted only on demand by `DescifradoCredencialOvz`
+    (see the "Auditoría" bullet). Same column format, no migration.
   - **Frontend:** `features/tramites/fichaOvz.ts` is the single source of each OVZ form's fields, order,
     hints and deadlines (pure, tested), plus `modoFicha` (D4: only `APROBADO` copies; pending is a preview
     without copy buttons). `/tramites/:id/ovz` (`FichaOvzPage`) lives inside `RequireAuth` but outside
@@ -1167,7 +1171,27 @@ approval step before anything is written to OVZ.net.
   gestoría de la suscripción); `EnlaceStripeService.enlazar` no tiene acción propia — su resultado va en la fila
   `SUSCRIPCION_CREADA` del onboarding, que desde esta tarea usa el **estado realmente persistido**
   (`suscripcion.getEstado()`), no el literal `ACTIVA` (el camino con `stripeSubscriptionId` puede quedar en otro
-  estado según Stripe).
+  estado según Stripe). **Descifrado de la contraseña OVZ bajo demanda (M2, 2026-11-09):**
+  `ganadero/DescifradoCredencialOvz.descifrarPasswordParaEnvioOvz(Ganadero, GaneraUserPrincipal)` es el **único**
+  sitio que descifra (`shared/crypto/CifradorAesGcm`); pensado solo para la vía de envío a OVZ del escalón 2, **hoy
+  sin llamador de producción**. Orden: (1) la gestoría del Ganadero debe ser la del principal del JWT (única fuente),
+  si no `CredencialOvzDeOtraGestoriaException`, sin fila y sin descifrar; (2) fila `CREDENCIAL_OVZ_DESCIFRADA`
+  (`GANADERO`, `entidadId` = ganadero, actor USUARIO) con **`registrarAparte` ANTES de descifrar** — queda aunque el
+  descifrado o el envío fallen, y si la fila falla no se devuelve el texto en claro; (3) descifrar: un ciphertext
+  corrupto o ausente da `DescifradoCredencialOvzException` con mensaje genérico (nunca el valor, sin encadenar la
+  causa). **Nunca hay secreto en `antes`/`despues`** (van `null`; `DatosAuditoria` no admite `String`). Devuelve
+  `CredencialOvzEnClaro` (`toString()` redactado). Escritores: `Ganadero.setOvzPasswordCifrada` solo acepta
+  `CredencialOvzCifrada` (interfaz sellada, implementación package-private que solo crea `CifradorAesGcm.cifrar`):
+  pasar un `String` no compila (`CredencialOvzCifradaTipoTest` vigila la estructura); el campo lleva `@JsonIgnore`.
+  Es una lectura: no toca el inventario ni la guardia DML. **Pendiente del escalón 2:** mapear
+  `CredencialOvzDeOtraGestoriaException` a `404` sin cuerpo y `DescifradoCredencialOvzException` a un error
+  controlado (hoy son `RuntimeException` sin mapear), y declarar el endpoint de envío en el inventario cerrado
+  (`InventarioAuditoriaTest`). Dos pendientes más para entonces: (a) `descifrarPasswordParaEnvioOvz` es
+  `@Transactional`, así que si se llama dentro de otra transacción y se captura su excepción, esa transacción queda
+  marcada rollback-only (`UnexpectedRollbackException` al confirmar) — llamarlo fuera de la transacción del envío o
+  no capturar dentro de ella; (b) `CifradorAesGcm.descifrar` es público: que `DescifradoCredencialOvz` sea el único
+  que descifra es cierto hoy, pero **no está vigilado** por ningún test (cualquier bean podría inyectar el cifrador
+  y descifrar sin fila de auditoría).
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)
@@ -1406,7 +1430,7 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw clean test` — runs the test suite (1001 tests after the Clever deployment tasks — 1000 run plus the skipped Haiku evaluation —; **1075** after the Supabase migration — 1074 run plus the skipped evaluation —, including the embedded-PostgreSQL ones; also green with JDK 21, Temurin 21 in `~/.jdks/temurin-21`); **always with `clean`**
+- `./mvnw clean test` — runs the test suite (1001 tests after the Clever deployment tasks — 1000 run plus the skipped Haiku evaluation —; **1075** after the Supabase migration — 1074 run plus the skipped evaluation —, including the embedded-PostgreSQL ones; **1338** (1337 run plus the skipped evaluation) after M2, the on-demand OVZ decryption; also green with JDK 21 — the real `JAVA_HOME` is `~/.jdks/temurin-21/jdk-21.0.12.1+1` (the JDK sits one level below `temurin-21`; in Git Bash pass it Windows-style, `JAVA_HOME='C:\Users\Antonio\.jdks\temurin-21\jdk-21.0.12.1+1' ./mvnw clean test`, a `/c/...` path makes the wrapper fail with "JAVA_HOME is not defined correctly")); **always with `clean`**
   (see the VS Code/ECJ note under Architecture notes). A single test:
   `./mvnw clean test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
@@ -1800,6 +1824,18 @@ Supabase; `UTC`; `anon` denied; `ganera_app` sees 15 explotaciones and not `flyw
 emptied, roles kept). Lesson: never paste a password blind into a console prompt — read it from the clipboard and
 set it as a SCRAM hash in the SQL editor (kit `rotar-contrasenas.ps1`, `smoke-supabase-local.ps1`; details in
 `progress.md`). **No commit until Antonio approves it.**
+
+**M2 — OVZ password decrypted on demand and audited — complete** (2026-11-09 → 2026-11-10, branch
+`feat/ovz-descifrado-bajo-demanda`). **Backend only, no migration.** See the "Descifrado de la contraseña OVZ bajo
+demanda" part of the "Auditoría" bullet under Technical decisions (and the pending items for escalón 2 listed there).
+`EncryptedStringConverter` was deleted; `CifradorAesGcm` keeps the same column format; `Ganadero` holds the
+ciphertext at rest and its only writer takes a `CredencialOvzCifrada`; `DescifradoCredencialOvz` is the only place
+that decrypts (no production caller yet) and leaves `CREDENCIAL_OVZ_DESCIFRADA` before decrypting. Independent
+reviewer on the last round: **Approved with minors**, minors fixed (`CredencialOvzCifradaTipoTest` now also pins
+`Ganadero`'s only constructor and its exact list of `String` setters — **it must go red when "opción B" adds a field
+such as the phone; extend the list only after reviewing it**). Verified with `./mvnw clean test` **1338** (0 failures, 0 errors, 1 skipped: the evaluation; JDK 21),
+`npm test` **1117 in 54** (frontend untouched), mutation checks (restored with `cp` + `cmp`) and a local smoke: two
+corrupted ciphertexts → `200` on `/tramites/{id}`, `/ganaderos` and `/ganaderos/{id}`.
 
 **Still blocked: Prompt 3a and escalón 2 (modo asistido)** — the OVZ.net read sync, and the mode where
 Ganera fills in the OVZ form for the gestor to review — one trámite at a time, after the gestor’s

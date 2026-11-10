@@ -1,7 +1,6 @@
 package com.ganera.core.shared.crypto;
 
-import jakarta.persistence.AttributeConverter;
-import jakarta.persistence.Converter;
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -15,12 +14,18 @@ import java.util.Base64;
 import java.util.function.Supplier;
 
 /**
- * Cifra/descifra de forma transparente un campo String con AES-256-GCM.
- * IV aleatorio de 12 bytes por valor, prefijado al texto cifrado antes de codificar en base64.
+ * Cifra/descifra credenciales OVZ con AES-256-GCM (IV aleatorio de 12 bytes prefijado al texto cifrado y
+ * codificado en base64). Extraido de {@code EncryptedStringConverter} (M2): el ciphertext viaja EN REPOSO en la
+ * entidad y solo se descifra bajo demanda (ver {@code DescifradoCredencialOvz}), nunca al materializar el Ganadero.
+ *
+ * <p>{@link #cifrar(String)} devuelve un {@link CredencialOvzCifrada}: el unico tipo que el setter de {@code Ganadero}
+ * acepta, de forma que un texto plano no pueda llegar a la columna por descuido.
+ *
+ * <p>Mantiene la validacion de la clave al arrancar (antes en el converter): el bean falla rapido si
+ * {@code ENCRYPTION_KEY} no esta configurada. Los mensajes de error son genericos: nunca el ciphertext ni el plano.
  */
-@Converter
 @Component
-public class EncryptedStringConverter implements AttributeConverter<String, String> {
+public class CifradorAesGcm {
 
     private static final int IV_LENGTH_BYTES = 12;
     private static final int GCM_TAG_LENGTH_BITS = 128;
@@ -28,30 +33,23 @@ public class EncryptedStringConverter implements AttributeConverter<String, Stri
     private final EncryptionKeyHolder keyHolder;
     private final SecureRandom secureRandom = new SecureRandom();
 
-    // Spring solo instancia este bean como @Component (para el @PostConstruct que falla
-    // rapido al arrancar si falta ENCRYPTION_KEY). El converter que JPA realmente usa por
-    // fila se resuelve por el mecanismo estandar de @Convert; este bean es el "singleton"
-    // registrado en el contexto. Con dos constructores declarados (este + el de test más
-    // abajo) Spring no puede elegir uno implícitamente y cae a instanciación sin argumentos,
-    // que no existe — de ahí el @Autowired explícito.
     @Autowired
-    public EncryptedStringConverter(@Value("${ganera.encryption.key:}") String encryptionKey) {
+    public CifradorAesGcm(@Value("${ganera.encryption.key:}") String encryptionKey) {
         this.keyHolder = new EncryptionKeyHolder(() -> encryptionKey);
     }
 
-    EncryptedStringConverter(Supplier<String> keySource) {
+    CifradorAesGcm(Supplier<String> keySource) {
         this.keyHolder = new EncryptionKeyHolder(keySource);
     }
 
-    @jakarta.annotation.PostConstruct
-    void verificarClaveAlArrancar() {
+    @PostConstruct
+    public void verificarClaveAlArrancar() {
         keyHolder.requireKey();
     }
 
-    @Override
-    public String convertToDatabaseColumn(String attribute) {
-        if (attribute == null) {
-            return null;
+    public CredencialOvzCifrada cifrar(String plano) {
+        if (plano == null) {
+            throw new IllegalArgumentException("No se puede cifrar una credencial nula");
         }
         try {
             Key key = keyHolder.requireKey();
@@ -60,28 +58,27 @@ public class EncryptedStringConverter implements AttributeConverter<String, Stri
 
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv));
-            byte[] cipherText = cipher.doFinal(attribute.getBytes(StandardCharsets.UTF_8));
+            byte[] cipherText = cipher.doFinal(plano.getBytes(StandardCharsets.UTF_8));
 
             byte[] ivAndCipherText = new byte[iv.length + cipherText.length];
             System.arraycopy(iv, 0, ivAndCipherText, 0, iv.length);
             System.arraycopy(cipherText, 0, ivAndCipherText, iv.length, cipherText.length);
 
-            return Base64.getEncoder().encodeToString(ivAndCipherText);
+            return new CredencialOvzCifradaImpl(Base64.getEncoder().encodeToString(ivAndCipherText));
         } catch (IllegalStateException e) {
             throw e;
         } catch (Exception e) {
-            throw new IllegalStateException("No se pudo cifrar el valor", e);
+            throw new IllegalStateException("No se pudo cifrar la credencial", e);
         }
     }
 
-    @Override
-    public String convertToEntityAttribute(String dbData) {
-        if (dbData == null) {
+    public String descifrar(String ciphertext) {
+        if (ciphertext == null) {
             return null;
         }
         try {
             Key key = keyHolder.requireKey();
-            byte[] ivAndCipherText = Base64.getDecoder().decode(dbData);
+            byte[] ivAndCipherText = Base64.getDecoder().decode(ciphertext);
 
             byte[] iv = new byte[IV_LENGTH_BYTES];
             System.arraycopy(ivAndCipherText, 0, iv, 0, IV_LENGTH_BYTES);
@@ -90,13 +87,12 @@ public class EncryptedStringConverter implements AttributeConverter<String, Stri
 
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv));
-            byte[] plainText = cipher.doFinal(cipherText);
-
-            return new String(plainText, StandardCharsets.UTF_8);
+            return new String(cipher.doFinal(cipherText), StandardCharsets.UTF_8);
         } catch (IllegalStateException e) {
             throw e;
         } catch (Exception e) {
-            throw new IllegalStateException("No se pudo descifrar el valor", e);
+            // Mensaje generico: nunca el ciphertext ni el plano.
+            throw new IllegalStateException("No se pudo descifrar la credencial", e);
         }
     }
 }
