@@ -54,7 +54,7 @@ describe("marca: el símbolo de Ganera aparece donde debe", () => {
   it("/login: símbolo encima del título del formulario y símbolo blanco en el panel rojo", async () => {
     const { container } = montarApp("/login")
 
-    await screen.findByText("Inicia sesión con tu cuenta de gestoría.")
+    await screen.findByText("Usa el email y la contraseña que te enviamos al contratar.")
     const logos = logosDe(container)
     expect(logos).toHaveLength(2)
     const [logoPanel, logoFormulario] = logos
