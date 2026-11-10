@@ -71,6 +71,16 @@ function detalleDe(t: Tramite, extra: Partial<TramiteDetalle> = {}): TramiteDeta
     motivoRechazo: null,
     descartable: false,
     historialDescarte: [],
+    fechaHecho: null,
+    fechaNacimiento: null,
+    sexo: null,
+    crotalMadreIndicado: null,
+    numeroMer: null,
+    destinoRega: null,
+    destinoTexto: null,
+    consignatario: null,
+    aptitudMovimiento: null,
+    fechaIdentificacion: null,
     ...extra,
   };
 }

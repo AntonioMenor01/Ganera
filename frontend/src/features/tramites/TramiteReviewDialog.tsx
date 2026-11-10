@@ -48,6 +48,7 @@ import {
 import { useRevisionTramite, type AccionRevision, type RevisionTramite } from "./useRevisionTramite";
 import { useRespuestaWhatsapp, type RespuestaWhatsappPanel } from "./useRespuestaWhatsapp";
 import { SeccionWhatsapp, type DescarteRespuesta } from "./SeccionWhatsapp";
+import { campoOvzSucio, type CampoOvz } from "./revisionTramite";
 import type { TramiteDetalle } from "./types";
 
 /**
@@ -842,7 +843,72 @@ function DatosEditables({ revision, ids }: { revision: RevisionTramite; ids: Ids
           onAnadir={() => revision.anadirCrotal()}
         />
       </Campo>
+
+      <CamposOvzEditables revision={revision} ocupado={ocupado} />
     </>
+  );
+}
+
+const CAMPOS_OVZ_UI: { campo: CampoOvz; etiqueta: string; tipo: "date" | "text"; pista?: string }[] = [
+  { campo: "fechaHecho", etiqueta: "Fecha del hecho", tipo: "date", pista: "Muerte, nacimiento, salida…" },
+  { campo: "fechaNacimiento", etiqueta: "Fecha de nacimiento", tipo: "date" },
+          { campo: "sexo", etiqueta: "Sexo", tipo: "text", pista: "Lista provisional hasta el mapeo" },
+  { campo: "crotalMadreIndicado", etiqueta: "Crotal de la madre", tipo: "text" },
+  { campo: "fechaIdentificacion", etiqueta: "Fecha de identificación", tipo: "date" },
+  { campo: "numeroMer", etiqueta: "Número MER", tipo: "text" },
+  { campo: "destinoRega", etiqueta: "REGA destino", tipo: "text" },
+  { campo: "destinoTexto", etiqueta: "Destino (texto)", tipo: "text" },
+  { campo: "consignatario", etiqueta: "Consignatario", tipo: "text" },
+  { campo: "aptitudMovimiento", etiqueta: "Aptitud del movimiento", tipo: "text" },
+];
+
+function CamposOvzEditables({
+  revision,
+  ocupado,
+}: {
+  revision: RevisionTramite;
+  ocupado: boolean;
+}) {
+  const { detalle, formulario } = revision;
+  if (!detalle) return null;
+  return (
+    <div className="flex min-w-0 flex-col gap-3 border-t border-border pt-4">
+      <h4 className={CLASE_ETIQUETA}>Datos del hecho</h4>
+      <p className="text-xs text-muted-foreground">
+        Opcionales (fecha, alta, destino, MER…). La ficha los copia si están rellenos; las preferencias
+        de la gestoría cubren oficina y transporte.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {CAMPOS_OVZ_UI.map(({ campo, etiqueta, tipo, pista }) => {
+          const id = `ovz-${campo}`;
+          return (
+            <Campo
+              key={campo}
+              etiqueta={
+                <label htmlFor={id} className={CLASE_ETIQUETA}>
+                  {etiqueta}
+                </label>
+              }
+              sinGuardar={campoOvzSucio(detalle, formulario, campo)}
+            >
+              <input
+                id={id}
+                type={tipo}
+                value={formulario[campo] ?? ""}
+                disabled={ocupado}
+                placeholder={pista}
+                title={pista}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  revision.cambiarCampoOvz(campo, v === "" ? null : v);
+                }}
+                className="flex h-10 w-full border border-input bg-card px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              />
+            </Campo>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -873,6 +939,21 @@ function DatosSoloLectura({ revision }: { revision: RevisionTramite }) {
         <dt className={CLASE_ETIQUETA}>Crotales</dt>
         <dd>
           <CrotalesSoloLectura crotales={detalle.crotales} />
+        </dd>
+      </div>
+      <div className="flex min-w-0 flex-col gap-3 border-t border-border pt-4">
+        <dt className={CLASE_ETIQUETA}>Datos del hecho</dt>
+        <dd>
+          <dl className="grid gap-3 sm:grid-cols-2">
+            {CAMPOS_OVZ_UI.map(({ campo, etiqueta }) => (
+              <div key={campo} className="flex min-w-0 flex-col gap-1">
+                <dt className="text-xs text-muted-foreground">{etiqueta}</dt>
+                <dd className="text-sm">
+                  {detalle[campo] ?? <span className="text-muted-foreground">—</span>}
+                </dd>
+              </div>
+            ))}
+          </dl>
         </dd>
       </div>
     </dl>

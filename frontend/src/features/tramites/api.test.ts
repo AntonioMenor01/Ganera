@@ -32,6 +32,16 @@ const DETALLE = {
   hechoEnOvzEn: null,
   hechoEnOvzPorNombre: null,
   whatsapp: null,
+  fechaHecho: null,
+  fechaNacimiento: null,
+  sexo: null,
+  crotalMadreIndicado: null,
+  numeroMer: null,
+  destinoRega: null,
+  destinoTexto: null,
+  consignatario: null,
+  aptitudMovimiento: null,
+  fechaIdentificacion: null,
 }
 
 const RESPUESTA_LISTA = {

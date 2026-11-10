@@ -105,7 +105,10 @@ class AnthropicTramiteExtractionServiceTest {
         assertThat(esquema.path("type").asText()).isEqualTo("object");
         assertThat(esquema.path("additionalProperties").isBoolean()).isTrue();
         assertThat(esquema.path("additionalProperties").asBoolean()).isFalse();
-        assertThat(textos(esquema.path("required"))).containsExactlyInAnyOrder("tipoTramite", "crotales");
+        assertThat(textos(esquema.path("required"))).containsExactlyInAnyOrder(
+                "tipoTramite", "crotales", "fechaHecho", "fechaNacimiento", "sexo", "crotalMadre",
+                "numeroMer", "destinoRega", "destinoTexto", "consignatario", "aptitudMovimiento",
+                "fechaIdentificacion");
         assertThat(textos(esquema.path("properties").path("tipoTramite").path("enum")))
                 .containsExactlyInAnyOrder("ALTA_NACIMIENTO", "BAJA_MUERTE", "SOLICITUD_MOVIMIENTO",
                         "CONFIRMACION_MOVIMIENTO", "DECLARACION_CENSO", "DEMORA_CROTALIZACION", "NO_IDENTIFICADO",
@@ -116,6 +119,7 @@ class AnthropicTramiteExtractionServiceTest {
         JsonNode crotales = esquema.path("properties").path("crotales");
         assertThat(crotales.path("type").asText()).isEqualTo("array");
         assertThat(crotales.path("items").path("type").asText()).isEqualTo("string");
+        assertThat(esquema.path("properties").path("fechaHecho").path("type").asText()).isEqualTo("string");
     }
 
     /**

@@ -30,6 +30,16 @@ const DETALLE = {
   motivoRechazo: null as string | null,
   descartable: false,
   historialDescarte: [] as EventoDescarte[],
+  fechaHecho: null,
+  fechaNacimiento: null,
+  sexo: null,
+  crotalMadreIndicado: null,
+  numeroMer: null,
+  destinoRega: null,
+  destinoTexto: null,
+  consignatario: null,
+  aptitudMovimiento: null,
+  fechaIdentificacion: null,
 }
 
 type Detalle = typeof DETALLE

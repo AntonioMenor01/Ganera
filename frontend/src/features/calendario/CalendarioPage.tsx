@@ -14,6 +14,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { aErrorApi, mensajeDeError, type ErrorApi } from "@/shared/api/errores";
 import { CLASE_ENLACE } from "@/shared/ui/enlace";
+import { listarAlertas, type Alerta } from "@/features/alertas/api";
 import { listarTramites } from "@/features/tramites/api";
 import { etiquetaTipoTramite, iconoTipoTramite } from "@/features/tramites/etiquetas";
 import { fechaHechoEnOvz } from "@/features/tramites/hechoEnOvz";
@@ -25,12 +26,23 @@ const TZ = "Europe/Madrid";
 
 type Vista = "mes" | "lista";
 
-type EventoCal = {
+type EventoHecho = {
+  kind: "hecho";
   id: string;
   tramite: Tramite;
-  diaClave: string; // YYYY-MM-DD Madrid
+  diaClave: string;
   titulo: string;
 };
+
+type EventoPlazo = {
+  kind: "plazo";
+  id: string;
+  alerta: Alerta;
+  diaClave: string;
+  titulo: string;
+};
+
+type EventoCal = EventoHecho | EventoPlazo;
 
 type Celda = {
   clave: string | null;
@@ -40,27 +52,26 @@ type Celda = {
   eventos: EventoCal[];
 };
 
-const LEYENDA: { label: string; Icono: LucideIcon; bg: string; fg: string; nota?: string }[] = [
+const LEYENDA: { label: string; Icono: LucideIcon; bg: string; fg: string }[] = [
   { label: "Hecho en OVZ", Icono: CheckCircle2Icon, bg: "bg-success", fg: "text-success-foreground" },
   {
-    label: "Carencia",
-    Icono: ClipboardCheckIcon,
-    bg: "bg-warning",
-    fg: "text-warning-foreground",
-    nota: "Sin backend aún",
-  },
-  {
-    label: "Vencimiento",
+    label: "Vencimiento / plazo",
     Icono: CalendarIcon,
     bg: "bg-warning",
     fg: "text-warning-foreground",
-    nota: "Sin backend aún",
+  },
+  {
+    label: "Cola atascada",
+    Icono: ClipboardCheckIcon,
+    bg: "bg-warning",
+    fg: "text-warning-foreground",
   },
 ];
 
-/** Calendario al look del mock v2: rejilla mes/lista + panel. Solo eventos reales = HECHO_EN_OVZ. */
+/** Calendario: hechos en OVZ + vencimientos de plazos / cola (`GET /alertas`). */
 export function CalendarioPage() {
   const [hechos, setHechos] = useState<Tramite[]>([]);
+  const [alertas, setAlertas] = useState<Alerta[]>([]);
   const [error, setError] = useState<ErrorApi | null>(null);
   const [cargando, setCargando] = useState(true);
   const [version, setVersion] = useState(0);
@@ -73,24 +84,38 @@ export function CalendarioPage() {
     let cancelado = false;
     setCargando(true);
     setError(null);
-    listarTramites(0, TAMANIO, "HECHO_EN_OVZ")
-      .then((pag) => {
+    Promise.allSettled([listarTramites(0, TAMANIO, "HECHO_EN_OVZ"), listarAlertas()]).then(
+      ([hechosRes, alertasRes]) => {
         if (cancelado) return;
-        setHechos(pag.content.filter((t) => t.hechoEnOvzEn));
+        if (hechosRes.status === "rejected" && alertasRes.status === "rejected") {
+          setHechos([]);
+          setAlertas([]);
+          setError(aErrorApi(hechosRes.reason));
+          setCargando(false);
+          return;
+        }
+        if (hechosRes.status === "fulfilled") {
+          setHechos(hechosRes.value.content.filter((t) => t.hechoEnOvzEn));
+        } else {
+          setHechos([]);
+        }
+        if (alertasRes.status === "fulfilled") {
+          setAlertas(alertasRes.value);
+        } else {
+          setAlertas([]);
+        }
         setCargando(false);
-      })
-      .catch((err) => {
-        if (cancelado) return;
-        setHechos([]);
-        setError(aErrorApi(err));
-        setCargando(false);
-      });
+      },
+    );
     return () => {
       cancelado = true;
     };
   }, [version]);
 
-  const eventos = useMemo(() => hechosAEventos(hechos), [hechos]);
+  const eventos = useMemo(
+    () => [...hechosAEventos(hechos), ...alertasAEventos(alertas)],
+    [hechos, alertas],
+  );
   const celdas = useMemo(() => construirCeldas(anioMes, eventos), [anioMes, eventos]);
   const tituloMes = useMemo(() => etiquetaMes(anioMes), [anioMes]);
   const seleccionado = eventos.find((e) => e.id === selId) ?? null;
@@ -113,7 +138,7 @@ export function CalendarioPage() {
       <div className="flex flex-wrap items-end justify-between gap-4 border-b-2 border-divisor pb-5">
         <div className="min-w-0">
           <p className="mb-1.5 text-[13px] font-medium text-muted-foreground">
-            Carencias, vencimientos, bajas y guías
+            Hechos en OVZ, plazos legales y cola atascada
           </p>
           <h1 className="text-[28px] leading-tight font-bold tracking-[-0.02em]">Calendario</h1>
         </div>
@@ -185,9 +210,7 @@ export function CalendarioPage() {
               "inline-flex h-6 items-center gap-1.5 px-2 text-xs font-medium",
               l.bg,
               l.fg,
-              l.nota && "opacity-60",
             )}
-            title={l.nota}
           >
             <l.Icono aria-hidden="true" className="size-3.5" />
             {l.label}
@@ -243,16 +266,21 @@ export function CalendarioPage() {
                         type="button"
                         onClick={() => setSelId(ev.id)}
                         className={cn(
-                          "flex items-center gap-1 truncate bg-success px-1 py-0.5 text-left text-[11px] font-medium text-success-foreground outline-none hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring",
+                          "flex items-center gap-1 truncate px-1 py-0.5 text-left text-[11px] font-medium outline-none hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring",
+                          ev.kind === "hecho"
+                            ? "bg-success text-success-foreground"
+                            : "bg-warning text-warning-foreground",
                           selId === ev.id && "ring-2 ring-foreground",
                         )}
                       >
-                        {iconoTipoTramite(ev.tramite.tipoTramite) ? (
+                        {ev.kind === "hecho" && iconoTipoTramite(ev.tramite.tipoTramite) ? (
                           <IconoTramite
                             nombre={iconoTipoTramite(ev.tramite.tipoTramite)!}
                             className="size-3 shrink-0"
                           />
-                        ) : null}
+                        ) : (
+                          <CalendarIcon aria-hidden="true" className="size-3 shrink-0" />
+                        )}
                         <span className="truncate">{ev.titulo}</span>
                       </button>
                     ))}
@@ -266,7 +294,7 @@ export function CalendarioPage() {
                 {cargando && <p className="text-sm text-muted-foreground">Cargando…</p>}
                 {!cargando && gruposLista.length === 0 && (
                   <p className="text-sm text-muted-foreground">
-                    Todavía no hay trámites marcados como hechos en OVZ en este listado.
+                    No hay hechos en OVZ ni plazos con fecha en este listado.
                   </p>
                 )}
                 {gruposLista.map((gr) => (
@@ -287,28 +315,44 @@ export function CalendarioPage() {
                             )}
                           >
                             <span className="text-[13px] font-medium">
-                              {fechaHechoEnOvz(ev.tramite.hechoEnOvzEn) ?? ""}
+                              {ev.kind === "hecho"
+                                ? (fechaHechoEnOvz(ev.tramite.hechoEnOvzEn) ?? "")
+                                : ev.diaClave}
                             </span>
-                            <span className="grid size-8 place-items-center bg-success text-success-foreground">
-                              {iconoTipoTramite(ev.tramite.tipoTramite) ? (
+                            <span
+                              className={cn(
+                                "grid size-8 place-items-center",
+                                ev.kind === "hecho"
+                                  ? "bg-success text-success-foreground"
+                                  : "bg-warning text-warning-foreground",
+                              )}
+                            >
+                              {ev.kind === "hecho" && iconoTipoTramite(ev.tramite.tipoTramite) ? (
                                 <IconoTramite
                                   nombre={iconoTipoTramite(ev.tramite.tipoTramite)!}
                                   className="size-4"
                                 />
-                              ) : (
+                              ) : ev.kind === "hecho" ? (
                                 <CheckCircle2Icon aria-hidden="true" className="size-4" />
+                              ) : (
+                                <CalendarIcon aria-hidden="true" className="size-4" />
                               )}
                             </span>
                             <span className="min-w-0">
                               <span className="block truncate text-sm font-medium">{ev.titulo}</span>
                               <span className="block truncate text-[13px] text-muted-foreground">
-                                {ev.tramite.explotacionCodigoRega ?? "Sin REGA"}
-                                {ev.tramite.hechoEnOvzPorNombre
-                                  ? ` · ${ev.tramite.hechoEnOvzPorNombre}`
-                                  : ""}
+                                {ev.kind === "hecho"
+                                  ? `${ev.tramite.explotacionCodigoRega ?? "Sin REGA"}${
+                                      ev.tramite.hechoEnOvzPorNombre
+                                        ? ` · ${ev.tramite.hechoEnOvzPorNombre}`
+                                        : ""
+                                    }`
+                                  : ev.alerta.detalle}
                               </span>
                             </span>
-                            <span className="text-[13px] text-muted-foreground">Resuelto</span>
+                            <span className="text-[13px] text-muted-foreground">
+                              {ev.kind === "hecho" ? "Resuelto" : etiquetaSeveridad(ev.alerta.severidad)}
+                            </span>
                           </button>
                         </li>
                       ))}
@@ -324,10 +368,10 @@ export function CalendarioPage() {
               <p className="text-sm text-muted-foreground">
                 {cargando
                   ? "Cargando…"
-                  : "Selecciona un hecho en OVZ del calendario o de la lista. Las carencias y vencimientos aún no tienen backend."}
+                  : "Selecciona un hecho en OVZ o un plazo del calendario o de la lista."}
               </p>
             )}
-            {seleccionado && (
+            {seleccionado?.kind === "hecho" && (
               <div className="flex flex-col items-start gap-3">
                 <span className="inline-flex h-6 items-center gap-1.5 bg-success px-2 text-xs font-medium text-success-foreground">
                   <CheckCircle2Icon aria-hidden="true" className="size-3.5" />
@@ -355,22 +399,33 @@ export function CalendarioPage() {
                       {seleccionado.tramite.hechoEnOvzPorNombre ?? "—"}
                     </span>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">Estado</span>
-                    <br />
-                    <span className="font-medium">Resuelto</span>
-                  </div>
                 </div>
                 <Link
                   to="/tramites"
-                  className={cn(
-                    buttonVariants(),
-                    "mt-1 h-10 w-full justify-between",
-                  )}
+                  className={cn(buttonVariants(), "mt-1 h-10 w-full justify-between")}
                 >
                   Abrir trámite #{seleccionado.tramite.id}
                   <ChevronRightIcon aria-hidden="true" className="size-4" />
                 </Link>
+              </div>
+            )}
+            {seleccionado?.kind === "plazo" && (
+              <div className="flex flex-col items-start gap-3">
+                <span className="inline-flex h-6 items-center gap-1.5 bg-warning px-2 text-xs font-medium text-warning-foreground">
+                  <CalendarIcon aria-hidden="true" className="size-3.5" />
+                  {etiquetaSeveridad(seleccionado.alerta.severidad)}
+                </span>
+                <p className="text-xl font-bold leading-snug">{seleccionado.titulo}</p>
+                <p className="text-sm text-muted-foreground">{seleccionado.alerta.detalle}</p>
+                {seleccionado.alerta.tramiteId != null && (
+                  <Link
+                    to="/tramites"
+                    className={cn(buttonVariants(), "mt-1 h-10 w-full justify-between")}
+                  >
+                    Abrir trámite #{seleccionado.alerta.tramiteId}
+                    <ChevronRightIcon aria-hidden="true" className="size-4" />
+                  </Link>
+                )}
                 <Link to="/tramites" className={cn(CLASE_ENLACE, "text-[13px]")}>
                   Ir a la cola de trámites
                 </Link>
@@ -383,29 +438,49 @@ export function CalendarioPage() {
   );
 }
 
-function hechosAEventos(tramites: Tramite[]): EventoCal[] {
-  const out: EventoCal[] = [];
+function hechosAEventos(tramites: Tramite[]): EventoHecho[] {
+  const out: EventoHecho[] = [];
   for (const t of tramites) {
     const iso = t.hechoEnOvzEn;
     if (!iso) continue;
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) continue;
-    const diaClave = claveDiaMadrid(d);
     out.push({
+      kind: "hecho",
       id: `t-${t.id}`,
       tramite: t,
-      diaClave,
+      diaClave: claveDiaMadrid(d),
       titulo: etiquetaTipoTramite(t.tipoTramite ?? "") || `Trámite #${t.id}`,
     });
   }
   return out;
 }
 
+function alertasAEventos(alertas: Alerta[]): EventoPlazo[] {
+  const out: EventoPlazo[] = [];
+  for (const a of alertas) {
+    if (!a.venceEl) continue;
+    out.push({
+      kind: "plazo",
+      id: `a-${a.id}`,
+      alerta: a,
+      diaClave: a.venceEl,
+      titulo: a.titulo,
+    });
+  }
+  return out;
+}
+
+function etiquetaSeveridad(sev: string): string {
+  if (sev === "critical") return "Crítico";
+  if (sev === "warning") return "Aviso";
+  return sev;
+}
+
 function construirCeldas(inicioMes: Date, eventos: EventoCal[]): Celda[] {
   const y = inicioMes.getFullYear();
   const m = inicioMes.getMonth();
   const primerDia = new Date(y, m, 1);
-  // Lunes=0 … Domingo=6
   const offset = (primerDia.getDay() + 6) % 7;
   const diasEnMes = new Date(y, m + 1, 0).getDate();
   const hoyClave = claveDiaMadrid(new Date());

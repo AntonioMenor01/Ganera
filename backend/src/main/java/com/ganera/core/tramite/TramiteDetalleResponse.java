@@ -4,6 +4,7 @@ import com.ganera.core.ganadero.Ganadero;
 import com.ganera.core.whatsapp.WhatsappTramiteResponse;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
 /** Respuesta de GET /tramites/{id} y de PATCH /tramites/{id} -- el listado (TramiteResponse) se
@@ -44,7 +45,17 @@ public record TramiteDetalleResponse(
         WhatsappTramiteResponse whatsapp,
         String motivoRechazo,
         boolean descartable,
-        List<EventoDescarteResponse> historialDescarte) {
+        List<EventoDescarteResponse> historialDescarte,
+        LocalDate fechaHecho,
+        LocalDate fechaNacimiento,
+        String sexo,
+        String crotalMadreIndicado,
+        String numeroMer,
+        String destinoRega,
+        String destinoTexto,
+        String consignatario,
+        String aptitudMovimiento,
+        LocalDate fechaIdentificacion) {
 
     public static TramiteDetalleResponse from(
             Tramite tramite, String mensajeOriginal, List<TramiteCrotalResponse> crotales,
@@ -72,6 +83,16 @@ public record TramiteDetalleResponse(
                 whatsapp,
                 tramite.getMotivoRechazo() != null ? tramite.getMotivoRechazo().name() : null,
                 DescarteTramite.esDescartable(tramite, crotales != null ? crotales.size() : 0),
-                historialDescarte != null ? historialDescarte : List.of());
+                historialDescarte != null ? historialDescarte : List.of(),
+                tramite.getFechaHecho(),
+                tramite.getFechaNacimiento(),
+                tramite.getSexo(),
+                tramite.getCrotalMadreIndicado(),
+                tramite.getNumeroMer(),
+                tramite.getDestinoRega(),
+                tramite.getDestinoTexto(),
+                tramite.getConsignatario(),
+                tramite.getAptitudMovimiento(),
+                tramite.getFechaIdentificacion());
     }
 }
