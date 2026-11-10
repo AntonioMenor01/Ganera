@@ -1,6 +1,6 @@
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronDown, CircleAlertIcon } from "lucide-react";
+import { ChevronDown, CircleAlertIcon, FileSpreadsheetIcon, SearchIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Table,
@@ -10,8 +10,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { aErrorApi, mensajeDeError, type ErrorApi } from "@/shared/api/errores";
 import type { Pagina } from "@/shared/api/types";
@@ -23,20 +23,30 @@ import { useDesdeSm } from "./useDesdeSm";
 import { CLASE_ENLACE_TABLA } from "@/shared/ui/enlace";
 
 const TAMANIO_PAGINA = 20;
+/** Espera antes de mandar `q` al backend (evita un GET por tecla). */
+const DEBOUNCE_BUSQUEDA_MS = 300;
 
 const idPanelAnimales = (explotacionId: number) => `explotacion-${explotacionId}-animales`;
 /** La columna sin título visible de "Ver animales"; la celda del panel desplegado se asocia a ella. */
 const ID_CABECERA_ANIMALES = "explotaciones-col-animales";
 
+function textoRecuento(total: number): string {
+  return `${total} ${total === 1 ? "explotación" : "explotaciones"}`;
+}
+
 export function ExplotacionesPage() {
   const [pagina, setPagina] = useState<Pagina<Explotacion> | null>(null);
-  const [numeroPagina, setNumeroPagina] = useState(0);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<ErrorApi | null>(null);
   // Último total conocido: si falla una página, la paginación sigue a la vista para poder salir
   // de ella (a otra página o reintentando), en vez de quedarse atascado en la que falla.
   const [totalPaginas, setTotalPaginas] = useState(0);
   const [version, setVersion] = useState(0);
+  const [qInput, setQInput] = useState("");
+  // q + página juntos: al cambiar la búsqueda se vuelve a página 0 en el mismo update (sin un
+  // GET intermedio con la página vieja).
+  const [consulta, setConsulta] = useState({ q: "", page: 0 });
+  const abrirImportacionRef = useRef<(() => void) | null>(null);
 
   // Paneles "Ver animales" desplegados. Pueden ser varios a la vez, como en la ficha del Ganadero
   // (cada sección se despliega por su cuenta): sirve para comparar dos inventarios.
@@ -50,6 +60,19 @@ export function ExplotacionesPage() {
   // Código REGA, [Nombre], Ganadero y el botón "Ver animales".
   const columnas = desdeSm ? 4 : 3;
 
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      const q = qInput.trim();
+      setConsulta((actual) => (actual.q === q ? actual : { q, page: 0 }));
+    }, DEBOUNCE_BUSQUEDA_MS);
+    return () => window.clearTimeout(id);
+  }, [qInput]);
+
+  // Nueva búsqueda: paneles de animales de la consulta anterior no valen.
+  useEffect(() => {
+    setAbiertas(new Set());
+  }, [consulta.q]);
+
   // Cualquier recarga del listado (otra página, reintento, importación) pliega los paneles: al
   // volver, la fila puede ser otra o su inventario haber cambiado.
   const recargar = useCallback(() => {
@@ -59,7 +82,7 @@ export function ExplotacionesPage() {
 
   const irAPagina = useCallback((cambio: (p: number) => number) => {
     setAbiertas(new Set());
-    setNumeroPagina(cambio);
+    setConsulta((actual) => ({ ...actual, page: cambio(actual.page) }));
   }, []);
 
   const alternarAnimales = useCallback((explotacionId: number) => {
@@ -74,7 +97,9 @@ export function ExplotacionesPage() {
     let cancelado = false;
     setCargando(true);
     setErrorCarga(null);
-    listarExplotaciones(numeroPagina, TAMANIO_PAGINA)
+    listarExplotaciones(consulta.page, TAMANIO_PAGINA, {
+      q: consulta.q || undefined,
+    })
       .then((resultado) => {
         if (cancelado) return;
         setPagina(resultado);
@@ -92,32 +117,57 @@ export function ExplotacionesPage() {
     return () => {
       cancelado = true;
     };
-  }, [numeroPagina, version]);
+  }, [consulta, version]);
+
+  const subtitulo = pagina
+    ? textoRecuento(pagina.totalElements)
+    : errorCarga
+      ? "—"
+      : "Cargando…";
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-bold">Explotaciones</h1>
+    <div className="mx-auto flex w-full max-w-[1360px] min-w-0 flex-col gap-5">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b-2 border-divisor pb-5">
+        <div className="min-w-0">
+          <p className="mb-1.5 text-[13px] font-medium text-muted-foreground tabular-nums">
+            {subtitulo}
+          </p>
+          <h1 className="text-[28px] leading-tight font-bold tracking-[-0.02em]">Explotaciones</h1>
+          <p className="mt-1 text-[13px] text-muted-foreground">
+            REGA, fincas y animales de tus ganaderos
+          </p>
+        </div>
+        <Button variant="outline" onClick={() => abrirImportacionRef.current?.()}>
+          <FileSpreadsheetIcon aria-hidden="true" />
+          Importar Excel
+        </Button>
       </div>
 
-      <Card className="w-fit min-w-48">
-        <CardContent className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Explotaciones totales
-          </span>
-          <span className="text-3xl font-bold">
-            {pagina ? pagina.totalElements : "—"}
-          </span>
-        </CardContent>
-      </Card>
-
-      <ImportarExcelSection
+        <ImportarExcelSection
         onImportado={() => {
-          // recargar() pliega los paneles (su inventario puede haber cambiado): no hace falta irAPagina.
-          setNumeroPagina(0);
+          // recargar() pliega los paneles (su inventario puede haber cambiado).
+          setConsulta((actual) => ({ ...actual, page: 0 }));
           recargar();
         }}
+        registrarAbrir={(abrir) => {
+          abrirImportacionRef.current = abrir;
+        }}
+        ocultarBotonPrincipal
       />
+
+      <label className="relative max-w-[380px]">
+        <span className="sr-only">Buscar explotaciones</span>
+        <SearchIcon
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+        />
+        <Input
+          value={qInput}
+          onChange={(e) => setQInput(e.target.value)}
+          placeholder="REGA, finca o ganadero"
+          className="h-[38px] bg-card pl-9"
+        />
+      </label>
 
       {errorCarga && (
         <Alert variant="destructive">
@@ -132,7 +182,7 @@ export function ExplotacionesPage() {
         </Alert>
       )}
 
-      <div className="border border-border bg-card">
+      <div className="min-w-0 border border-border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -149,7 +199,9 @@ export function ExplotacionesPage() {
             {pagina?.content.length === 0 && !cargando && !errorCarga && (
               <TableRow>
                 <TableCell colSpan={columnas} className="text-center text-muted-foreground">
-                  No hay explotaciones todavía. Importa un Excel para empezar.
+                  {consulta.q
+                    ? "Ninguna explotación coincide con la búsqueda."
+                    : "No hay explotaciones todavía. Importa un Excel para empezar."}
                 </TableCell>
               </TableRow>
             )}
@@ -162,7 +214,9 @@ export function ExplotacionesPage() {
                     {desdeSm ? (
                       <>
                         <TableCell className="tabular-nums">{explotacion.codigoRega}</TableCell>
-                        <TableCell className="whitespace-normal wrap-anywhere">{explotacion.nombre}</TableCell>
+                        <TableCell className="whitespace-normal wrap-anywhere">
+                          {explotacion.nombre}
+                        </TableCell>
                       </>
                     ) : (
                       <TableCell>
@@ -174,7 +228,10 @@ export function ExplotacionesPage() {
                     )}
                     <TableCell className="whitespace-normal wrap-anywhere">
                       {/* Decisión 14: el ganadero enlaza con su ficha. */}
-                      <Link to={`/ganaderos/${explotacion.ganaderoId}`} className={CLASE_ENLACE_TABLA}>
+                      <Link
+                        to={`/ganaderos/${explotacion.ganaderoId}`}
+                        className={CLASE_ENLACE_TABLA}
+                      >
                         {explotacion.nombreGanadero}
                       </Link>
                     </TableCell>
@@ -231,18 +288,18 @@ export function ExplotacionesPage() {
           <Button
             variant="outline"
             size="sm"
-            disabled={numeroPagina === 0}
+            disabled={consulta.page === 0}
             onClick={() => irAPagina((p) => p - 1)}
           >
             Anterior
           </Button>
           <span className="text-sm text-muted-foreground tabular-nums">
-            Página {numeroPagina + 1} de {totalPaginas}
+            Página {consulta.page + 1} de {totalPaginas}
           </span>
           <Button
             variant="outline"
             size="sm"
-            disabled={numeroPagina + 1 >= totalPaginas}
+            disabled={consulta.page + 1 >= totalPaginas}
             onClick={() => irAPagina((p) => p + 1)}
           >
             Siguiente
