@@ -53,13 +53,13 @@ describe("rutas: comodín del layout autenticado (D5)", () => {
   it("sin sesión, /facturacion lleva a /login (el comodín no se salta RequireAuth)", async () => {
     const router = montarApp("/facturacion")
 
-    expect(await screen.findByText("Inicia sesión con tu cuenta de gestoría.")).toBeInTheDocument()
+    expect(await screen.findByText("Usa el email y la contraseña que te enviamos al contratar.")).toBeInTheDocument()
     expect(router.state.location.pathname).toBe("/login")
   })
 
   it("sin sesión, /login sigue siendo su pantalla", async () => {
     const router = montarApp("/login")
-    expect(await screen.findByText("Inicia sesión con tu cuenta de gestoría.")).toBeInTheDocument()
+    expect(await screen.findByText("Usa el email y la contraseña que te enviamos al contratar.")).toBeInTheDocument()
     expect(router.state.location.pathname).toBe("/login")
   })
 })
@@ -69,7 +69,7 @@ describe("rutas: /registro ya no es una pantalla (Prompt C, D4)", () => {
   it("sin sesión, /registro lleva a /login sin quedar en el historial", async () => {
     const router = montarApp("/registro")
 
-    expect(await screen.findByText("Inicia sesión con tu cuenta de gestoría.")).toBeInTheDocument()
+    expect(await screen.findByText("Usa el email y la contraseña que te enviamos al contratar.")).toBeInTheDocument()
     expect(router.state.location.pathname).toBe("/login")
     expect(router.state.historyAction).toBe("REPLACE")
     expect(screen.queryByText("Registra tu gestoría y empieza tu prueba de 15 días.")).not.toBeInTheDocument()
@@ -79,14 +79,14 @@ describe("rutas: /registro ya no es una pantalla (Prompt C, D4)", () => {
     conSesion()
     const router = montarApp("/registro")
 
-    expect(await screen.findByText("Inicia sesión con tu cuenta de gestoría.")).toBeInTheDocument()
+    expect(await screen.findByText("Usa el email y la contraseña que te enviamos al contratar.")).toBeInTheDocument()
     expect(router.state.location.pathname).toBe("/login")
     expect(screen.queryByText("Registra tu gestoría y empieza tu prueba de 15 días.")).not.toBeInTheDocument()
   })
 
   it("navegar a /registro desde /login deja en /login", async () => {
     const router = montarApp("/login")
-    await screen.findByText("Inicia sesión con tu cuenta de gestoría.")
+    await screen.findByText("Usa el email y la contraseña que te enviamos al contratar.")
 
     await act(() => router.navigate("/registro"))
     expect(router.state.location.pathname).toBe("/login")
@@ -132,7 +132,7 @@ describe("rutas: ficha para OVZ (ficha OVZ, T5)", () => {
   it("sin sesión (ventana abierta sin heredarla, D3), va al login recordando la ficha para volver", async () => {
     const router = montarApp("/tramites/5/ovz")
 
-    expect(await screen.findByText("Inicia sesión con tu cuenta de gestoría.")).toBeInTheDocument()
+    expect(await screen.findByText("Usa el email y la contraseña que te enviamos al contratar.")).toBeInTheDocument()
     expect(router.state.location.pathname).toBe("/login")
     expect(router.state.location.state).toMatchObject({ from: "/tramites/5/ovz" })
   })

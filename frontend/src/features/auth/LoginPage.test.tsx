@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { MemoryRouter } from "react-router-dom"
@@ -60,11 +60,16 @@ describe("LoginPage: estructura (Task 10)", () => {
       "Los mensajes de WhatsApp de tus ganaderos llegan como trámites listos para revisar.",
     )
     expect(frase.tagName).toBe("P")
-    expect(frase).toHaveClass("hidden", "lg:block")
+    // El bloque del claim (título visual + frase + pie) solo se ve desde lg.
+    expect(frase.parentElement).toHaveClass("hidden", "lg:block")
     const panel = frase.closest('[data-slot="login-panel"]') as HTMLElement
     expect(panel).not.toBeNull()
     expect(panel).toHaveClass("bg-primary", "text-primary-foreground")
     expect(panel.querySelectorAll("a, button, input, [tabindex]")).toHaveLength(0)
+    // Claim visual del mock: no es un heading (el único h1 sigue siendo «Entrar en Ganera»).
+    expect(screen.getByText(/Tramita/)).toHaveAttribute("aria-hidden", "true")
+    expect(within(panel).getByText("Software para gestorías ganaderas")).toBeInTheDocument()
+    expect(within(panel).getByText("ganera.es")).toBeInTheDocument()
     // El panel va antes del formulario en el DOM (como v2).
     const formulario = screen.getByRole("button", { name: "Entrar" }).closest("form") as HTMLElement
     expect(panel.compareDocumentPosition(formulario) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
