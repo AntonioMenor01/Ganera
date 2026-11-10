@@ -51,14 +51,17 @@ export function CalendarioPage() {
   const dias: Dia[] = useMemo(() => agruparPorDia(hechos), [hechos]);
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-xl font-bold tracking-tight">Calendario</h1>
-        <p className="text-sm text-muted-foreground">
-          Días en los que marcaste trámites como hechos en OVZ (dato real). Los plazos de
-          carencia/alertas aún no tienen backend.
+    <div className="mx-auto flex w-full max-w-[1360px] min-w-0 flex-col gap-5">
+      <div className="border-b-2 border-divisor pb-5">
+        <p className="mb-1.5 text-[13px] font-medium text-muted-foreground">
+          Hechos en OVZ por día (dato real)
         </p>
-      </header>
+        <h1 className="text-[28px] leading-tight font-bold tracking-[-0.02em]">Calendario</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">
+          Carencias y alertas de plazos aún no tienen backend: aquí solo lo marcado como hecho en
+          OVZ.
+        </p>
+      </div>
 
       {error && (
         <Alert variant="destructive">
@@ -73,7 +76,7 @@ export function CalendarioPage() {
       )}
 
       {!error && (
-        <p className="rounded-sm border border-border bg-card px-4 py-3 text-sm">
+        <p className="border border-border bg-card px-4 py-3 text-sm">
           {cargando ? (
             "Cargando…"
           ) : (
@@ -95,13 +98,16 @@ export function CalendarioPage() {
         </p>
       )}
 
-      <ul className="flex flex-col gap-6">
+      <ul className="flex flex-col gap-5">
         {dias.map((dia) => (
           <li key={dia.clave} className="flex flex-col gap-2">
-            <h2 className="text-sm font-bold text-muted-foreground">{dia.etiqueta}</h2>
-            <ul className="divide-y divide-border rounded-sm border border-border bg-card">
+            <h2 className="text-sm font-bold text-muted-foreground capitalize">{dia.etiqueta}</h2>
+            <ul className="divide-y divide-border border border-border bg-card">
               {dia.items.map((tramite) => (
-                <li key={tramite.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+                <li
+                  key={tramite.id}
+                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm"
+                >
                   <Link to="/tramites" className={CLASE_ENLACE}>
                     {etiquetaTipoTramite(tramite.tipoTramite ?? "") || "Trámite"}
                     {tramite.explotacionNombre ? ` · ${tramite.explotacionNombre}` : ""}
@@ -133,14 +139,13 @@ function agruparPorDia(tramites: Tramite[]): Dia[] {
       month: "2-digit",
       day: "2-digit",
     }).format(d);
-    const etiqueta =
-      new Intl.DateTimeFormat("es-ES", {
-        timeZone: "Europe/Madrid",
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      }).format(d);
+    const etiqueta = new Intl.DateTimeFormat("es-ES", {
+      timeZone: "Europe/Madrid",
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }).format(d);
     const dia = mapa.get(clave) ?? { clave, etiqueta, items: [] };
     dia.items.push(t);
     mapa.set(clave, dia);

@@ -76,16 +76,21 @@ describe("ConfiguracionPage", () => {
     );
     montar();
 
+    const user = userEvent.setup();
     expect(await screen.findByRole("heading", { name: "Configuración" })).toBeInTheDocument();
     expect(await screen.findByText("Ana López")).toBeInTheDocument();
     expect(screen.getByText("ana@gestoria.es")).toBeInTheDocument();
-    expect(screen.getByText("Activa")).toBeInTheDocument();
-    expect(screen.getByText("Pedro Ganadero")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Suscripción" }));
+    expect(await screen.findByText("Activa")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Contactos WhatsApp" }));
+    expect(await screen.findByText("Pedro Ganadero")).toBeInTheDocument();
     expect(screen.getByText(/\+34600111222/)).toBeInTheDocument();
 
-    await userEvent.type(screen.getByLabelText("Nombre"), "María");
-    await userEvent.type(screen.getByLabelText("Teléfono"), "+34600999888");
-    await userEvent.click(screen.getByRole("button", { name: "Añadir" }));
+    await user.type(screen.getByLabelText("Nombre"), "María");
+    await user.type(screen.getByLabelText("Teléfono"), "+34600999888");
+    await user.click(screen.getByRole("button", { name: "Añadir" }));
 
     expect(creados).toBe(1);
   });
