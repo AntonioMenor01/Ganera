@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { CreditCardIcon, MessageCircleIcon, UserIcon } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { aErrorApi, mensajeDeError, type ErrorApi } from "@/shared/api/errores";
 import { useAuth } from "@/shared/auth/AuthContext";
 import { CLASE_ENLACE } from "@/shared/ui/enlace";
@@ -29,8 +31,21 @@ const ETIQUETA_SUSCRIPCION: Record<SuscripcionEstado["estado"], string> = {
   CANCELADA: "Cancelada",
 };
 
+type SeccionConfig = "cuenta" | "suscripcion" | "contactos";
+
+const SECCIONES: {
+  id: SeccionConfig;
+  label: string;
+  Icono: typeof UserIcon;
+}[] = [
+  { id: "cuenta", label: "Tu cuenta", Icono: UserIcon },
+  { id: "suscripcion", label: "Suscripción", Icono: CreditCardIcon },
+  { id: "contactos", label: "Contactos WhatsApp", Icono: MessageCircleIcon },
+];
+
 export function ConfiguracionPage() {
   const { usuario } = useAuth();
+  const [seccion, setSeccion] = useState<SeccionConfig>("cuenta");
   const [suscripcion, setSuscripcion] = useState<SuscripcionEstado | null | undefined>(undefined);
   const [errorSuscripcion, setErrorSuscripcion] = useState(false);
 
@@ -127,138 +142,189 @@ export function ConfiguracionPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-10">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-xl font-bold tracking-tight">Configuración</h1>
-        <p className="text-sm text-muted-foreground">
+    <div className="mx-auto flex w-full max-w-[1360px] min-w-0 flex-col gap-6">
+      <div className="border-b-2 border-divisor pb-5">
+        <h1 className="text-[28px] leading-tight font-bold tracking-[-0.02em]">Configuración</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">
           Tu cuenta, la suscripción y los contactos de WhatsApp. Las credenciales OVZ.net siguen
-          aplazadas (escalón 2): Ganera no las pide aquí.
+          aplazadas (escalón 2).
         </p>
-      </header>
+      </div>
 
-      <section aria-labelledby="cuenta-titulo" className="flex flex-col gap-3">
-        <h2 id="cuenta-titulo" className="text-base font-bold">
-          Tu cuenta
-        </h2>
-        <dl className="rounded-sm border border-border bg-card px-4 py-3 text-sm">
-          <div className="flex justify-between gap-4 py-1">
-            <dt className="text-muted-foreground">Nombre</dt>
-            <dd className="font-medium">{usuario?.nombre ?? "—"}</dd>
-          </div>
-          <div className="flex justify-between gap-4 py-1">
-            <dt className="text-muted-foreground">Email</dt>
-            <dd className="font-medium">{usuario?.email ?? "—"}</dd>
-          </div>
-        </dl>
-      </section>
+      <div className="grid gap-8 lg:grid-cols-[240px_minmax(0,1fr)] lg:items-start">
+        <nav aria-label="Secciones de configuración" className="flex flex-col gap-0.5">
+          {SECCIONES.map(({ id, label, Icono }) => {
+            const activo = seccion === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setSeccion(id)}
+                className={cn(
+                  "flex h-10 items-center gap-2.5 border px-3 text-left text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring",
+                  activo
+                    ? "border-input bg-card font-medium"
+                    : "border-transparent font-normal hover:bg-gris-200",
+                )}
+              >
+                <Icono aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                {label}
+              </button>
+            );
+          })}
+        </nav>
 
-      <section aria-labelledby="suscripcion-titulo" className="flex flex-col gap-3">
-        <h2 id="suscripcion-titulo" className="text-base font-bold">
-          Suscripción
-        </h2>
-        <div className="rounded-sm border border-border bg-card px-4 py-3 text-sm">
-          {errorSuscripcion && <p>No se ha podido leer el estado de la suscripción.</p>}
-          {!errorSuscripcion && suscripcion === undefined && <p>Cargando…</p>}
-          {!errorSuscripcion && suscripcion === null && (
-            <p>Esta gestoría aún no tiene suscripción registrada. Ponte en contacto con Ganera.</p>
+        <div className="min-w-0">
+          {seccion === "cuenta" && (
+            <Panel titulo="Tu cuenta">
+              <dl className="grid gap-3 text-sm sm:grid-cols-2">
+                <div className="flex flex-col gap-1">
+                  <dt className="text-[13px] font-medium text-muted-foreground">Nombre</dt>
+                  <dd className="font-medium">{usuario?.nombre ?? "—"}</dd>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <dt className="text-[13px] font-medium text-muted-foreground">Email</dt>
+                  <dd className="font-medium">{usuario?.email ?? "—"}</dd>
+                </div>
+              </dl>
+            </Panel>
           )}
-          {suscripcion && (
-            <dl className="flex flex-col gap-1">
-              <div className="flex justify-between gap-4">
-                <dt className="text-muted-foreground">Estado</dt>
-                <dd className="font-medium">{ETIQUETA_SUSCRIPCION[suscripcion.estado]}</dd>
+
+          {seccion === "suscripcion" && (
+            <Panel titulo="Suscripción">
+              <div className="text-sm">
+                {errorSuscripcion && <p>No se ha podido leer el estado de la suscripción.</p>}
+                {!errorSuscripcion && suscripcion === undefined && <p>Cargando…</p>}
+                {!errorSuscripcion && suscripcion === null && (
+                  <p>
+                    Esta gestoría aún no tiene suscripción registrada. Ponte en contacto con Ganera.
+                  </p>
+                )}
+                {suscripcion && (
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    <div className="flex flex-col gap-1">
+                      <dt className="text-[13px] font-medium text-muted-foreground">Estado</dt>
+                      <dd className="font-medium">{ETIQUETA_SUSCRIPCION[suscripcion.estado]}</dd>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <dt className="text-[13px] font-medium text-muted-foreground">
+                        Puede aprobar trámites
+                      </dt>
+                      <dd className="font-medium">
+                        {suscripcion.puedeAprobarTramites ? "Sí" : "No"}
+                      </dd>
+                    </div>
+                  </dl>
+                )}
               </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-muted-foreground">Puede aprobar trámites</dt>
-                <dd className="font-medium">{suscripcion.puedeAprobarTramites ? "Sí" : "No"}</dd>
-              </div>
-            </dl>
+              <p className="mt-4 text-sm text-muted-foreground">
+                El cobro se gestiona desde la web de Ganera, no desde esta app. Inventario:{" "}
+                <Link to="/explotaciones" className={CLASE_ENLACE}>
+                  importar Excel en Explotaciones
+                </Link>
+                .
+              </p>
+            </Panel>
+          )}
+
+          {seccion === "contactos" && (
+            <div className="flex flex-col gap-4">
+              <Panel titulo="Contactos de WhatsApp">
+                <p className="mb-4 text-sm text-muted-foreground">
+                  Quien escribe al número de Ganera. También se pueden cargar en la hoja «Contactos»
+                  del Excel.
+                </p>
+                <form onSubmit={onAlta} className="flex flex-col gap-3 border border-border p-4">
+                  <p className="text-sm font-medium">Añadir contacto</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="contacto-nombre">Nombre</Label>
+                      <Input
+                        id="contacto-nombre"
+                        value={nombreNuevo}
+                        onChange={(e) => setNombreNuevo(e.target.value)}
+                        required
+                        autoComplete="name"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="contacto-telefono">Teléfono</Label>
+                      <Input
+                        id="contacto-telefono"
+                        value={telefonoNuevo}
+                        onChange={(e) => setTelefonoNuevo(e.target.value)}
+                        required
+                        inputMode="tel"
+                        autoComplete="tel"
+                        placeholder="+34…"
+                      />
+                    </div>
+                  </div>
+                  {errorAlta && (
+                    <Alert variant="destructive">
+                      <AlertTitle>No se ha podido crear</AlertTitle>
+                      <AlertDescription>
+                        {mensajeDeError(errorAlta, "guardar-contacto")}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  <Button type="submit" disabled={guardando} className="w-fit">
+                    {guardando ? "Guardando…" : "Añadir"}
+                  </Button>
+                </form>
+              </Panel>
+
+              {errorContactos && (
+                <Alert variant="destructive">
+                  <AlertTitle>No se han podido cargar los contactos</AlertTitle>
+                  <AlertDescription className="flex flex-col gap-3">
+                    <p>{mensajeDeError(errorContactos, "listar-contactos")}</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-fit"
+                      onClick={recargarContactos}
+                    >
+                      Reintentar
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <ul className="divide-y divide-border border border-border bg-card">
+                {cargandoContactos && (
+                  <li className="px-4 py-6 text-sm text-muted-foreground">Cargando…</li>
+                )}
+                {!cargandoContactos && contactos.length === 0 && (
+                  <li className="px-4 py-6 text-sm text-muted-foreground">Aún no hay contactos.</li>
+                )}
+                {contactos.map((contacto) => (
+                  <FilaContacto
+                    key={contacto.id}
+                    contacto={contacto}
+                    onDesactivar={() => onDesactivar(contacto.id)}
+                    onReactivar={() => onReactivar(contacto.id)}
+                    onGuardar={(nombre, telefono) => onGuardarEdicion(contacto, nombre, telefono)}
+                  />
+                ))}
+              </ul>
+            </div>
           )}
         </div>
-        <p className="text-sm text-muted-foreground">
-          El cobro se gestiona desde la web de Ganera, no desde esta app. Inventario:{" "}
-          <Link to="/explotaciones" className={CLASE_ENLACE}>
-            importar Excel en Explotaciones
-          </Link>
-          .
-        </p>
-      </section>
-
-      <section aria-labelledby="contactos-titulo" className="flex flex-col gap-4">
-        <h2 id="contactos-titulo" className="text-base font-bold">
-          Contactos de WhatsApp
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Quien escribe al número de Ganera. También se pueden cargar en la hoja «Contactos» del
-          Excel.
-        </p>
-
-        <form onSubmit={onAlta} className="flex flex-col gap-3 rounded-sm border border-border bg-card p-4">
-          <p className="text-sm font-medium">Añadir contacto</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="contacto-nombre">Nombre</Label>
-              <Input
-                id="contacto-nombre"
-                value={nombreNuevo}
-                onChange={(e) => setNombreNuevo(e.target.value)}
-                required
-                autoComplete="name"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="contacto-telefono">Teléfono</Label>
-              <Input
-                id="contacto-telefono"
-                value={telefonoNuevo}
-                onChange={(e) => setTelefonoNuevo(e.target.value)}
-                required
-                inputMode="tel"
-                autoComplete="tel"
-                placeholder="+34…"
-              />
-            </div>
-          </div>
-          {errorAlta && (
-            <Alert variant="destructive">
-              <AlertTitle>No se ha podido crear</AlertTitle>
-              <AlertDescription>{mensajeDeError(errorAlta, "guardar-contacto")}</AlertDescription>
-            </Alert>
-          )}
-          <Button type="submit" disabled={guardando} className="w-fit">
-            {guardando ? "Guardando…" : "Añadir"}
-          </Button>
-        </form>
-
-        {errorContactos && (
-          <Alert variant="destructive">
-            <AlertTitle>No se han podido cargar los contactos</AlertTitle>
-            <AlertDescription className="flex flex-col gap-3">
-              <p>{mensajeDeError(errorContactos, "listar-contactos")}</p>
-              <Button type="button" variant="outline" size="sm" className="w-fit" onClick={recargarContactos}>
-                Reintentar
-              </Button>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        <ul className="divide-y divide-border rounded-sm border border-border bg-card">
-          {cargandoContactos && <li className="px-4 py-6 text-sm text-muted-foreground">Cargando…</li>}
-          {!cargandoContactos && contactos.length === 0 && (
-            <li className="px-4 py-6 text-sm text-muted-foreground">Aún no hay contactos.</li>
-          )}
-          {contactos.map((contacto) => (
-            <FilaContacto
-              key={contacto.id}
-              contacto={contacto}
-              onDesactivar={() => onDesactivar(contacto.id)}
-              onReactivar={() => onReactivar(contacto.id)}
-              onGuardar={(nombre, telefono) => onGuardarEdicion(contacto, nombre, telefono)}
-            />
-          ))}
-        </ul>
-      </section>
+      </div>
     </div>
+  );
+}
+
+function Panel({ titulo, children }: { titulo: string; children: ReactNode }) {
+  return (
+    <section className="border border-border bg-card">
+      <div className="flex h-14 items-center border-b-2 border-divisor px-5">
+        <h2 className="text-lg font-bold">{titulo}</h2>
+      </div>
+      <div className="px-5 py-5">{children}</div>
+    </section>
   );
 }
 

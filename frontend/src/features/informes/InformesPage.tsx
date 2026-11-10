@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { aErrorApi, mensajeDeError, type ErrorApi } from "@/shared/api/errores";
 import { CLASE_ENLACE } from "@/shared/ui/enlace";
 import { ESTADOS_TRAMITE } from "@/features/tramites/etiquetas";
@@ -60,14 +59,16 @@ export function InformesPage() {
   }, [version]);
 
   return (
-    <div className="flex flex-col gap-8">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-xl font-bold tracking-tight">Informes</h1>
-        <p className="text-sm text-muted-foreground">
-          Resumen de tu gestoría con datos reales de trámites, ganaderos y explotaciones. No es un
-          exportador: es el recuento vivo de lo que hay ahora en Ganera.
+    <div className="mx-auto flex w-full max-w-[1360px] min-w-0 flex-col gap-5">
+      <div className="border-b-2 border-divisor pb-5">
+        <p className="mb-1.5 text-[13px] font-medium text-muted-foreground">
+          Recuento vivo de tu gestoría
         </p>
-      </header>
+        <h1 className="text-[28px] leading-tight font-bold tracking-[-0.02em]">Informes</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">
+          Datos reales de trámites, ganaderos y explotaciones. Sin exportar a PDF/Excel todavía.
+        </p>
+      </div>
 
       {error && (
         <Alert variant="destructive">
@@ -81,40 +82,44 @@ export function InformesPage() {
         </Alert>
       )}
 
-      <section aria-label="Inventario" className="grid gap-4 sm:grid-cols-3">
+      <section
+        aria-label="Inventario"
+        className="grid grid-cols-1 border border-border bg-card sm:grid-cols-3"
+      >
         <Tarjeta
           etiqueta="Trámites"
           valor={resumen?.totalTramites}
           cargando={cargando}
           to="/tramites"
+          className="sm:border-r sm:border-border"
         />
         <Tarjeta
           etiqueta="Ganaderos"
           valor={resumen?.ganaderos}
           cargando={cargando}
           to="/ganaderos"
+          className="border-t border-border sm:border-t-0 sm:border-r"
         />
         <Tarjeta
           etiqueta="Explotaciones"
           valor={resumen?.explotaciones}
           cargando={cargando}
           to="/explotaciones"
+          className="border-t border-border sm:border-t-0"
         />
       </section>
 
-      <section aria-label="Trámites por estado" className="flex flex-col gap-3">
-        <h2 className="text-base font-bold">Trámites por estado</h2>
-        <ul className="divide-y divide-border rounded-sm border border-border bg-card">
+      <section aria-label="Trámites por estado" className="flex flex-col gap-0 border border-border bg-card">
+        <div className="flex h-14 items-center border-b-2 border-divisor px-5">
+          <h2 className="text-lg font-bold">Trámites por estado</h2>
+        </div>
+        <ul className="divide-y divide-border">
           {ESTADOS_INFORME.map((estado) => (
-            <li key={estado} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
-              <Link
-                to="/tramites"
-                className={CLASE_ENLACE}
-                // La cola abre en pendiente; el usuario cambia el filtro allí.
-              >
+            <li key={estado} className="flex items-center justify-between gap-4 px-5 py-3 text-sm">
+              <Link to="/tramites" className={CLASE_ENLACE}>
                 {ESTADOS_TRAMITE[estado].etiqueta}
               </Link>
-              <span className="tabular-nums font-medium">
+              <span className="font-medium tabular-nums">
                 {cargando ? "…" : (resumen?.porEstado[estado] ?? "—")}
               </span>
             </li>
@@ -130,22 +135,23 @@ function Tarjeta({
   valor,
   cargando,
   to,
+  className,
 }: {
   etiqueta: string;
   valor: number | undefined;
   cargando: boolean;
   to: string;
+  className?: string;
 }) {
   return (
-    <Link to={to} className="rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-ring">
-      <Card className="h-full transition-colors hover:border-gris-400">
-        <CardContent className="flex flex-col gap-1">
-          <span className="text-sm text-muted-foreground">{etiqueta}</span>
-          <span className="text-2xl font-bold tabular-nums">
-            {cargando ? "…" : valor != null ? valor : "—"}
-          </span>
-        </CardContent>
-      </Card>
+    <Link
+      to={to}
+      className={`flex flex-col gap-1 px-5 py-4 outline-none transition-colors hover:bg-gris-200 focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring ${className ?? ""}`}
+    >
+      <span className="text-[13px] text-muted-foreground">{etiqueta}</span>
+      <span className="text-2xl font-bold tabular-nums">
+        {cargando ? "…" : valor != null ? valor : "—"}
+      </span>
     </Link>
   );
 }
