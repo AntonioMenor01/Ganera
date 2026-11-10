@@ -231,6 +231,8 @@ describe("mensajeDeError", () => {
       "listar-ganaderos",
       "detalle-ganadero",
       "animales-explotacion",
+      "listar-contactos",
+      "guardar-contacto",
     ]
     const tipos: TipoErrorApi[] = [
       "no-autorizado",
