@@ -14,6 +14,9 @@ export interface GanaderoDetalle {
   id: number;
   nombre: string;
   nif: string | null;
+  /** E.164 (TelefonoNormalizador del backend), p. ej. "+34612345678"; null si no tiene. Solo en el
+   * detalle: ni el listado ni el buscador lo traen. */
+  telefono: string | null;
   /** Ordenadas por código REGA en el backend. */
   explotaciones: ExplotacionDeGanadero[];
 }

@@ -80,6 +80,7 @@ public class GanaderoConsultaService {
                         e.getId(), e.getCodigoRega(), e.getNombre(),
                         contactosPorExplotacion.getOrDefault(e.getId(), List.of())))
                 .toList();
-        return new GanaderoDetalleResponse(ganadero.getId(), ganadero.getNombre(), ganadero.getNif(), detalleExplotaciones);
+        return new GanaderoDetalleResponse(ganadero.getId(), ganadero.getNombre(), ganadero.getNif(),
+                ganadero.getTelefono(), detalleExplotaciones);
     }
 }

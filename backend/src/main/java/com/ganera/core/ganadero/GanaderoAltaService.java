@@ -54,7 +54,8 @@ public class GanaderoAltaService {
      *         global, en otra).
      */
     @Transactional
-    public GanaderoResumenResponse crear(Long gestoriaId, Long usuarioId, String nombre, String nif) {
+    public GanaderoResumenResponse crear(Long gestoriaId, Long usuarioId, String nombre, String nif,
+                                         String telefonoNormalizado) {
         String nifNormalizado = NifValidador.normalizar(nif);
         if (ganaderoRepository.findByNifAndGestoriaId(nifNormalizado, gestoriaId).isPresent()) {
             throw new GanaderoDuplicadoException(MOTIVO_NIF_DUPLICADO_PROPIO);
@@ -64,6 +65,9 @@ public class GanaderoAltaService {
         ganadero.setGestoria(gestoriaRepository.getReferenceById(gestoriaId));
         ganadero.setNif(nifNormalizado);
         ganadero.setNombre(nombre.strip());
+        // telefonoNormalizado ya viene validado por el controlador (null = sin telefono). No sale en la respuesta
+        // (GanaderoResumenResponse) ni en la auditoria: la fila GANADERO_CREADO no deja constancia de si se informo (D5).
+        ganadero.setTelefono(telefonoNormalizado);
         Ganadero guardado;
         try {
             guardado = ganaderoRepository.saveAndFlush(ganadero);

@@ -1,0 +1,1 @@
+ALTER TABLE ganadero ADD COLUMN telefono VARCHAR(30);

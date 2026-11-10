@@ -37,6 +37,14 @@ public class Ganadero extends GestoriaScopedEntity {
     @Column(name = "nif", unique = true)
     private String nif;
 
+    /**
+     * Telefono de la ficha del Ganadero, opcional y siempre normalizado a E.164 por quien lo escribe
+     * ({@code TelefonoNormalizador}). Sin UNIQUE ni indice, y nunca identifica al remitente de un WhatsApp (eso es
+     * {@code Contacto.telefono}). No sale en listados, buscador ni auditoria: solo en el detalle del Ganadero.
+     */
+    @Column(name = "telefono", length = 30)
+    private String telefono;
+
     @Column(name = "ovz_usuario")
     private String ovzUsuario;
 

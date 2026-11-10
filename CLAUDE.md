@@ -153,11 +153,39 @@ approval step before anything is written to OVZ.net.
   another's, via the global `UNIQUE`, a neutral "no disponible" that never reveals the other
   gestoría — same no-enumeration principle as the importer). The alta writes its audit row
   (`GANADERO_CREADO`, actor USUARIO from the JWT, `ORIGEN: MANUAL`, MANDATORY, inside the alta
-  transaction; the `409`/rollback leaves **no** row). Don't widen the model (extra fields, "opción B"
-  is Antonio's later call) and don't add a *second* divergent creation path for Explotaciones/Animales
+  transaction; the `409`/rollback leaves **no** row).
+  **Teléfono en la ficha (opción B, primer campo; 2026-11-10, rama `feat/ganadero-telefono`):**
+  `Ganadero.telefono` (nullable, `VARCHAR(30)`, migración `V27`, **sin `UNIQUE` ni índice**, normalizado a E.164
+  por `contacto.TelefonoNormalizador`). **Nunca** identifica al remitente de un WhatsApp (eso es
+  `Contacto.telefono`) y **no** sale en `GET /ganaderos`, `GET /buscar`, el detalle de trámite ni la auditoría —
+  solo en el detalle del Ganadero (D9). Se informa opcional en `POST /ganaderos` (`{nombre, nif, telefono?}`:
+  teléfono inválido no vacío → `400` «El teléfono no es válido…» **tras** el NIF; el `201` no lo trae;
+  `GANADERO_CREADO` sin cambios, D5) y se edita con **`PUT /ganaderos/{id}/telefono` `{telefono}`**
+  (`GanaderoEdicionService`, carga con `findByIdAndGestoriaId`, gana la última escritura, sin `version`): el cuerpo
+  se lee como `JsonNode` para distinguir la clave ausente de `null`; **borrado explícito (A6)** — `{"telefono":
+  null}`/`""`/solo espacios → `200` y borra; **sin cuerpo, `{}` o sin la clave `telefono` → `400 {motivo}` «Indica
+  el teléfono (o déjalo vacío para quitarlo).», sin cambios ni fila**; inválido o valor no textual → `400` «El
+  teléfono no es válido…»; ajeno/inexistente → `404` sin cuerpo (y, si existe en otra gestoría, fila
+  `ACCESO_OTRA_GESTORIA` con `OperacionAuditada.EDITAR_GANADERO` en la gestoría del actor, fuera de la transacción
+  del servicio, como el detalle). El PUT deja **exactamente una** fila `GANADERO_MODIFICADO`
+  (`despues = {"campos_cambiados":["TELEFONO"],"origen":"MANUAL"}` vía el enum `CampoGanadero`; lista vacía si el
+  valor no cambia) y **cero `LECTURA_GANADERO`** (reutiliza `GanaderoConsultaService.detalle` sin auditar la
+  lectura, A1). El valor del teléfono **nunca** va a auditoría (`DatosAuditoria` no admite `String` libre), a logs
+  ni a listados; `CredencialOvzCifradaTipoTest.SETTERS_STRING` pasa a `setNombre, setNif, setOvzUsuario,
+  setTelefono` (con test de centinela). Frontend (mock v2 de Álvaro, **añadido sin rediseñar**): campo «Teléfono
+  (opcional)» en `AltaGanaderoDialog` y edición en línea en `GanaderoDetallePage`
+  (`cambiarTelefonoGanadero(id, telefono|null)`; «Quitar teléfono» envía `null` explícito; una petición a la vez;
+  tras el `200` repinta con la respuesta del PUT **sin** volver a pedir el detalle; `404` → «Ganadero no
+  encontrado»; foco al botón). La ayuda bajo el campo es literal (D7): «Para que Ganera reconozca sus WhatsApp,
+  añade este número como contacto de una explotación». **Pendiente (opción B / contactos):** el teléfono del
+  titular puede acabar **duplicado** entre la ficha y el contacto cuando llegue `contacto_titular_id`; **decidir
+  antes de los empleados** si se sincroniza o la ficha lee del contacto.
+  Don't widen the model further (beyond this first `telefono` field, more "opción B" fields are Antonio's later
+  call) and don't add a *second* divergent creation path for Explotaciones/Animales
   — those still come only from the Excel importer (Prompt 3d). (Contactos are the other exception, by
   an explicit A1 decision: importer's optional "Contactos" sheet **or** the `/contactos` CRUD
-  endpoints.) The rest of the Ganaderos screens (list, detail, animales) stay read-only.
+  endpoints.) The rest of the Ganaderos screens stay read-only except the ficha's editable phone (the list and
+  the animales panel stay read-only).
   The OVZ-credentials screen is the screen to store OVZ credentials (encrypted), deferred to escalón
   2; whether they belong to the gestoría or to each ganadero is decided after the OVZ mapping.
 
@@ -1408,7 +1436,8 @@ reference for every frontend decision below.
   handler fails the test (`onUnhandledRequest: "error"`), and session state is cleared after each
   test. `npm test` ran **475 tests in 36 files** at the end of A2 (476 after the mini-prompt's
   Rechazar change; **506 in 36 files** after the frontend task before the pilot; **508 in 36** after billing left the app;
-  **513 in 37** after the brand colours and typography; **558 in 37** after Prompt B1; **557 in 36** after C mínimo removed the registration screen; **720 in 40** after the ficha OVZ; **811 in 41** after "Hecho en OVZ"; **912 in 43** after B2 reducido; **976 in 45** after SIN_TRAMITE; **1084 in 50** after the Clever deployment tasks). Layout can't be checked in
+  **513 in 37** after the brand colours and typography; **558 in 37** after Prompt B1; **557 in 36** after C mínimo removed the registration screen; **720 in 40** after the ficha OVZ; **811 in 41** after "Hecho en OVZ"; **912 in 43** after B2 reducido; **976 in 45** after SIN_TRAMITE; **1084 in 50** after the Clever deployment tasks; **1143 in 59** after Álvaro's
+mock-v2 merge + the ganadero-telefono task). Layout can't be checked in
   jsdom: for visual changes, also drive the real app in a browser (Playwright from npm installed
   **outside the repo**, as in Prompts 4 and A2).
 
@@ -1430,7 +1459,7 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw clean test` — runs the test suite (1001 tests after the Clever deployment tasks — 1000 run plus the skipped Haiku evaluation —; **1075** after the Supabase migration — 1074 run plus the skipped evaluation —, including the embedded-PostgreSQL ones; **1338** (1337 run plus the skipped evaluation) after M2, the on-demand OVZ decryption; also green with JDK 21 — the real `JAVA_HOME` is `~/.jdks/temurin-21/jdk-21.0.12.1+1` (the JDK sits one level below `temurin-21`; in Git Bash pass it Windows-style, `JAVA_HOME='C:\Users\Antonio\.jdks\temurin-21\jdk-21.0.12.1+1' ./mvnw clean test`, a `/c/...` path makes the wrapper fail with "JAVA_HOME is not defined correctly")); **always with `clean`**
+- `./mvnw clean test` — runs the test suite (1001 tests after the Clever deployment tasks — 1000 run plus the skipped Haiku evaluation —; **1075** after the Supabase migration — 1074 run plus the skipped evaluation —, including the embedded-PostgreSQL ones; **1338** (1337 run plus the skipped evaluation) after M2, the on-demand OVZ decryption; **1357** (1356 run plus the skipped evaluation) after the ganadero-telefono task (`PUT /ganaderos/{id}/telefono`); also green with JDK 21 — the real `JAVA_HOME` is `~/.jdks/temurin-21/jdk-21.0.12.1+1` (the JDK sits one level below `temurin-21`; in Git Bash pass it Windows-style, `JAVA_HOME='C:\Users\Antonio\.jdks\temurin-21\jdk-21.0.12.1+1' ./mvnw clean test`, a `/c/...` path makes the wrapper fail with "JAVA_HOME is not defined correctly")); **always with `clean`**
   (see the VS Code/ECJ note under Architecture notes). A single test:
   `./mvnw clean test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
@@ -1836,6 +1865,27 @@ reviewer on the last round: **Approved with minors**, minors fixed (`CredencialO
 such as the phone; extend the list only after reviewing it**). Verified with `./mvnw clean test` **1338** (0 failures, 0 errors, 1 skipped: the evaluation; JDK 21),
 `npm test` **1117 in 54** (frontend untouched), mutation checks (restored with `cp` + `cmp`) and a local smoke: two
 corrupted ciphertexts → `200` on `/tramites/{id}`, `/ganaderos` and `/ganaderos/{id}`.
+
+**Teléfono en la ficha del ganadero (opción B, primer campo) — complete, not merged yet** (2026-11-10, rama
+`feat/ganadero-telefono`; plan `docs/superpowers/plans/2026-11-10-ganadero-telefono.md`, decisiones D1–D10 y ajustes
+A1–A10). **Backend + frontend en el mismo commit** (cambia un contrato). Base: la rama arranca sobre `main` =
+`27ff412` (merge del mock v2 del frontend de Álvaro, PRs #13–#22, solo `frontend/`). Ver la regla «Manual alta de
+Ganadero» (el `telefono`, el `PUT /ganaderos/{id}/telefono`, el borrado explícito, `GANADERO_MODIFICADO` con
+`campos_cambiados`, `EDITAR_GANADERO`, `V27`, `SETTERS_STRING` y el pendiente de `contacto_titular_id`). Flujo
+Superpowers: T1 backend (implementador + revisor independiente, **Approved**), T2 frontend (añadir sin rediseñar el
+mock v2 de Álvaro; implementador + revisor independiente, **Approved**), T3 smoke + capturas desde la sesión
+principal. Mutaciones A3 reproducidas por la sesión principal (cp/cmp): `findByIdAndGestoriaId`→`findById` → rojo en
+`GanaderoTelefonoEndToEndTest` (`expected null but was "+34612345678"`); quitar el `registrar` → rojo (GuardiaDml
+«sin fila de auditoría»); teléfono en `despues` → no compila (`con(Clave, String)` no existe); y el rojo del test de
+tipo (`CredencialOvzCifradaTipoTest`) con `setTelefono` antes de ampliar la lista. Verificado con `./mvnw clean test`
+**1357** (1356 pasan, 1 skip: la evaluación; JDK 21), `npm test` **1143 en 59**, `npm run build` y `npm run lint`
+(solo los 3 avisos conocidos), y un smoke local con H2 (dos gestorías inventadas, datos por la API real): 21/21 HTTP
+PASS (alta con/sin teléfono, PUT poner/cambiar/borrar, `400` sin clave e inválido, `404` ajeno sin cuerpo), auditoría
+por SQL (5 `GANADERO_MODIFICADO`, 2 `LECTURA_GANADERO` — los PUT no añaden ninguna —, 1 `ACCESO_OTRA_GESTORIA`
+`EDITAR_GANADERO` en la gestoría del actor, 0 filas con el teléfono en `antes`/`despues`), el número ausente del log y
+de `GET /ganaderos`/`GET /buscar`, y 10 capturas a 1440 y 375 px fuera del repo
+(`C:\Users\Antonio\Desktop\capturas-ganera-telefono\`, D6, sin Impeccable). **Pendiente tras el merge:** el smoke en
+producción (ganadero 11 de la gestoría de pruebas, `+34600000000`, A5/A8).
 
 **Still blocked: Prompt 3a and escalón 2 (modo asistido)** — the OVZ.net read sync, and the mode where
 Ganera fills in the OVZ form for the gestor to review — one trámite at a time, after the gestor’s

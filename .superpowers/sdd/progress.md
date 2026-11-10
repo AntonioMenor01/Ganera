@@ -1580,3 +1580,40 @@ Rama `feat/auditoria`. Flujo desde la sesión principal (sin subagentes); TDD ro
   al despliegue (post PR→main). Si en ese gate la fila guardara la IP falsa o la del proxy, el valor seguro por defecto
   es `ip-desde-x-forwarded-for=false`.
 - **Kit `ganera-clever`** (fuera del repo): se le pasa el diff a Antonio antes de que ejecute nada.
+
+## Teléfono en la ficha del ganadero (opción B, primer campo) — hecho, PR a main sin fusionar (2026-11-10, rama `feat/ganadero-telefono`)
+
+Plan: `docs/superpowers/plans/2026-11-10-ganadero-telefono.md` (D1–D10, A1–A10). Backend + frontend en el mismo commit.
+
+- **Base.** La rama arranca sobre `main` = `27ff412` (merge del mock v2 del frontend de Álvaro, PRs #13–#22, solo
+  `frontend/`; `main` local = `origin/main`). Al retomar la sesión, el implementador anterior había dejado a medias
+  solo el campo `telefono` + `V27` (36 fallos esperados: `CredencialOvzCifradaTipoTest` por A2 + tests de recuento de
+  PostgreSQL embebido por la columna). No se descartó nada; T1 se relanzó entero.
+- **T1 (backend), Superpowers, Approved.** `Ganadero.telefono` (`VARCHAR(30)`, `V27`, sin UNIQUE/índice, E.164 por
+  `TelefonoNormalizador`), `POST /ganaderos` con `telefono?` (400 tras el NIF, el 201 no lo trae, `GANADERO_CREADO`
+  sin cambios), `PUT /ganaderos/{id}/telefono` (`GanaderoEdicionService`, `findByIdAndGestoriaId`, borrado explícito
+  A6 leyendo `JsonNode`, `GANADERO_MODIFICADO` con `campos_cambiados`/`origen` y cero `LECTURA_GANADERO`,
+  `ACCESO_OTRA_GESTORIA`/`EDITAR_GANADERO` fuera de la transacción). `CampoGanadero`, `OperacionAuditada.EDITAR_GANADERO`,
+  `SETTERS_STRING` + `setTelefono` con test de centinela, inventario cerrado. El teléfono nunca a auditoría/logs/listados.
+- **T2 (frontend), Superpowers, Approved.** Añadir SIN rediseñar el mock v2 de Álvaro: `types`/`api`
+  (`crearGanadero(nombre,nif,telefono?)`, `cambiarTelefonoGanadero(id, tel|null)`), campo «Teléfono (opcional)» en
+  `AltaGanaderoDialog` (ayuda D7 literal), edición en línea en `GanaderoDetallePage` con estado local (tras el 200
+  repinta sin repedir el detalle → no hay `LECTURA_GANADERO` extra), «Quitar teléfono» → `null` explícito, una
+  petición a la vez, 400 conserva+motivo, 404 → «Ganadero no encontrado», foco al botón. Tests MSW POST y PUT + caso
+  sin teléfono + test de que el listado no lo muestra.
+- **Mutaciones A3 (sesión principal, cp/cmp, -Dtest dirigido):** `findByIdAndGestoriaId`→`findById` → rojo
+  (`ajenoConCuerpoValidoDa404…`, `expected null but was "+34612345678"`); quitar el `registrar` → rojo (GuardiaDml, 5
+  fallos); teléfono en `despues` → no compila (`con(Clave, String)` no existe). Más el rojo del test de tipo
+  (`SETTERS_STRING` sin `setTelefono`). Todas restauradas byte a byte.
+- **Smoke local (H2 en fichero, dos gestorías por la API real):** 21/21 HTTP PASS; auditoría por SQL = 5
+  `GANADERO_MODIFICADO`, 2 `LECTURA_GANADERO` (los PUT no añaden ninguna), 1 `ACCESO_OTRA_GESTORIA`
+  (`{"operacion":"EDITAR_GANADERO"}`, gestoría del actor), 0 filas con el teléfono en `antes`/`despues`; el número
+  ausente del log y de `GET /ganaderos`/`GET /buscar`. Capturas (Playwright fuera del repo) a 1440 y 375 px en
+  `C:\Users\Antonio\Desktop\capturas-ganera-telefono\` (10 PNG): ficha con/sin teléfono, edición en línea, alta con
+  error. Sin Impeccable (D6).
+- **Verde:** `./mvnw clean test` **1357** (1356 + 1 skip, JDK 21); `npm test` **1143 en 59**, build limpio, lint 3
+  avisos conocidos.
+- **Pendiente tras el merge:** smoke en producción (ganadero 11 de la gestoría de pruebas, `+34600000000`, A5/A8).
+- **Pendiente de diseño (opción B / contactos):** el teléfono del titular puede quedar duplicado entre la ficha y el
+  contacto cuando llegue `contacto_titular_id`; decidir antes de los empleados si se sincroniza o la ficha lee del
+  contacto (anotado también en `CLAUDE.md`).

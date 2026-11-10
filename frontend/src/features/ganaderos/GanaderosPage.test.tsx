@@ -100,6 +100,19 @@ describe("GanaderosPage: listado", () => {
     expect(screen.getByText("1 ganadero")).toBeInTheDocument()
   })
 
+  it("el listado no muestra teléfono (el resumen no lo trae)", async () => {
+    // Aunque la respuesta trajera un teléfono de más, la fila no lo pinta ni como enlace tel:.
+    registrarPeticiones(() =>
+      pagina([{ ...GANADEROS[0], telefono: "+34612345678" }]),
+    )
+    montar()
+
+    const filaAna = (await screen.findByRole("link", { name: "Ana Ruiz" })).closest("tr")!
+    expect(within(filaAna).queryByText(/612 345 678/)).not.toBeInTheDocument()
+    expect(within(filaAna).queryByRole("link", { name: /tel:/ })).not.toBeInTheDocument()
+    expect(filaAna.querySelector('a[href^="tel:"]')).toBeNull()
+  })
+
   it("pide 20 por página sin sort: aplica el orden por defecto del backend", async () => {
     const urls = registrarPeticiones()
     montar()

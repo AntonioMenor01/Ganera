@@ -31,7 +31,26 @@ export async function obtenerGanadero(id: number, signal?: AbortSignal): Promise
  * 400/409 con `{ motivo }`; httpClient lo convierte en ErrorApi. Devuelve la fila creada (con
  * numeroExplotaciones 0).
  */
-export async function crearGanadero(nombre: string, nif: string): Promise<GanaderoResumen> {
-  const { data } = await httpClient.post<GanaderoResumen>("/ganaderos", { nombre, nif });
+export async function crearGanadero(
+  nombre: string,
+  nif: string,
+  telefono?: string,
+): Promise<GanaderoResumen> {
+  // El teléfono es opcional: solo se manda la clave si se escribió algo (el backend lo normaliza).
+  const cuerpo = telefono ? { nombre, nif, telefono } : { nombre, nif };
+  const { data } = await httpClient.post<GanaderoResumen>("/ganaderos", cuerpo);
+  return data;
+}
+
+/**
+ * Cambia (o quita) el teléfono de un ganadero (PUT /ganaderos/{id}/telefono). `null` lo borra. El
+ * backend valida/normaliza y responde 400 `{motivo}` si no es válido, o 404 si no es de tu gestoría.
+ * Devuelve el detalle actualizado, con el que se repinta la ficha sin volver a pedirlo.
+ */
+export async function cambiarTelefonoGanadero(
+  id: number,
+  telefono: string | null,
+): Promise<GanaderoDetalle> {
+  const { data } = await httpClient.put<GanaderoDetalle>(`/ganaderos/${id}/telefono`, { telefono });
   return data;
 }
