@@ -30,6 +30,10 @@ spring:
         size: 3
 
 ganera:
+  demo:
+    # Semilla de datos inventados al arrancar. false por defecto (fail-closed). Solo el perfil
+    # `demo` (application-demo.yml) la pone a true. Nunca definir GANERA_DEMO_* en Clever.
+    sembrar: false
   jwt:
     secret: ${JWT_SECRET:}
     expiration-minutes: 480
