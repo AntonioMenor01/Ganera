@@ -11,7 +11,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { avisosExtraccion, esDescartado, etiquetaTipoTramite, TIPOS_TRAMITE, type TipoTramite } from "./etiquetas";
+import {
+  avisosExtraccion,
+  esDescartado,
+  etiquetaTipoTramite,
+  iconoTipoTramite,
+  TIPOS_TRAMITE,
+  type TipoTramite,
+} from "./etiquetas";
 import {
   PISTA_DESCARTAR_SIN_GUARDAR,
   PISTA_DESHACER,
@@ -26,6 +33,7 @@ import { BadgeEstadoTramite } from "./BadgesTramite";
 import { AvisosRevision } from "./AvisosRevision";
 import { CampoExplotacion, TextoExplotacion } from "./CampoExplotacion";
 import { BadgeSinGuardar, CrotalesSoloLectura, ListaCrotalesEditable } from "./ListaCrotales";
+import { IconoTramite } from "./IconoTramite";
 import { abrirFichaOvz } from "./abrirFichaOvz";
 import {
   PISTA_MARCAR_HECHO_EN_OVZ,
@@ -303,15 +311,41 @@ export function TramiteReviewDialog({
         // mover lo que se está editando), cuerpo con scroll y cabecera y pie fijos.
         className="top-0 left-0 flex h-dvh w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 sm:max-w-none md:top-[8dvh] md:left-1/2 md:h-auto md:max-h-[84dvh] md:max-w-4xl md:-translate-x-1/2"
       >
-        <header className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-b-2 border-divisor py-3 pr-12 pl-4">
-          <DialogTitle
-            ref={tituloRef}
-            tabIndex={-1}
-            className="rounded-sm text-base font-bold tabular-nums outline-none"
-          >
-            Trámite #{idVisible}
-          </DialogTitle>
-          {detalle && <BadgeEstadoTramite estado={detalle.estado} motivoRechazo={detalle.motivoRechazo} />}
+        <header className="flex min-w-0 items-start gap-3 border-b-2 border-divisor py-3.5 pr-12 pl-4">
+          {detalle && <CabeceraIconoTipo tipo={detalle.tipoTramite} />}
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+              <DialogTitle
+                ref={tituloRef}
+                tabIndex={-1}
+                className="min-w-0 rounded-sm text-base font-bold outline-none md:text-lg"
+              >
+                {/* Nombre accesible estable («Trámite #N»); el tipo solo se pinta a la vista. */}
+                {detalle?.tipoTramite ? (
+                  <>
+                    <span className="sr-only">Trámite #{idVisible}</span>
+                    <span aria-hidden="true" className="block truncate">
+                      {etiquetaTipoTramite(detalle.tipoTramite)}{" "}
+                      <span className="font-medium text-muted-foreground tabular-nums">
+                        #{idVisible}
+                      </span>
+                    </span>
+                  </>
+                ) : (
+                  <span className="tabular-nums">Trámite #{idVisible}</span>
+                )}
+              </DialogTitle>
+              {detalle && (
+                <BadgeEstadoTramite estado={detalle.estado} motivoRechazo={detalle.motivoRechazo} />
+              )}
+            </div>
+            {detalle?.ganaderoNombre && (
+              <p className="truncate text-[13px] text-muted-foreground">
+                {detalle.ganaderoNombre}
+                {detalle.ganaderoNif ? ` · NIF ${detalle.ganaderoNif}` : ""}
+              </p>
+            )}
+          </div>
         </header>
 
         <div
@@ -537,27 +571,54 @@ function Cuerpo({
                 className="md:sticky md:top-0 md:self-start"
               />
             )}
-  
+
             {/* Derecha: lo que Ganera entendió. */}
-            <section aria-label="Datos del trámite" className="flex min-w-0 flex-col gap-5">
-              {detalle.motivoError && (
-                <Alert variant="destructive">
-                  <CircleAlertIcon />
-                  <AlertTitle>Motivo del error</AlertTitle>
-                  <AlertDescription>{detalle.motivoError}</AlertDescription>
-                </Alert>
-              )}
-              {revision.editable ? (
-                <DatosEditables revision={revision} ids={ids} />
-              ) : (
-                <DatosSoloLectura revision={revision} />
-              )}
-              <HistorialDescarte detalle={detalle} idTitulo={ids.historial} />
+            <section
+              aria-label="Datos del trámite"
+              className="flex min-w-0 flex-col gap-5 border border-border bg-card"
+            >
+              <div className="flex h-14 min-w-0 items-center gap-2.5 border-b-2 border-divisor px-5">
+                <span className="shrink-0 text-lg font-bold">Datos del trámite</span>
+                {revision.editable && (
+                  <span className="truncate text-xs text-muted-foreground">
+                    Extraídos por IA · corrige lo que haga falta
+                  </span>
+                )}
+              </div>
+              <div className="flex min-w-0 flex-col gap-5 px-5 pb-5">
+                {detalle.motivoError && (
+                  <Alert variant="destructive">
+                    <CircleAlertIcon />
+                    <AlertTitle>Motivo del error</AlertTitle>
+                    <AlertDescription>{detalle.motivoError}</AlertDescription>
+                  </Alert>
+                )}
+                {revision.editable ? (
+                  <DatosEditables revision={revision} ids={ids} />
+                ) : (
+                  <DatosSoloLectura revision={revision} />
+                )}
+                <HistorialDescarte detalle={detalle} idTitulo={ids.historial} />
+              </div>
             </section>
           </div>
         </>
       );
   }
+}
+
+/** Icono del tipo en la cabecera (mock v2). Sin tipo conocido, no se pinta. */
+function CabeceraIconoTipo({ tipo }: { tipo: string | null }) {
+  const icono = iconoTipoTramite(tipo);
+  if (!icono) return null;
+  return (
+    <span
+      aria-hidden="true"
+      className="grid size-12 shrink-0 place-items-center bg-muted text-muted-foreground"
+    >
+      <IconoTramite nombre={icono} className="size-6" />
+    </span>
+  );
 }
 
 /** Lo que escribió el ganadero (columna izquierda, arriba en móvil). */
@@ -571,20 +632,29 @@ function MensajeOriginal({
   className?: string;
 }) {
   return (
-    <section aria-labelledby={idTitulo} className={cn("flex min-w-0 flex-col gap-2", className)}>
-      <h3
-        id={idTitulo}
-        className="text-[11px] font-medium tracking-[0.08em] text-muted-foreground uppercase"
-      >
-        Mensaje de WhatsApp
-      </h3>
-      {detalle.mensajeOriginal ? (
-        <blockquote className="border border-border bg-background px-3 py-2.5 whitespace-pre-wrap wrap-anywhere">
-          {detalle.mensajeOriginal}
-        </blockquote>
-      ) : (
-        <p className="text-muted-foreground">Aún no hay mensaje: este trámite no llegó por WhatsApp.</p>
-      )}
+    <section
+      aria-labelledby={idTitulo}
+      className={cn("flex min-w-0 flex-col border border-border bg-card", className)}
+    >
+      <div className="flex h-14 items-center border-b-2 border-divisor px-5">
+        <h3
+          id={idTitulo}
+          className="text-[11px] font-medium tracking-[0.08em] text-muted-foreground uppercase"
+        >
+          Mensaje de WhatsApp
+        </h3>
+      </div>
+      <div className="flex min-w-0 flex-col gap-2 p-5">
+        {detalle.mensajeOriginal ? (
+          <blockquote className="border border-border bg-background px-3 py-2.5 whitespace-pre-wrap wrap-anywhere">
+            {detalle.mensajeOriginal}
+          </blockquote>
+        ) : (
+          <p className="text-muted-foreground">
+            Aún no hay mensaje: este trámite no llegó por WhatsApp.
+          </p>
+        )}
+      </div>
     </section>
   );
 }

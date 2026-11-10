@@ -303,7 +303,9 @@ describe("TramitesPage: tabla con 1 crotal de 1280 a 1439 px; desde 1440, 2", ()
     expect(screen.getByRole("list", { name: "Trámites" })).toBeInTheDocument()
     expect(screen.queryByRole("table")).not.toBeInTheDocument()
     expect(screen.getByText("Página 2 de 3")).toBeInTheDocument()
-    expect(screen.getByRole("combobox", { name: "Filtrar por estado" })).toHaveTextContent("Pendiente de revisión")
+    expect(
+      screen.getByRole("tab", { name: "Pendiente de revisión", selected: true }),
+    ).toBeInTheDocument()
 
     pantalla.cambiar(1280)
     expect(screen.getByRole("table")).toBeInTheDocument()
