@@ -43,6 +43,16 @@ function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
     motivoRechazo: null,
     descartable: false,
     historialDescarte: [],
+    fechaHecho: null,
+    fechaNacimiento: null,
+    sexo: null,
+    crotalMadreIndicado: null,
+    numeroMer: null,
+    destinoRega: null,
+    destinoTexto: null,
+    consignatario: null,
+    aptitudMovimiento: null,
+    fechaIdentificacion: null,
     ...parcial,
   };
 }

@@ -18,6 +18,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.Instant;
+import java.time.LocalDate;
 
 @Getter
 @Setter
@@ -101,4 +102,36 @@ public class Tramite extends GestoriaScopedEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "motivo_rechazo", length = 30)
     private MotivoRechazo motivoRechazo;
+
+    /** Fecha del hecho (muerte, nacimiento, salida…) en calendario Europe/Madrid. Null si aún no se sabe. */
+    @Column(name = "fecha_hecho")
+    private LocalDate fechaHecho;
+
+    @Column(name = "fecha_nacimiento")
+    private LocalDate fechaNacimiento;
+
+    @Column(name = "sexo", length = 40)
+    private String sexo;
+
+    /** Crotal de la madre tal como se indicó (normalizado); null si no aplica o no se sabe. */
+    @Column(name = "crotal_madre_indicado", length = 30)
+    private String crotalMadreIndicado;
+
+    @Column(name = "numero_mer", length = 60)
+    private String numeroMer;
+
+    @Column(name = "destino_rega", length = 20)
+    private String destinoRega;
+
+    @Column(name = "destino_texto", length = 255)
+    private String destinoTexto;
+
+    @Column(name = "consignatario", length = 255)
+    private String consignatario;
+
+    @Column(name = "aptitud_movimiento", length = 80)
+    private String aptitudMovimiento;
+
+    @Column(name = "fecha_identificacion")
+    private LocalDate fechaIdentificacion;
 }

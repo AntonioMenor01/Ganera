@@ -22,7 +22,7 @@ import java.util.stream.IntStream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Primera vez de Flyway contra PostgreSQL real (Prompt C, T1): V1-V26 (V18 es Java) en una base de
+ * Primera vez de Flyway contra PostgreSQL real (Prompt C, T1): V1-V27 (V18 es Java) en una base de
  * datos limpia de PostgreSQL 17, y despues Hibernate arrancado encima con ddl-auto=validate.
  */
 class FlywayPostgresTest {
@@ -60,7 +60,7 @@ class FlywayPostgresTest {
             JdbcTemplate jdbc = contexto.getBean(JdbcTemplate.class);
             List<String> versiones = jdbc.queryForList(
                     "select version from flyway_schema_history where success order by installed_rank", String.class);
-            assertThat(versiones).hasSize(26).last().isEqualTo("26");
+            assertThat(versiones).hasSize(27).last().isEqualTo("27");
         }
     }
 

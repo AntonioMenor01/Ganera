@@ -171,8 +171,7 @@ public class TramiteController {
                 () -> accesoAjeno.patchTramite(principal.usuarioId(), principal.gestoriaId(), id,
                         request.explotacionId()),
                 () -> ResponseEntity.ok(tramiteRevisionService.actualizar(
-                        principal.gestoriaId(), principal.usuarioId(), id, request.version(), request.explotacionId(),
-                        tipoFinal, request.crotales())));
+                        principal.gestoriaId(), principal.usuarioId(), id, tipoFinal, request)));
     }
 
     /**

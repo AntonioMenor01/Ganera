@@ -249,6 +249,7 @@ public class ExtraccionTramiteService {
 
         tramite.setTipoTramite(validada.tipo());
         tramite.setCrotalesDescartados(validada.descartados());
+        aplicarDatosHecho(tramite, validada.datosHecho());
         tramite.setEstado(EstadoTramite.PENDIENTE_REVISION);
         // SIN_TRAMITE (ya pasado por la red de seguridad D2) sigue en PENDIENTE_REVISION: nunca se
         // rechaza ni se descarta solo.
@@ -269,6 +270,46 @@ public class ExtraccionTramiteService {
                         + "descartados={}, mismoAnimal={}",
                 tramite.getId(), pendiente.gestoriaId(), resultado, tramite.getIntentosExtraccion(),
                 filas.size() - quitados, validada.descartados(), quitados);
+    }
+
+    private void aplicarDatosHecho(Tramite tramite, TramiteExtractionService.DatosHecho datos) {
+        if (datos == null) {
+            return;
+        }
+        if (datos.fechaHecho() != null) {
+            tramite.setFechaHecho(datos.fechaHecho());
+        }
+        if (datos.fechaNacimiento() != null) {
+            tramite.setFechaNacimiento(datos.fechaNacimiento());
+        }
+        if (datos.fechaIdentificacion() != null) {
+            tramite.setFechaIdentificacion(datos.fechaIdentificacion());
+        }
+        if (datos.sexo() != null && !datos.sexo().isBlank()) {
+            tramite.setSexo(datos.sexo().trim());
+        }
+        if (datos.numeroMer() != null && !datos.numeroMer().isBlank()) {
+            tramite.setNumeroMer(datos.numeroMer().trim());
+        }
+        if (datos.destinoRega() != null && !datos.destinoRega().isBlank()) {
+            tramite.setDestinoRega(datos.destinoRega().trim());
+        }
+        if (datos.destinoTexto() != null && !datos.destinoTexto().isBlank()) {
+            tramite.setDestinoTexto(datos.destinoTexto().trim());
+        }
+        if (datos.consignatario() != null && !datos.consignatario().isBlank()) {
+            tramite.setConsignatario(datos.consignatario().trim());
+        }
+        if (datos.aptitudMovimiento() != null && !datos.aptitudMovimiento().isBlank()) {
+            tramite.setAptitudMovimiento(datos.aptitudMovimiento().trim());
+        }
+        if (datos.crotalMadre() != null && !datos.crotalMadre().isBlank()) {
+            try {
+                tramite.setCrotalMadreIndicado(CrotalNormalizador.normalizar(datos.crotalMadre()).valor());
+            } catch (CrotalInvalidoException ignored) {
+                // Se deja null: el gestor lo corrige en el modal.
+            }
+        }
     }
 
     /**

@@ -132,19 +132,31 @@ public class TramiteRevisionService {
                                              Long explotacionId, TipoTramite tipoTramite, List<String> crotales) {
         // Overload sin usuario: solo lo usa la invocacion directa del servicio en tests (no un endpoint real).
         // No deja fila de auditoria (no hay actor); el endpoint siempre pasa el usuario del JWT.
-        return actualizarInterno(gestoriaId, null, tramiteId, versionVista, explotacionId, tipoTramite, crotales);
+        return actualizarInterno(gestoriaId, null, tramiteId, versionVista, explotacionId, tipoTramite, crotales,
+                new TramitePatchRequest(versionVista, explotacionId,
+                        tipoTramite != null ? tipoTramite.name() : null, crotales));
     }
 
     /** PATCH /tramites/{id} del endpoint: igual que el otro, pero deja fila TRAMITE_EDITADO (actor = JWT). */
     @Transactional
     public TramiteDetalleResponse actualizar(Long gestoriaId, Long usuarioId, Long tramiteId, Long versionVista,
                                              Long explotacionId, TipoTramite tipoTramite, List<String> crotales) {
-        return actualizarInterno(gestoriaId, usuarioId, tramiteId, versionVista, explotacionId, tipoTramite, crotales);
+        return actualizarInterno(gestoriaId, usuarioId, tramiteId, versionVista, explotacionId, tipoTramite, crotales,
+                new TramitePatchRequest(versionVista, explotacionId,
+                        tipoTramite != null ? tipoTramite.name() : null, crotales));
+    }
+
+    /** PATCH con campos OVZ (fecha del hecho, alta, destino, MER…). */
+    @Transactional
+    public TramiteDetalleResponse actualizar(Long gestoriaId, Long usuarioId, Long tramiteId,
+                                             TipoTramite tipoTramite, TramitePatchRequest request) {
+        return actualizarInterno(gestoriaId, usuarioId, tramiteId, request.version(), request.explotacionId(),
+                tipoTramite, request.crotales(), request);
     }
 
     private TramiteDetalleResponse actualizarInterno(Long gestoriaId, Long usuarioId, Long tramiteId,
                                                      Long versionVista, Long explotacionId, TipoTramite tipoTramite,
-                                                     List<String> crotales) {
+                                                     List<String> crotales, TramitePatchRequest request) {
         Tramite tramite = cargarConBloqueo(gestoriaId, tramiteId);
         if (tramite.getEstado() == EstadoTramite.HECHO_EN_OVZ) {
             // Motivo propio: el gestor debe saber que hay que quitar la marca primero.
@@ -170,6 +182,7 @@ public class TramiteRevisionService {
         if (tipoTramite != null) {
             tramite.setTipoTramite(tipoTramite);
         }
+        aplicarCamposOvz(tramite, request);
         if (crotales != null) {
             tramiteCrotalService.reemplazarCrotales(tramite, crotales, gestoriaId);
         } else if (explotacionCambiada) {
@@ -472,6 +485,59 @@ public class TramiteRevisionService {
         // Truncado a microsegundos (precision de TIMESTAMP): la respuesta dice lo mismo que se guarda.
         evento.setCreatedAt(Instant.now(clock).truncatedTo(ChronoUnit.MICROS));
         tramiteEventoRepository.save(evento);
+    }
+
+    /** Aplica los campos OVZ del PATCH (null = no tocar; blanco en texto = limpiar). */
+    private void aplicarCamposOvz(Tramite tramite, TramitePatchRequest request) {
+        if (request == null) {
+            return;
+        }
+        if (request.fechaHecho() != null) {
+            tramite.setFechaHecho(request.fechaHecho());
+        }
+        if (request.fechaNacimiento() != null) {
+            tramite.setFechaNacimiento(request.fechaNacimiento());
+        }
+        if (request.fechaIdentificacion() != null) {
+            tramite.setFechaIdentificacion(request.fechaIdentificacion());
+        }
+        if (request.sexo() != null) {
+            tramite.setSexo(textoONull(request.sexo(), 40));
+        }
+        if (request.numeroMer() != null) {
+            tramite.setNumeroMer(textoONull(request.numeroMer(), 60));
+        }
+        if (request.destinoRega() != null) {
+            tramite.setDestinoRega(textoONull(request.destinoRega(), 20));
+        }
+        if (request.destinoTexto() != null) {
+            tramite.setDestinoTexto(textoONull(request.destinoTexto(), 255));
+        }
+        if (request.consignatario() != null) {
+            tramite.setConsignatario(textoONull(request.consignatario(), 255));
+        }
+        if (request.aptitudMovimiento() != null) {
+            tramite.setAptitudMovimiento(textoONull(request.aptitudMovimiento(), 80));
+        }
+        if (request.crotalMadreIndicado() != null) {
+            String crudo = request.crotalMadreIndicado().trim();
+            if (crudo.isEmpty()) {
+                tramite.setCrotalMadreIndicado(null);
+            } else {
+                tramite.setCrotalMadreIndicado(CrotalNormalizador.normalizar(crudo).valor());
+            }
+        }
+    }
+
+    private static String textoONull(String valor, int max) {
+        String t = valor.trim();
+        if (t.isEmpty()) {
+            return null;
+        }
+        if (t.length() > max) {
+            throw new CrotalInvalidoException("Un campo supera la longitud máxima (" + max + ").");
+        }
+        return t;
     }
 
     /** El detalle completo (PATCH, descartar, deshacer): mensaje original, crotales, WhatsApp e historial,

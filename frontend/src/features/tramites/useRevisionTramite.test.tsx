@@ -59,6 +59,16 @@ function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
     motivoRechazo: null,
     descartable: false,
     historialDescarte: [],
+    fechaHecho: null,
+    fechaNacimiento: null,
+    sexo: null,
+    crotalMadreIndicado: null,
+    numeroMer: null,
+    destinoRega: null,
+    destinoTexto: null,
+    consignatario: null,
+    aptitudMovimiento: null,
+    fechaIdentificacion: null,
     ...parcial,
   }
 }
@@ -136,7 +146,7 @@ describe("useRevisionTramite: carga del detalle", () => {
     expect(result.current.carga.estado).toBe("cargando")
     await waitFor(() => expect(result.current.carga.estado).toBe("listo"))
     expect(result.current.detalle?.id).toBe(7)
-    expect(result.current.formulario).toEqual({
+    expect(result.current.formulario).toMatchObject({
       explotacionId: 3,
       tipoTramite: "ALTA_NACIMIENTO",
       crotales: ["1234", "ES010000005678"],
@@ -290,7 +300,7 @@ describe("useRevisionTramite: editable por estado", () => {
       result.current.quitarCrotal(0)
       result.current.cambiarExplotacion(9)
     })
-    expect(result.current.formulario).toEqual({ explotacionId: 3, tipoTramite: "ALTA_NACIMIENTO", crotales: ["1234"] })
+    expect(result.current.formulario).toMatchObject({ explotacionId: 3, tipoTramite: "ALTA_NACIMIENTO", crotales: ["1234"] })
     expect(result.current.sucio).toBe(false)
   })
 
@@ -414,7 +424,7 @@ describe("useRevisionTramite: formulario", () => {
     })
     expect(result.current.sucio).toBe(true)
     act(() => result.current.descartarCambios())
-    expect(result.current.formulario).toEqual({ explotacionId: 3, tipoTramite: "ALTA_NACIMIENTO", crotales: ["1234"] })
+    expect(result.current.formulario).toMatchObject({ explotacionId: 3, tipoTramite: "ALTA_NACIMIENTO", crotales: ["1234"] })
     expect(result.current.sucio).toBe(false)
   })
 })
@@ -600,7 +610,7 @@ describe("useRevisionTramite: 200", () => {
     })
     expect(cuerpo).toEqual({ version: 4, tipoTramite: "BAJA_MUERTE", crotales: ["1234", "5678"] })
     expect(result.current.detalle).toEqual(respuesta)
-    expect(result.current.formulario).toEqual({ explotacionId: 3, tipoTramite: "BAJA_MUERTE", crotales: ["1234", "5678"] })
+    expect(result.current.formulario).toMatchObject({ explotacionId: 3, tipoTramite: "BAJA_MUERTE", crotales: ["1234", "5678"] })
     expect(result.current.sucio).toBe(false)
     expect(result.current.puedeAprobar).toBe(true)
     expect(onCambiado).toHaveBeenCalledTimes(1)
@@ -742,7 +752,7 @@ describe("useRevisionTramite: 200", () => {
       mensajeOriginal: "alta del 1234",
     })
     expect(result.current.detalle?.crotales[0]).toMatchObject({ crotal: "ES010000001234", resolucion: "EN_INVENTARIO" })
-    expect(result.current.formulario).toEqual({ explotacionId: 3, tipoTramite: "BAJA_MUERTE", crotales: ["1234"] })
+    expect(result.current.formulario).toMatchObject({ explotacionId: 3, tipoTramite: "BAJA_MUERTE", crotales: ["1234"] })
     expect(result.current.editable).toBe(false)
     expect(result.current.puedeAprobar).toBe(false)
     expect(result.current.enviando).toBeNull()
@@ -875,7 +885,7 @@ describe("useRevisionTramite: 409", () => {
       accion: "guardar",
       mensaje: "Otra persona ha modificado este trámite. Recarga y vuelve a intentarlo.",
     })
-    expect(result.current.formulario).toEqual({ explotacionId: 3, tipoTramite: "DECLARACION_CENSO", crotales: ["7777"] })
+    expect(result.current.formulario).toMatchObject({ explotacionId: 3, tipoTramite: "DECLARACION_CENSO", crotales: ["7777"] })
     expect(result.current.detalle?.version).toBe(6)
     expect(result.current.sucio).toBe(false)
     expect(onCambiado).toHaveBeenCalledTimes(1)

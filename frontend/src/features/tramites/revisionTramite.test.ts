@@ -45,6 +45,16 @@ function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
     motivoRechazo: null,
     descartable: false,
     historialDescarte: [],
+    fechaHecho: null,
+    fechaNacimiento: null,
+    sexo: null,
+    crotalMadreIndicado: null,
+    numeroMer: null,
+    destinoRega: null,
+    destinoTexto: null,
+    consignatario: null,
+    aptitudMovimiento: null,
+    fechaIdentificacion: null,
     ...parcial,
   }
 }
@@ -76,12 +86,22 @@ describe("formularioDesdeDetalle", () => {
       explotacionId: 3,
       tipoTramite: "ALTA_NACIMIENTO",
       crotales: ["1234"],
+      fechaHecho: null,
+      fechaNacimiento: null,
+      fechaIdentificacion: null,
+      sexo: null,
+      crotalMadreIndicado: null,
+      numeroMer: null,
+      destinoRega: null,
+      destinoTexto: null,
+      consignatario: null,
+      aptitudMovimiento: null,
     })
   })
 
   it("con explotación y tipo null, el formulario los tiene null", () => {
     const f = formularioDesdeDetalle(detalle({ explotacionId: null, tipoTramite: null, crotales: [] }))
-    expect(f).toEqual({ explotacionId: null, tipoTramite: null, crotales: [] })
+    expect(f).toMatchObject({ explotacionId: null, tipoTramite: null, crotales: [] })
   })
 })
 
@@ -176,7 +196,14 @@ describe("construirPatch", () => {
 
   it("varios cambios a la vez van juntos, con la versión del detalle", () => {
     const d = detalle({ version: 0, explotacionId: null, tipoTramite: null, crotales: [] })
-    expect(construirPatch(d, { explotacionId: 5, tipoTramite: "ALTA_NACIMIENTO", crotales: ["1234"] })).toEqual({
+    expect(
+      construirPatch(d, {
+        ...formularioDesdeDetalle(d),
+        explotacionId: 5,
+        tipoTramite: "ALTA_NACIMIENTO",
+        crotales: ["1234"],
+      }),
+    ).toEqual({
       version: 0,
       explotacionId: 5,
       tipoTramite: "ALTA_NACIMIENTO",
@@ -186,8 +213,24 @@ describe("construirPatch", () => {
 
   it("nunca envía null para explotación o tipo (PATCH no puede vaciarlos, H5)", () => {
     const d = detalle()
-    const patch = construirPatch(d, { explotacionId: null, tipoTramite: null, crotales: ["1234", "ES010000005678"] })
+    const patch = construirPatch(d, {
+      ...formularioDesdeDetalle(d),
+      explotacionId: null,
+      tipoTramite: null,
+      crotales: ["1234", "ES010000005678"],
+    })
     expect(patch).toBeNull()
+  })
+
+  it("fecha del hecho y textos OVZ van en el PATCH solo si cambian", () => {
+    const d = detalle({ fechaHecho: "2026-11-01", sexo: "Hembra" })
+    const base = formularioDesdeDetalle(d)
+    expect(construirPatch(d, { ...base, fechaHecho: "2026-11-02" })).toEqual({
+      version: 4,
+      fechaHecho: "2026-11-02",
+    })
+    expect(construirPatch(d, { ...base, sexo: "" })).toEqual({ version: 4, sexo: "" })
+    expect(construirPatch(d, { ...base, fechaHecho: null })).toBeNull()
   })
 })
 

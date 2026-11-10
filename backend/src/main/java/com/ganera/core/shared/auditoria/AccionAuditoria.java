@@ -73,5 +73,8 @@ public enum AccionAuditoria {
     ACCESO_OTRA_GESTORIA,
 
     // Descifrado bajo demanda de la contrasena OVZ (M2), en la via de envio a OVZ. Nunca guarda la contrasena.
-    CREDENCIAL_OVZ_DESCIFRADA
+    CREDENCIAL_OVZ_DESCIFRADA,
+
+    // Preferencias OVZ de la gestoria (plan 2026-11-10)
+    PREFERENCIA_OVZ_GUARDADA
 }

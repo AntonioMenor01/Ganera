@@ -29,6 +29,13 @@ import {
   reactivarContacto,
   type Contacto,
 } from "@/features/contactos/api";
+import {
+  guardarPreferenciasOvz,
+  obtenerListasOvz,
+  obtenerPreferenciasOvz,
+  type ListaOvz,
+  type PreferenciaOvz,
+} from "@/features/configuracion/preferenciasOvzApi";
 
 const TAMANIO = 50;
 
@@ -189,22 +196,25 @@ export function ConfiguracionPage() {
 
         <div className="min-w-0">
           {seccion === "gestoria" && (
-            <Panel titulo="Datos de la gestoría">
-              <p className="mb-4 text-sm text-muted-foreground">
-                La ficha de la gestoría aún no se edita desde la app. El inventario se carga en{" "}
-                <Link to="/explotaciones" className={CLASE_ENLACE}>
-                  Explotaciones
-                </Link>
-                .
-              </p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <CampoSoloLectura etiqueta="Nombre o razón social" valor="—" />
-                <CampoSoloLectura etiqueta="CIF" valor="—" />
-                <div className="sm:col-span-2">
-                  <CampoSoloLectura etiqueta="Dirección" valor="—" />
+            <>
+              <Panel titulo="Datos de la gestoría">
+                <p className="mb-4 text-sm text-muted-foreground">
+                  La ficha de la gestoría aún no se edita desde la app. El inventario se carga en{" "}
+                  <Link to="/explotaciones" className={CLASE_ENLACE}>
+                    Explotaciones
+                  </Link>
+                  .
+                </p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <CampoSoloLectura etiqueta="Nombre o razón social" valor="—" />
+                  <CampoSoloLectura etiqueta="CIF" valor="—" />
+                  <div className="sm:col-span-2">
+                    <CampoSoloLectura etiqueta="Dirección" valor="—" />
+                  </div>
                 </div>
-              </div>
-            </Panel>
+              </Panel>
+              <PreferenciasOvzPanel />
+            </>
           )}
 
           {seccion === "equipo" && (
@@ -566,5 +576,223 @@ function FilaContacto({
         </div>
       )}
     </li>
+  );
+}
+
+const PREF_VACIA: PreferenciaOvz = {
+  oficinaDi: null,
+  oficinaMer: null,
+  emisionDi: null,
+  tipoIdentificador: null,
+  telefonoMovimiento: null,
+  medioTransporte: null,
+  matricula: null,
+  transportistaSirentra: null,
+  tipoResponsable: null,
+};
+
+function PreferenciasOvzPanel() {
+  const [prefs, setPrefs] = useState<PreferenciaOvz>(PREF_VACIA);
+  const [listas, setListas] = useState<ListaOvz[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<ErrorApi | null>(null);
+  const [ok, setOk] = useState(false);
+
+  useEffect(() => {
+    let cancelado = false;
+    setCargando(true);
+    Promise.all([obtenerPreferenciasOvz(), obtenerListasOvz()])
+      .then(([p, l]) => {
+        if (cancelado) return;
+        setPrefs(p);
+        setListas(l);
+        setCargando(false);
+      })
+      .catch((err) => {
+        if (cancelado) return;
+        setError(aErrorApi(err));
+        setCargando(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
+  function setCampo<K extends keyof PreferenciaOvz>(clave: K, valor: string) {
+    setPrefs((actual) => ({ ...actual, [clave]: valor === "" ? null : valor }));
+    setOk(false);
+  }
+
+  async function onGuardar(evento: FormEvent) {
+    evento.preventDefault();
+    setGuardando(true);
+    setError(null);
+    setOk(false);
+    try {
+      const guardada = await guardarPreferenciasOvz(prefs);
+      setPrefs(guardada);
+      setOk(true);
+    } catch (err) {
+      setError(aErrorApi(err));
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  const opciones = (id: string) => listas.find((l) => l.id === id)?.valores ?? [];
+
+  return (
+    <Panel titulo="Preferencias para OVZ">
+      <p className="mb-4 text-sm text-muted-foreground">
+        Valores fijos que la ficha OVZ rellena por ti (oficina, transporte, teléfono de la guía). Las
+        listas de sexo/raza se completarán tras la sesión de mapeo con OVZ.
+      </p>
+      {cargando ? (
+        <p className="text-sm text-muted-foreground">Cargando…</p>
+      ) : (
+        <form className="grid gap-4 sm:grid-cols-2" onSubmit={(e) => void onGuardar(e)}>
+          <CampoTexto
+            id="oficina-di"
+            etiqueta="Oficina DI (alta / confirmación)"
+            valor={prefs.oficinaDi ?? ""}
+            onChange={(v) => setCampo("oficinaDi", v)}
+          />
+          <CampoTexto
+            id="oficina-mer"
+            etiqueta="Oficina MER (baja)"
+            valor={prefs.oficinaMer ?? ""}
+            onChange={(v) => setCampo("oficinaMer", v)}
+          />
+          <CampoSelect
+            id="emision-di"
+            etiqueta="Emisión del DI"
+            valor={prefs.emisionDi ?? ""}
+            opciones={opciones("emision_di")}
+            onChange={(v) => setCampo("emisionDi", v)}
+          />
+          <CampoTexto
+            id="tipo-id"
+            etiqueta="Tipo de identificador"
+            valor={prefs.tipoIdentificador ?? ""}
+            onChange={(v) => setCampo("tipoIdentificador", v)}
+            pista="Lista provisional hasta el mapeo OVZ"
+          />
+          <CampoTexto
+            id="tel-mov"
+            etiqueta="Teléfono solicitud de guía"
+            valor={prefs.telefonoMovimiento ?? ""}
+            onChange={(v) => setCampo("telefonoMovimiento", v)}
+            placeholder="+34…"
+          />
+          <CampoSelect
+            id="medio"
+            etiqueta="Medio de transporte"
+            valor={prefs.medioTransporte ?? ""}
+            opciones={opciones("medio_transporte")}
+            onChange={(v) => setCampo("medioTransporte", v)}
+          />
+          <CampoTexto
+            id="matricula"
+            etiqueta="Matrícula"
+            valor={prefs.matricula ?? ""}
+            onChange={(v) => setCampo("matricula", v)}
+          />
+          <CampoTexto
+            id="sirentra"
+            etiqueta="Transportista (SIRENTRA)"
+            valor={prefs.transportistaSirentra ?? ""}
+            onChange={(v) => setCampo("transportistaSirentra", v)}
+          />
+          <CampoSelect
+            id="responsable"
+            etiqueta="Tipo responsable del movimiento"
+            valor={prefs.tipoResponsable ?? ""}
+            opciones={opciones("tipo_responsable")}
+            onChange={(v) => setCampo("tipoResponsable", v)}
+          />
+          {error && (
+            <div className="sm:col-span-2">
+              <Alert variant="destructive">
+                <AlertTitle>No se han podido guardar</AlertTitle>
+                <AlertDescription>{mensajeDeError(error, "generico")}</AlertDescription>
+              </Alert>
+            </div>
+          )}
+          {ok && (
+            <p className="sm:col-span-2 text-sm text-success-foreground" role="status">
+              Preferencias guardadas.
+            </p>
+          )}
+          <div className="sm:col-span-2">
+            <Button type="submit" disabled={guardando} className="h-10">
+              {guardando ? "Guardando…" : "Guardar preferencias"}
+            </Button>
+          </div>
+        </form>
+      )}
+    </Panel>
+  );
+}
+
+function CampoTexto({
+  id,
+  etiqueta,
+  valor,
+  onChange,
+  placeholder,
+  pista,
+}: {
+  id: string;
+  etiqueta: string;
+  valor: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  pista?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <Label htmlFor={id}>{etiqueta}</Label>
+      <Input
+        id={id}
+        value={valor}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {pista && <p className="text-xs text-muted-foreground">{pista}</p>}
+    </div>
+  );
+}
+
+function CampoSelect({
+  id,
+  etiqueta,
+  valor,
+  opciones,
+  onChange,
+}: {
+  id: string;
+  etiqueta: string;
+  valor: string;
+  opciones: string[];
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <Label htmlFor={id}>{etiqueta}</Label>
+      <select
+        id={id}
+        className="border-input bg-background h-10 w-full border px-3 text-sm"
+        value={valor}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">—</option>
+        {opciones.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
