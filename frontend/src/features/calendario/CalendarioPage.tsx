@@ -10,7 +10,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { aErrorApi, mensajeDeError, type ErrorApi } from "@/shared/api/errores";
 import { CLASE_ENLACE } from "@/shared/ui/enlace";
@@ -361,12 +361,16 @@ export function CalendarioPage() {
                     <span className="font-medium">Resuelto</span>
                   </div>
                 </div>
-                <Button asChild className="mt-1 h-10 w-full justify-between">
-                  <Link to="/tramites">
-                    Abrir trámite #{seleccionado.tramite.id}
-                    <ChevronRightIcon aria-hidden="true" className="size-4" />
-                  </Link>
-                </Button>
+                <Link
+                  to="/tramites"
+                  className={cn(
+                    buttonVariants(),
+                    "mt-1 h-10 w-full justify-between",
+                  )}
+                >
+                  Abrir trámite #{seleccionado.tramite.id}
+                  <ChevronRightIcon aria-hidden="true" className="size-4" />
+                </Link>
                 <Link to="/tramites" className={cn(CLASE_ENLACE, "text-[13px]")}>
                   Ir a la cola de trámites
                 </Link>
