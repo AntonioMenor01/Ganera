@@ -8,6 +8,7 @@ import { FichaOvzPage } from "@/features/tramites/FichaOvzPage";
 import { GanaderosPage } from "@/features/ganaderos/GanaderosPage";
 import { GanaderoDetallePage } from "@/features/ganaderos/GanaderoDetallePage";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
+import { ProximamentePage } from "@/features/proximamente/ProximamentePage";
 
 /** Exportadas para que los tests monten las rutas reales en un createMemoryRouter. */
 export const routes: RouteObject[] = [
@@ -26,16 +27,51 @@ export const routes: RouteObject[] = [
         path: "/",
         element: <AppLayout />,
         children: [
-          // Inicio: el panel de resumen (saludo, KPIs y la cola de trabajo). Antes «/» redirigía a
-          // «/tramites»; ahora esa cola sigue estando en su sección y el inicio la previsualiza.
+          // Inicio: panel de resumen (mock v2). La cola sigue en /tramites.
           { index: true, element: <DashboardPage /> },
+          {
+            path: "bandeja",
+            element: (
+              <ProximamentePage
+                titulo="Bandeja"
+                descripcion="Aquí llegarán los mensajes de WhatsApp de tus ganaderos, aparte de la cola de trámites. Todavía no hay bandeja en el backend."
+              />
+            ),
+          },
           { path: "tramites", element: <TramitesPage /> },
           { path: "ganaderos", element: <GanaderosPage /> },
           { path: "ganaderos/:id", element: <GanaderoDetallePage /> },
           { path: "explotaciones", element: <ExplotacionesPage /> },
-          // Comodín (D5): /facturacion (ya no existe) y cualquier ruta desconocida con sesión van a
-          // la cola. Sin sesión, RequireAuth manda antes a /login.
-          { path: "*", element: <Navigate to="/tramites" replace /> },
+          {
+            path: "calendario",
+            element: (
+              <ProximamentePage
+                titulo="Calendario"
+                descripcion="Plazos y vencimientos de trámites en un solo sitio. Aún no hay datos de calendario en el backend."
+              />
+            ),
+          },
+          {
+            path: "informes",
+            element: (
+              <ProximamentePage
+                titulo="Informes"
+                descripcion="Resúmenes y exportaciones para la gestoría. Todavía no hay informes en el backend."
+              />
+            ),
+          },
+          {
+            path: "configuracion",
+            element: (
+              <ProximamentePage
+                titulo="Configuración"
+                descripcion="Datos de la gestoría, OVZ.net y preferencias. La pantalla de credenciales OVZ sigue aplazada a escalón 2."
+              />
+            ),
+          },
+          // Comodín: rutas desconocidas con sesión van al inicio (mock). Sin sesión, RequireAuth
+          // manda antes a /login. /facturacion ya no existe.
+          { path: "*", element: <Navigate to="/" replace /> },
         ],
       },
     ],
