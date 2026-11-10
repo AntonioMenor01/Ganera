@@ -229,6 +229,8 @@ class GanaderoEndToEndTest {
         assertThat(e1.get("id").asLong()).isEqualTo(explotacionA1);
         assertThat(e1.get("codigoRega").asText()).isEqualTo("ES940000000001");
         assertThat(e1.get("nombre").asText()).isEqualTo("Finca A1");
+        assertThat(e1.get("numeroAnimales").asLong()).isGreaterThanOrEqualTo(0);
+        assertThat(e1.get("tramitesPendientesRevision").asLong()).isGreaterThanOrEqualTo(0);
         assertThat(e2.get("id").asLong()).isEqualTo(explotacionA2);
 
         Map<String, String> rolPorTelefono = new HashMap<>();

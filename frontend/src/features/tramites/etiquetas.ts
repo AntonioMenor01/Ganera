@@ -215,6 +215,7 @@ export function presentacionRolContacto(rol: string): Presentacion {
 
 export const ORIGENES_TRAMITE = {
   WHATSAPP: "Recibido por WhatsApp",
+  MANUAL: "Creado a mano",
 } as const satisfies Record<string, string>;
 
 /** Texto del indicador de origen (oculto y `title`), o null si no hay indicador que pintar. */

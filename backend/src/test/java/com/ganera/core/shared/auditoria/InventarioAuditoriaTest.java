@@ -73,6 +73,7 @@ class InventarioAuditoriaTest {
         RUTAS.put("POST /contactos/{id}/reactivar", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
         RUTAS.put("POST /contactos/{id}/explotaciones", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
         RUTAS.put("DELETE /contactos/{id}/explotaciones/{explotacionId}", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
+        RUTAS.put("POST /tramites", Cobertura.auditada("tramite.TramiteAltaEndToEndTest"));
         RUTAS.put("PATCH /tramites/{id}", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
         RUTAS.put("POST /tramites/{id}/aprobar", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
         RUTAS.put("POST /tramites/{id}/rechazar", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));

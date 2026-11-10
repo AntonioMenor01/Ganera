@@ -25,12 +25,14 @@ public class ExplotacionController {
 
     private final ExplotacionRepository explotacionRepository;
     private final AnimalRepository animalRepository;
+    private final ExplotacionConsultaService explotacionConsultaService;
     private final AccesoAjeno accesoAjeno;
 
     public ExplotacionController(ExplotacionRepository explotacionRepository, AnimalRepository animalRepository,
-                                 AccesoAjeno accesoAjeno) {
+                                 ExplotacionConsultaService explotacionConsultaService, AccesoAjeno accesoAjeno) {
         this.explotacionRepository = explotacionRepository;
         this.animalRepository = animalRepository;
+        this.explotacionConsultaService = explotacionConsultaService;
         this.accesoAjeno = accesoAjeno;
     }
 
@@ -90,14 +92,14 @@ public class ExplotacionController {
                 .map(ExplotacionResponse::from));
     }
 
-    /** Detalle de una Explotacion (mismo DTO que el listado). 404 sin cuerpo si no existe o es de
-     * otra Gestoria: findByIdAndGestoriaId con el gestoriaId del JWT, nunca findById a secas. */
+    /** Detalle enriquecido de una Explotación (NIF ganadero, animales, contactos, trámites
+     * pendientes). 404 sin cuerpo si no existe o es de otra Gestoria. */
     @GetMapping("/explotaciones/{id}")
-    public ResponseEntity<ExplotacionResponse> detalle(
+    public ResponseEntity<ExplotacionDetalleResponse> detalle(
             @AuthenticationPrincipal GaneraUserPrincipal principal,
             @PathVariable Long id) {
-        Optional<ExplotacionResponse> explotacion = explotacionRepository.findByIdAndGestoriaId(id,
-                principal.gestoriaId()).map(ExplotacionResponse::from);
+        Optional<ExplotacionDetalleResponse> explotacion =
+                explotacionConsultaService.detalle(principal.gestoriaId(), id);
         if (explotacion.isEmpty()) {
             // El 404 no cambia; si el id es de otra Gestoria se deja ACCESO_OTRA_GESTORIA (D3).
             accesoAjeno.explotacion(principal.usuarioId(), principal.gestoriaId(), id,
