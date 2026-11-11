@@ -73,6 +73,7 @@ class LecturasSensiblesAuditadasEndToEndTest {
     private Ganadero ganaderoA;
     private Tramite tramiteA;
     private long tramiteBId;
+    private long explotacionBId;
 
     @BeforeEach
     void preparar() {
@@ -86,6 +87,7 @@ class LecturasSensiblesAuditadasEndToEndTest {
         tramiteA = nuevoTramite(gestoriaA, contactoA);
         Contacto contactoB = nuevoContacto(gestoriaB, "+34600930002");
         tramiteBId = nuevoTramite(gestoriaB, contactoB).getId();
+        explotacionBId = nuevaExplotacion(gestoriaB, "ES930000000002").getId();
         LimpiezaAuditoria.borrar(jdbcTemplate);
     }
 
@@ -131,11 +133,33 @@ class LecturasSensiblesAuditadasEndToEndTest {
     }
 
     @Test
+    void getExplotacionServidaDejaUnaFilaLecturaExplotacion() {
+        ResponseEntity<String> r = get("/explotaciones/" + explotacionA.getId());
+        assertThat(r.getStatusCode().value()).isEqualTo(200);
+
+        List<Auditoria> filas = filas(gestoriaA);
+        assertThat(filas).hasSize(1);
+        comun(filas.get(0), AccionAuditoria.LECTURA_EXPLOTACION, EntidadAuditada.EXPLOTACION, explotacionA.getId(), r);
+    }
+
+    @Test
+    void getDeUnaExplotacionAjenaDejaAccesoOtraGestoriaYNoLectura() {
+        ResponseEntity<String> r = get("/explotaciones/" + explotacionBId);
+        assertThat(r.getStatusCode().value()).isEqualTo(404);
+
+        List<Auditoria> filas = filas(gestoriaA);
+        assertThat(filas).extracting(Auditoria::getAccion).containsExactly(AccionAuditoria.ACCESO_OTRA_GESTORIA);
+        assertThat(filas.get(0).getEntidadId()).isEqualTo(explotacionBId);
+        assertThat(filas(gestoriaB)).isEmpty();
+    }
+
+    @Test
     void losListadosNoSensiblesNoDejanFila() {
         assertThat(get("/tramites").getStatusCode().value()).isEqualTo(200);
         assertThat(get("/ganaderos").getStatusCode().value()).isEqualTo(200);
         assertThat(get("/explotaciones").getStatusCode().value()).isEqualTo(200);
-        assertThat(get("/explotaciones/" + explotacionA.getId()).getStatusCode().value()).isEqualTo(200);
+        // GET /explotaciones/{id} SI es sensible (trae telefonos): su lectura se verifica aparte
+        // (getExplotacionServidaDejaUnaFilaLecturaExplotacion). Aqui solo el sub-recurso de animales.
         assertThat(get("/explotaciones/" + explotacionA.getId() + "/animales").getStatusCode().value()).isEqualTo(200);
 
         assertThat(filas(gestoriaA)).isEmpty();
