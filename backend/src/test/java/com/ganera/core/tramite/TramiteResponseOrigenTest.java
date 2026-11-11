@@ -64,7 +64,7 @@ class TramiteResponseOrigenTest {
 
     @Test
     void losValoresDeLosEnumsSonLosDelContratoJson() {
-        assertThat(OrigenTramite.values()).extracting(Enum::name).containsExactly("WHATSAPP");
+        assertThat(OrigenTramite.values()).extracting(Enum::name).containsExactly("WHATSAPP", "MANUAL");
         assertThat(EstadoExtraccion.values()).extracting(Enum::name)
                 .containsExactly("PENDIENTE", "COMPLETADA", "FALLIDA", "SIN_TEXTO", "SIN_TRAMITE");
     }

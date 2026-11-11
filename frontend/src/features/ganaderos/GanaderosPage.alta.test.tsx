@@ -107,6 +107,79 @@ describe("GanaderosPage: alta manual", () => {
     expect(await within(dialogo).findByText("Ya tienes un ganadero con ese NIF.")).toBeInTheDocument();
   });
 
+  it("el campo Teléfono es opcional (sin marca *) y muestra la ayuda D7 literal", async () => {
+    const dialogo = await abrirDialogo();
+    const campo = within(dialogo).getByLabelText(/Teléfono/);
+    // Opcional: su etiqueta no lleva el asterisco que sí llevan Nombre y NIF.
+    expect(within(dialogo).getByText("Teléfono (opcional)")).toBeInTheDocument();
+    const ayuda = within(dialogo).getByText(
+      "Para que Ganera reconozca sus WhatsApp, añade este número como contacto de una explotación",
+    );
+    expect(campo).toHaveAttribute("aria-describedby", ayuda.id);
+  });
+
+  it("alta con teléfono: el POST incluye el teléfono tecleado", async () => {
+    const creado = fila({ id: 43, nombre: "Finca Tel SL", nif: "12345678Z" });
+    let cuerpoRecibido: unknown = null;
+    server.use(
+      http.post(apiUrl("/ganaderos"), async ({ request }) => {
+        cuerpoRecibido = await request.json();
+        return HttpResponse.json(creado, { status: 201 });
+      }),
+    );
+
+    const dialogo = await abrirDialogo();
+    await userEvent.type(within(dialogo).getByLabelText("Nombre"), "Finca Tel SL");
+    await userEvent.type(within(dialogo).getByLabelText("NIF / CIF"), "12345678Z");
+    await userEvent.type(within(dialogo).getByLabelText(/Teléfono/), "612 345 678");
+    await userEvent.click(within(dialogo).getByRole("button", { name: "Añadir ganadero" }));
+
+    await waitFor(() =>
+      expect(cuerpoRecibido).toEqual({ nombre: "Finca Tel SL", nif: "12345678Z", telefono: "612 345 678" }),
+    );
+  });
+
+  it("alta sin teléfono: el POST no manda la clave telefono", async () => {
+    const creado = fila({ id: 44, nombre: "Sin Tel SL", nif: "12345678Z" });
+    let cuerpoRecibido: unknown = null;
+    server.use(
+      http.post(apiUrl("/ganaderos"), async ({ request }) => {
+        cuerpoRecibido = await request.json();
+        return HttpResponse.json(creado, { status: 201 });
+      }),
+    );
+
+    const dialogo = await abrirDialogo();
+    await userEvent.type(within(dialogo).getByLabelText("Nombre"), "Sin Tel SL");
+    await userEvent.type(within(dialogo).getByLabelText("NIF / CIF"), "12345678Z");
+    await userEvent.click(within(dialogo).getByRole("button", { name: "Añadir ganadero" }));
+
+    await waitFor(() => expect(cuerpoRecibido).toEqual({ nombre: "Sin Tel SL", nif: "12345678Z" }));
+  });
+
+  it("400 de teléfono: marca el campo, muestra el motivo y conserva lo escrito", async () => {
+    server.use(
+      http.post(apiUrl("/ganaderos"), () =>
+        HttpResponse.json(
+          { motivo: "El teléfono no es válido. Revísalo e inténtalo de nuevo." },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    const dialogo = await abrirDialogo();
+    await userEvent.type(within(dialogo).getByLabelText("Nombre"), "Finca X");
+    await userEvent.type(within(dialogo).getByLabelText("NIF / CIF"), "12345678Z");
+    await userEvent.type(within(dialogo).getByLabelText(/Teléfono/), "abc");
+    await userEvent.click(within(dialogo).getByRole("button", { name: "Añadir ganadero" }));
+
+    expect(await within(dialogo).findByText(/El teléfono no es válido/)).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    const campo = within(dialogo).getByLabelText(/Teléfono/);
+    expect(campo).toHaveValue("abc");
+    expect(campo).toHaveAttribute("aria-invalid", "true");
+  });
+
   it("valida en el cliente que el nombre no esté vacío (no llega al backend)", async () => {
     let huboPost = false;
     server.use(

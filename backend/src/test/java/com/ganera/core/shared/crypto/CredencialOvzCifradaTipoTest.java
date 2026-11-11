@@ -8,6 +8,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -23,6 +24,20 @@ import static org.assertj.core.api.Assertions.assertThat;
  * campo) y el getter devuelve el ciphertext tal cual; el tipo solo existe en la via de escritura.
  */
 class CredencialOvzCifradaTipoTest {
+
+    /**
+     * Lista CERRADA de los metodos de {@link Ganadero} que reciben un String. Es la UNICA fuente: la vigilan tanto
+     * {@link #losUnicosMetodosDeGanaderoQueRecibenUnStringSonLosSettersConocidos} (no hay ningun otro, ni con otro
+     * nombre que escriba el ciphertext) como {@link #ningunSetterStringDeGanaderoTocaElCiphertextOvz} (por
+     * comportamiento, con centinela). Anadir un campo String a Ganadero obliga a anadir aqui su setter, y solo
+     * despues de revisar que no toca la contrasena OVZ.
+     */
+    private static final List<String> SETTERS_STRING = List.of("setNombre", "setNif", "setOvzUsuario", "setTelefono");
+
+    /** Clave AES-256 valida (32 bytes), INVENTADA solo para el test. */
+    private static final String CLAVE_VALIDA =
+            Base64.getEncoder().encodeToString("01234567890123456789012345678901".getBytes());
+    private static final String CENTINELA = "CENTINELA-que-no-debe-acabar-en-el-ciphertext";
 
     @Test
     void laInterfazEsSelladaYSoloPermiteLaImplementacionDelPaquete() {
@@ -89,7 +104,8 @@ class CredencialOvzCifradaTipoTest {
      * (p. ej. {@code setOvzPassword(String)}) escribiria el ciphertext saltandose el tipo.
      *
      * <p>Cuando la "opcion B" del alta de Ganadero anada un campo String (p. ej. el telefono), este test DEBE
-     * ponerse en rojo: la lista se amplia solo tras revisar que el metodo nuevo no toca la contrasena OVZ.
+     * ponerse en rojo: la lista {@link #SETTERS_STRING} se amplia solo tras revisar que el metodo nuevo no toca
+     * la contrasena OVZ.
      */
     @Test
     void losUnicosMetodosDeGanaderoQueRecibenUnStringSonLosSettersConocidos() {
@@ -98,6 +114,38 @@ class CredencialOvzCifradaTipoTest {
                 .map(Method::getName)
                 .toList();
 
-        assertThat(conParametroString).containsExactlyInAnyOrder("setNombre", "setNif", "setOvzUsuario");
+        assertThat(conParametroString).containsExactlyInAnyOrderElementsOf(SETTERS_STRING);
+    }
+
+    /**
+     * Comportamiento, no solo estructura: para CADA setter String conocido ({@link #SETTERS_STRING}), invocarlo con
+     * un centinela NUNCA cambia el ciphertext de la contrasena OVZ — ni cuando no hay credencial (sigue null) ni
+     * cuando la hay puesta con {@code CifradorAesGcm.cifrar} (sigue exactamente igual), y el ciphertext nunca
+     * contiene el centinela. Asi, si se renombra un setter sobre el campo equivocado o se anade uno que escriba la
+     * contrasena, este test lo caza aunque el de estructura siga verde.
+     */
+    @Test
+    void ningunSetterStringDeGanaderoTocaElCiphertextOvz() throws Exception {
+        CredencialOvzCifrada cifrada = new CifradorAesGcm(CLAVE_VALIDA).cifrar("password-ovz-de-prueba");
+
+        for (String nombreSetter : SETTERS_STRING) {
+            Method setter = Ganadero.class.getDeclaredMethod(nombreSetter, String.class);
+
+            // (a) Ganadero sin credencial: el ciphertext sigue null tras invocar el setter con el centinela.
+            Ganadero sinCredencial = new Ganadero();
+            setter.invoke(sinCredencial, CENTINELA);
+            assertThat(sinCredencial.getOvzPasswordCifrada()).as("%s deja el ciphertext null", nombreSetter).isNull();
+
+            // (b) Ganadero con credencial: el ciphertext queda exactamente igual y nunca contiene el centinela.
+            Ganadero conCredencial = new Ganadero();
+            conCredencial.setOvzPasswordCifrada(cifrada);
+            setter.invoke(conCredencial, CENTINELA);
+            assertThat(conCredencial.getOvzPasswordCifrada())
+                    .as("%s no cambia el ciphertext", nombreSetter)
+                    .isEqualTo(cifrada.valor());
+            assertThat(conCredencial.getOvzPasswordCifrada())
+                    .as("%s no filtra el centinela al ciphertext", nombreSetter)
+                    .doesNotContain(CENTINELA);
+        }
     }
 }

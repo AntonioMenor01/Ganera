@@ -4,8 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ganera.core.auth.LoginRequest;
 import com.ganera.core.auth.LoginResponse;
+import com.ganera.core.contacto.Contacto;
+import com.ganera.core.contacto.ContactoExplotacion;
 import com.ganera.core.contacto.ContactoExplotacionRepository;
 import com.ganera.core.contacto.ContactoRepository;
+import com.ganera.core.contacto.RolContacto;
 import com.ganera.core.facturacion.SuscripcionRepository;
 import com.ganera.core.ganadero.GanaderoRepository;
 import com.ganera.core.gestoria.GestoriaRepository;
@@ -282,6 +285,48 @@ class ExplotacionEndToEndTest {
         assertThat(ganaderos).containsExactly("Ganadero Comun A Dos", "Ganadero Comun A");
         assertThat(cargasSueltas).as("Ganaderos cargados uno a uno").isZero();
         assertThat(consultas).as("pagina + count").isEqualTo(2);
+    }
+
+    /** G4: el detalle carga los contactos en una sola consulta (@EntityGraph "contacto"), asi que tener mas
+     * contactos no anade consultas; y la fila de auditoria (LECTURA_EXPLOTACION, registrarAparte REQUIRES_NEW)
+     * es un INSERT constante, no una consulta por contacto. Mismo numero de sentencias con 1 vs 3 contactos. */
+    @Test
+    void detalleNoCreceEnConsultasConMasContactos() throws IOException {
+        Long expUno = idsExplotaciones(tokenA).get("ES950000000001");
+        Long expTres = idsExplotaciones(tokenA).get("ES950000000002");
+        enlazarContactos(expUno, 1, "+3460010");
+        enlazarContactos(expTres, 3, "+3460020");
+
+        Statistics estadisticas = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+
+        estadisticas.clear();
+        assertThat(get("/explotaciones/" + expUno, tokenA).getStatusCode().value()).isEqualTo(200);
+        long conUnContacto = estadisticas.getPrepareStatementCount();
+
+        estadisticas.clear();
+        assertThat(get("/explotaciones/" + expTres, tokenA).getStatusCode().value()).isEqualTo(200);
+        long conTresContactos = estadisticas.getPrepareStatementCount();
+
+        assertThat(conTresContactos)
+                .as("el detalle no hace consultas de mas por tener mas contactos (ni por la auditoria)")
+                .isEqualTo(conUnContacto);
+    }
+
+    private void enlazarContactos(Long explotacionId, int cantidad, String prefijoTelefono) {
+        Explotacion explotacion = explotacionRepository.findById(explotacionId).orElseThrow();
+        for (int i = 0; i < cantidad; i++) {
+            Contacto contacto = new Contacto();
+            contacto.setGestoria(explotacion.getGestoria());
+            contacto.setNombre("Persona " + explotacionId + "-" + i);
+            contacto.setTelefono(prefijoTelefono + explotacionId + i);
+            contactoRepository.save(contacto);
+            ContactoExplotacion enlace = new ContactoExplotacion();
+            enlace.setGestoria(explotacion.getGestoria());
+            enlace.setContacto(contacto);
+            enlace.setExplotacion(explotacion);
+            enlace.setRol(RolContacto.EMPLEADO);
+            contactoExplotacionRepository.save(enlace);
+        }
     }
 
     // --- GET /explotaciones?q= por palabras y sin tildes (plan 2026-10-04, T3) ---

@@ -443,7 +443,8 @@ class ExplotacionControllerTest {
         ExplotacionConsultaService consulta = new ExplotacionConsultaService(
                 explotacionRepository, animalRepository, contactoExplotacionRepository, tramiteRepository);
         return new ExplotacionController(explotacionRepository, animalRepository, consulta,
-                org.mockito.Mockito.mock(com.ganera.core.shared.auditoria.AccesoAjeno.class));
+                org.mockito.Mockito.mock(com.ganera.core.shared.auditoria.AccesoAjeno.class),
+                org.mockito.Mockito.mock(com.ganera.core.shared.auditoria.AuditoriaService.class));
     }
 
     private static GaneraUserPrincipal principal(Gestoria gestoria) {

@@ -14,15 +14,16 @@ import org.springframework.context.ConfigurableApplicationContext;
 
 import java.util.Arrays;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Migracion a Supabase, T1: con {@code classpath:db/{vendor}} en las ubicaciones, Boot la resuelve a
- * {@code classpath:db/h2} en H2 y Flyway aplica V1-V25 sin avisar de una ubicacion que no existe (la carpeta
- * db/h2 solo tiene un LEEME.md, que Maven copia y Flyway ignora). Flyway 10.20.1 no avisa en WARN de una
- * ubicacion inexistente (lo deja en DEBUG), asi que el test arranca con fail-on-missing-locations y el escaner de
- * Flyway en DEBUG.
+ * {@code classpath:db/h2} en H2 y Flyway aplica V1-V25, V27, V28 y V29 (V26 es solo de PostgreSQL: deja un hueco en H2, que
+ * Flyway acepta) sin avisar de una ubicacion que no existe (la carpeta db/h2 solo tiene un LEEME.md, que Maven
+ * copia y Flyway ignora). Flyway 10.20.1 no avisa en WARN de una ubicacion inexistente (lo deja en DEBUG), asi que
+ * el test arranca con fail-on-missing-locations y el escaner de Flyway en DEBUG.
  *
  * <p>El contexto es propio (SpringApplicationBuilder), no el cacheado de {@code @SpringBootTest}: con uno
  * reutilizado, el log de Flyway ya habria salido antes de capturarlo y el test pasaria sin probar nada. El aviso
@@ -32,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class FlywayH2VendorTest {
 
     @Test
-    void enH2SeResuelveDbH2YSeAplicanLasVeinticuatroSinAvisoDeUbicacion(CapturedOutput salida) {
+    void enH2SeResuelveDbH2YSeAplicanLasVeintiochoSinAvisoDeUbicacion(CapturedOutput salida) {
         try (ConfigurableApplicationContext contexto = new SpringApplicationBuilder(GaneraApplication.class).run(
                 "--spring.datasource.url=jdbc:h2:mem:flyway_h2_vendor;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000",
                 "--spring.datasource.hikari.pool-name=flyway-h2-vendor",
@@ -48,12 +49,15 @@ class FlywayH2VendorTest {
                     .containsExactlyInAnyOrder("classpath:db/migration", "classpath:db/h2");
 
             MigrationInfo[] aplicadas = flyway.info().applied();
+            // En H2 no se aplica db/postgresql (V26), asi que queda el hueco de V26: V1-V25, V27, V28, V29 = 28.
             assertThat(Arrays.stream(aplicadas).map(m -> m.getVersion().getVersion()).toList())
-                    .containsExactlyElementsOf(IntStream.rangeClosed(1, 25).mapToObj(String::valueOf).toList());
+                    .containsExactlyElementsOf(Stream.concat(
+                            IntStream.rangeClosed(1, 25).mapToObj(String::valueOf),
+                            Stream.of("27", "28", "29")).toList());
             assertThat(aplicadas).allSatisfy(m -> assertThat(m.getState()).isEqualTo(MigrationState.SUCCESS));
 
             // Comprobacion de que de verdad se ha capturado el log de Flyway; si no, la siguiente no probaria nada.
-            assertThat(salida.getAll()).contains("Successfully applied 25 migrations");
+            assertThat(salida.getAll()).contains("Successfully applied 28 migrations");
             assertThat(salida.getAll()).contains("classpath:db/h2");
             // («Unable to resolve location classpath:db/callback.» sale siempre en DEBUG: es la ubicacion de callbacks
             // por defecto de Flyway y no la usamos.)

@@ -63,6 +63,7 @@ class GanaderoEndToEndTest {
     private static final String NIF_A1 = "70000001A";
     private static final String NIF_A2 = "70000002B";
     private static final String NIF_B = "70000003C";
+    private static final String NIF_C = "70000004D";
 
     @Autowired
     private TestRestTemplate restTemplate;
@@ -249,6 +250,29 @@ class GanaderoEndToEndTest {
     }
 
     @Test
+    void detalleIncluyeElTelefonoCuandoLoHayYNullCuandoNo() throws IOException {
+        // Importado sin telefono: el detalle lo trae como null (la clave existe, el valor es null).
+        JsonNode sinTel = objectMapper.readTree(get("/ganaderos/" + ganaderoA1, tokenA).getBody());
+        assertThat(sinTel.has("telefono")).isTrue();
+        assertThat(sinTel.get("telefono").isNull()).isTrue();
+
+        // Se pone un telefono directamente en BD (este test no usa el PUT, que tiene su propio E2E).
+        Ganadero g = ganaderoRepository.findAll().stream()
+                .filter(x -> x.getId().equals(ganaderoA1)).findFirst().orElseThrow();
+        g.setTelefono("+34600111222");
+        ganaderoRepository.save(g);
+
+        JsonNode conTel = objectMapper.readTree(get("/ganaderos/" + ganaderoA1, tokenA).getBody());
+        assertThat(conTel.get("telefono").asText()).isEqualTo("+34600111222");
+
+        // D9: el listado NO lleva el telefono (ni la clave en cada fila ni los digitos en el cuerpo).
+        String listado = get("/ganaderos", tokenA).getBody();
+        assertThat(listado).doesNotContain("600111222").doesNotContain("+34600111222");
+        objectMapper.readTree(listado).get("content")
+                .forEach(fila -> assertThat(fila.has("telefono")).isFalse());
+    }
+
+    @Test
     void detalleDeGanaderoConExplotacionSinContactosDevuelveListaVacia() throws IOException {
         JsonNode json = objectMapper.readTree(get("/ganaderos/" + ganaderoA2, tokenA).getBody());
 
@@ -370,8 +394,45 @@ class GanaderoEndToEndTest {
         long consultasDetalle = estadisticas.getPrepareStatementCount();
 
         assertThat(consultasListado).as("consultas del listado").isLessThanOrEqualTo(3);
-        // 3 de negocio + 2 fijas de la auditoria de lectura (D4/T5); un N+1 de contactos pasaria de 5.
-        assertThat(consultasDetalle).as("consultas del detalle").isLessThanOrEqualTo(5);
+        // 5 de negocio (ganadero + explotaciones + contactos + conteo de animales + conteo de trámites
+        // pendientes; los dos conteos van en lote con IN :explotacionIds filtrados por gestoria, anadidos
+        // con las fichas enriquecidas de las #23-#26 de Álvaro) + 2 fijas de la auditoria de lectura
+        // (D4/T5). No crece con el numero de explotaciones (lo comprueba elDetalleHaceLasMismasConsultas...);
+        // un N+1 de contactos o de conteos pasaria de 7.
+        assertThat(consultasDetalle).as("consultas del detalle").isLessThanOrEqualTo(7);
+    }
+
+    /**
+     * El numero de consultas del detalle NO crece con las explotaciones: un ganadero con 1 explotacion y
+     * otro con 3 hacen exactamente las mismas consultas (los conteos de animales y de tramites pendientes
+     * van en una sola consulta en lote con IN, no una por explotacion). Si alguno pasara a un bucle por
+     * explotacion, las dos cifras dejarian de coincidir.
+     */
+    @Test
+    void elDetalleHaceLasMismasConsultasConUnaExplotacionQueConVarias() throws IOException {
+        // ganaderoA2 ya tiene 1 explotacion (Finca A3). Creamos el Ganadero C con 3 en la misma gestoria.
+        importar(tokenA,
+                List.<String[]>of(
+                        new String[]{"ES940000000031", "Finca C1", NIF_C, "Ganadero C"},
+                        new String[]{"ES940000000032", "Finca C2", NIF_C, "Ganadero C"},
+                        new String[]{"ES940000000033", "Finca C3", NIF_C, "Ganadero C"}),
+                List.<String[]>of(),
+                List.<String[]>of());
+        Long ganaderoC = idGanadero(NIF_C);
+
+        Statistics estadisticas = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+
+        estadisticas.clear();
+        assertThat(get("/ganaderos/" + ganaderoA2, tokenA).getStatusCode().value()).isEqualTo(200);
+        long conUnaExplotacion = estadisticas.getPrepareStatementCount();
+
+        estadisticas.clear();
+        assertThat(get("/ganaderos/" + ganaderoC, tokenA).getStatusCode().value()).isEqualTo(200);
+        long conTresExplotaciones = estadisticas.getPrepareStatementCount();
+
+        assertThat(conTresExplotaciones)
+                .as("el detalle no hace mas consultas por tener mas explotaciones (conteos en lote, no N+1)")
+                .isEqualTo(conUnaExplotacion);
     }
 
     /**

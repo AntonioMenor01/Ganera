@@ -1580,3 +1580,103 @@ Rama `feat/auditoria`. Flujo desde la sesión principal (sin subagentes); TDD ro
   al despliegue (post PR→main). Si en ese gate la fila guardara la IP falsa o la del proxy, el valor seguro por defecto
   es `ip-desde-x-forwarded-for=false`.
 - **Kit `ganera-clever`** (fuera del repo): se le pasa el diff a Antonio antes de que ejecute nada.
+
+## Teléfono en la ficha del ganadero (opción B, primer campo) — hecho, PR a main sin fusionar (2026-11-10, rama `feat/ganadero-telefono`)
+
+Plan: `docs/superpowers/plans/2026-11-10-ganadero-telefono.md` (D1–D10, A1–A10). Backend + frontend en el mismo commit.
+
+- **Base.** La rama arranca sobre `main` = `27ff412` (merge del mock v2 del frontend de Álvaro, PRs #13–#22, solo
+  `frontend/`; `main` local = `origin/main`). Al retomar la sesión, el implementador anterior había dejado a medias
+  solo el campo `telefono` + `V27` (36 fallos esperados: `CredencialOvzCifradaTipoTest` por A2 + tests de recuento de
+  PostgreSQL embebido por la columna). No se descartó nada; T1 se relanzó entero. (La migración se renumeró a `V29` al
+  integrar `main`; ver la subsección «Integración con main» al final de esta sección.)
+- **T1 (backend), Superpowers, Approved.** `Ganadero.telefono` (`VARCHAR(30)`, `V29`, sin UNIQUE/índice, E.164 por
+  `TelefonoNormalizador`), `POST /ganaderos` con `telefono?` (400 tras el NIF, el 201 no lo trae, `GANADERO_CREADO`
+  sin cambios), `PUT /ganaderos/{id}/telefono` (`GanaderoEdicionService`, `findByIdAndGestoriaId`, borrado explícito
+  A6 leyendo `JsonNode`, `GANADERO_MODIFICADO` con `campos_cambiados`/`origen` y cero `LECTURA_GANADERO`,
+  `ACCESO_OTRA_GESTORIA`/`EDITAR_GANADERO` fuera de la transacción). `CampoGanadero`, `OperacionAuditada.EDITAR_GANADERO`,
+  `SETTERS_STRING` + `setTelefono` con test de centinela, inventario cerrado. El teléfono nunca a auditoría/logs/listados.
+- **T2 (frontend), Superpowers, Approved.** Añadir SIN rediseñar el mock v2 de Álvaro: `types`/`api`
+  (`crearGanadero(nombre,nif,telefono?)`, `cambiarTelefonoGanadero(id, tel|null)`), campo «Teléfono (opcional)» en
+  `AltaGanaderoDialog` (ayuda D7 literal), edición en línea en `GanaderoDetallePage` con estado local (tras el 200
+  repinta sin repedir el detalle → no hay `LECTURA_GANADERO` extra), «Quitar teléfono» → `null` explícito, una
+  petición a la vez, 400 conserva+motivo, 404 → «Ganadero no encontrado», foco al botón. Tests MSW POST y PUT + caso
+  sin teléfono + test de que el listado no lo muestra.
+- **Mutaciones A3 (sesión principal, cp/cmp, -Dtest dirigido):** `findByIdAndGestoriaId`→`findById` → rojo
+  (`ajenoConCuerpoValidoDa404…`, `expected null but was "+34612345678"`); quitar el `registrar` → rojo (GuardiaDml, 5
+  fallos); teléfono en `despues` → no compila (`con(Clave, String)` no existe). Más el rojo del test de tipo
+  (`SETTERS_STRING` sin `setTelefono`). Todas restauradas byte a byte.
+- **Smoke local (H2 en fichero, dos gestorías por la API real):** 21/21 HTTP PASS; auditoría por SQL = 5
+  `GANADERO_MODIFICADO`, 2 `LECTURA_GANADERO` (los PUT no añaden ninguna), 1 `ACCESO_OTRA_GESTORIA`
+  (`{"operacion":"EDITAR_GANADERO"}`, gestoría del actor), 0 filas con el teléfono en `antes`/`despues`; el número
+  ausente del log y de `GET /ganaderos`/`GET /buscar`. Capturas (Playwright fuera del repo) a 1440 y 375 px en
+  `C:\Users\Antonio\Desktop\capturas-ganera-telefono\` (10 PNG): ficha con/sin teléfono, edición en línea, alta con
+  error. Sin Impeccable (D6).
+- **Verde:** `./mvnw clean test` **1357** (1356 + 1 skip, JDK 21); `npm test` **1143 en 59**, build limpio, lint 3
+  avisos conocidos.
+- **Pendiente tras el merge:** smoke en producción (ganadero 11 de la gestoría de pruebas, `+34600000000`, A5/A8).
+- **Pendiente de diseño (opción B / contactos):** el teléfono del titular puede quedar duplicado entre la ficha y el
+  contacto cuando llegue `contacto_titular_id`; decidir antes de los empleados si se sincroniza o la ficha lee del
+  contacto (anotado también en `CLAUDE.md`).
+
+## Estabilización del backend de main tras #23–#28 (2026-11-10, rama `fix/estabilizar-backend-main` sobre `9f0081b`)
+
+Las PRs #23–#28 de Álvaro (trámite manual, fichas enriquecidas de explotación, preferencias OVZ, alertas, migraciones
+V27/V28, sembrador demo #28) dejaron `main` en rojo: backend **1317 run · 38 fallos · 1 error · 1 skip**, frontend
+**1130 · 63 fallos**. El backend lo arregla esta rama (solo tests); el frontend lo arregla Álvaro en la **#29**.
+
+- **G1 — recuentos de migración (solo test).** Subidos a la realidad: PostgreSQL aplica **28** (V1–V28, V26 de
+  `db/postgresql` incluida); H2 **27** ({1..25,27,28}, hueco en V26). Ficheros: `SeguridadEsquemaPostgresTest`,
+  `FlywayPostgresTest`, `FlywayH2VendorTest`, `AuditoriaInmutablePostgresTest`, `PerfilCleverPostgresTest`. **Clave:**
+  con el gate del recuento arreglado, `SeguridadEsquemaPostgresTest` vuelve a ejecutar sus 32 tests (antes abortaba en
+  la primera línea) y pasa entero → RLS/políticas/permisos cubren `preferencia_ovz` y las tablas nuevas. Concuerda con
+  la comprobación de Antonio en Supabase (02 → 0 filas). Ningún problema real de seguridad.
+- **G2 — formas/enum (solo test).** `OrigenTramite` → `{WHATSAPP, MANUAL}`; +10 campos OVZ en `RespuestaWhatsappEndToEndTest`;
+  contrato `descarte-sin-tramite.json` regenerado (los 3 objetos detalle ganan los 10 campos; se preservan
+  `_nota`/`rutas`/`cuerpo`). Revisado: los campos nuevos de `TramiteDetalleResponse` no exponen credencial OVZ,
+  teléfono ni datos de otra gestoría.
+- **G3 — cableado (solo test).** El NPE de `TramiteControllerErroresTest` no era una dependencia sin inyectar: el PATCH
+  pasó a llamar a la sobrecarga `actualizar(…, TipoTramite, TramitePatchRequest)` que el doble no sobreescribía.
+  Sobreescrita la correcta.
+- **G4 — N+1 del detalle del ganadero: legítimo, no N+1.** Las fichas enriquecidas añaden 2 consultas en lote
+  (`contarPorExplotacion`, `contarPorExplotacionYEstado`, ambas `IN :explotacionIds` + `gestoria.id`). Umbral `<=5` →
+  `<=7` con justificación escrita + **test nuevo** «mismas consultas con 1 vs 3 explotaciones». Mutación (bucle por
+  explotación) → test nuevo en rojo (`expected 7L but was 9L`), restaurada con cmp.
+- **Revisión de #23–#28 (backend):** sin bloqueantes. Aislamiento (gestoría del JWT, `findByIdAndGestoriaId`),
+  auditoría (filas + `AccesoAjeno` en los 404 ajenos del alta manual), V28 contacto nullable (sin NPE), #28 no se
+  activa en Clever. Única nota menor aceptada: `PreferenciaOvzResponse.telefonoMovimiento` es configuración de la
+  gestoría, no PII de ganaderos.
+- **Revisor independiente del diff (10 ficheros):** Approved (recuentos sin migración oculta, seguridad íntegra 32/32,
+  G4 justificado + mutación, fixture = respuesta real sin leaks).
+- **Verde:** `./mvnw clean test` **1347** (1346 + 1 skip). El salto 1317→1347: `AuditoriaInmutablePostgresTest` corría
+  solo 1 de sus 30 tests en la base (el resto abortaba tras el fallo de recuento) → +29; +1 del test nuevo de G4.
+- **#29 (Álvaro, `02efcf8`):** solo 5 `.test.*` de frontend; `npm test` 1130/1130, build/lint limpios. Su
+  `contratoDescarte.test.tsx` usa el fixture como datos de MSW (no asevera el conjunto de campos), así que es
+  resistente a los 10 campos nuevos del fixture. **Orden de fusión: primero esta PR, luego la #29.** El fixture de
+  descarte lo actualiza esta.
+- **Pendiente:** tras fusionar ambas y main en verde, retomar la #27 (teléfono del ganadero) y renumerar su migración
+  a V29.
+
+## Integración de la #27 con main (#30 + #29) y renumeración a V29 (2026-11-11, rama `feat/ganadero-telefono`)
+
+- **Base nueva en verde.** `origin/main` = `de782a9` (incluye la #30 `339a02c` — estabilización backend — y la #29
+  `de782a9` — tests de frontend de Álvaro). Verificada en un worktree temporal: backend `./mvnw clean test` **1347**
+  (1346 + 1 skip), frontend `npm test` **1130 en 59**, build y lint limpios (3 avisos conocidos). Worktree borrado.
+- **Merge** `git merge origin/main` en `feat/ganadero-telefono` (sin rebase ni force-push). Conflictos resueltos
+  respetando lo de Álvaro y añadiendo lo nuestro:
+  - `GanaderoConsultaService`, `GanaderoDetalleResponse`, `OperacionAuditada`, `GanaderoEndToEndTest`,
+    `GanaderoDetallePage.tsx`, `types.ts`: auto-merge limpio (campos enriquecidos de Álvaro + `telefono` nuestro
+    conviven; el `telefono` sale de la entidad ya cargada → no añade consultas al detalle, G4 intacto).
+  - `FlywayH2VendorTest`, `FlywayPostgresTest`, `AuditoriaInmutablePostgresTest`, `PerfilCleverPostgresTest`,
+    `SeguridadEsquemaPostgresTest`: recuentos a la realidad V29 — PostgreSQL **29** (V1–V29), H2 **28** ({1..25,27,28,29},
+    hueco en V26).
+  - `InventarioAuditoriaTest`: se conservan las dos rutas (la de Álvaro `PUT /configuracion/preferencias-ovz` y la
+    nuestra `PUT /ganaderos/{id}/telefono`).
+  - `CLAUDE.md`, `progress.md`: ambas historias conservadas; V27→V29 y cifras actualizadas.
+- **Renumeración:** `git mv V27__add_telefono_to_ganadero.sql → V29__add_telefono_to_ganadero.sql` (el `V27` de main es
+  `V27__preferencias_ovz_y_campos_tramite.sql`, de la #24).
+- **Verde tras el merge:** `./mvnw clean test` **1366** (1365 + 1 skip, JDK 21); `npm test` **1144 en 59**, build
+  limpio, lint 3 avisos conocidos. Mutación `findByIdAndGestoriaId`→`findById` en `GanaderoEdicionService` → rojo
+  (cp/cmp), restaurada. Revisor independiente solo sobre la resolución del merge: Approved. Smoke local H2 reducido:
+  migraciones hasta V29, alta con teléfono, PUT (poner/borrar/`{}`→400/ajeno→404), auditoría por SQL (una
+  `GANADERO_MODIFICADO` por PUT, sin `LECTURA_GANADERO` extra), número fuera del log y de los listados.
