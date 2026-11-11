@@ -3,6 +3,8 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, ChevronDown, CircleAlertIcon, Phone, PlusIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   TEXTO_GANADERO_NO_ENCONTRADO,
@@ -12,7 +14,7 @@ import {
   type ErrorApi,
 } from "@/shared/api/errores";
 import { BadgeRolContacto } from "@/features/tramites/BadgesTramite";
-import { obtenerGanadero } from "./api";
+import { cambiarTelefonoGanadero, obtenerGanadero } from "./api";
 import type { ContactoDeExplotacion, ExplotacionDeGanadero, GanaderoDetalle } from "./types";
 import { formatearTelefono, hrefTelefono } from "./telefono";
 import { CLASE_ENLACE } from "@/shared/ui/enlace";
@@ -125,7 +127,13 @@ export function GanaderoDetallePage() {
         </Alert>
       )}
 
-      {vista.estado === "listo" && <Ficha ganadero={vista.ganadero} />}
+      {vista.estado === "listo" && (
+        <Ficha
+          // id no nulo aquí (vista "listo" solo se da con un id válido).
+          ganadero={vista.ganadero}
+          onNoEncontrado={() => id !== null && setCarga({ id, estado: "no-encontrado" })}
+        />
+      )}
     </div>
   );
 }
@@ -143,7 +151,17 @@ function FichaCargando() {
   );
 }
 
-function Ficha({ ganadero }: { ganadero: GanaderoDetalle }) {
+function Ficha({
+  ganadero: ganaderoInicial,
+  onNoEncontrado,
+}: {
+  ganadero: GanaderoDetalle;
+  onNoEncontrado: () => void;
+}) {
+  // Estado local sembrado del prop: tras el PUT del teléfono la ficha se repinta con la respuesta,
+  // sin volver a pedir el detalle. La ficha se desmonta al cambiar de ganadero, así que no se
+  // desincroniza con el prop.
+  const [ganadero, setGanadero] = useState(ganaderoInicial);
   const { explotaciones } = ganadero;
   const { hash } = useLocation();
   const hashAtendido = useRef(false);
@@ -182,8 +200,25 @@ function Ficha({ ganadero }: { ganadero: GanaderoDetalle }) {
             ) : (
               <span>Sin NIF</span>
             )}
+            {ganadero.telefono ? (
+              <a
+                href={hrefTelefono(ganadero.telefono)}
+                className={cn("inline-flex items-center gap-1.5 tabular-nums", CLASE_ENLACE)}
+              >
+                <Phone aria-hidden="true" className="size-3.5" />
+                {formatearTelefono(ganadero.telefono)}
+              </a>
+            ) : (
+              <span>Sin teléfono</span>
+            )}
             <span className="tabular-nums">{textoExplotaciones(explotaciones.length)}</span>
           </div>
+          <EditorTelefono
+            ganaderoId={ganadero.id}
+            telefono={ganadero.telefono}
+            onActualizado={setGanadero}
+            onNoEncontrado={onNoEncontrado}
+          />
         </div>
       </div>
 
@@ -206,6 +241,141 @@ function Ficha({ ganadero }: { ganadero: GanaderoDetalle }) {
         </div>
       )}
     </>
+  );
+}
+
+const ID_INPUT_TELEFONO = "ficha-telefono-input";
+const ID_AYUDA_TELEFONO = "ficha-telefono-ayuda";
+
+/** Edición en línea del teléfono del ganadero (PUT /ganaderos/{id}/telefono). Una petición a la
+ * vez; el 200 repinta la ficha con la respuesta (el padre no vuelve a pedir el detalle); el 404
+ * lleva a "Ganadero no encontrado"; el 400 (y la red/5xx) conservan lo escrito y muestran el motivo.
+ * El foco vuelve al botón disparador al terminar. */
+function EditorTelefono({
+  ganaderoId,
+  telefono,
+  onActualizado,
+  onNoEncontrado,
+}: {
+  ganaderoId: number;
+  telefono: string | null;
+  onActualizado: (ganadero: GanaderoDetalle) => void;
+  onNoEncontrado: () => void;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const botonRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Tras cerrar la edición, el foco vuelve al botón disparador (que se vuelve a montar entonces).
+  const volverAlBoton = useRef(false);
+
+  useEffect(() => {
+    if (editando) {
+      inputRef.current?.focus();
+    } else if (volverAlBoton.current) {
+      volverAlBoton.current = false;
+      botonRef.current?.focus();
+    }
+  }, [editando]);
+
+  function abrir() {
+    setValor(telefono ?? "");
+    setError(null);
+    setEditando(true);
+  }
+
+  function cancelar() {
+    volverAlBoton.current = true;
+    setError(null);
+    setEditando(false);
+  }
+
+  async function guardar(telefonoAEnviar: string | null) {
+    if (guardando) return; // Una sola petición a la vez.
+    setError(null);
+    setGuardando(true);
+    try {
+      const actualizado = await cambiarTelefonoGanadero(ganaderoId, telefonoAEnviar);
+      onActualizado(actualizado);
+      volverAlBoton.current = true;
+      setEditando(false);
+    } catch (err) {
+      const errorApi = aErrorApi(err);
+      // El 404 (ajeno o inexistente) saca a "Ganadero no encontrado", igual que la carga.
+      if (errorApi.tipo === "no-encontrado") {
+        onNoEncontrado();
+        return;
+      }
+      // 400 con motivo, o red/5xx: se conserva lo escrito y se muestra el texto.
+      setError(mensajeDeError(errorApi));
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  if (!editando) {
+    return (
+      <div className="mt-2">
+        <Button ref={botonRef} variant="outline" size="sm" onClick={abrir}>
+          {telefono ? "Cambiar teléfono" : "Añadir teléfono"}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      className="mt-2 flex max-w-sm flex-col gap-2"
+      onSubmit={(evento) => {
+        evento.preventDefault();
+        void guardar(valor.trim());
+      }}
+      noValidate
+    >
+      <Label htmlFor={ID_INPUT_TELEFONO}>Teléfono</Label>
+      <Input
+        id={ID_INPUT_TELEFONO}
+        ref={inputRef}
+        type="tel"
+        inputMode="tel"
+        autoComplete="off"
+        value={valor}
+        onChange={(e) => setValor(e.target.value)}
+        placeholder="612 345 678"
+        aria-invalid={error != null || undefined}
+        aria-describedby={ID_AYUDA_TELEFONO}
+      />
+      <p id={ID_AYUDA_TELEFONO} className="text-[13px] text-muted-foreground">
+        Para que Ganera reconozca sus WhatsApp, añade este número como contacto de una explotación
+      </p>
+      {error && (
+        <Alert variant="destructive">
+          <CircleAlertIcon />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" size="sm" disabled={guardando}>
+          {guardando ? "Guardando…" : "Guardar"}
+        </Button>
+        <Button type="button" variant="outline" size="sm" onClick={cancelar} disabled={guardando}>
+          Cancelar
+        </Button>
+        {telefono && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void guardar(null)}
+            disabled={guardando}
+          >
+            Quitar teléfono
+          </Button>
+        )}
+      </div>
+    </form>
   );
 }
 

@@ -36,6 +36,7 @@ export function AltaGanaderoDialog({
 }) {
   const [nombre, setNombre] = useState("");
   const [nif, setNif] = useState("");
+  const [telefono, setTelefono] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const nombreRef = useRef<HTMLInputElement>(null);
@@ -45,6 +46,7 @@ export function AltaGanaderoDialog({
     if (open) {
       setNombre("");
       setNif("");
+      setTelefono("");
       setError(null);
       setEnviando(false);
     }
@@ -63,7 +65,7 @@ export function AltaGanaderoDialog({
     setError(null);
     setEnviando(true);
     try {
-      const creado = await crearGanadero(nombre.trim(), nif.trim());
+      const creado = await crearGanadero(nombre.trim(), nif.trim(), telefono.trim() || undefined);
       onCreado(creado);
       onOpenChange(false);
     } catch (err) {
@@ -76,6 +78,7 @@ export function AltaGanaderoDialog({
 
   const errorEnNif = error != null && /nif/i.test(error);
   const errorEnNombre = error != null && /nombre/i.test(error);
+  const errorEnTelefono = error != null && /tel[eé]fono/i.test(error);
 
   return (
     <Dialog open={open} onOpenChange={(abierto) => onOpenChange(abierto)}>
@@ -132,6 +135,25 @@ export function AltaGanaderoDialog({
                 aria-invalid={errorEnNif || undefined}
                 required
               />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="alta-ganadero-telefono">Teléfono (opcional)</Label>
+              <Input
+                id="alta-ganadero-telefono"
+                type="tel"
+                value={telefono}
+                onChange={(e) => setTelefono(e.target.value)}
+                autoComplete="off"
+                inputMode="tel"
+                placeholder="612 345 678"
+                aria-invalid={errorEnTelefono || undefined}
+                aria-describedby="alta-ganadero-telefono-ayuda"
+              />
+              <p id="alta-ganadero-telefono-ayuda" className="text-[13px] text-muted-foreground">
+                Para que Ganera reconozca sus WhatsApp, añade este número como contacto de una
+                explotación
+              </p>
             </div>
 
             {error && (

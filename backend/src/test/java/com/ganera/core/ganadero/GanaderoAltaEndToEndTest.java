@@ -136,6 +136,60 @@ class GanaderoAltaEndToEndTest {
     }
 
     @Test
+    void altaConTelefonoEscritoAManoSeGuardaNormalizadoYNoSaleEnLaRespuesta() throws Exception {
+        // Nombre SIN la palabra «telefono» a proposito: asi el doesNotContain de abajo prueba la ausencia del campo,
+        // no se confunde con el nombre.
+        ResponseEntity<String> respuesta = crear(tokenA, "Finca del Olmo SL", NIF_VALIDO, "612 345 678");
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(201);
+
+        // D9: la respuesta del alta (GanaderoResumenResponse) NO lleva el telefono ni sus digitos.
+        assertThat(respuesta.getBody()).doesNotContain("telefono").doesNotContain("612345678");
+        JsonNode creado = objectMapper.readTree(respuesta.getBody());
+        assertThat(creado.has("telefono")).isFalse();
+
+        // Se ha guardado normalizado a E.164.
+        Ganadero ganadero = ganaderoRepository.findAll().stream()
+                .filter(g -> NIF_VALIDO.equals(g.getNif())).findFirst().orElseThrow();
+        assertThat(ganadero.getTelefono()).isEqualTo("+34612345678");
+
+        // D5: GANADERO_CREADO identico (no deja constancia de si se informo telefono): solo ORIGEN MANUAL, sin
+        // el telefono en ningun sitio.
+        List<Auditoria> filasA = auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaIdA);
+        assertThat(filasA).hasSize(1);
+        Auditoria fila = filasA.get(0);
+        assertThat(fila.getAccion()).isEqualTo(AccionAuditoria.GANADERO_CREADO);
+        assertThat(fila.getDespues()).isEqualTo("{\"origen\":\"MANUAL\"}");
+        assertThat(fila.getAntes()).isNull();
+        assertThat(fila.getDespues()).doesNotContain("612345678");
+    }
+
+    @Test
+    void altaSinTelefonoLoDejaNull() {
+        assertThat(crear(tokenA, "Finca sin telefono", NIF_VALIDO).getStatusCode().value()).isEqualTo(201);
+        Ganadero ganadero = ganaderoRepository.findAll().stream()
+                .filter(g -> NIF_VALIDO.equals(g.getNif())).findFirst().orElseThrow();
+        assertThat(ganadero.getTelefono()).isNull();
+    }
+
+    @Test
+    void altaConTelefonoInvalidoDa400SinCrearNadaNiAuditar() throws Exception {
+        ResponseEntity<String> respuesta = crear(tokenA, "Finca telefono malo", NIF_VALIDO, "123");
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(400);
+        assertThat(motivo(respuesta)).isEqualTo(GanaderoController.MOTIVO_TELEFONO_INVALIDO);
+        // Nada creado y ninguna fila de auditoria (el 400 es previo a tocar la BD).
+        assertThat(ganaderoRepository.findAll()).isEmpty();
+        assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaIdA)).isEmpty();
+    }
+
+    @Test
+    void elTelefonoSeValidaDespuesDelNif() throws Exception {
+        // NIF invalido Y telefono invalido: gana el 400 del NIF (se comprueba antes).
+        ResponseEntity<String> respuesta = crear(tokenA, "Finca", "12345678A", "123");
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(400);
+        assertThat(motivo(respuesta)).isEqualTo(GanaderoController.MOTIVO_NIF_INVALIDO);
+    }
+
+    @Test
     void nombreEnBlancoDa400() throws Exception {
         ResponseEntity<String> respuesta = crear(tokenA, "   ", NIF_VALIDO);
         assertThat(respuesta.getStatusCode().value()).isEqualTo(400);
@@ -184,18 +238,22 @@ class GanaderoAltaEndToEndTest {
         headers.setContentType(MediaType.APPLICATION_JSON);
         ResponseEntity<String> respuesta = restTemplate.exchange(
                 "/ganaderos", HttpMethod.POST,
-                new HttpEntity<>(new GanaderoCrearRequest("Sin sesión", NIF_VALIDO), headers), String.class);
+                new HttpEntity<>(new GanaderoCrearRequest("Sin sesión", NIF_VALIDO, null), headers), String.class);
         assertThat(respuesta.getStatusCode().value()).isBetween(401, 403);
     }
 
     // --- helpers -----------------------------------------------------------------------------
 
     private ResponseEntity<String> crear(String token, String nombre, String nif) {
+        return crear(token, nombre, nif, null);
+    }
+
+    private ResponseEntity<String> crear(String token, String nombre, String nif, String telefono) {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
         return restTemplate.exchange("/ganaderos", HttpMethod.POST,
-                new HttpEntity<>(new GanaderoCrearRequest(nombre, nif), headers), String.class);
+                new HttpEntity<>(new GanaderoCrearRequest(nombre, nif, telefono), headers), String.class);
     }
 
     private List<String> nifsDe(String token) throws Exception {

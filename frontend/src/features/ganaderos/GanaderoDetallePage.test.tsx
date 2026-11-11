@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { StrictMode, useLayoutEffect } from "react"
@@ -6,7 +6,11 @@ import { createMemoryRouter, RouterProvider, useLocation } from "react-router-do
 import { describe, expect, it, vi } from "vitest"
 import { apiUrl } from "@/test/apiBaseUrl"
 import { server } from "@/test/server"
+import { TEXTO_ERROR_RED } from "@/shared/api/errores"
 import { GanaderoDetallePage } from "./GanaderoDetallePage"
+
+const AYUDA_TELEFONO =
+  "Para que Ganera reconozca sus WhatsApp, añade este número como contacto de una explotación"
 
 function explotacion(id: number, contactos: unknown[] = []) {
   return {
@@ -24,8 +28,8 @@ const CONTACTOS = [
   { contactoId: 2, nombre: "Luis Peón", telefono: "+447911123456", rol: "EMPLEADO" },
 ]
 
-function ganadero(explotaciones: unknown[]) {
-  return { id: 7, nombre: "Ana Ruiz Gómez", nif: "12345678Z", explotaciones }
+function ganadero(explotaciones: unknown[], extra: Record<string, unknown> = {}) {
+  return { id: 7, nombre: "Ana Ruiz Gómez", nif: "12345678Z", explotaciones, ...extra }
 }
 
 function responderCon(respuesta: () => Response) {
@@ -467,5 +471,177 @@ describe("GanaderoDetallePage: índice y hash (m2, m3)", () => {
 
     await screen.findAllByRole("region", { name: /^ES28079000/ })
     expect(document.activeElement).toBe(document.body)
+  })
+})
+
+/** Registra las peticiones PUT /ganaderos/:id/telefono y responde con `respuesta(cuerpo)`. */
+function responderPut(respuesta: (cuerpo: unknown) => Response | Promise<Response>) {
+  const cuerpos: unknown[] = []
+  server.use(
+    http.put(apiUrl("/ganaderos/:id/telefono"), async ({ request }) => {
+      const cuerpo = await request.json()
+      cuerpos.push(cuerpo)
+      return respuesta(cuerpo)
+    }),
+  )
+  return cuerpos
+}
+
+describe("GanaderoDetallePage: teléfono del ganadero", () => {
+  it("con teléfono: enlace tel: agrupado en la cabecera y botón «Cambiar teléfono»", async () => {
+    responderCon(() => HttpResponse.json(ganadero([], { telefono: "+34612345678" })))
+    montar()
+
+    await screen.findByRole("heading", { level: 1, name: "Ana Ruiz Gómez" })
+    const enlace = screen.getByRole("link", { name: /612 345 678/ })
+    expect(enlace).toHaveAttribute("href", "tel:+34612345678")
+    expect(screen.getByRole("button", { name: "Cambiar teléfono" })).toBeInTheDocument()
+    expect(screen.queryByText("Sin teléfono")).not.toBeInTheDocument()
+  })
+
+  it("sin teléfono: «Sin teléfono» y botón «Añadir teléfono»", async () => {
+    responderCon(() => HttpResponse.json(ganadero([], { telefono: null })))
+    montar()
+
+    await screen.findByRole("heading", { level: 1, name: "Ana Ruiz Gómez" })
+    expect(screen.getByText("Sin teléfono")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Añadir teléfono" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Cambiar teléfono" })).not.toBeInTheDocument()
+  })
+
+  it("editar sin teléfono: el campo, la ayuda D7 literal, PUT con el valor y repintado sin pedir el detalle de nuevo", async () => {
+    const llamadasDetalle = responderCon(() => HttpResponse.json(ganadero([], { telefono: null })))
+    const cuerpos = responderPut(() =>
+      HttpResponse.json(ganadero([], { telefono: "+34612345678" })),
+    )
+    const user = userEvent.setup()
+    montar()
+
+    await user.click(await screen.findByRole("button", { name: "Añadir teléfono" }))
+    const campo = screen.getByLabelText(/Teléfono/)
+    expect(screen.getByText(AYUDA_TELEFONO)).toBeInTheDocument()
+    expect(campo).toHaveAttribute("aria-describedby", screen.getByText(AYUDA_TELEFONO).id)
+
+    await user.type(campo, "612 345 678")
+    await user.click(screen.getByRole("button", { name: "Guardar" }))
+
+    // Se pinta el teléfono devuelto por el PUT.
+    expect(await screen.findByRole("link", { name: /612 345 678/ })).toHaveAttribute(
+      "href",
+      "tel:+34612345678",
+    )
+    expect(cuerpos).toEqual([{ telefono: "612 345 678" }])
+    // No se vuelve a pedir el detalle: solo la carga inicial.
+    expect(llamadasDetalle()).toBe(1)
+  })
+
+  it("«Quitar teléfono» manda null explícito y deja «Sin teléfono»", async () => {
+    responderCon(() => HttpResponse.json(ganadero([], { telefono: "+34612345678" })))
+    const cuerpos = responderPut(() => HttpResponse.json(ganadero([], { telefono: null })))
+    const user = userEvent.setup()
+    montar()
+
+    await user.click(await screen.findByRole("button", { name: "Cambiar teléfono" }))
+    await user.click(screen.getByRole("button", { name: "Quitar teléfono" }))
+
+    expect(await screen.findByText("Sin teléfono")).toBeInTheDocument()
+    expect(cuerpos).toEqual([{ telefono: null }])
+  })
+
+  it("un 400 conserva lo escrito y muestra el motivo del backend", async () => {
+    responderCon(() => HttpResponse.json(ganadero([], { telefono: null })))
+    responderPut(() =>
+      HttpResponse.json(
+        { motivo: "El teléfono no es válido. Revísalo e inténtalo de nuevo." },
+        { status: 400 },
+      ),
+    )
+    const user = userEvent.setup()
+    montar()
+
+    await user.click(await screen.findByRole("button", { name: "Añadir teléfono" }))
+    const campo = screen.getByLabelText(/Teléfono/)
+    await user.type(campo, "abc")
+    await user.click(screen.getByRole("button", { name: "Guardar" }))
+
+    expect(
+      await screen.findByText("El teléfono no es válido. Revísalo e inténtalo de nuevo."),
+    ).toBeInTheDocument()
+    // Sigue en edición con lo tecleado y el campo marcado.
+    expect(screen.getByLabelText(/Teléfono/)).toHaveValue("abc")
+    expect(screen.getByLabelText(/Teléfono/)).toHaveAttribute("aria-invalid", "true")
+  })
+
+  it("un 404 del PUT es «Ganadero no encontrado»", async () => {
+    responderCon(() => HttpResponse.json(ganadero([], { telefono: null })))
+    responderPut(() => new HttpResponse(null, { status: 404 }))
+    const user = userEvent.setup()
+    montar()
+
+    await user.click(await screen.findByRole("button", { name: "Añadir teléfono" }))
+    await user.type(screen.getByLabelText(/Teléfono/), "612345678")
+    await user.click(screen.getByRole("button", { name: "Guardar" }))
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Ganadero no encontrado" }),
+    ).toBeInTheDocument()
+  })
+
+  it("un error de red deja lo escrito intacto", async () => {
+    responderCon(() => HttpResponse.json(ganadero([], { telefono: null })))
+    responderPut(() => HttpResponse.error())
+    const user = userEvent.setup()
+    montar()
+
+    await user.click(await screen.findByRole("button", { name: "Añadir teléfono" }))
+    await user.type(screen.getByLabelText(/Teléfono/), "612345678")
+    await user.click(screen.getByRole("button", { name: "Guardar" }))
+
+    expect(await screen.findByText(TEXTO_ERROR_RED)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Teléfono/)).toHaveValue("612345678")
+  })
+
+  it("el foco vuelve al botón disparador tras guardar y tras cancelar", async () => {
+    responderCon(() => HttpResponse.json(ganadero([], { telefono: null })))
+    responderPut(() => HttpResponse.json(ganadero([], { telefono: "+34612345678" })))
+    const user = userEvent.setup()
+    montar()
+
+    // Cancelar devuelve el foco al botón «Añadir teléfono».
+    await user.click(await screen.findByRole("button", { name: "Añadir teléfono" }))
+    await user.click(screen.getByRole("button", { name: "Cancelar" }))
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Añadir teléfono" })).toHaveFocus(),
+    )
+
+    // Guardar devuelve el foco al botón «Cambiar teléfono» (ya hay número).
+    await user.click(screen.getByRole("button", { name: "Añadir teléfono" }))
+    await user.type(screen.getByLabelText(/Teléfono/), "612345678")
+    await user.click(screen.getByRole("button", { name: "Guardar" }))
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Cambiar teléfono" })).toHaveFocus(),
+    )
+  })
+
+  it("una sola petición a la vez: el botón Guardar se deshabilita mientras envía", async () => {
+    responderCon(() => HttpResponse.json(ganadero([], { telefono: null })))
+    const puerta7 = puerta()
+    server.use(
+      http.put(apiUrl("/ganaderos/:id/telefono"), async () => {
+        await puerta7.promesa
+        return HttpResponse.json(ganadero([], { telefono: "+34612345678" }))
+      }),
+    )
+    const user = userEvent.setup()
+    montar()
+
+    await user.click(await screen.findByRole("button", { name: "Añadir teléfono" }))
+    await user.type(screen.getByLabelText(/Teléfono/), "612345678")
+    const guardar = screen.getByRole("button", { name: "Guardar" })
+    await user.click(guardar)
+
+    await waitFor(() => expect(guardar).toBeDisabled())
+    puerta7.abrir()
+    expect(await screen.findByRole("link", { name: /612 345 678/ })).toBeInTheDocument()
   })
 })

@@ -84,6 +84,7 @@ class InventarioAuditoriaTest {
         RUTAS.put("POST /tramites/{id}/respuestas-whatsapp", Cobertura.auditada("tramite.RespuestaWhatsappEndToEndTest"));
         RUTAS.put("POST /explotaciones/importar", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
         RUTAS.put("POST /ganaderos", Cobertura.auditada("ganadero.GanaderoAltaEndToEndTest"));
+        RUTAS.put("PUT /ganaderos/{id}/telefono", Cobertura.auditada("ganadero.GanaderoTelefonoEndToEndTest"));
         RUTAS.put("PUT /configuracion/preferencias-ovz",
                 Cobertura.auditada("ovz.PreferenciaOvzEndToEndTest"));
         RUTAS.put("POST /gestorias/registro", Cobertura.auditada("registro.RegistroGestoriaEndToEndTest"));

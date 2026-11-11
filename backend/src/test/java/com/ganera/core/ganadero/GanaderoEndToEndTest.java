@@ -250,6 +250,29 @@ class GanaderoEndToEndTest {
     }
 
     @Test
+    void detalleIncluyeElTelefonoCuandoLoHayYNullCuandoNo() throws IOException {
+        // Importado sin telefono: el detalle lo trae como null (la clave existe, el valor es null).
+        JsonNode sinTel = objectMapper.readTree(get("/ganaderos/" + ganaderoA1, tokenA).getBody());
+        assertThat(sinTel.has("telefono")).isTrue();
+        assertThat(sinTel.get("telefono").isNull()).isTrue();
+
+        // Se pone un telefono directamente en BD (este test no usa el PUT, que tiene su propio E2E).
+        Ganadero g = ganaderoRepository.findAll().stream()
+                .filter(x -> x.getId().equals(ganaderoA1)).findFirst().orElseThrow();
+        g.setTelefono("+34600111222");
+        ganaderoRepository.save(g);
+
+        JsonNode conTel = objectMapper.readTree(get("/ganaderos/" + ganaderoA1, tokenA).getBody());
+        assertThat(conTel.get("telefono").asText()).isEqualTo("+34600111222");
+
+        // D9: el listado NO lleva el telefono (ni la clave en cada fila ni los digitos en el cuerpo).
+        String listado = get("/ganaderos", tokenA).getBody();
+        assertThat(listado).doesNotContain("600111222").doesNotContain("+34600111222");
+        objectMapper.readTree(listado).get("content")
+                .forEach(fila -> assertThat(fila.has("telefono")).isFalse());
+    }
+
+    @Test
     void detalleDeGanaderoConExplotacionSinContactosDevuelveListaVacia() throws IOException {
         JsonNode json = objectMapper.readTree(get("/ganaderos/" + ganaderoA2, tokenA).getBody());
 
