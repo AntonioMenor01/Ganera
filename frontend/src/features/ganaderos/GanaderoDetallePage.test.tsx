@@ -79,7 +79,7 @@ describe("GanaderoDetallePage: ficha", () => {
     expect(within(titulo).getByText("ES280790001")).toHaveClass("tabular-nums")
   })
 
-  it("contactos con nombre, teléfono tel: exacto en E.164 y badge de rol", async () => {
+  it("contactos con nombre, teléfono tel: exacto en E.164 y selector de rol editable", async () => {
     responderCon(() => HttpResponse.json(ganadero([explotacion(1, CONTACTOS)])))
     montar()
 
@@ -93,14 +93,16 @@ describe("GanaderoDetallePage: ficha", () => {
     const telAna = within(ana).getByRole("link", { name: /612 345 678/ })
     expect(telAna).toHaveAttribute("href", "tel:+34612345678")
     expect(telAna).toHaveClass("tabular-nums")
-    expect(within(ana).getByText("Titular")).toHaveClass("bg-success")
+    expect(within(ana).getByRole("combobox", { name: "Rol de Ana Ruiz" })).toHaveValue("TITULAR")
+    expect(within(ana).getByRole("button", { name: "Quitar a Ana Ruiz de la explotación" })).toBeInTheDocument()
 
     const luis = items[1]
     expect(within(luis).getByRole("link", { name: /\+447911123456/ })).toHaveAttribute(
       "href",
       "tel:+447911123456",
     )
-    expect(within(luis).getByText("Empleado")).toHaveClass("bg-neutral", "text-neutral-foreground")
+    expect(within(luis).getByRole("combobox", { name: "Rol de Luis Peón" })).toHaveValue("EMPLEADO")
+    // El código del rol nunca se muestra crudo: las opciones son "Titular"/"Empleado".
     expect(within(seccion).queryByText("TITULAR")).not.toBeInTheDocument()
   })
 
