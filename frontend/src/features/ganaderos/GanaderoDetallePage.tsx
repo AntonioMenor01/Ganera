@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, ChevronDown, CircleAlertIcon, Phone, PlusIcon } from "lucide-react";
+import { ArrowLeft, ChevronDown, CircleAlertIcon, PlusIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -11,13 +11,12 @@ import {
   mensajeDeError,
   type ErrorApi,
 } from "@/shared/api/errores";
-import { BadgeRolContacto } from "@/features/tramites/BadgesTramite";
 import { obtenerGanadero } from "./api";
-import type { ContactoDeExplotacion, ExplotacionDeGanadero, GanaderoDetalle } from "./types";
-import { formatearTelefono, hrefTelefono } from "./telefono";
+import type { ExplotacionDeGanadero, GanaderoDetalle } from "./types";
 import { CLASE_ENLACE } from "@/shared/ui/enlace";
 import { AnimalesDeExplotacion } from "@/features/explotaciones/AnimalesDeExplotacion";
 import { AltaTramiteDialog } from "@/features/tramites/AltaTramiteDialog";
+import { PersonasDeExplotacion } from "@/features/contactos/PersonasDeExplotacion";
 
 /** Con más explotaciones que esto, la ficha abre con un índice de enlaces a cada sección. */
 const MAX_EXPLOTACIONES_SIN_INDICE = 3;
@@ -53,6 +52,15 @@ export function GanaderoDetallePage() {
   const [intento, setIntento] = useState(0);
 
   const reintentar = useCallback(() => setIntento((n) => n + 1), []);
+
+  // Recarga silenciosa tras cambiar los contactos de una de sus explotaciones: refresca los datos
+  // sin volver al esqueleto de carga. Si falla, se mantiene lo mostrado (el cambio ya está hecho).
+  const recargarSilencioso = useCallback(() => {
+    if (id === null) return;
+    obtenerGanadero(id)
+      .then((ganadero) => setCarga({ id, estado: "listo", ganadero }))
+      .catch(() => {});
+  }, [id]);
 
   useEffect(() => {
     if (id === null) return;
@@ -125,7 +133,9 @@ export function GanaderoDetallePage() {
         </Alert>
       )}
 
-      {vista.estado === "listo" && <Ficha ganadero={vista.ganadero} />}
+      {vista.estado === "listo" && (
+        <Ficha ganadero={vista.ganadero} onCambio={recargarSilencioso} />
+      )}
     </div>
   );
 }
@@ -143,7 +153,7 @@ function FichaCargando() {
   );
 }
 
-function Ficha({ ganadero }: { ganadero: GanaderoDetalle }) {
+function Ficha({ ganadero, onCambio }: { ganadero: GanaderoDetalle; onCambio: () => void }) {
   const { explotaciones } = ganadero;
   const { hash } = useLocation();
   const hashAtendido = useRef(false);
@@ -201,7 +211,7 @@ function Ficha({ ganadero }: { ganadero: GanaderoDetalle }) {
       ) : (
         <div className="flex flex-col gap-4">
           {explotaciones.map((explotacion) => (
-            <SeccionExplotacion key={explotacion.id} explotacion={explotacion} />
+            <SeccionExplotacion key={explotacion.id} explotacion={explotacion} onCambio={onCambio} />
           ))}
         </div>
       )}
@@ -254,7 +264,13 @@ function IndiceExplotaciones({ explotaciones }: { explotaciones: ExplotacionDeGa
   );
 }
 
-function SeccionExplotacion({ explotacion }: { explotacion: ExplotacionDeGanadero }) {
+function SeccionExplotacion({
+  explotacion,
+  onCambio,
+}: {
+  explotacion: ExplotacionDeGanadero;
+  onCambio: () => void;
+}) {
   const navigate = useNavigate();
   const [animalesAbiertos, setAnimalesAbiertos] = useState(false);
   const [altaAbierta, setAltaAbierta] = useState(false);
@@ -297,20 +313,15 @@ function SeccionExplotacion({ explotacion }: { explotacion: ExplotacionDeGanader
       </header>
 
       <div className="px-5 py-4">
-        <h3 id={idContactos} className="text-sm font-bold text-muted-foreground">
+        <h3 id={idContactos} className="mb-2 text-sm font-bold text-muted-foreground">
           Contactos
         </h3>
-        {explotacion.contactos.length === 0 ? (
-          <p className="mt-1 text-sm text-muted-foreground">
-            Sin contactos activos en esta explotación.
-          </p>
-        ) : (
-          <ul aria-labelledby={idContactos} className="divide-y">
-            {explotacion.contactos.map((contacto) => (
-              <FilaContacto key={contacto.contactoId} contacto={contacto} />
-            ))}
-          </ul>
-        )}
+        <PersonasDeExplotacion
+          explotacionId={explotacion.id}
+          contactos={explotacion.contactos}
+          onCambio={onCambio}
+          idEtiquetaLista={idContactos}
+        />
       </div>
 
       <div className="border-t border-border bg-muted/50 px-5 py-2">
@@ -347,22 +358,3 @@ function SeccionExplotacion({ explotacion }: { explotacion: ExplotacionDeGanader
   );
 }
 
-function FilaContacto({ contacto }: { contacto: ContactoDeExplotacion }) {
-  return (
-    // Rejilla: los teléfonos quedan alineados en columna (no bailan con el ancho del badge) y
-    // pegados al nombre en escritorio. En móvil, nombre | teléfono y el badge debajo.
-    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 py-2 text-sm sm:grid-cols-[minmax(0,18rem)_11rem_auto] sm:justify-start">
-      <span className="min-w-0 break-words">{contacto.nombre}</span>
-      <a
-        href={hrefTelefono(contacto.telefono)}
-        className={cn("inline-flex items-center gap-1.5 justify-self-start tabular-nums", CLASE_ENLACE)}
-      >
-        <Phone aria-hidden="true" className="size-3.5" />
-        {formatearTelefono(contacto.telefono)}
-      </a>
-      <span className="col-span-2 justify-self-start sm:col-span-1">
-        <BadgeRolContacto rol={contacto.rol} />
-      </span>
-    </li>
-  );
-}

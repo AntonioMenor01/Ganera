@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, CircleAlertIcon, Phone, PlusIcon } from "lucide-react";
+import { ArrowLeft, CircleAlertIcon, PlusIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -11,9 +11,8 @@ import {
   type ErrorApi,
 } from "@/shared/api/errores";
 import { CLASE_ENLACE } from "@/shared/ui/enlace";
-import { BadgeRolContacto } from "@/features/tramites/BadgesTramite";
 import { AltaTramiteDialog } from "@/features/tramites/AltaTramiteDialog";
-import { formatearTelefono, hrefTelefono } from "@/features/ganaderos/telefono";
+import { PersonasDeExplotacion } from "@/features/contactos/PersonasDeExplotacion";
 import { obtenerExplotacion } from "./api";
 import type { ExplotacionDetalle } from "./types";
 import { AnimalesDeExplotacion } from "./AnimalesDeExplotacion";
@@ -39,6 +38,15 @@ export function ExplotacionDetallePage() {
   const [altaAbierta, setAltaAbierta] = useState(false);
 
   const reintentar = useCallback(() => setIntento((n) => n + 1), []);
+
+  // Recarga silenciosa tras cambiar los contactos: no vuelve al esqueleto de carga, solo refresca
+  // los datos. Si falla, se mantiene lo mostrado (la mutación ya se aplicó en el backend).
+  const recargarContactos = useCallback(() => {
+    if (id === null) return;
+    obtenerExplotacion(id)
+      .then((explotacion) => setVista({ estado: "listo", explotacion }))
+      .catch(() => {});
+  }, [id]);
 
   useEffect(() => {
     if (id === null) {
@@ -157,35 +165,12 @@ export function ExplotacionDetallePage() {
               Contactos
             </h2>
             <div className="px-5 py-3">
-              {vista.explotacion.contactos.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  Sin contactos activos en esta explotación.
-                </p>
-              ) : (
-                <ul className="divide-y">
-                  {vista.explotacion.contactos.map((contacto) => (
-                    <li
-                      key={contacto.contactoId}
-                      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 py-2 text-sm sm:grid-cols-[minmax(0,18rem)_11rem_auto]"
-                    >
-                      <span className="min-w-0 break-words">{contacto.nombre}</span>
-                      <a
-                        href={hrefTelefono(contacto.telefono)}
-                        className={cn(
-                          "inline-flex items-center gap-1.5 justify-self-start tabular-nums",
-                          CLASE_ENLACE,
-                        )}
-                      >
-                        <Phone aria-hidden="true" className="size-3.5" />
-                        {formatearTelefono(contacto.telefono)}
-                      </a>
-                      <span className="col-span-2 justify-self-start sm:col-span-1">
-                        <BadgeRolContacto rol={contacto.rol} />
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <PersonasDeExplotacion
+                explotacionId={vista.explotacion.id}
+                contactos={vista.explotacion.contactos}
+                onCambio={recargarContactos}
+                idEtiquetaLista="contactos-explotacion"
+              />
             </div>
           </section>
 
