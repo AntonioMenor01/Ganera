@@ -1188,7 +1188,21 @@ approval step before anything is written to OVZ.net.
   `Tramite`/`Contacto`/`Explotacion`/`Ganadero`) + `AccesoAjeno`; cuando un recurso existe en otra gestoría se deja
   una fila `ACCESO_OTRA_GESTORIA` en la gestoría **del actor** (nunca el id de la ajena) y la respuesta **no cambia**
   (sigue `404` sin cuerpo). **Lecturas sensibles (D4):** `GET /tramites/{id}`, `GET /ganaderos/{id}`, `GET /contactos`
-  dejan `LECTURA_*` (los listados sin texto ni teléfonos, no). **Consultas sin tenant** (globalmente `UNIQUE`, el
+  y **`GET /explotaciones/{id}`** dejan `LECTURA_*` (los listados sin texto ni teléfonos, no).
+  **`GET /explotaciones/{id}` → `LECTURA_EXPLOTACION`** (hueco cerrado el 2026-11-11, rama
+  `fix/auditoria-lecturas-contactos`): la ficha enriquecida de #23–#28 devolvía los teléfonos de los contactos sin
+  dejar fila; ahora deja **una** `LECTURA_EXPLOTACION` (`EntidadAuditada.EXPLOTACION`, `antes/despues` null, actor del
+  JWT) en el 200, y el 404 ajeno sigue dejando `ACCESO_OTRA_GESTORIA`/`VER_EXPLOTACION`. Misma fórmula que
+  `GET /ganaderos/{id}` y **sin migración** (`AccionAuditoria` se cierra por enum; la columna `accion` no tiene
+  `CHECK`). La auditoría es un `registrarAparte` (REQUIRES_NEW) aparte de la carga del detalle, así que **las consultas
+  del detalle no crecen** (G4, `ExplotacionEndToEndTest.detalleNoCreceEnConsultasConMasContactos`, 1 vs 3 contactos).
+  **Guardia `InventarioLecturasTelefonoTest`:** por reflexión, ningún DTO de respuesta de producción (clase o
+  envolvente `*Response`/`*Resultado`) puede tener un campo `String` cuyo nombre contenga `telefono`/`movil`/`phone`
+  (sin distinguir mayúsculas) sin estar **declarado** auditado (ruta + test de lectura) o exento con su motivo
+  (`telefonoEnmascarado`: va enmascarado; `telefonoMovimiento`: configuración de la gestoría). Un campo nuevo sin
+  declarar pone el test en rojo. **Limitación (asumida):** vigila **tipos**, no **rutas** — un endpoint GET nuevo que
+  reutilice un DTO ya declarado no la dispara (para eso valen D4 y `LecturasSensiblesAuditadasEndToEndTest`), y no ve
+  un campo de teléfono con otro nombre. **Consultas sin tenant** (globalmente `UNIQUE`, el
   request no trae gestoría): `ContactoRepository.findByTelefono` (webhook 3b) y las **dos por SID** de
   `RespuestaWhatsappRepository` — `actualizarEstadoPorSid` (B2) y `bloquearPorSid` (`SELECT … FOR UPDATE` que D7 añadió
   para leer el estado anterior exacto y la gestoría de la fila del callback de estado de Twilio). **Exclusiones
@@ -1462,7 +1476,7 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw clean test` — runs the test suite (1001 tests after the Clever deployment tasks — 1000 run plus the skipped Haiku evaluation —; **1075** after the Supabase migration — 1074 run plus the skipped evaluation —, including the embedded-PostgreSQL ones; **1338** (1337 run plus the skipped evaluation) after M2, the on-demand OVZ decryption; **1347** (1346 run plus the skipped evaluation) after the #23–#28 merge (manual trámite, enriched explotación fichas, OVZ preferences, alerts, demo seeder) and the backend stabilization that fixed the test suite; **1366** (1365 run plus the skipped evaluation) after the ganadero-telefono task (`PUT /ganaderos/{id}/telefono`, migration V29); also green with JDK 21 — the real `JAVA_HOME` is `~/.jdks/temurin-21/jdk-21.0.12.1+1` (the JDK sits one level below `temurin-21`; in Git Bash pass it Windows-style, `JAVA_HOME='C:\Users\Antonio\.jdks\temurin-21\jdk-21.0.12.1+1' ./mvnw clean test`, a `/c/...` path makes the wrapper fail with "JAVA_HOME is not defined correctly")); **always with `clean`**
+- `./mvnw clean test` — runs the test suite (1001 tests after the Clever deployment tasks — 1000 run plus the skipped Haiku evaluation —; **1075** after the Supabase migration — 1074 run plus the skipped evaluation —, including the embedded-PostgreSQL ones; **1338** (1337 run plus the skipped evaluation) after M2, the on-demand OVZ decryption; **1347** (1346 run plus the skipped evaluation) after the #23–#28 merge (manual trámite, enriched explotación fichas, OVZ preferences, alerts, demo seeder) and the backend stabilization that fixed the test suite; **1366** (1365 run plus the skipped evaluation) after the ganadero-telefono task (`PUT /ganaderos/{id}/telefono`, migration V29); **1370** (1369 run plus the skipped evaluation) after closing the contacto/ganadero read-audit gap (`GET /explotaciones/{id}` → `LECTURA_EXPLOTACION`, guard `InventarioLecturasTelefonoTest`; no migration); also green with JDK 21 — the real `JAVA_HOME` is `~/.jdks/temurin-21/jdk-21.0.12.1+1` (the JDK sits one level below `temurin-21`; in Git Bash pass it Windows-style, `JAVA_HOME='C:\Users\Antonio\.jdks\temurin-21\jdk-21.0.12.1+1' ./mvnw clean test`, a `/c/...` path makes the wrapper fail with "JAVA_HOME is not defined correctly")); **always with `clean`**
   (see the VS Code/ECJ note under Architecture notes). A single test:
   `./mvnw clean test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no

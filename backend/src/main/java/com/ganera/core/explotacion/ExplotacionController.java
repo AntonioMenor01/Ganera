@@ -1,6 +1,10 @@
 package com.ganera.core.explotacion;
 
 import com.ganera.core.shared.auditoria.AccesoAjeno;
+import com.ganera.core.shared.auditoria.AccionAuditoria;
+import com.ganera.core.shared.auditoria.Actor;
+import com.ganera.core.shared.auditoria.AuditoriaService;
+import com.ganera.core.shared.auditoria.EntidadAuditada;
 import com.ganera.core.shared.auditoria.OperacionAuditada;
 import com.ganera.core.shared.security.GaneraUserPrincipal;
 import com.ganera.core.shared.texto.NormalizadorBusqueda;
@@ -27,13 +31,16 @@ public class ExplotacionController {
     private final AnimalRepository animalRepository;
     private final ExplotacionConsultaService explotacionConsultaService;
     private final AccesoAjeno accesoAjeno;
+    private final AuditoriaService auditoriaService;
 
     public ExplotacionController(ExplotacionRepository explotacionRepository, AnimalRepository animalRepository,
-                                 ExplotacionConsultaService explotacionConsultaService, AccesoAjeno accesoAjeno) {
+                                 ExplotacionConsultaService explotacionConsultaService, AccesoAjeno accesoAjeno,
+                                 AuditoriaService auditoriaService) {
         this.explotacionRepository = explotacionRepository;
         this.animalRepository = animalRepository;
         this.explotacionConsultaService = explotacionConsultaService;
         this.accesoAjeno = accesoAjeno;
+        this.auditoriaService = auditoriaService;
     }
 
     /** Decision 21: solo se puede ordenar por estos campos (nunca por el Ganadero ni sus
@@ -106,6 +113,11 @@ public class ExplotacionController {
                     OperacionAuditada.VER_EXPLOTACION);
             return ResponseEntity.notFound().build();
         }
+        // Lectura sensible (D4): el detalle trae los telefonos de los contactos sin enmascarar, igual que
+        // GET /ganaderos/{id}. Una fila LECTURA_EXPLOTACION por 200 servido; nunca el valor del telefono
+        // (antes/despues null). No reusa la carga del detalle, asi que no anade consultas (G4).
+        auditoriaService.registrarAparte(AccionAuditoria.LECTURA_EXPLOTACION, principal.gestoriaId(),
+                Actor.usuario(principal.usuarioId()), EntidadAuditada.EXPLOTACION, id, null, null);
         return ResponseEntity.ok(explotacion.get());
     }
 
