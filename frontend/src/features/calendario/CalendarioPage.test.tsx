@@ -72,11 +72,12 @@ describe("CalendarioPage", () => {
         }
         return new HttpResponse(null, { status: 500 });
       }),
+      http.get(apiUrl("/alertas"), () => HttpResponse.json([])),
     );
     montar();
 
     expect(await screen.findByRole("heading", { name: "Calendario" })).toBeInTheDocument();
-    expect(screen.getByText("Carencias, vencimientos, bajas y guías")).toBeInTheDocument();
+    expect(screen.getByText("Hechos en OVZ, plazos legales y cola atascada")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Calendario" })).toHaveAttribute("aria-selected", "true");
 
     await user.click(screen.getByRole("tab", { name: "Lista" }));

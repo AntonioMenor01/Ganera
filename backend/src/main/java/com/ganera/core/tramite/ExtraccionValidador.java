@@ -1,5 +1,6 @@
 package com.ganera.core.tramite;
 
+import com.ganera.core.tramite.TramiteExtractionService.DatosHecho;
 import com.ganera.core.tramite.TramiteExtractionService.TramiteExtraido;
 
 import java.util.ArrayList;
@@ -57,7 +58,8 @@ public final class ExtraccionValidador {
         // D2: con algun crotal (aunque sea invalido) no es SIN_TRAMITE; con un tipo tampoco (se contradicen y
         // manda el tipo: nunca se pierde un tramite identificado).
         boolean sinTramite = extraido.sinTramite() && crotales.isEmpty() && extraido.tipoTramite() == null;
-        return new ExtraccionValidada(extraido.tipoTramite(), List.copyOf(aceptados), descartados, sinTramite);
+        DatosHecho datos = extraido.datosHecho() != null ? extraido.datosHecho() : DatosHecho.vacio();
+        return new ExtraccionValidada(extraido.tipoTramite(), List.copyOf(aceptados), descartados, sinTramite, datos);
     }
 
     /**
@@ -66,7 +68,20 @@ public final class ExtraccionValidador {
      * @param descartados invalidos mas los que pasaron del maximo (D5).
      * @param sinTramite  SIN_TRAMITE tras la red de seguridad D2: solo si la IA lo dijo, sin tipo y sin
      *                    ningun crotal.
+     * @param datosHecho  campos opcionales del hecho (fecha, alta, destino…); nunca null.
      */
-    public record ExtraccionValidada(TipoTramite tipo, List<String> crotales, int descartados, boolean sinTramite) {
+    public record ExtraccionValidada(
+            TipoTramite tipo, List<String> crotales, int descartados, boolean sinTramite, DatosHecho datosHecho) {
+
+        public ExtraccionValidada {
+            if (datosHecho == null) {
+                datosHecho = DatosHecho.vacio();
+            }
+        }
+
+        /** Compatibilidad con tests que no pasan datos del hecho. */
+        public ExtraccionValidada(TipoTramite tipo, List<String> crotales, int descartados, boolean sinTramite) {
+            this(tipo, crotales, descartados, sinTramite, DatosHecho.vacio());
+        }
     }
 }

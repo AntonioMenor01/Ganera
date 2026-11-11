@@ -13,6 +13,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -52,7 +54,13 @@ public class MistralTramiteExtractionService implements TramiteExtractionService
             Responde SOLO con un objeto JSON, sin texto alrededor ni ```:
             {"tipoTramite": "<uno de: ALTA_NACIMIENTO, BAJA_MUERTE, SOLICITUD_MOVIMIENTO, \
             CONFIRMACION_MOVIMIENTO, DECLARACION_CENSO, DEMORA_CROTALIZACION, NO_IDENTIFICADO, \
-            SIN_TRAMITE>", "crotales": ["<cada crotal tal cual, o lista vacia>"]}""";
+            SIN_TRAMITE>", "crotales": ["<cada crotal tal cual, o lista vacia>"], \
+            "fechaHecho": "<yyyy-MM-dd o vacio>", "fechaNacimiento": "<yyyy-MM-dd o vacio>", \
+            "sexo": "<texto o vacio>", "crotalMadre": "<tal cual o vacio>", \
+            "numeroMer": "<o vacio>", "destinoRega": "<o vacio>", "destinoTexto": "<o vacio>", \
+            "consignatario": "<o vacio>", "aptitudMovimiento": "<o vacio>", \
+            "fechaIdentificacion": "<yyyy-MM-dd o vacio>"}
+            Los campos de fecha/texto son opcionales: usa "" si no aparecen en el mensaje.""";
 
     static final String PROMPT_SISTEMA = AnthropicTramiteExtractionService.PROMPT_SISTEMA + CONTRATO_JSON;
 
@@ -196,7 +204,38 @@ public class MistralTramiteExtractionService implements TramiteExtractionService
         TipoTramite tipo = tipoExtraido == AnthropicTramiteExtractionService.TipoExtraido.NO_IDENTIFICADO || sinTramite
                 ? null
                 : TipoTramite.valueOf(tipoExtraido.name());
-        return new TramiteExtraido(tipo, List.copyOf(crotales), sinTramite);
+        DatosHecho datos = new DatosHecho(
+                parseFecha(textoOpcional(salida, "fechaHecho")),
+                parseFecha(textoOpcional(salida, "fechaNacimiento")),
+                textoOpcional(salida, "sexo"),
+                textoOpcional(salida, "crotalMadre"),
+                textoOpcional(salida, "numeroMer"),
+                textoOpcional(salida, "destinoRega"),
+                textoOpcional(salida, "destinoTexto"),
+                textoOpcional(salida, "consignatario"),
+                textoOpcional(salida, "aptitudMovimiento"),
+                parseFecha(textoOpcional(salida, "fechaIdentificacion")));
+        return new TramiteExtraido(tipo, List.copyOf(crotales), sinTramite, datos);
+    }
+
+    private static String textoOpcional(JsonNode salida, String campo) {
+        JsonNode n = salida.get(campo);
+        if (n == null || n.isNull() || !n.isTextual()) {
+            return null;
+        }
+        String t = n.asText().trim();
+        return t.isEmpty() ? null : t;
+    }
+
+    private static LocalDate parseFecha(String valor) {
+        if (valor == null) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(valor);
+        } catch (DateTimeParseException e) {
+            return null;
+        }
     }
 
     /** Cierra el cliente HTTP del JDK si llego a crearse (igual que Anthropic cierra el suyo). */

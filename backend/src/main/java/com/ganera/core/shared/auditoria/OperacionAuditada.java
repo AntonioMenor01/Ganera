@@ -13,6 +13,7 @@ package com.ganera.core.shared.auditoria;
 public enum OperacionAuditada {
     // Tramite (ruta)
     VER_TRAMITE,
+    CREAR_TRAMITE,
     EDITAR_TRAMITE,
     APROBAR,
     RECHAZAR,

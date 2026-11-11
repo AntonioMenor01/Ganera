@@ -8,6 +8,7 @@
  * sacarlo. Hoy Ganera solo tiene la explotación, el titular y los crotales; las fechas, el destino y
  * el resto llegarán con el B2 y se rellenarán aquí sin tocar la página. */
 
+import type { PreferenciaOvz } from "@/features/configuracion/preferenciasOvzApi";
 import { buscar, type EstadoTramite, type TipoTramite } from "./etiquetas";
 import type { TramiteCrotal, TramiteDetalle } from "./types";
 
@@ -345,8 +346,12 @@ const FORMULARIOS = {
 // ---------------------------------------------------------------------------------------------
 
 /** Construye la ficha de un trámite. Nunca lanza: un tipo que el frontend no conoce da
- * `tipo-desconocido`. No mira el estado: eso es `modoFicha`. */
-export function construirFichaOvz(detalle: TramiteDetalle): ResultadoFicha {
+ * `tipo-desconocido`. No mira el estado: eso es `modoFicha`.
+ * Si hay preferencias de la gestoría o campos ya rellenados en el detalle, se copian a la ficha. */
+export function construirFichaOvz(
+  detalle: TramiteDetalle,
+  preferencias: PreferenciaOvz | null = null,
+): ResultadoFicha {
   const tipo = texto(detalle.tipoTramite);
   if (tipo === null) return { tipo: "sin-tipo" };
   const sinPreparar = buscar<string>(SIN_PREPARAR, tipo);
@@ -355,15 +360,65 @@ export function construirFichaOvz(detalle: TramiteDetalle): ResultadoFicha {
   if (construir === undefined) return { tipo: "tipo-desconocido", valor: tipo };
 
   const cuerpo = construir(detalle.crotales ?? []);
+  const ficha: FichaOvz = {
+    formulario: cuerpo.formulario,
+    rutaOvz: cuerpo.rutaOvz,
+    cuenta: { nombre: texto(detalle.ganaderoNombre), nif: texto(detalle.ganaderoNif) },
+    explotacion: conValor("explotacion", "Explotación", true, detalle.explotacionCodigoRega, PISTA_EXPLOTACION),
+    bloques: cuerpo.bloques,
+    avisos: cuerpo.avisos,
+  };
+  return { tipo: "ficha", ficha: rellenarValoresConocidos(ficha, detalle, preferencias) };
+}
+
+/** Rellena campos que aún están a null con lo que ya hay en el trámite o en preferencias. */
+function rellenarValoresConocidos(
+  ficha: FichaOvz,
+  detalle: TramiteDetalle,
+  pref: PreferenciaOvz | null,
+): FichaOvz {
+  const mapa: Record<string, string | null | undefined> = {
+    "alta-crotal-madre": detalle.crotalMadreIndicado,
+    "alta-fecha-nacimiento": detalle.fechaNacimiento,
+    "alta-sexo": detalle.sexo,
+    "alta-fecha-identificacion": detalle.fechaIdentificacion,
+    "alta-tipo-identificador": pref?.tipoIdentificador,
+    "alta-emision-di": pref?.emisionDi,
+    "alta-oficina": pref?.oficinaDi,
+    "solicitud-telefono": pref?.telefonoMovimiento,
+    "solicitud-rega-destino": detalle.destinoRega,
+    "solicitud-consignatario": detalle.consignatario,
+    "solicitud-fecha-salida": detalle.fechaHecho,
+    "solicitud-medio-transporte": pref?.medioTransporte,
+    "solicitud-matricula": pref?.matricula,
+    "solicitud-transportista": pref?.transportistaSirentra,
+    "solicitud-tipo-responsable": pref?.tipoResponsable,
+    "solicitud-aptitud": detalle.aptitudMovimiento,
+    "confirmacion-oficina-di": pref?.oficinaDi,
+    "demora-fecha-identificacion": detalle.fechaIdentificacion ?? detalle.fechaHecho,
+  };
+  // Baja: un bloque por crotal; fecha/MER/oficina se repiten.
+  for (const bloque of ficha.bloques) {
+    if (!bloque.id.startsWith("baja-")) continue;
+    mapa[`${bloque.id}-fecha-muerte`] = detalle.fechaHecho;
+    mapa[`${bloque.id}-mer`] = detalle.numeroMer;
+    mapa[`${bloque.id}-oficina-mer`] = pref?.oficinaMer;
+  }
+  // Destino texto si no hay REGA.
+  if (!detalle.destinoRega && detalle.destinoTexto) {
+    mapa["solicitud-rega-destino"] = detalle.destinoTexto;
+  }
+
   return {
-    tipo: "ficha",
-    ficha: {
-      formulario: cuerpo.formulario,
-      rutaOvz: cuerpo.rutaOvz,
-      cuenta: { nombre: texto(detalle.ganaderoNombre), nif: texto(detalle.ganaderoNif) },
-      explotacion: conValor("explotacion", "Explotación", true, detalle.explotacionCodigoRega, PISTA_EXPLOTACION),
-      bloques: cuerpo.bloques,
-      avisos: cuerpo.avisos,
-    },
+    ...ficha,
+    bloques: ficha.bloques.map((bloque) => ({
+      ...bloque,
+      campos: bloque.campos.map((campo) => {
+        if (campo.valor != null) return campo;
+        const candidato = texto(mapa[campo.id] ?? null);
+        if (candidato === null) return campo;
+        return { ...campo, valor: candidato, pista: null };
+      }),
+    })),
   };
 }

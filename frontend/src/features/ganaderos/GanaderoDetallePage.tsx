@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
-import { ArrowLeft, ChevronDown, CircleAlertIcon, Phone } from "lucide-react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, ChevronDown, CircleAlertIcon, Phone, PlusIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,7 @@ import type { ContactoDeExplotacion, ExplotacionDeGanadero, GanaderoDetalle } fr
 import { formatearTelefono, hrefTelefono } from "./telefono";
 import { CLASE_ENLACE } from "@/shared/ui/enlace";
 import { AnimalesDeExplotacion } from "@/features/explotaciones/AnimalesDeExplotacion";
+import { AltaTramiteDialog } from "@/features/tramites/AltaTramiteDialog";
 
 /** Con más explotaciones que esto, la ficha abre con un índice de enlaces a cada sección. */
 const MAX_EXPLOTACIONES_SIN_INDICE = 3;
@@ -424,7 +425,9 @@ function IndiceExplotaciones({ explotaciones }: { explotaciones: ExplotacionDeGa
 }
 
 function SeccionExplotacion({ explotacion }: { explotacion: ExplotacionDeGanadero }) {
+  const navigate = useNavigate();
   const [animalesAbiertos, setAnimalesAbiertos] = useState(false);
+  const [altaAbierta, setAltaAbierta] = useState(false);
   const idTitulo = idTituloSeccion(explotacion.id);
   const idContactos = `explotacion-${explotacion.id}-contactos`;
   const idPanelAnimales = `explotacion-${explotacion.id}-animales`;
@@ -435,15 +438,32 @@ function SeccionExplotacion({ explotacion }: { explotacion: ExplotacionDeGanader
       aria-labelledby={idTitulo}
       className="scroll-mt-6 border border-border bg-card"
     >
-      <header className="flex h-14 items-center border-b-2 border-divisor px-5">
-        <h2
-          id={idTitulo}
-          tabIndex={-1}
-          className="rounded-sm text-lg font-bold break-words outline-none focus-visible:ring-3 focus-visible:ring-ring"
-        >
-          <span className="tabular-nums">{explotacion.codigoRega}</span>
-          <span className="font-normal"> · {explotacion.nombre}</span>
-        </h2>
+      <header className="flex min-h-14 flex-wrap items-center justify-between gap-2 border-b-2 border-divisor px-5 py-2">
+        <div className="min-w-0">
+          <h2
+            id={idTitulo}
+            tabIndex={-1}
+            className="rounded-sm text-lg font-bold break-words outline-none focus-visible:ring-3 focus-visible:ring-ring"
+          >
+            <Link to={`/explotaciones/${explotacion.id}`} className={CLASE_ENLACE}>
+              <span className="tabular-nums">{explotacion.codigoRega}</span>
+              <span className="font-normal"> · {explotacion.nombre}</span>
+            </Link>
+          </h2>
+          <p className="mt-0.5 text-[13px] text-muted-foreground tabular-nums">
+            {explotacion.numeroAnimales}{" "}
+            {explotacion.numeroAnimales === 1 ? "animal" : "animales"}
+            {" · "}
+            {explotacion.tramitesPendientesRevision}{" "}
+            {explotacion.tramitesPendientesRevision === 1
+              ? "trámite pendiente"
+              : "trámites pendientes"}
+          </p>
+        </div>
+        <Button type="button" size="sm" variant="outline" onClick={() => setAltaAbierta(true)}>
+          <PlusIcon aria-hidden="true" className="size-3.5" />
+          Nuevo trámite
+        </Button>
       </header>
 
       <div className="px-5 py-4">
@@ -486,6 +506,13 @@ function SeccionExplotacion({ explotacion }: { explotacion: ExplotacionDeGanader
           {animalesAbiertos && <AnimalesDeExplotacion explotacionId={explotacion.id} />}
         </div>
       </div>
+
+      <AltaTramiteDialog
+        open={altaAbierta}
+        onOpenChange={setAltaAbierta}
+        explotacionIdInicial={explotacion.id}
+        onCreado={(creado) => navigate("/tramites", { state: { abrirTramiteId: creado.id } })}
+      />
     </section>
   );
 }

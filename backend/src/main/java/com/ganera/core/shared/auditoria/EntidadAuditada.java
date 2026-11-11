@@ -16,5 +16,6 @@ public enum EntidadAuditada {
     USUARIO,
     SUSCRIPCION,
     MENSAJE_CAMPO,
-    IMPORTACION
+    IMPORTACION,
+    PREFERENCIA_OVZ
 }

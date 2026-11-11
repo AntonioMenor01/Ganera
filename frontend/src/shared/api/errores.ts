@@ -175,9 +175,11 @@ export type ContextoError =
   | "responder-whatsapp"
   | "listar-ganaderos"
   | "detalle-ganadero"
+  | "detalle-explotacion"
   | "animales-explotacion"
   | "listar-contactos"
-  | "guardar-contacto";
+  | "guardar-contacto"
+  | "guardar-preferencias-ovz";
 
 interface TextosContexto {
   /** Texto de reserva del contexto: validación/conflicto/desconocido sin motivo. Obligatorio. */
@@ -275,6 +277,10 @@ const TEXTOS: Record<ContextoError, TextosContexto> = {
     // El 404 no distingue "no existe" de "es de otra gestoría" (a propósito, decisión 8 de A1).
     noEncontrado: TEXTO_GANADERO_NO_ENCONTRADO,
   },
+  "detalle-explotacion": {
+    generico: "No se ha podido cargar la explotación. Inténtalo de nuevo.",
+    noEncontrado: TEXTO_EXPLOTACION_NO_ENCONTRADA,
+  },
   // Panel "Ver animales" (Explotaciones y ficha del Ganadero). El 404 tampoco distingue otra
   // gestoría de inexistente.
   "animales-explotacion": {
@@ -286,6 +292,9 @@ const TEXTOS: Record<ContextoError, TextosContexto> = {
   },
   "guardar-contacto": {
     generico: "No se ha podido guardar el contacto. Inténtalo de nuevo.",
+  },
+  "guardar-preferencias-ovz": {
+    generico: "No se han podido guardar las preferencias. Inténtalo de nuevo.",
   },
 };
 

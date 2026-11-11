@@ -98,6 +98,17 @@ export interface TramiteDetalle {
   descartable: boolean;
   /** SIN_TRAMITE (A6): descartes y deshacer, en orden cronológico; `[]` si no hay. Solo en el detalle. */
   historialDescarte: EventoDescarte[];
+  /** Fecha del hecho (muerte, nacimiento, salida…) ISO date `yyyy-MM-dd`, o null. */
+  fechaHecho: string | null;
+  fechaNacimiento: string | null;
+  sexo: string | null;
+  crotalMadreIndicado: string | null;
+  numeroMer: string | null;
+  destinoRega: string | null;
+  destinoTexto: string | null;
+  consignatario: string | null;
+  aptitudMovimiento: string | null;
+  fechaIdentificacion: string | null;
 }
 
 /** B2 reducido: una respuesta de la gestoría al contacto por WhatsApp (`RespuestaWhatsappResponse`).

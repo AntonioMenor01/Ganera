@@ -73,6 +73,7 @@ class InventarioAuditoriaTest {
         RUTAS.put("POST /contactos/{id}/reactivar", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
         RUTAS.put("POST /contactos/{id}/explotaciones", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
         RUTAS.put("DELETE /contactos/{id}/explotaciones/{explotacionId}", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
+        RUTAS.put("POST /tramites", Cobertura.auditada("tramite.TramiteAltaEndToEndTest"));
         RUTAS.put("PATCH /tramites/{id}", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
         RUTAS.put("POST /tramites/{id}/aprobar", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
         RUTAS.put("POST /tramites/{id}/rechazar", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
@@ -84,6 +85,8 @@ class InventarioAuditoriaTest {
         RUTAS.put("POST /explotaciones/importar", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
         RUTAS.put("POST /ganaderos", Cobertura.auditada("ganadero.GanaderoAltaEndToEndTest"));
         RUTAS.put("PUT /ganaderos/{id}/telefono", Cobertura.auditada("ganadero.GanaderoTelefonoEndToEndTest"));
+        RUTAS.put("PUT /configuracion/preferencias-ovz",
+                Cobertura.auditada("ovz.PreferenciaOvzEndToEndTest"));
         RUTAS.put("POST /gestorias/registro", Cobertura.auditada("registro.RegistroGestoriaEndToEndTest"));
         RUTAS.put("POST /internal/onboarding/gestoria", Cobertura.auditada("onboarding.OnboardingControllerTest"));
         RUTAS.put("POST /webhooks/stripe", Cobertura.auditada("facturacion.StripeWebhookEndToEndTest"));

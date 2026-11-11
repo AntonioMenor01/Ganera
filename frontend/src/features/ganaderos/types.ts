@@ -25,6 +25,10 @@ export interface ExplotacionDeGanadero {
   id: number;
   codigoRega: string;
   nombre: string;
+  /** Animales en inventario de esta explotación. */
+  numeroAnimales: number;
+  /** Trámites en PENDIENTE_REVISION de esta explotación. */
+  tramitesPendientesRevision: number;
   /** Solo contactos activos. */
   contactos: ContactoDeExplotacion[];
 }

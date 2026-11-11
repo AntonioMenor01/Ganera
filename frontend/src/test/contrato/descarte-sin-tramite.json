@@ -8,8 +8,8 @@
     "version": 0
   },
   "itemLista": {
-    "id": 1,
-    "explotacionId": 1,
+    "id": 4,
+    "explotacionId": 3,
     "explotacionCodigoRega": "ES960000000001",
     "explotacionNombre": "Finca ES960000000001",
     "tipoTramite": null,
@@ -26,11 +26,11 @@
     "descartable": true
   },
   "detallePendiente": {
-    "id": 1,
+    "id": 4,
     "tipoTramite": null,
     "estado": "PENDIENTE_REVISION",
     "motivoError": null,
-    "explotacionId": 1,
+    "explotacionId": 3,
     "explotacionCodigoRega": "ES960000000001",
     "explotacionNombre": "Finca ES960000000001",
     "ganaderoNombre": "Ganadero ES960000000001",
@@ -54,14 +54,24 @@
     },
     "motivoRechazo": null,
     "descartable": true,
-    "historialDescarte": []
+    "historialDescarte": [],
+    "fechaHecho": null,
+    "fechaNacimiento": null,
+    "sexo": null,
+    "crotalMadreIndicado": null,
+    "numeroMer": null,
+    "destinoRega": null,
+    "destinoTexto": null,
+    "consignatario": null,
+    "aptitudMovimiento": null,
+    "fechaIdentificacion": null
   },
   "detalleDescartado": {
-    "id": 1,
+    "id": 4,
     "tipoTramite": null,
     "estado": "RECHAZADO",
     "motivoError": null,
-    "explotacionId": 1,
+    "explotacionId": 3,
     "explotacionCodigoRega": "ES960000000001",
     "explotacionNombre": "Finca ES960000000001",
     "ganaderoNombre": "Ganadero ES960000000001",
@@ -91,14 +101,24 @@
         "usuarioNombre": "Ana Pérez",
         "en": "2031-03-10T09:00:00Z"
       }
-    ]
+    ],
+    "fechaHecho": null,
+    "fechaNacimiento": null,
+    "sexo": null,
+    "crotalMadreIndicado": null,
+    "numeroMer": null,
+    "destinoRega": null,
+    "destinoTexto": null,
+    "consignatario": null,
+    "aptitudMovimiento": null,
+    "fechaIdentificacion": null
   },
   "detalleDeshecho": {
-    "id": 1,
+    "id": 4,
     "tipoTramite": null,
     "estado": "PENDIENTE_REVISION",
     "motivoError": null,
-    "explotacionId": 1,
+    "explotacionId": 3,
     "explotacionCodigoRega": "ES960000000001",
     "explotacionNombre": "Finca ES960000000001",
     "ganaderoNombre": "Ganadero ES960000000001",
@@ -133,6 +153,16 @@
         "usuarioNombre": "Ana Pérez",
         "en": "2031-03-10T09:00:00Z"
       }
-    ]
+    ],
+    "fechaHecho": null,
+    "fechaNacimiento": null,
+    "sexo": null,
+    "crotalMadreIndicado": null,
+    "numeroMer": null,
+    "destinoRega": null,
+    "destinoTexto": null,
+    "consignatario": null,
+    "aptitudMovimiento": null,
+    "fechaIdentificacion": null
   }
 }

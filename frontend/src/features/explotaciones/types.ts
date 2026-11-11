@@ -6,6 +6,21 @@ export interface Explotacion {
   nombreGanadero: string;
 }
 
+/** GET /explotaciones/{id}: listado + NIF, inventario, contactos y trámites pendientes. */
+export interface ExplotacionDetalle extends Explotacion {
+  ganaderoNif: string | null;
+  numeroAnimales: number;
+  tramitesPendientesRevision: number;
+  contactos: ContactoDeExplotacionFicha[];
+}
+
+export interface ContactoDeExplotacionFicha {
+  contactoId: number;
+  nombre: string;
+  telefono: string;
+  rol: string;
+}
+
 export interface ImportHojaResumen {
   filasProcesadas: number;
   creadas: number;

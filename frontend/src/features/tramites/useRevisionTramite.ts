@@ -25,6 +25,7 @@ import {
   formularioDesdeDetalle,
   puedeDescartar as sePuedeDescartar,
   puedeDeshacerDescarte as sePuedeDeshacerDescarte,
+  type CampoOvz,
   type FormularioRevision,
 } from "./revisionTramite";
 import type { RespuestaWhatsapp, Tramite, TramiteDetalle } from "./types";
@@ -143,6 +144,8 @@ export interface RevisionTramite {
   anadirCrotal: (valor?: string) => ResultadoCambio;
   cambiarCrotal: (indice: number, valor: string) => ResultadoCambio;
   quitarCrotal: (indice: number) => ResultadoCambio;
+  /** Campos OVZ (fecha del hecho, alta, destino…). Cadena vacía = limpiar textos; fechas vacías no se envían. */
+  cambiarCampoOvz: (campo: CampoOvz, valor: string | null) => ResultadoCambio;
   descartarCambios: () => void;
 
   /** Acción en curso (incluye la recarga que la sigue). Mientras no es null, nada más se envía. */
@@ -204,7 +207,8 @@ type Cambio =
   | { campo: "tipo"; valor: string | null }
   | { campo: "anadir-crotal"; valor: string }
   | { campo: "cambiar-crotal"; indice: number; valor: string }
-  | { campo: "quitar-crotal"; indice: number };
+  | { campo: "quitar-crotal"; indice: number }
+  | { campo: "ovz"; clave: CampoOvz; valor: string | null };
 
 type Evento =
   | { tipo: "reiniciar"; tramiteId: number | null }
@@ -225,7 +229,21 @@ type Evento =
   | { tipo: "whatsapp"; whatsapp: TramiteDetalle["whatsapp"] }
   | { tipo: "respuesta-whatsapp"; respuesta: RespuestaWhatsapp };
 
-const FORMULARIO_VACIO: FormularioRevision = { explotacionId: null, tipoTramite: null, crotales: [] };
+const FORMULARIO_VACIO: FormularioRevision = {
+  explotacionId: null,
+  tipoTramite: null,
+  crotales: [],
+  fechaHecho: null,
+  fechaNacimiento: null,
+  fechaIdentificacion: null,
+  sexo: null,
+  crotalMadreIndicado: null,
+  numeroMer: null,
+  destinoRega: null,
+  destinoTexto: null,
+  consignatario: null,
+  aptitudMovimiento: null,
+};
 
 function estadoInicial(tramiteId: number | null): Estado {
   return {
@@ -269,6 +287,8 @@ function rechazoDeCambio(estado: Estado, cambio: Cambio): string | null {
         cambio.indice < formulario.crotales.length
         ? null
         : MOTIVO_INDICE;
+    case "ovz":
+      return null;
   }
 }
 
@@ -287,6 +307,8 @@ function aplicarCambio(formulario: FormularioRevision, cambio: Cambio): Formular
       };
     case "quitar-crotal":
       return { ...formulario, crotales: formulario.crotales.filter((_, i) => i !== cambio.indice) };
+    case "ovz":
+      return { ...formulario, [cambio.clave]: cambio.valor };
   }
 }
 
@@ -872,6 +894,7 @@ export function useRevisionTramite(
     anadirCrotal: (valor = "") => editar({ campo: "anadir-crotal", valor }),
     cambiarCrotal: (indice, valor) => editar({ campo: "cambiar-crotal", indice, valor }),
     quitarCrotal: (indice) => editar({ campo: "quitar-crotal", indice }),
+    cambiarCampoOvz: (clave, valor) => editar({ campo: "ovz", clave, valor }),
     descartarCambios: () => dispatch({ tipo: "descartar-cambios" }),
 
     enviando,

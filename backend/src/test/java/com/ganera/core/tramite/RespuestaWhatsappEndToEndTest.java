@@ -718,7 +718,9 @@ class RespuestaWhatsappEndToEndTest {
         assertThat(campos(cuerpo)).containsExactlyInAnyOrder("id", "tipoTramite", "estado", "motivoError",
                 "explotacionId", "explotacionCodigoRega", "explotacionNombre", "ganaderoNombre", "ganaderoNif",
                 "mensajeOriginal", "crotales", "version", "origen", "estadoExtraccion", "crotalesDescartados",
-                "hechoEnOvzEn", "hechoEnOvzPorNombre", "whatsapp", "motivoRechazo", "descartable", "historialDescarte");
+                "hechoEnOvzEn", "hechoEnOvzPorNombre", "whatsapp", "motivoRechazo", "descartable", "historialDescarte",
+                "fechaHecho", "fechaNacimiento", "sexo", "crotalMadreIndicado", "numeroMer", "destinoRega",
+                "destinoTexto", "consignatario", "aptitudMovimiento", "fechaIdentificacion");
     }
 
     @Test

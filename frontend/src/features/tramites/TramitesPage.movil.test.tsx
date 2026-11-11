@@ -1,6 +1,7 @@
 import { act, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
+import { MemoryRouter } from "react-router-dom"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { apiUrl } from "@/test/apiBaseUrl"
 import { server } from "@/test/server"
@@ -105,6 +106,14 @@ function tarjeta(id: number): HTMLElement {
   return screen.getByRole("button", { name: `Revisar trámite #${id}` }).closest("li")!
 }
 
+function montar() {
+  return render(
+    <MemoryRouter>
+      <TramitesPage />
+    </MemoryRouter>,
+  )
+}
+
 describe("TramitesPage: tarjetas-fila por debajo de xl", () => {
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -113,7 +122,7 @@ describe("TramitesPage: tarjetas-fila por debajo de xl", () => {
   it("a 375 px no hay tabla: una lista «Trámites» con una tarjeta por trámite", async () => {
     simularAncho(375)
     servir()
-    render(<TramitesPage />)
+    montar()
 
     const lista = await screen.findByRole("list", { name: "Trámites" })
     expect(window.matchMedia).toHaveBeenCalledWith("(min-width: 80rem)")
@@ -126,7 +135,7 @@ describe("TramitesPage: tarjetas-fila por debajo de xl", () => {
   it("la tarjeta lleva estado, tipo, «REGA · nombre», origen, avisos y 1 crotal + «+N más»", async () => {
     simularAncho(375)
     servir()
-    render(<TramitesPage />)
+    montar()
     await screen.findByRole("list", { name: "Trámites" })
 
     const primera = tarjeta(1)
@@ -169,7 +178,7 @@ describe("TramitesPage: tarjetas-fila por debajo de xl", () => {
   it("explotación sin nombre: solo el REGA, sin «·»", async () => {
     simularAncho(375)
     servir([tramite(1, { explotacionId: 3, explotacionCodigoRega: "ES280790000123", explotacionNombre: "  " })])
-    render(<TramitesPage />)
+    montar()
     await screen.findByRole("list", { name: "Trámites" })
     expect(within(tarjeta(1)).getByText("ES280790000123").parentElement).toHaveTextContent(/^ES280790000123$/)
   })
@@ -178,7 +187,7 @@ describe("TramitesPage: tarjetas-fila por debajo de xl", () => {
     simularAncho(375)
     servir()
     const user = userEvent.setup()
-    render(<TramitesPage />)
+    montar()
     await screen.findByRole("list", { name: "Trámites" })
 
     await user.click(within(tarjeta(1)).getByRole("button", { name: "+3 más: 3 crotales más" }))
@@ -198,7 +207,7 @@ describe("TramitesPage: tarjetas-fila por debajo de xl", () => {
     simularAncho(375)
     servir()
     const user = userEvent.setup()
-    render(<TramitesPage />)
+    montar()
     await screen.findByRole("list", { name: "Trámites" })
 
     const revisar1 = screen.getByRole("button", { name: "Revisar trámite #1" })
@@ -219,7 +228,7 @@ describe("TramitesPage: tarjetas-fila por debajo de xl", () => {
         return HttpResponse.json({ content: [], totalElements: 0, totalPages: 0, number: 0, size: 20 })
       }),
     )
-    render(<TramitesPage />)
+    montar()
 
     const lista = screen.getByRole("list", { name: "Trámites" })
     expect(lista).toHaveAttribute("aria-busy", "true")
@@ -237,7 +246,7 @@ describe("TramitesPage: tarjetas-fila por debajo de xl", () => {
     simularAncho(375)
     server.use(http.get(apiUrl("/tramites"), () => new HttpResponse(null, { status: 500 })))
     const user = userEvent.setup()
-    render(<TramitesPage />)
+    montar()
     expect(await screen.findByText("No se han podido cargar los trámites")).toBeInTheDocument()
 
     servir(COLA, 3)
@@ -250,7 +259,7 @@ describe("TramitesPage: tarjetas-fila por debajo de xl", () => {
   it.each([768, 1024, 1279])("a %i px también son tarjetas (el corte es xl)", async (px) => {
     simularAncho(px)
     servir()
-    render(<TramitesPage />)
+    montar()
     expect(await screen.findByRole("list", { name: "Trámites" })).toBeInTheDocument()
     expect(screen.queryByRole("table")).not.toBeInTheDocument()
   })
@@ -264,7 +273,7 @@ describe("TramitesPage: tabla con 1 crotal de 1280 a 1439 px; desde 1440, 2", ()
   it.each([1280, 1439])("a %i px: tabla de 5 columnas, 1 crotal y «+3 más»", async (px) => {
     simularAncho(px)
     servir()
-    render(<TramitesPage />)
+    montar()
 
     const tabla = await screen.findByRole("table")
     expect(within(tabla).getAllByRole("columnheader")).toHaveLength(5)
@@ -282,7 +291,7 @@ describe("TramitesPage: tabla con 1 crotal de 1280 a 1439 px; desde 1440, 2", ()
       tramite(1, { crotales: CUATRO_CROTALES }),
       tramite(2, { crotales: CUATRO_CROTALES.slice(0, 3) }),
     ])
-    render(<TramitesPage />)
+    montar()
 
     const tabla = await screen.findByRole("table")
     expect(within(tabla).getAllByText("222222")).toHaveLength(2)
@@ -294,7 +303,7 @@ describe("TramitesPage: tabla con 1 crotal de 1280 a 1439 px; desde 1440, 2", ()
     const pantalla = simularAncho(1440)
     servir(COLA, 3)
     const user = userEvent.setup()
-    render(<TramitesPage />)
+    montar()
     await screen.findByRole("table")
     await user.click(screen.getByRole("button", { name: "Siguiente" }))
     expect(await screen.findByText("Página 2 de 3")).toBeInTheDocument()

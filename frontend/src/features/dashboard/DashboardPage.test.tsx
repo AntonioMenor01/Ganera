@@ -116,6 +116,7 @@ describe("DashboardPage: KPIs", () => {
         ),
       ),
       http.get(apiUrl("/ganaderos"), () => HttpResponse.json(paginaGanaderos(0))),
+      http.get(apiUrl("/alertas"), () => HttpResponse.json([])),
     );
     montar();
 

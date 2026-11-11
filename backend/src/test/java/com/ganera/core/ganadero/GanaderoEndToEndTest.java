@@ -63,6 +63,7 @@ class GanaderoEndToEndTest {
     private static final String NIF_A1 = "70000001A";
     private static final String NIF_A2 = "70000002B";
     private static final String NIF_B = "70000003C";
+    private static final String NIF_C = "70000004D";
 
     @Autowired
     private TestRestTemplate restTemplate;
@@ -229,6 +230,8 @@ class GanaderoEndToEndTest {
         assertThat(e1.get("id").asLong()).isEqualTo(explotacionA1);
         assertThat(e1.get("codigoRega").asText()).isEqualTo("ES940000000001");
         assertThat(e1.get("nombre").asText()).isEqualTo("Finca A1");
+        assertThat(e1.get("numeroAnimales").asLong()).isGreaterThanOrEqualTo(0);
+        assertThat(e1.get("tramitesPendientesRevision").asLong()).isGreaterThanOrEqualTo(0);
         assertThat(e2.get("id").asLong()).isEqualTo(explotacionA2);
 
         Map<String, String> rolPorTelefono = new HashMap<>();
@@ -391,8 +394,45 @@ class GanaderoEndToEndTest {
         long consultasDetalle = estadisticas.getPrepareStatementCount();
 
         assertThat(consultasListado).as("consultas del listado").isLessThanOrEqualTo(3);
-        // 3 de negocio + 2 fijas de la auditoria de lectura (D4/T5); un N+1 de contactos pasaria de 5.
-        assertThat(consultasDetalle).as("consultas del detalle").isLessThanOrEqualTo(5);
+        // 5 de negocio (ganadero + explotaciones + contactos + conteo de animales + conteo de trámites
+        // pendientes; los dos conteos van en lote con IN :explotacionIds filtrados por gestoria, anadidos
+        // con las fichas enriquecidas de las #23-#26 de Álvaro) + 2 fijas de la auditoria de lectura
+        // (D4/T5). No crece con el numero de explotaciones (lo comprueba elDetalleHaceLasMismasConsultas...);
+        // un N+1 de contactos o de conteos pasaria de 7.
+        assertThat(consultasDetalle).as("consultas del detalle").isLessThanOrEqualTo(7);
+    }
+
+    /**
+     * El numero de consultas del detalle NO crece con las explotaciones: un ganadero con 1 explotacion y
+     * otro con 3 hacen exactamente las mismas consultas (los conteos de animales y de tramites pendientes
+     * van en una sola consulta en lote con IN, no una por explotacion). Si alguno pasara a un bucle por
+     * explotacion, las dos cifras dejarian de coincidir.
+     */
+    @Test
+    void elDetalleHaceLasMismasConsultasConUnaExplotacionQueConVarias() throws IOException {
+        // ganaderoA2 ya tiene 1 explotacion (Finca A3). Creamos el Ganadero C con 3 en la misma gestoria.
+        importar(tokenA,
+                List.<String[]>of(
+                        new String[]{"ES940000000031", "Finca C1", NIF_C, "Ganadero C"},
+                        new String[]{"ES940000000032", "Finca C2", NIF_C, "Ganadero C"},
+                        new String[]{"ES940000000033", "Finca C3", NIF_C, "Ganadero C"}),
+                List.<String[]>of(),
+                List.<String[]>of());
+        Long ganaderoC = idGanadero(NIF_C);
+
+        Statistics estadisticas = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+
+        estadisticas.clear();
+        assertThat(get("/ganaderos/" + ganaderoA2, tokenA).getStatusCode().value()).isEqualTo(200);
+        long conUnaExplotacion = estadisticas.getPrepareStatementCount();
+
+        estadisticas.clear();
+        assertThat(get("/ganaderos/" + ganaderoC, tokenA).getStatusCode().value()).isEqualTo(200);
+        long conTresExplotaciones = estadisticas.getPrepareStatementCount();
+
+        assertThat(conTresExplotaciones)
+                .as("el detalle no hace mas consultas por tener mas explotaciones (conteos en lote, no N+1)")
+                .isEqualTo(conUnaExplotacion);
     }
 
     /**

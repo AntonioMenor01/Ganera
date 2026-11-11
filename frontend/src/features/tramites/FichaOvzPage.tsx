@@ -15,6 +15,7 @@ import { LogoGanera } from "@/shared/brand/LogoGanera";
 import { BotonCopiar } from "@/shared/ui/BotonCopiar";
 import { CLASE_ENLACE } from "@/shared/ui/enlace";
 import { BadgeEstadoTramite } from "./BadgesTramite";
+import { obtenerPreferenciasOvz, type PreferenciaOvz } from "@/features/configuracion/preferenciasOvzApi";
 import { desmarcarHechoEnOvz, marcarHechoEnOvz, obtenerDetalleTramite } from "./api";
 import { TEXTO_FICHA_DESCARTADO, TITULO_FICHA_DESCARTADO } from "./descarte";
 import { esDescartado } from "./etiquetas";
@@ -124,6 +125,7 @@ export function FichaOvzPage() {
   const { id: idParam } = useParams();
   const id = idDeRuta(idParam);
   const [carga, setCarga] = useState<Carga | null>(null);
+  const [preferencias, setPreferencias] = useState<PreferenciaOvz | null>(null);
   const [intento, setIntento] = useState(0);
   const reintentar = useCallback(() => setIntento((n) => n + 1), []);
   const [enviando, setEnviando] = useState<AccionHecho | null>(null);
@@ -179,6 +181,13 @@ export function FichaOvzPage() {
         const error = aErrorApi(err);
         // 404: de otra gestoría o inexistente, indistinguibles a propósito.
         setCarga(error.tipo === "no-encontrado" ? { id, estado: "no-encontrado" } : { id, estado: "error", error });
+      });
+    void obtenerPreferenciasOvz()
+      .then((prefs) => {
+        if (idActualRef.current === id) setPreferencias(prefs);
+      })
+      .catch(() => {
+        if (idActualRef.current === id) setPreferencias(null);
       });
     return () => controlador.abort();
   }, [id, intento]);
@@ -321,6 +330,7 @@ export function FichaOvzPage() {
         {vista.estado === "listo" && (
           <Contenido
             detalle={vista.detalle}
+            preferencias={preferencias}
             accion={{
               enviando,
               aviso: avisoAccion,
@@ -374,7 +384,15 @@ interface PropsAccionHecho {
   onQuitarMarca: () => void;
 }
 
-function Contenido({ detalle, accion }: { detalle: TramiteDetalle; accion: PropsAccionHecho }) {
+function Contenido({
+  detalle,
+  preferencias,
+  accion,
+}: {
+  detalle: TramiteDetalle;
+  preferencias: PreferenciaOvz | null;
+  accion: PropsAccionHecho;
+}) {
   const modo = modoFicha(detalle.estado);
   if (modo === "rechazado") {
     if (esDescartado(detalle)) {
@@ -394,7 +412,7 @@ function Contenido({ detalle, accion }: { detalle: TramiteDetalle; accion: Props
     return <SinFicha titulo="Ficha no disponible" texto="Ganera no prepara la ficha de un trámite en este estado." />;
   }
 
-  const resultado = construirFichaOvz(detalle);
+  const resultado = construirFichaOvz(detalle, preferencias);
   switch (resultado.tipo) {
     case "sin-tipo":
       return (

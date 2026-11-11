@@ -2,9 +2,14 @@ package com.ganera.core.ganadero;
 
 import com.ganera.core.contacto.ContactoExplotacion;
 import com.ganera.core.contacto.ContactoExplotacionRepository;
+import com.ganera.core.explotacion.AnimalRepository;
+import com.ganera.core.explotacion.ConteoAnimalesPorExplotacion;
 import com.ganera.core.explotacion.ConteoExplotacionesPorGanadero;
 import com.ganera.core.explotacion.Explotacion;
 import com.ganera.core.explotacion.ExplotacionRepository;
+import com.ganera.core.tramite.ConteoTramitesPorExplotacion;
+import com.ganera.core.tramite.EstadoTramite;
+import com.ganera.core.tramite.TramiteRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -19,7 +24,8 @@ import java.util.stream.Collectors;
 /**
  * Lectura de Ganaderos. Todas las consultas llevan el gestoriaId del JWT como parametro real (nunca
  * findById ni el gestoriaFilter ambiente como unica defensa), y los datos relacionados se cargan
- * en lote: listado = pagina + un conteo agrupado; detalle = Ganadero + Explotaciones + Contactos.
+ * en lote: listado = pagina + un conteo agrupado; detalle = Ganadero + Explotaciones + Contactos
+ * + conteos de animales y trámites pendientes.
  */
 @Service
 public class GanaderoConsultaService {
@@ -27,13 +33,19 @@ public class GanaderoConsultaService {
     private final GanaderoRepository ganaderoRepository;
     private final ExplotacionRepository explotacionRepository;
     private final ContactoExplotacionRepository contactoExplotacionRepository;
+    private final AnimalRepository animalRepository;
+    private final TramiteRepository tramiteRepository;
 
     public GanaderoConsultaService(GanaderoRepository ganaderoRepository,
                                    ExplotacionRepository explotacionRepository,
-                                   ContactoExplotacionRepository contactoExplotacionRepository) {
+                                   ContactoExplotacionRepository contactoExplotacionRepository,
+                                   AnimalRepository animalRepository,
+                                   TramiteRepository tramiteRepository) {
         this.ganaderoRepository = ganaderoRepository;
         this.explotacionRepository = explotacionRepository;
         this.contactoExplotacionRepository = contactoExplotacionRepository;
+        this.animalRepository = animalRepository;
+        this.tramiteRepository = tramiteRepository;
     }
 
     @Transactional(readOnly = true)
@@ -75,9 +87,25 @@ public class GanaderoConsultaService {
                                         ce.getContacto().getNombre(),
                                         ce.getContacto().getTelefono(),
                                         ce.getRol()), Collectors.toList())));
+        Map<Long, Long> animalesPorExplotacion = idsExplotaciones.isEmpty()
+                ? Map.of()
+                : animalRepository.contarPorExplotacion(gestoriaId, idsExplotaciones).stream()
+                        .collect(Collectors.toMap(
+                                ConteoAnimalesPorExplotacion::explotacionId,
+                                ConteoAnimalesPorExplotacion::numeroAnimales));
+        Map<Long, Long> pendientesPorExplotacion = idsExplotaciones.isEmpty()
+                ? Map.of()
+                : tramiteRepository.contarPorExplotacionYEstado(
+                                gestoriaId, idsExplotaciones, EstadoTramite.PENDIENTE_REVISION)
+                        .stream()
+                        .collect(Collectors.toMap(
+                                ConteoTramitesPorExplotacion::explotacionId,
+                                ConteoTramitesPorExplotacion::numeroTramites));
         List<GanaderoDetalleResponse.ExplotacionDeGanadero> detalleExplotaciones = explotaciones.stream()
                 .map(e -> new GanaderoDetalleResponse.ExplotacionDeGanadero(
                         e.getId(), e.getCodigoRega(), e.getNombre(),
+                        animalesPorExplotacion.getOrDefault(e.getId(), 0L),
+                        pendientesPorExplotacion.getOrDefault(e.getId(), 0L),
                         contactosPorExplotacion.getOrDefault(e.getId(), List.of())))
                 .toList();
         return new GanaderoDetalleResponse(ganadero.getId(), ganadero.getNombre(), ganadero.getNif(),

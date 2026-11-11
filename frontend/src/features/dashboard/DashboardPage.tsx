@@ -22,13 +22,13 @@ import { BadgeEstadoTramite } from "@/features/tramites/BadgesTramite";
 import { IconoTramite } from "@/features/tramites/IconoTramite";
 import type { Tramite } from "@/features/tramites/types";
 import { AltaGanaderoDialog } from "@/features/ganaderos/AltaGanaderoDialog";
+import { listarAlertas, type Alerta } from "@/features/alertas/api";
 import { cargarColaPendiente, contarGanaderos } from "./api";
 import { fechaLargaMadrid, nombrePila, saludo } from "./saludo";
 
 /**
  * Inicio alineado al mock «Ganera App v2»: cabecera con CTAs, franja de 4 KPIs y cola + panel
- * de alertas. Solo datos reales de GET /tramites y /ganaderos; las alertas de plazos no tienen
- * backend → 0 honesto (sin inventar vencimientos).
+ * de alertas. Datos reales de GET /tramites, /ganaderos y /alertas.
  */
 export function DashboardPage() {
   const { usuario } = useAuth();
@@ -37,6 +37,8 @@ export function DashboardPage() {
   const [errorCola, setErrorCola] = useState<ErrorApi | null>(null);
   const [ganaderos, setGanaderos] = useState<number | null>(null);
   const [errorGanaderos, setErrorGanaderos] = useState(false);
+  const [alertas, setAlertas] = useState<Alerta[] | null>(null);
+  const [errorAlertas, setErrorAlertas] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [version, setVersion] = useState(0);
   const [altaAbierta, setAltaAbierta] = useState(false);
@@ -48,22 +50,31 @@ export function DashboardPage() {
     setCargando(true);
     setErrorCola(null);
     setErrorGanaderos(false);
-    Promise.allSettled([cargarColaPendiente(), contarGanaderos()]).then(([colaRes, ganaderosRes]) => {
-      if (cancelado) return;
-      if (colaRes.status === "fulfilled") {
-        setCola(colaRes.value);
-      } else {
-        setCola(null);
-        setErrorCola(aErrorApi(colaRes.reason));
-      }
-      if (ganaderosRes.status === "fulfilled") {
-        setGanaderos(ganaderosRes.value);
-      } else {
-        setGanaderos(null);
-        setErrorGanaderos(true);
-      }
-      setCargando(false);
-    });
+    setErrorAlertas(false);
+    Promise.allSettled([cargarColaPendiente(), contarGanaderos(), listarAlertas()]).then(
+      ([colaRes, ganaderosRes, alertasRes]) => {
+        if (cancelado) return;
+        if (colaRes.status === "fulfilled") {
+          setCola(colaRes.value);
+        } else {
+          setCola(null);
+          setErrorCola(aErrorApi(colaRes.reason));
+        }
+        if (ganaderosRes.status === "fulfilled") {
+          setGanaderos(ganaderosRes.value);
+        } else {
+          setGanaderos(null);
+          setErrorGanaderos(true);
+        }
+        if (alertasRes.status === "fulfilled") {
+          setAlertas(alertasRes.value);
+        } else {
+          setAlertas(null);
+          setErrorAlertas(true);
+        }
+        setCargando(false);
+      },
+    );
     return () => {
       cancelado = true;
     };
@@ -81,8 +92,7 @@ export function DashboardPage() {
         <div className="min-w-0">
           {fecha && <p className="mb-1.5 text-[13px] font-medium text-muted-foreground">{fecha}</p>}
           <h1 className="text-[28px] leading-tight font-bold tracking-[-0.02em]">
-            {saludo()}
-            {nombre ? `, ${nombre}` : ""}
+            {nombre ? `${saludo()}, ${nombre}` : saludo()}
           </h1>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -138,15 +148,21 @@ export function DashboardPage() {
           cargando={cargando}
           error={errorCola != null}
         />
-        {/* Sin API de plazos: 0 real, no un «próximamente» ni cifras inventadas. */}
         <CeldaKpi
           to="/calendario"
           icono={BellRingIcon}
           etiqueta="Alertas activas"
-          pie="Sin plazos cercanos"
-          valor={0}
-          cargando={false}
-          error={false}
+          pie={
+            errorAlertas
+              ? "No se han podido cargar"
+              : (alertas?.length ?? 0) === 0
+                ? "Sin plazos cercanos"
+                : "Plazos y cola"
+          }
+          valor={alertas?.length ?? undefined}
+          cargando={cargando}
+          error={errorAlertas}
+          acento={!!alertas && alertas.length > 0}
         />
         <CeldaKpi
           to="/ganaderos"
@@ -177,10 +193,28 @@ export function DashboardPage() {
                 Calendario
               </Link>
             </div>
-            <p className="px-5 py-4 text-sm text-muted-foreground">
-              Todavía no calculamos carencias ni vencimientos. Cuando haya plazos en Ganera,
-              aparecerán aquí.
-            </p>
+            {errorAlertas ? (
+              <p className="px-5 py-4 text-sm text-muted-foreground">No se han podido cargar las alertas.</p>
+            ) : !alertas || alertas.length === 0 ? (
+              <p className="px-5 py-4 text-sm text-muted-foreground">
+                Sin plazos cercanos ni trámites atascados.
+              </p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {alertas.slice(0, 5).map((a) => (
+                  <li key={a.id} className="px-5 py-3 text-sm">
+                    {a.tramiteId != null ? (
+                      <Link to={`/tramites?abrir=${a.tramiteId}`} className={cn(CLASE_ENLACE, "font-medium")}>
+                        {a.titulo}
+                      </Link>
+                    ) : (
+                      <p className="font-medium">{a.titulo}</p>
+                    )}
+                    <p className="text-muted-foreground">{a.detalle}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         </aside>
       </div>

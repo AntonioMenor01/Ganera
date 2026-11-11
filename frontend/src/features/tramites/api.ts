@@ -14,6 +14,30 @@ export async function listarTramites(
   return data;
 }
 
+/** Cuerpo de POST /tramites (alta MANUAL). tipoTramite y explotacionId son obligatorios. */
+export interface AltaTramite {
+  tipoTramite: string;
+  explotacionId: number;
+  contactoId?: number;
+  crotales?: string[];
+  fechaHecho?: string;
+  fechaNacimiento?: string;
+  fechaIdentificacion?: string;
+  sexo?: string;
+  crotalMadreIndicado?: string;
+  numeroMer?: string;
+  destinoRega?: string;
+  destinoTexto?: string;
+  consignatario?: string;
+  aptitudMovimiento?: string;
+}
+
+/** Crea un trámite a mano (origen MANUAL, PENDIENTE_REVISION). No toca OVZ. */
+export async function crearTramite(alta: AltaTramite): Promise<TramiteDetalle> {
+  const { data } = await httpClient.post<TramiteDetalle>("/tramites", alta);
+  return data;
+}
+
 export async function obtenerDetalleTramite(
   id: number,
   signal?: AbortSignal,
@@ -33,6 +57,16 @@ export interface ActualizacionTramite {
   explotacionId?: number;
   tipoTramite?: string;
   crotales?: string[];
+  fechaHecho?: string;
+  fechaNacimiento?: string;
+  fechaIdentificacion?: string;
+  sexo?: string;
+  crotalMadreIndicado?: string;
+  numeroMer?: string;
+  destinoRega?: string;
+  destinoTexto?: string;
+  consignatario?: string;
+  aptitudMovimiento?: string;
 }
 
 /** Guarda los cambios de la revisión. Devuelve el detalle actualizado (`version + 1`). */
@@ -45,6 +79,20 @@ export async function actualizarTramite(
   if (cambios.explotacionId !== undefined) cuerpo.explotacionId = cambios.explotacionId;
   if (cambios.tipoTramite !== undefined) cuerpo.tipoTramite = cambios.tipoTramite;
   if (cambios.crotales !== undefined) cuerpo.crotales = cambios.crotales;
+  if (cambios.fechaHecho !== undefined) cuerpo.fechaHecho = cambios.fechaHecho;
+  if (cambios.fechaNacimiento !== undefined) cuerpo.fechaNacimiento = cambios.fechaNacimiento;
+  if (cambios.fechaIdentificacion !== undefined) {
+    cuerpo.fechaIdentificacion = cambios.fechaIdentificacion;
+  }
+  if (cambios.sexo !== undefined) cuerpo.sexo = cambios.sexo;
+  if (cambios.crotalMadreIndicado !== undefined) {
+    cuerpo.crotalMadreIndicado = cambios.crotalMadreIndicado;
+  }
+  if (cambios.numeroMer !== undefined) cuerpo.numeroMer = cambios.numeroMer;
+  if (cambios.destinoRega !== undefined) cuerpo.destinoRega = cambios.destinoRega;
+  if (cambios.destinoTexto !== undefined) cuerpo.destinoTexto = cambios.destinoTexto;
+  if (cambios.consignatario !== undefined) cuerpo.consignatario = cambios.consignatario;
+  if (cambios.aptitudMovimiento !== undefined) cuerpo.aptitudMovimiento = cambios.aptitudMovimiento;
   const { data } = await httpClient.patch<TramiteDetalle>(`/tramites/${id}`, cuerpo);
   return data;
 }

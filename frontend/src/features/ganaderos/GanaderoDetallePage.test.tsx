@@ -13,7 +13,14 @@ const AYUDA_TELEFONO =
   "Para que Ganera reconozca sus WhatsApp, añade este número como contacto de una explotación"
 
 function explotacion(id: number, contactos: unknown[] = []) {
-  return { id, codigoRega: `ES28079000${id}`, nombre: `Finca ${id}`, contactos }
+  return {
+    id,
+    codigoRega: `ES28079000${id}`,
+    nombre: `Finca ${id}`,
+    numeroAnimales: 0,
+    tramitesPendientesRevision: 0,
+    contactos,
+  }
 }
 
 const CONTACTOS = [

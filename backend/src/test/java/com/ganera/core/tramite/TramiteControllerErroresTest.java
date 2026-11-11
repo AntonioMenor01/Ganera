@@ -105,10 +105,12 @@ class TramiteControllerErroresTest {
     private static TramiteController controllerQueLanza(Supplier<RuntimeException> fallo) {
         TramiteRevisionService servicio = new TramiteRevisionService(
                 null, null, null, null, null, null, null, null, null, null) {
-            // El controlador llama a las sobrecargas CON usuarioId (T3): se sobreescriben esas.
+            // El controlador (PATCH) llama a la sobrecarga con TramitePatchRequest (campos OVZ, mock v2 de
+            // Álvaro): es la que hay que sobreescribir. La de 7 parametros ya no la usa el controlador en
+            // actualizar, y sin sobreescribir la correcta corria la implementacion real con deps nulas (NPE).
             @Override
-            public TramiteDetalleResponse actualizar(Long gestoriaId, Long usuarioId, Long tramiteId, Long versionVista,
-                                                     Long explotacionId, TipoTramite tipoTramite, List<String> crotales) {
+            public TramiteDetalleResponse actualizar(Long gestoriaId, Long usuarioId, Long tramiteId,
+                                                     TipoTramite tipoTramite, TramitePatchRequest request) {
                 throw fallo.get();
             }
 
@@ -150,7 +152,7 @@ class TramiteControllerErroresTest {
                 return true;
             }
         };
-        return new TramiteController(null, suscripcionActiva, null, null, servicio, null,
+        return new TramiteController(null, suscripcionActiva, null, null, servicio, null, null,
                 org.mockito.Mockito.mock(com.ganera.core.shared.auditoria.AuditoriaService.class),
                 org.mockito.Mockito.mock(com.ganera.core.shared.auditoria.AccesoAjeno.class));
     }

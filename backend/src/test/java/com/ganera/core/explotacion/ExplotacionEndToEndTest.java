@@ -137,6 +137,9 @@ class ExplotacionEndToEndTest {
         assertThat(json.get("nombre").asText()).isEqualTo("Finca Robledo Alto");
         assertThat(json.get("ganaderoId").asLong()).isPositive();
         assertThat(json.get("nombreGanadero").asText()).isEqualTo("Ganadero Comun A");
+        assertThat(json.get("numeroAnimales").asLong()).isGreaterThanOrEqualTo(0);
+        assertThat(json.get("tramitesPendientesRevision").asLong()).isGreaterThanOrEqualTo(0);
+        assertThat(json.get("contactos").isArray()).isTrue();
     }
 
     @Test

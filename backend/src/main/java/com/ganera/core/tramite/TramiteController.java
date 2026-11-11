@@ -42,6 +42,8 @@ import java.util.function.Supplier;
 public class TramiteController {
 
     static final String MOTIVO_TIPO_INVALIDO = "Tipo de trámite no válido.";
+    static final String MOTIVO_FALTA_TIPO = "Falta el tipo de trámite.";
+    static final String MOTIVO_FALTA_EXPLOTACION = "Falta asignar la explotación.";
     static final String MOTIVO_FALTA_VERSION =
             "Falta la versión del trámite (campo version). Vuelve a cargarlo e inténtalo de nuevo.";
     /** Motivo del 403 de aprobar (mini-prompt tras A2; texto cambiado en el plan 2026-10-04, D2,
@@ -60,6 +62,7 @@ public class TramiteController {
     private final MensajeCampoRepository mensajeCampoRepository;
     private final TramiteCrotalService tramiteCrotalService;
     private final TramiteRevisionService tramiteRevisionService;
+    private final TramiteAltaService tramiteAltaService;
     private final WhatsappDetalleService whatsappDetalleService;
     private final AuditoriaService auditoriaService;
     private final AccesoAjeno accesoAjeno;
@@ -70,6 +73,7 @@ public class TramiteController {
             MensajeCampoRepository mensajeCampoRepository,
             TramiteCrotalService tramiteCrotalService,
             TramiteRevisionService tramiteRevisionService,
+            TramiteAltaService tramiteAltaService,
             WhatsappDetalleService whatsappDetalleService,
             AuditoriaService auditoriaService,
             AccesoAjeno accesoAjeno) {
@@ -78,6 +82,7 @@ public class TramiteController {
         this.mensajeCampoRepository = mensajeCampoRepository;
         this.tramiteCrotalService = tramiteCrotalService;
         this.tramiteRevisionService = tramiteRevisionService;
+        this.tramiteAltaService = tramiteAltaService;
         this.whatsappDetalleService = whatsappDetalleService;
         this.auditoriaService = auditoriaService;
         this.accesoAjeno = accesoAjeno;
@@ -108,6 +113,31 @@ public class TramiteController {
         List<Long> ids = pagina.getContent().stream().map(Tramite::getId).toList();
         Map<Long, List<TramiteCrotalResponse>> crotales = tramiteCrotalService.crotalesPorTramite(ids, gestoriaId);
         return ResponseEntity.ok(pagina.map(t -> TramiteResponse.from(t, crotales.get(t.getId()))));
+    }
+
+    /**
+     * Alta MANUAL de un trámite por la gestoría. Orden: 400 sin tipo / tipo inválido / sin
+     * explotación → 404 explotación o contacto ajenos → 409 crotales al mismo animal → 201 con
+     * detalle. Sin gate de suscripción (solo aprobar lo tiene). No llama a OVZ ni a la IA.
+     */
+    @PostMapping("/tramites")
+    public ResponseEntity<?> crear(
+            @AuthenticationPrincipal GaneraUserPrincipal principal,
+            @RequestBody TramiteAltaRequest request) {
+        if (request.tipoTramite() == null || request.tipoTramite().isBlank()) {
+            return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_FALTA_TIPO));
+        }
+        Optional<TipoTramite> tipo = parsearTipo(request.tipoTramite());
+        if (tipo.isEmpty()) {
+            return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_TIPO_INVALIDO));
+        }
+        if (request.explotacionId() == null) {
+            return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_FALTA_EXPLOTACION));
+        }
+        return traducirErrores(
+                () -> auditarAltaAjena(principal, request),
+                () -> ResponseEntity.status(HttpStatus.CREATED).body(tramiteAltaService.crear(
+                        principal.gestoriaId(), principal.usuarioId(), tipo.get(), request)));
     }
 
     /** Detalle para el modal de revision -- incluye el texto original de WhatsApp (null si 3b,
@@ -171,8 +201,7 @@ public class TramiteController {
                 () -> accesoAjeno.patchTramite(principal.usuarioId(), principal.gestoriaId(), id,
                         request.explotacionId()),
                 () -> ResponseEntity.ok(tramiteRevisionService.actualizar(
-                        principal.gestoriaId(), principal.usuarioId(), id, request.version(), request.explotacionId(),
-                        tipoFinal, request.crotales())));
+                        principal.gestoriaId(), principal.usuarioId(), id, tipoFinal, request)));
     }
 
     /**
@@ -350,6 +379,21 @@ public class TramiteController {
             return Optional.of(TipoTramite.valueOf(tipo.strip().toUpperCase(Locale.ROOT)));
         } catch (IllegalArgumentException e) {
             return Optional.empty();
+        }
+    }
+
+    /**
+     * En el 404 del alta: primero la explotación del cuerpo; si es propia, el contactoId (si
+     * venía). Misma operación {@code CREAR_TRAMITE} en ambos casos.
+     */
+    private void auditarAltaAjena(GaneraUserPrincipal principal, TramiteAltaRequest request) {
+        if (accesoAjeno.explotacion(principal.usuarioId(), principal.gestoriaId(),
+                request.explotacionId(), OperacionAuditada.CREAR_TRAMITE)) {
+            return;
+        }
+        if (request.contactoId() != null) {
+            accesoAjeno.contacto(principal.usuarioId(), principal.gestoriaId(),
+                    request.contactoId(), OperacionAuditada.CREAR_TRAMITE);
         }
     }
 
