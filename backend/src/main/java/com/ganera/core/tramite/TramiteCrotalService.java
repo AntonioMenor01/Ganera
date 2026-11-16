@@ -108,48 +108,86 @@ public class TramiteCrotalService {
         return porTramite;
     }
 
-    private void resolver(TramiteCrotal fila, CrotalNormalizado normalizado, Tramite tramite, Long gestoriaId) {
-        Explotacion explotacion = tramite.getExplotacion();
-        if (explotacion == null) {
-            sinEnlace(fila, normalizado, ResolucionCrotal.SIN_EXPLOTACION);
+    /**
+     * Resuelve el crotal de la madre del Tramite (V30, plan 2026-11-11) contra su Explotacion actual,
+     * con EXACTAMENTE el mismo mecanismo que los demas crotales (metodo compartido {@link #resolver}).
+     * Lee crotalMadreIndicado: null/blank -> ambas columnas null; si no, normaliza, resuelve y fija
+     * crotal_madre (crotal completado) + crotal_madre_resolucion. Un crotal de madre invalido no rompe
+     * (el PATCH ya valida el formato): se queda sin resolver (ambas columnas null). No persiste el
+     * Tramite: lo hace quien llama (extraccion, PATCH, alta) en su propia transaccion. El aislamiento
+     * lo garantizan los finders de {@link #resolver}, que llevan explotacionId Y gestoriaId explicitos.
+     */
+    @Transactional
+    public void resolverMadre(Tramite tramite, Long gestoriaId) {
+        String indicado = tramite.getCrotalMadreIndicado();
+        if (indicado == null || indicado.isBlank()) {
+            tramite.setCrotalMadre(null);
+            tramite.setCrotalMadreResolucion(null);
             return;
+        }
+        CrotalNormalizado normalizado;
+        try {
+            normalizado = CrotalNormalizador.normalizar(indicado);
+        } catch (CrotalInvalidoException e) {
+            tramite.setCrotalMadre(null);
+            tramite.setCrotalMadreResolucion(null);
+            return;
+        }
+        ResultadoResolucionCrotal resultado = resolver(normalizado, tramite.getExplotacion(), gestoriaId);
+        tramite.setCrotalMadre(resultado.crotalCompletado());
+        tramite.setCrotalMadreResolucion(resultado.resolucion());
+    }
+
+    private void resolver(TramiteCrotal fila, CrotalNormalizado normalizado, Tramite tramite, Long gestoriaId) {
+        ResultadoResolucionCrotal resultado = resolver(normalizado, tramite.getExplotacion(), gestoriaId);
+        fila.setCrotal(resultado.crotalCompletado());
+        fila.setAnimal(resultado.animal());
+        fila.setResolucion(resultado.resolucion());
+    }
+
+    /**
+     * Mecanismo UNICO de resolucion de un crotal normalizado contra una Explotacion, compartido por
+     * los crotales de la lista del Tramite y por el crotal de la madre (V30):
+     * - Explotacion null -> SIN_EXPLOTACION, crotal completado = lo indicado, sin animal.
+     * - COMPLETO -> igualdad exacta -> EN_INVENTARIO (crotal del inventario, animal) o NO_ENCONTRADO.
+     * - INCOMPLETO -> por sufijo: uno -> EN_INVENTARIO; varios -> AMBIGUO; ninguno -> NO_ENCONTRADO.
+     * Las dos busquedas llevan explotacionId Y gestoriaId explicitos: un Animal de otra Explotacion o
+     * de otra Gestoria nunca se enlaza ni se usa para completar (aislamiento). Quitar cualquiera de
+     * los dos filtros rompe el aislamiento tanto de los crotales normales como del de la madre.
+     */
+    ResultadoResolucionCrotal resolver(CrotalNormalizado normalizado, Explotacion explotacion, Long gestoriaId) {
+        if (explotacion == null) {
+            return new ResultadoResolucionCrotal(ResolucionCrotal.SIN_EXPLOTACION, normalizado.valor(), null);
         }
         if (normalizado.tipo() == TipoCrotal.COMPLETO) {
             Optional<Animal> animal = animalRepository.findByExplotacionIdAndGestoriaIdAndCrotal(
                     explotacion.getId(), gestoriaId, normalizado.valor());
-            if (animal.isPresent()) {
-                enlazar(fila, animal.get(), tramite, gestoriaId);
-            } else {
-                sinEnlace(fila, normalizado, ResolucionCrotal.NO_ENCONTRADO);
-            }
-            return;
+            return animal.map(a -> enlazado(a, explotacion, gestoriaId))
+                    .orElseGet(() -> new ResultadoResolucionCrotal(
+                            ResolucionCrotal.NO_ENCONTRADO, normalizado.valor(), null));
         }
         List<Animal> candidatos = animalRepository.findByExplotacionIdAndGestoriaIdAndCrotalEndingWithOrderByIdAsc(
                 explotacion.getId(), gestoriaId, normalizado.valor());
         if (candidatos.size() == 1) {
-            enlazar(fila, candidatos.get(0), tramite, gestoriaId);
-        } else {
-            sinEnlace(fila, normalizado, candidatos.isEmpty() ? ResolucionCrotal.NO_ENCONTRADO : ResolucionCrotal.AMBIGUO);
+            return enlazado(candidatos.get(0), explotacion, gestoriaId);
         }
+        ResolucionCrotal resolucion = candidatos.isEmpty() ? ResolucionCrotal.NO_ENCONTRADO : ResolucionCrotal.AMBIGUO;
+        return new ResultadoResolucionCrotal(resolucion, normalizado.valor(), null);
     }
 
-    private static void sinEnlace(TramiteCrotal fila, CrotalNormalizado normalizado, ResolucionCrotal resolucion) {
-        fila.setCrotal(normalizado.valor());
-        fila.setAnimal(null);
-        fila.setResolucion(resolucion);
-    }
-
-    private static void enlazar(TramiteCrotal fila, Animal animal, Tramite tramite, Long gestoriaId) {
+    private static ResultadoResolucionCrotal enlazado(Animal animal, Explotacion explotacion, Long gestoriaId) {
         Long explotacionAnimal = animal.getExplotacion() != null ? animal.getExplotacion().getId() : null;
         Long gestoriaAnimal = animal.getGestoria() != null ? animal.getGestoria().getId() : null;
-        if (!Objects.equals(explotacionAnimal, tramite.getExplotacion().getId())
-                || !Objects.equals(gestoriaAnimal, gestoriaId)) {
+        if (!Objects.equals(explotacionAnimal, explotacion.getId()) || !Objects.equals(gestoriaAnimal, gestoriaId)) {
             // No deberia pasar nunca (los finders filtran por ambos); si pasa, no se enlaza nada.
             throw new RecursoNoEncontradoException();
         }
-        fila.setCrotal(animal.getCrotal());
-        fila.setAnimal(animal);
-        fila.setResolucion(ResolucionCrotal.EN_INVENTARIO);
+        return new ResultadoResolucionCrotal(ResolucionCrotal.EN_INVENTARIO, animal.getCrotal(), animal);
+    }
+
+    /** Resultado de resolver un crotal normalizado: su resolucion, el crotal completado (el del
+     * inventario si EN_INVENTARIO; si no, el propio indicado) y el Animal enlazado (solo EN_INVENTARIO). */
+    record ResultadoResolucionCrotal(ResolucionCrotal resolucion, String crotalCompletado, Animal animal) {
     }
 
     /** El Tramite y su Explotacion (si tiene) deben ser de la Gestoria autenticada; si no, 404

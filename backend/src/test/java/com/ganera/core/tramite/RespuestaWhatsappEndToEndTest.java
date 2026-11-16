@@ -719,7 +719,8 @@ class RespuestaWhatsappEndToEndTest {
                 "explotacionId", "explotacionCodigoRega", "explotacionNombre", "ganaderoNombre", "ganaderoNif",
                 "mensajeOriginal", "crotales", "version", "origen", "estadoExtraccion", "crotalesDescartados",
                 "hechoEnOvzEn", "hechoEnOvzPorNombre", "whatsapp", "motivoRechazo", "descartable", "historialDescarte",
-                "fechaHecho", "fechaNacimiento", "sexo", "crotalMadreIndicado", "numeroMer", "destinoRega",
+                "fechaHecho", "fechaNacimiento", "sexo", "crotalMadreIndicado", "crotalMadre", "crotalMadreResolucion",
+                "numeroMer", "destinoRega",
                 "destinoTexto", "consignatario", "aptitudMovimiento", "fechaIdentificacion");
     }
 

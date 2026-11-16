@@ -77,6 +77,9 @@ public class TramiteAltaService {
         tramite.setEstado(EstadoTramite.PENDIENTE_REVISION);
         tramite.setOrigen(OrigenTramite.MANUAL);
         aplicarCamposOvz(tramite, request);
+        // Crotal de la madre (V30): se resuelve ANTES del saveAndFlush, para que entre en el INSERT
+        // (version 0) con el mismo mecanismo que los demas crotales. Solo fija columnas del Tramite.
+        tramiteCrotalService.resolverMadre(tramite, gestoriaId);
         tramiteRepository.saveAndFlush(tramite);
 
         List<TramiteCrotal> filas = List.of();

@@ -57,6 +57,8 @@ function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
     fechaNacimiento: null,
     sexo: null,
     crotalMadreIndicado: null,
+    crotalMadre: null,
+    crotalMadreResolucion: null,
     numeroMer: null,
     destinoRega: null,
     destinoTexto: null,

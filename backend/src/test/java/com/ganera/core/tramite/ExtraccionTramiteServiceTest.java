@@ -13,6 +13,7 @@ import com.ganera.core.gestoria.Gestoria;
 import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.tramite.IaDePruebaConfig.IaProgramable;
 import com.ganera.core.tramite.IaDePruebaConfig.RelojAjustable;
+import com.ganera.core.tramite.TramiteExtractionService.DatosHecho;
 import com.ganera.core.tramite.TramiteExtractionService.TramiteExtraido;
 import com.ganera.core.shared.auditoria.AccionAuditoria;
 import com.ganera.core.shared.auditoria.ActorTipo;
@@ -156,6 +157,42 @@ class ExtraccionTramiteServiceTest {
         assertThat(crotales.get(0).getCrotal()).isEqualTo("ES010000001234");
         assertThat(crotales.get(1).getResolucion()).isEqualTo(ResolucionCrotal.NO_ENCONTRADO);
         assertThat(servicio.pendientes(AHORA.plus(Duration.ofDays(1)), 10)).isEmpty();
+    }
+
+    /** V30: el crotal de la madre que extrae la IA se resuelve por sufijo contra el inventario, con un
+     * solo incremento de version (igual que la lista). */
+    @Test
+    void laMadreExtraidaPorSufijoSeResuelveContraElInventario() {
+        animal(gestoriaA, explotacionA, "ES010000001234");
+        animal(gestoriaA, explotacionA, "ES010000004521");
+        Tramite tramite = tramitePendiente(gestoriaA, contactoA, explotacionA, "ha nacido un ternero, madre 4521");
+        long versionInicial = tramite.getVersion();
+        ia.responder(texto -> new TramiteExtraido(TipoTramite.ALTA_NACIMIENTO, List.of("1234"), false,
+                new DatosHecho(null, null, null, "4521", null, null, null, null, null, null)));
+
+        servicio.procesarPendientes();
+
+        Tramite despues = recargar(tramite);
+        assertThat(despues.getTipoTramite()).isEqualTo(TipoTramite.ALTA_NACIMIENTO);
+        assertThat(despues.getCrotalMadreIndicado()).isEqualTo("4521");
+        assertThat(despues.getCrotalMadre()).isEqualTo("ES010000004521");
+        assertThat(despues.getCrotalMadreResolucion()).isEqualTo(ResolucionCrotal.EN_INVENTARIO);
+        assertThat(despues.getVersion()).isEqualTo(versionInicial + 1);
+    }
+
+    /** Aislamiento: una madre con el mismo sufijo en OTRA gestoria no se usa para completar la de A. */
+    @Test
+    void laMadreNoSeResuelveContraUnAnimalDeOtraGestoria() {
+        animal(gestoriaB, explotacionB, "ES020000004521");
+        Tramite tramite = tramitePendiente(gestoriaA, contactoA, explotacionA, "ha nacido un ternero, madre 4521");
+        ia.responder(texto -> new TramiteExtraido(TipoTramite.ALTA_NACIMIENTO, List.of(), false,
+                new DatosHecho(null, null, null, "4521", null, null, null, null, null, null)));
+
+        servicio.procesarPendientes();
+
+        Tramite despues = recargar(tramite);
+        assertThat(despues.getCrotalMadreResolucion()).isEqualTo(ResolucionCrotal.NO_ENCONTRADO);
+        assertThat(despues.getCrotalMadre()).isEqualTo("4521");
     }
 
     @Test
