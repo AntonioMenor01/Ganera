@@ -250,6 +250,10 @@ public class ExtraccionTramiteService {
         tramite.setTipoTramite(validada.tipo());
         tramite.setCrotalesDescartados(validada.descartados());
         aplicarDatosHecho(tramite, validada.datosHecho());
+        // Resuelve el crotal de la madre (V30) con el mismo mecanismo que la lista, justo despues de
+        // fijar crotalMadreIndicado. Solo toca columnas del Tramite: el UPDATE sigue siendo uno (la
+        // consulta de inventario es sobre animal, no provoca flush del Tramite ya modificado).
+        tramiteCrotalService.resolverMadre(tramite, pendiente.gestoriaId());
         tramite.setEstado(EstadoTramite.PENDIENTE_REVISION);
         // SIN_TRAMITE (ya pasado por la red de seguridad D2) sigue en PENDIENTE_REVISION: nunca se
         // rechaza ni se descarta solo.

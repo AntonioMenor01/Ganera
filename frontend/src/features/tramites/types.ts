@@ -102,7 +102,14 @@ export interface TramiteDetalle {
   fechaHecho: string | null;
   fechaNacimiento: string | null;
   sexo: string | null;
+  /** Crotal de la madre tal como se escribió (normalizado), o null. */
   crotalMadreIndicado: string | null;
+  /** V30: instantánea del crotal de la madre ya resuelto contra el inventario (el crotal completo si
+   * `EN_INVENTARIO`; si no, lo indicado), o null si no hay madre indicada. */
+  crotalMadre: string | null;
+  /** V30: cómo se resolvió la madre contra el inventario, o null si no hay madre indicada. Es string
+   * porque el backend manda el nombre del enum; un valor desconocido se trata como sin resolver. */
+  crotalMadreResolucion: ResolucionCrotal | null;
   numeroMer: string | null;
   destinoRega: string | null;
   destinoTexto: string | null;

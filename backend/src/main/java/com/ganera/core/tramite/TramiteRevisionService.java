@@ -188,6 +188,13 @@ public class TramiteRevisionService {
         } else if (explotacionCambiada) {
             tramiteCrotalService.recalcularEnlaces(tramite, gestoriaId);
         }
+        // Crotal de la madre (V30): se re-resuelve si el PATCH lo trae (corregido o borrado) O si cambia
+        // la explotacion aunque no se toque la madre -- siempre desde lo indicado, nunca desde el crotal
+        // completado para la explotacion anterior (igual que recalcularEnlaces). Aprobar NO la re-resuelve.
+        boolean madreEnPatch = request != null && request.crotalMadreIndicado() != null;
+        if (madreEnPatch || explotacionCambiada) {
+            tramiteCrotalService.resolverMadre(tramite, gestoriaId);
+        }
 
         List<TramiteCrotal> filas = filasDe(tramite, gestoriaId);
         List<String> duplicados = motivosMismoAnimal(filas);

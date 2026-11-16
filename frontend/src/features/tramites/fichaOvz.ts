@@ -55,6 +55,8 @@ export const PISTA_CROTAL_COMPLETO = "Falta el crotal completo";
  * cuál (D6; el rol llega con el B2). */
 export const PISTA_CROTAL_TERNERO = "Uno de los crotales de arriba, o elígelo en la lista de OVZ";
 export const PISTA_CROTAL_MADRE = "Uno de los crotales de arriba";
+/** V30: la madre se escribió con últimos dígitos que coinciden con varios animales del inventario. */
+export const PISTA_CROTAL_MADRE_AMBIGUA = "Varias madres posibles en el inventario";
 
 // ---------------------------------------------------------------------------------------------
 // Modelo.
@@ -141,6 +143,31 @@ function campoCrotal(id: string, etiqueta: string, crotal: TramiteCrotal, obliga
     ...conValor(id, etiqueta, obligatorio, valorCrotal(crotal), PISTA_CROTAL_COMPLETO),
     escrito: texto(crotal.crotalIndicado),
   };
+}
+
+/** V30: "Crotal de la Madre" a partir de la instantánea resuelta del detalle. Se copia solo si está
+ * `EN_INVENTARIO` (crotal completo del inventario); si no, falta con la pista según la resolución.
+ * `escrito` lleva siempre lo que se escribió. Sin madre indicada (`crotalMadreResolucion` null) se
+ * comporta como antes: uno de los crotales de arriba, o está en el mensaje. */
+function campoCrotalMadre(detalle: TramiteDetalle, hayCrotales: boolean): CampoFicha {
+  const base = { id: "alta-crotal-madre", etiqueta: "Crotal de la Madre", obligatorio: true };
+  const escrito = texto(detalle.crotalMadreIndicado);
+  const resolucion = detalle.crotalMadreResolucion;
+  if (resolucion === "EN_INVENTARIO") {
+    const valor = texto(detalle.crotalMadre);
+    return { ...base, valor, pista: valor === null ? PISTA_CROTAL_COMPLETO : null, escrito };
+  }
+  const pista =
+    resolucion == null
+      ? hayCrotales
+        ? PISTA_CROTAL_MADRE
+        : PISTA_MENSAJE
+      : resolucion === "AMBIGUO"
+        ? PISTA_CROTAL_MADRE_AMBIGUA
+        : resolucion === "SIN_EXPLOTACION"
+          ? PISTA_EXPLOTACION
+          : PISTA_CROTAL_MADRE; // NO_ENCONTRADO (o una resolución que el frontend no conozca)
+  return { ...base, valor: null, pista, escrito };
 }
 
 /** Un campo por crotal ("Animal 1"…). Sin crotales, uno solo que falta: el crotal estará en el
@@ -378,7 +405,6 @@ function rellenarValoresConocidos(
   pref: PreferenciaOvz | null,
 ): FichaOvz {
   const mapa: Record<string, string | null | undefined> = {
-    "alta-crotal-madre": detalle.crotalMadreIndicado,
     "alta-fecha-nacimiento": detalle.fechaNacimiento,
     "alta-sexo": detalle.sexo,
     "alta-fecha-identificacion": detalle.fechaIdentificacion,
@@ -409,11 +435,14 @@ function rellenarValoresConocidos(
     mapa["solicitud-rega-destino"] = detalle.destinoTexto;
   }
 
+  const hayCrotales = (detalle.crotales?.length ?? 0) > 0;
   return {
     ...ficha,
     bloques: ficha.bloques.map((bloque) => ({
       ...bloque,
       campos: bloque.campos.map((campo) => {
+        // La madre (V30) se construye desde la instantánea resuelta, no desde el mapa genérico.
+        if (campo.id === "alta-crotal-madre") return campoCrotalMadre(detalle, hayCrotales);
         if (campo.valor != null) return campo;
         const candidato = texto(mapa[campo.id] ?? null);
         if (candidato === null) return campo;

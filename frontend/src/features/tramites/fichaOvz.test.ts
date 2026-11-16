@@ -6,6 +6,7 @@ import {
   modoFicha,
   PISTA_CROTAL_COMPLETO,
   PISTA_CROTAL_MADRE,
+  PISTA_CROTAL_MADRE_AMBIGUA,
   PISTA_CROTAL_TERNERO,
   PISTA_EXPLOTACION,
   PISTA_GESTOR,
@@ -60,6 +61,8 @@ function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
     fechaNacimiento: null,
     sexo: null,
     crotalMadreIndicado: null,
+    crotalMadre: null,
+    crotalMadreResolucion: null,
     numeroMer: null,
     destinoRega: null,
     destinoTexto: null,
@@ -357,6 +360,65 @@ describe("ALTA_NACIMIENTO: Alta de Bóvidos", () => {
     expect(etiquetas(f)).toEqual(ORDEN_ALTA_OVZ)
     expect(campo(f, "alta-crotal-ternero").pista).toBe(PISTA_LISTA_OVZ)
     expect(campo(f, "alta-crotal-madre").pista).toBe(PISTA_MENSAJE)
+  })
+
+  // V30: la madre se resuelve contra el inventario; la ficha copia el crotal completo cuando está.
+  it("madre EN_INVENTARIO: rellena y se copia el crotal completo", () => {
+    const f = ficha({
+      tipoTramite: "ALTA_NACIMIENTO",
+      crotales: [C1],
+      crotalMadreIndicado: "4521",
+      crotalMadre: "ES010000004521",
+      crotalMadreResolucion: "EN_INVENTARIO",
+    })
+    expect(campo(f, "alta-crotal-madre")).toMatchObject({
+      valor: "ES010000004521",
+      pista: null,
+      escrito: "4521",
+    })
+  })
+
+  it("madre AMBIGUO: sin valor, con la pista de varias madres posibles", () => {
+    const f = ficha({
+      tipoTramite: "ALTA_NACIMIENTO",
+      crotales: [C1],
+      crotalMadreIndicado: "5678",
+      crotalMadre: "5678",
+      crotalMadreResolucion: "AMBIGUO",
+    })
+    expect(campo(f, "alta-crotal-madre")).toMatchObject({
+      valor: null,
+      pista: PISTA_CROTAL_MADRE_AMBIGUA,
+      escrito: "5678",
+    })
+  })
+
+  it("madre NO_ENCONTRADO: sin valor, con la pista del crotal y lo escrito", () => {
+    const f = ficha({
+      tipoTramite: "ALTA_NACIMIENTO",
+      crotales: [C1],
+      crotalMadreIndicado: "ES010000007777",
+      crotalMadre: "ES010000007777",
+      crotalMadreResolucion: "NO_ENCONTRADO",
+    })
+    expect(campo(f, "alta-crotal-madre").valor).toBeNull()
+    expect(campo(f, "alta-crotal-madre").pista).toBe(PISTA_CROTAL_MADRE)
+    expect(campo(f, "alta-crotal-madre").escrito).toBe("ES010000007777")
+  })
+
+  it("madre SIN_EXPLOTACION: la pista es asignar la explotación", () => {
+    const f = ficha({
+      tipoTramite: "ALTA_NACIMIENTO",
+      crotales: [],
+      crotalMadreIndicado: "4521",
+      crotalMadre: "4521",
+      crotalMadreResolucion: "SIN_EXPLOTACION",
+    })
+    expect(campo(f, "alta-crotal-madre")).toMatchObject({
+      valor: null,
+      pista: PISTA_EXPLOTACION,
+      escrito: "4521",
+    })
   })
 })
 

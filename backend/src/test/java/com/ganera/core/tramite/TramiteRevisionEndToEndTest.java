@@ -328,6 +328,102 @@ class TramiteRevisionEndToEndTest {
         assertThat(crotalesEnBd(tramite)).containsExactly("1234|ES980000031234|EN_INVENTARIO");
     }
 
+    // ------------------------------------------------------------------ crotal de la madre (V30)
+
+    /** V30: el PATCH fija el crotal de la madre por sufijo y el detalle lo trae ya completo y EN_INVENTARIO. */
+    @Test
+    void patchQueFijaLaMadrePorSufijoLaResuelveYElDetalleLaTraeCompleta() throws IOException {
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
+
+        ResponseEntity<String> respuesta = patch(tramite, tokenA, Map.of("crotalMadreIndicado", "1234"));
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
+        JsonNode json = objectMapper.readTree(respuesta.getBody());
+        assertThat(json.get("crotalMadreIndicado").asText()).isEqualTo("1234");
+        assertThat(json.get("crotalMadre").asText()).isEqualTo("ES980000011234");
+        assertThat(json.get("crotalMadreResolucion").asText()).isEqualTo("EN_INVENTARIO");
+
+        JsonNode detalle = objectMapper.readTree(get("/tramites/" + tramite.getId(), tokenA).getBody());
+        assertThat(detalle.get("crotalMadre").asText()).isEqualTo("ES980000011234");
+        assertThat(detalle.get("crotalMadreResolucion").asText()).isEqualTo("EN_INVENTARIO");
+    }
+
+    /** Aislamiento sobre HTTP: una madre cuyo sufijo solo coincide en B NUNCA se resuelve para A. */
+    @Test
+    void laMadreNoSeResuelveContraElInventarioDeOtraGestoria() throws IOException {
+        // ...9999 solo existe en B (ES980000049999).
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
+
+        ResponseEntity<String> respuesta = patch(tramite, tokenA, Map.of("crotalMadreIndicado", "9999"));
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
+        JsonNode json = objectMapper.readTree(respuesta.getBody());
+        assertThat(json.get("crotalMadreResolucion").asText()).isEqualTo("NO_ENCONTRADO");
+        assertThat(json.get("crotalMadre").asText()).isEqualTo("9999");
+        assertThat(respuesta.getBody()).doesNotContain("ES980000049999");
+    }
+
+    /** Aislamiento sobre HTTP del filtro explotacionId: una madre cuyo sufijo solo coincide en OTRA
+     * explotacion de la MISMA gestoria NUNCA se resuelve. Quitar el filtro explotacionId del resolver
+     * la volveria EN_INVENTARIO (ES980000031234 de explotacionA2), asi que este test se pone rojo con
+     * esa mutacion (el de "otra gestoria" no, porque gestoriaId ya lo aisla). */
+    @Test
+    void laMadreNoSeResuelveContraOtraExplotacionDeLaMismaGestoria() throws IOException {
+        // ...31234 solo existe en explotacionA2 (ES980000031234, gestoria A); el tramite esta en explotacionA1.
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
+
+        ResponseEntity<String> respuesta = patch(tramite, tokenA, Map.of("crotalMadreIndicado", "31234"));
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
+        JsonNode json = objectMapper.readTree(respuesta.getBody());
+        assertThat(json.get("crotalMadreResolucion").asText()).isEqualTo("NO_ENCONTRADO");
+        assertThat(json.get("crotalMadre").asText()).isEqualTo("31234");
+        assertThat(respuesta.getBody()).doesNotContain("ES980000031234");
+    }
+
+    /** Cambiar solo la explotacion re-resuelve la madre desde lo indicado (no desde el crotal completado antes). */
+    @Test
+    void cambiarLaExplotacionReResuelveLaMadreDesdeLoIndicado() throws IOException {
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
+        assertThat(patch(tramite, tokenA, Map.of("crotalMadreIndicado", "1234")).getStatusCode().value()).isEqualTo(200);
+
+        // E1 -> E2: ...1234 de E1 (ES980000011234) ya no esta; E2 tiene ES980000031234 -> se recompleta.
+        ResponseEntity<String> respuesta = patch(tramite, tokenA, Map.of("explotacionId", explotacionA2.getId()));
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
+        JsonNode json = objectMapper.readTree(respuesta.getBody());
+        assertThat(json.get("crotalMadreResolucion").asText()).isEqualTo("EN_INVENTARIO");
+        assertThat(json.get("crotalMadre").asText()).isEqualTo("ES980000031234");
+    }
+
+    /** #2b: aprobar NO re-resuelve la madre. Aunque su animal salga del inventario, la instantanea
+     * (crotal_madre + resolucion) queda igual tras aprobar (la LISTA si se re-resuelve, pero la madre no). */
+    @Test
+    void aprobarNoReResuelveLaInstantaneaDeLaMadre() throws IOException {
+        Tramite tramite = nuevoTramite(gestoriaA, contactoA, explotacionA1, TipoTramite.BAJA_MUERTE, EstadoTramite.PENDIENTE_REVISION);
+        // Lista: un crotal completo aprobable que NO es el de la madre. Madre: ...1234 (animalA1Unico1234).
+        assertThat(patch(tramite, tokenA, Map.of(
+                "crotales", List.of("ES980000015678"), "crotalMadreIndicado", "1234")).getStatusCode().value())
+                .isEqualTo(200);
+        JsonNode antes = objectMapper.readTree(get("/tramites/" + tramite.getId(), tokenA).getBody());
+        assertThat(antes.get("crotalMadre").asText()).isEqualTo("ES980000011234");
+        assertThat(antes.get("crotalMadreResolucion").asText()).isEqualTo("EN_INVENTARIO");
+
+        // El animal de la madre sale de la explotacion: si se re-resolviera, la madre seria NO_ENCONTRADO.
+        jdbcTemplate.update("update animal set explotacion_id = ? where id = ?",
+                explotacionA2.getId(), animalA1Unico1234.getId());
+
+        ResponseEntity<String> aprobar = aprobar(tramite, tokenA);
+
+        assertThat(aprobar.getStatusCode().value()).isEqualTo(200);
+        JsonNode json = objectMapper.readTree(aprobar.getBody());
+        assertThat(json.get("estado").asText()).isEqualTo("APROBADO");
+        // La instantanea de la madre NO cambia (aprobar no la re-resuelve).
+        JsonNode detalle = objectMapper.readTree(get("/tramites/" + tramite.getId(), tokenA).getBody());
+        assertThat(detalle.get("crotalMadre").asText()).isEqualTo("ES980000011234");
+        assertThat(detalle.get("crotalMadreResolucion").asText()).isEqualTo("EN_INVENTARIO");
+    }
+
     /** Decision 23: dos crotales al mismo Animal -> 409 y rollback del PATCH completo. */
     @Test
     void patchConDosCrotalesDelMismoAnimalDevuelve409YNoGuardaNada() throws IOException {

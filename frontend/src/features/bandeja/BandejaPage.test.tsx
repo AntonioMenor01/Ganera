@@ -75,6 +75,8 @@ function detalleDe(t: Tramite, extra: Partial<TramiteDetalle> = {}): TramiteDeta
     fechaNacimiento: null,
     sexo: null,
     crotalMadreIndicado: null,
+    crotalMadre: null,
+    crotalMadreResolucion: null,
     numeroMer: null,
     destinoRega: null,
     destinoTexto: null,

@@ -118,6 +118,18 @@ public class Tramite extends GestoriaScopedEntity {
     @Column(name = "crotal_madre_indicado", length = 30)
     private String crotalMadreIndicado;
 
+    /** Instantánea del crotal de la madre ya resuelto contra el inventario (V30): el crotal completo
+     * del inventario si EN_INVENTARIO; si no, lo indicado. Null si no hay madre indicada. Lo fija
+     * {@code TramiteCrotalService.resolverMadre} al extraer, al hacer PATCH y en el alta; aprobar NO
+     * lo re-resuelve (la instantánea es la que vio el revisor). Sin FK al animal. */
+    @Column(name = "crotal_madre", length = 30)
+    private String crotalMadre;
+
+    /** Cómo se resolvió el crotal de la madre contra el inventario (V30); null si no hay madre indicada. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "crotal_madre_resolucion", length = 20)
+    private ResolucionCrotal crotalMadreResolucion;
+
     @Column(name = "numero_mer", length = 60)
     private String numeroMer;
 

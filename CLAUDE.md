@@ -1121,9 +1121,9 @@ approval step before anything is written to OVZ.net.
     `application.yml` (the test one shadows the main one); Boot resolves `postgresql` or `h2`. **Numbering rule:** the
     version is global across folders — a Postgres-only migration leaves a gap in H2, which Flyway accepts; never two
     files with the same version. `db/h2/` only holds a `LEEME.md` (Maven doesn't copy empty folders).
-    **Migration counts as of V29 (ganadero-telefono):** on PostgreSQL Flyway applies **29** migrations (V1–V29; V26 lives only
-    in `db/postgresql`, so it's included on Postgres); on H2 it applies **28** (the same set minus V26, leaving a gap
-    at 26: V1–V25, V27, V28, V29). The embedded-Postgres and H2 migration-count tests assert exactly these numbers.
+    **Migration counts as of V30 (crotal-madre):** on PostgreSQL Flyway applies **30** migrations (V1–V30; V26 lives only
+    in `db/postgresql`, so it's included on Postgres); on H2 it applies **29** (the same set minus V26, leaving a gap
+    at 26: V1–V25, V27, V28, V29, V30). The embedded-Postgres and H2 migration-count tests assert exactly these numbers.
     `spring.flyway.fail-on-missing-locations: true` in both YAMLs: Flyway 10 only logs a missing location at `DEBUG`,
     so a `db/postgresql` missing from the jar would silently skip the security callback.
   - **Hand-written SQL** (seed, fixes) runs as the owner: start with `SET ROLE ganera_propietario; SET search_path TO
@@ -1454,7 +1454,7 @@ reference for every frontend decision below.
   test. `npm test` ran **475 tests in 36 files** at the end of A2 (476 after the mini-prompt's
   Rechazar change; **506 in 36 files** after the frontend task before the pilot; **508 in 36** after billing left the app;
   **513 in 37** after the brand colours and typography; **558 in 37** after Prompt B1; **557 in 36** after C mínimo removed the registration screen; **720 in 40** after the ficha OVZ; **811 in 41** after "Hecho en OVZ"; **912 in 43** after B2 reducido; **976 in 45** after SIN_TRAMITE; **1084 in 50** after the Clever deployment tasks; **1144 in 59** after Álvaro's
-mock-v2 merge (PRs #13–#29) + the ganadero-telefono task). Layout can't be checked in
+mock-v2 merge (PRs #13–#29) + the ganadero-telefono task; **1172 in 61** after merging PR #32 (gestionar personas titular/empleado desde las fichas) and the crotal-madre task). Layout can't be checked in
   jsdom: for visual changes, also drive the real app in a browser (Playwright from npm installed
   **outside the repo**, as in Prompts 4 and A2).
 
@@ -1476,7 +1476,7 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw clean test` — runs the test suite (1001 tests after the Clever deployment tasks — 1000 run plus the skipped Haiku evaluation —; **1075** after the Supabase migration — 1074 run plus the skipped evaluation —, including the embedded-PostgreSQL ones; **1338** (1337 run plus the skipped evaluation) after M2, the on-demand OVZ decryption; **1347** (1346 run plus the skipped evaluation) after the #23–#28 merge (manual trámite, enriched explotación fichas, OVZ preferences, alerts, demo seeder) and the backend stabilization that fixed the test suite; **1366** (1365 run plus the skipped evaluation) after the ganadero-telefono task (`PUT /ganaderos/{id}/telefono`, migration V29); **1370** (1369 run plus the skipped evaluation) after closing the contacto/ganadero read-audit gap (`GET /explotaciones/{id}` → `LECTURA_EXPLOTACION`, guard `InventarioLecturasTelefonoTest`; no migration); also green with JDK 21 — the real `JAVA_HOME` is `~/.jdks/temurin-21/jdk-21.0.12.1+1` (the JDK sits one level below `temurin-21`; in Git Bash pass it Windows-style, `JAVA_HOME='C:\Users\Antonio\.jdks\temurin-21\jdk-21.0.12.1+1' ./mvnw clean test`, a `/c/...` path makes the wrapper fail with "JAVA_HOME is not defined correctly")); **always with `clean`**
+- `./mvnw clean test` — runs the test suite (1001 tests after the Clever deployment tasks — 1000 run plus the skipped Haiku evaluation —; **1075** after the Supabase migration — 1074 run plus the skipped evaluation —, including the embedded-PostgreSQL ones; **1338** (1337 run plus the skipped evaluation) after M2, the on-demand OVZ decryption; **1347** (1346 run plus the skipped evaluation) after the #23–#28 merge (manual trámite, enriched explotación fichas, OVZ preferences, alerts, demo seeder) and the backend stabilization that fixed the test suite; **1366** (1365 run plus the skipped evaluation) after the ganadero-telefono task (`PUT /ganaderos/{id}/telefono`, migration V29); **1370** (1369 run plus the skipped evaluation) after closing the contacto/ganadero read-audit gap (`GET /explotaciones/{id}` → `LECTURA_EXPLOTACION`, guard `InventarioLecturasTelefonoTest`; no migration); **1388** (1387 run plus the skipped evaluation) after the crotal-madre task (the trámite's mother crotal resolved against the explotación inventory via the shared `resolver`, migration V30; #32 added no backend tests; includes the E2E `laMadreNoSeResuelveContraOtraExplotacionDeLaMismaGestoria` that goes red if the `explotacionId` filter leaks); also green with JDK 21 — the real `JAVA_HOME` is `~/.jdks/temurin-21/jdk-21.0.12.1+1` (the JDK sits one level below `temurin-21`; in Git Bash pass it Windows-style, `JAVA_HOME='C:\Users\Antonio\.jdks\temurin-21\jdk-21.0.12.1+1' ./mvnw clean test`, a `/c/...` path makes the wrapper fail with "JAVA_HOME is not defined correctly")); **always with `clean`**
   (see the VS Code/ECJ note under Architecture notes). A single test:
   `./mvnw clean test -Dtest=AuthServiceTest`
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
@@ -1906,6 +1906,42 @@ de `GET /ganaderos`/`GET /buscar`, y 10 capturas a 1440 y 375 px fuera del repo
 al integrar `main` (el `V27` de main es el de preferencias OVZ de la #24); en PostgreSQL se aplican 29 migraciones y
 en H2 28 (hueco en V26). **Pendiente tras el merge:** el smoke en
 producción (ganadero 11 de la gestoría de pruebas, `+34600000000`, A5/A8).
+
+**Crotal de la madre resuelto contra el inventario — complete, no merged yet** (2026-11-11 → 2026-11-16, rama
+`feat/crotal-madre`; plan `docs/superpowers/plans/2026-11-11-crotal-madre.md`). **Backend + frontend** (cambia el
+contrato de `TramiteDetalleResponse`), aún sin commitear. Para el registro de nacimiento (`ALTA_NACIMIENTO`), el
+crotal de la madre (`crotal_madre_indicado`, V27) se **resuelve** contra el inventario de la explotación del trámite
+con **exactamente el mismo mecanismo** que los demás crotales: el refactor extrae un método compartido
+`TramiteCrotalService.resolver(CrotalNormalizado, Explotacion, gestoriaId)` (devuelve un record
+`ResultadoResolucionCrotal`) que usan tanto la lista de crotales como `resolverMadre(Tramite, gestoriaId)`; las dos
+búsquedas de `Animal` llevan `explotacionId` **y** `gestoriaId` explícitos (más la red de `enlazado`, que lanza
+`RecursoNoEncontradoException` si el animal recuperado no es de la explotación/gestoría). **Migración `V30`**
+(`crotal_madre VARCHAR(30)` = crotal completado si `EN_INVENTARIO`, si no lo indicado; `crotal_madre_resolucion
+VARCHAR(20)` = enum `ResolucionCrotal`), común H2+PostgreSQL, **sin FK al animal** (la madre es un campo de referencia
+del formulario, no entra en `tramite_crotal`). Se re-resuelve **desde `crotalMadreIndicado`** (lo escrito, no lo
+completado) en alta, extracción IA y al cambiar la explotación en el PATCH; **aprobar NO re-resuelve** la instantánea
+de la madre (solo `recalcularEnlaces` de la lista). Un crotal de madre inválido no rompe (el PATCH valida el formato;
+`resolverMadre` además captura `CrotalInvalidoException` → ambas columnas null). Borrado explícito por `""`/espacios en
+PATCH (null = no cambiar, como el resto de campos OVZ). `TramiteDetalleResponse` expone `crotalMadre`/
+`crotalMadreResolucion`; `TramiteResponse` (lista/aprobar) **no** los lleva. Frontend: `fichaOvz.ts` `campoCrotalMadre`
+copia solo si `EN_INVENTARIO`, con pistas por resolución; `types.ts` añade los dos campos. **Nota de cobertura (del
+revisor):** el aislamiento efectivo lo da `explotacionId` (en los tests de "otra gestoría" el animal ajeno vive además
+en otra explotación, así que por el modelo de datos no se puede construir un test donde `gestoriaId` sea el único
+filtro aislante); `gestoriaId` es **defensa en profundidad** —queda demostrado como load-bearing por los tests de
+resolución positiva, no por un test de aislamiento dedicado—. Flujo Superpowers: implementador + revisor independiente
+**Approved** (las 3 mutaciones dirigidas — quitar `gestoriaId` o `explotacionId` del `resolver` compartido rompe madre
+**y** crotales normales; inyectar `resolverMadre` en `aprobar` lo cata `aprobarNoReResuelveLaInstantaneaDeLaMadre` —
+salieron rojas y se restauraron con cp/cmp). La sesión principal añadió además un E2E de aislamiento
+`explotacionId` (`laMadreNoSeResuelveContraOtraExplotacionDeLaMismaGestoria`, misma gestoría/otra explotación, sufijo
+`31234` solo en A2): el cruce de gestorías ya lo aísla `gestoriaId`, así que ese caso es el que se pone **rojo** si se
+cae el filtro `explotacionId` (verificado con TDD: mutación que ignora la explotación → rojo; restaurado con cp/cmp →
+verde). Integrado `main` (`origin/main` = `6931f01`, PR #32 solo frontend) por
+**fast-forward** sin solape. Verificado con `./mvnw clean test` **1388** (1387 pasan, 1 skip: la evaluación; JDK 21),
+`npm test` **1172 en 61**, `npm run build` y `npm run lint` (solo los 3 avisos conocidos), y un smoke local con H2
+(onboarding → login → import → trámite sembrado → PATCH fija la madre por sufijo `789012` → detalle `crotalMadre =
+ES123456789012`, `EN_INVENTARIO` → aprobar → la madre no cambia en BD ni en el detalle; Flyway aplica V1–V30, 29 en
+H2). **Recuentos de migraciones:** PostgreSQL **30** (V1–V30), H2 **29** (hueco en V26). **No commit hasta que Antonio
+lo apruebe.**
 
 **Still blocked: Prompt 3a and escalón 2 (modo asistido)** — the OVZ.net read sync, and the mode where
 Ganera fills in the OVZ form for the gestor to review — one trámite at a time, after the gestor’s
