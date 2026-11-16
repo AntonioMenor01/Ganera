@@ -58,6 +58,8 @@ public class RespuestaWhatsappService {
     private final Clock reloj;
     private final AuditoriaService auditoriaService;
     private final TransactionTemplate transaccion;
+    /** whatsapp-from configurado (normalizado): remitente por defecto de los tramites COMPARTIDO/legacy. */
+    private final String remitentePorDefecto;
 
     public RespuestaWhatsappService(TramiteRepository tramiteRepository,
                                     UsuarioRepository usuarioRepository,
@@ -66,7 +68,9 @@ public class RespuestaWhatsappService {
                                     EnvioWhatsapp envioWhatsapp,
                                     Clock reloj,
                                     AuditoriaService auditoriaService,
-                                    PlatformTransactionManager transactionManager) {
+                                    PlatformTransactionManager transactionManager,
+                                    @org.springframework.beans.factory.annotation.Value("${ganera.twilio.whatsapp-from:}")
+                                    String whatsappFrom) {
         this.tramiteRepository = tramiteRepository;
         this.usuarioRepository = usuarioRepository;
         this.mensajeCampoRepository = mensajeCampoRepository;
@@ -75,6 +79,7 @@ public class RespuestaWhatsappService {
         this.reloj = reloj;
         this.auditoriaService = auditoriaService;
         this.transaccion = new TransactionTemplate(transactionManager);
+        this.remitentePorDefecto = ClasificadorEnvioWhatsapp.normalizarRemitente(whatsappFrom);
     }
 
     /** Si el envio esta configurado (sin el, el endpoint responde 503 sin crear nada). */
@@ -86,8 +91,8 @@ public class RespuestaWhatsappService {
     public record Respuesta(RespuestaWhatsappResponse respuesta, boolean nueva) {
     }
 
-    /** Lo que deja el paso 1: o una respuesta ya guardada con esa clave, o la fila nueva a enviar. */
-    private record Preparada(RespuestaWhatsapp existente, Long nuevaId, String telefono) {
+    /** Lo que deja el paso 1: o una respuesta ya guardada con esa clave, o la fila nueva a enviar (con su remitente). */
+    private record Preparada(RespuestaWhatsapp existente, Long nuevaId, String telefono, String remitente) {
     }
 
     /**
@@ -115,7 +120,7 @@ public class RespuestaWhatsappService {
 
         ResultadoEnvioWhatsapp resultado;
         try {
-            resultado = envioWhatsapp.enviar(preparada.telefono(), texto);
+            resultado = envioWhatsapp.enviar(preparada.remitente(), preparada.telefono(), texto);
         } catch (RuntimeException e) {
             // El puerto no deberia lanzar; si lo hace, no sabemos si salio.
             log.warn("Envio por WhatsApp con excepcion inesperada: respuestaId={}, excepcion={}",
@@ -142,7 +147,7 @@ public class RespuestaWhatsappService {
                 respuestaWhatsappRepository.findByGestoriaIdAndClaveIdempotencia(gestoriaId, clave);
         if (conLaClave.isPresent()) {
             comprobarMismaPeticion(conLaClave.get(), tramiteId, texto);
-            return new Preparada(conLaClave.get(), null, null);
+            return new Preparada(conLaClave.get(), null, null, null);
         }
 
         Contacto contacto = tramite.getContacto();
@@ -175,7 +180,19 @@ public class RespuestaWhatsappService {
         auditoriaService.registrar(AccionAuditoria.RESPUESTA_WHATSAPP_CREADA, gestoriaId, Actor.usuario(usuarioId),
                 EntidadAuditada.RESPUESTA_WHATSAPP, respuesta.getId(), null,
                 DatosAuditoria.con(Clave.ESTADO, EstadoRespuestaWhatsapp.ENVIANDO));
-        return new Preparada(null, respuesta.getId(), contacto.getTelefono());
+        return new Preparada(null, respuesta.getId(), contacto.getTelefono(), remitenteDe(tramite));
+    }
+
+    /**
+     * Desde que numero se responde (fase 1, V31): el numero DEDICADO por el que entro el tramite, o el
+     * whatsapp-from configurado para los COMPARTIDO/legacy (numeroWhatsapp null). Ya normalizado a
+     * {@code whatsapp:+…}; null si no hay ninguno resoluble (entonces el envio es Rechazado, D-f).
+     */
+    private String remitenteDe(Tramite tramite) {
+        if (tramite.getNumeroWhatsapp() != null) {
+            return ClasificadorEnvioWhatsapp.normalizarRemitente(tramite.getNumeroWhatsapp().getNumero());
+        }
+        return remitentePorDefecto;
     }
 
     /** Paso 3, dentro de su transaccion. */

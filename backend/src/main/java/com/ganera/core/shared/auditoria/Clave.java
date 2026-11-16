@@ -32,6 +32,8 @@ public enum Clave {
     ERRORES,
     CROTALES_DESCARTADOS,
     INTENTOS,
+    /** Id del numero_whatsapp DEDICADO por el que entro el tramite (V31); nunca el telefono. */
+    NUMERO_WHATSAPP_ID,
     // Recuentos por hoja de la fila resumen de una importacion de Excel (IMPORTACION_EXCEL).
     EXPLOTACIONES_CREADAS,
     EXPLOTACIONES_ACTUALIZADAS,

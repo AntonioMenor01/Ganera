@@ -68,6 +68,28 @@ approval step before anything is written to OVZ.net.
    **Future path:** one WhatsApp number per Gestoría, identifying the Gestoría by the message's
    *destination* number — which would allow `UNIQUE(gestoria_id, telefono)` instead.
    Since Prompt B1 the webhook is wired; see the "Prompt B1" bullet under Technical decisions.
+   **WhatsApp por gestoría — fase 1 (2026-11-16, rama `feat/whatsapp-por-gestoria`, migración `V31`;
+   plan `docs/superpowers/plans/2026-11-16-whatsapp-numero-por-gestoria.md`).** Dos modalidades, ahora
+   resueltas **por el número de DESTINO (`To`)**, no solo por el remitente: **DEDICADO** — un número
+   propio por gestoría (tabla `numero_whatsapp`, solo DEDICADO, `gestoria_id NOT NULL`; `To` en la tabla
+   → la gestoría es su dueña y el contacto se busca **dentro de ella** con `findByGestoriaIdAndTelefono`,
+   así un contacto de otra gestoría que escribe ahí es **desconocido**, sin fuga); **COMPARTIDO** — el
+   número único de hoy, **identificado por configuración** (`To == ganera.twilio.whatsapp-from`), se
+   resuelve por el teléfono del remitente (`findByTelefono`) como siempre; `To` que no es ni uno ni otro
+   → desconocido, como hoy, con un `log.warn` sin el número. El `To` normalizado se guarda en
+   `mensaje_campo.telefono_destino` (nunca en un DTO de respuesta) y el número DEDICADO en
+   `tramite.numero_whatsapp_id` (FK; **invariante:** si no es null, es de la misma gestoría que el
+   trámite). **`NumeroWhatsappRepository.findByNumero` es la nueva consulta sin tenant** (reservada al
+   webhook, junto a `findByTelefono` y las dos por SID; lo vigila `ConsultasSinTenantTest` por bytecode).
+   Se responde **desde el número por el que entró** (`tramite.numeroWhatsapp`, o el `whatsapp-from`
+   para COMPARTIDO/legacy). Los números DEDICADO se dan de alta por `POST /internal/whatsapp/numeros`
+   (`X-Internal-Secret`, como el onboarding; `NUMERO_WHATSAPP_REGISTRADO`, actor SISTEMA, nunca el
+   teléfono en texto; `To == whatsapp-from` → 400, duplicado → 409). El `UNIQUE` global de
+   `contacto.telefono` **se mantiene** (el paso a `UNIQUE(gestoria_id, telefono)` queda aplazado:
+   no se puede mientras exista un número COMPARTIDO). Sin cambios en la firma de Twilio (una cuenta,
+   un token). Pendiente de fase 2: identidad propia por gestoría (WABA/subcuenta separada, multi-token)
+   y el `UNIQUE(gestoria_id, telefono)`. Meta/Twilio: registrar un número existente en Twilio **borra**
+   su cuenta de WhatsApp (no hay coexistencia); pasos de consola y requisitos en el anexo del plan.
 3. If the Contacto has more than one Explotación and the message doesn't disambiguate, the Tramite
    is created with `explotacion = null` and `estado = PENDIENTE_REVISION` — an employee assigns the
    Explotación by hand in the UI. There is no automatic WhatsApp round-trip asking the Ganadero to
@@ -118,8 +140,10 @@ approval step before anything is written to OVZ.net.
   subagent) must treat a bare `findById` on a `GestoriaScopedEntity` in new code as a blocking
   finding, not a minor note. The same goes for lookups by a business key: since Prompt A1 the
   unscoped `findByCodigoRega`/`findByNif`/`findByCrotal` no longer exist in the repositories (going
-  back to one is a compile error), and the only unscoped finder left is
-  `ContactoRepository.findByTelefono`, reserved for the 3b webhook (see Operational flow step 2).
+  back to one is a compile error), and the unscoped finders left are
+  `ContactoRepository.findByTelefono` and, since `V31`, `NumeroWhatsappRepository.findByNumero`
+  (resolución de la gestoría por el número de DESTINO), both reserved for the 3b webhook and both
+  vigilados por `ConsultasSinTenantTest` (ningún otro bean puede llamarlos) — see Operational flow step 2.
   The pre-A1 `AnimalRepository.findByExplotacionIdAndCrotalUltimosDigitos` (no `gestoriaId`, no
   callers) was removed right after A1; crotales are resolved by last digits with
   `findByExplotacionIdAndGestoriaIdAndCrotalEndingWithOrderByIdAsc` — use that in 3b too.
@@ -1476,9 +1500,13 @@ Backend (from `backend/`; use `./mvnw` not a bare `mvn` — see the PATH/JAVA_HO
 - `./mvnw spring-boot:run` — run locally (Spring Boot does **not** auto-load `.env` — export the
   variables from `.env.example` into the shell/IDE run config yourself, or run via
   `docker-compose` where Postgres is provided but the app itself still needs its own env vars set)
-- `./mvnw clean test` — runs the test suite (1001 tests after the Clever deployment tasks — 1000 run plus the skipped Haiku evaluation —; **1075** after the Supabase migration — 1074 run plus the skipped evaluation —, including the embedded-PostgreSQL ones; **1338** (1337 run plus the skipped evaluation) after M2, the on-demand OVZ decryption; **1347** (1346 run plus the skipped evaluation) after the #23–#28 merge (manual trámite, enriched explotación fichas, OVZ preferences, alerts, demo seeder) and the backend stabilization that fixed the test suite; **1366** (1365 run plus the skipped evaluation) after the ganadero-telefono task (`PUT /ganaderos/{id}/telefono`, migration V29); **1370** (1369 run plus the skipped evaluation) after closing the contacto/ganadero read-audit gap (`GET /explotaciones/{id}` → `LECTURA_EXPLOTACION`, guard `InventarioLecturasTelefonoTest`; no migration); **1388** (1387 run plus the skipped evaluation) after the crotal-madre task (the trámite's mother crotal resolved against the explotación inventory via the shared `resolver`, migration V30; #32 added no backend tests; includes the E2E `laMadreNoSeResuelveContraOtraExplotacionDeLaMismaGestoria` that goes red if the `explotacionId` filter leaks); also green with JDK 21 — the real `JAVA_HOME` is `~/.jdks/temurin-21/jdk-21.0.12.1+1` (the JDK sits one level below `temurin-21`; in Git Bash pass it Windows-style, `JAVA_HOME='C:\Users\Antonio\.jdks\temurin-21\jdk-21.0.12.1+1' ./mvnw clean test`, a `/c/...` path makes the wrapper fail with "JAVA_HOME is not defined correctly")); **always with `clean`**
+- `./mvnw clean test` — runs the test suite (1001 tests after the Clever deployment tasks — 1000 run plus the skipped Haiku evaluation —; **1075** after the Supabase migration — 1074 run plus the skipped evaluation —, including the embedded-PostgreSQL ones; **1338** (1337 run plus the skipped evaluation) after M2, the on-demand OVZ decryption; **1347** (1346 run plus the skipped evaluation) after the #23–#28 merge (manual trámite, enriched explotación fichas, OVZ preferences, alerts, demo seeder) and the backend stabilization that fixed the test suite; **1366** (1365 run plus the skipped evaluation) after the ganadero-telefono task (`PUT /ganaderos/{id}/telefono`, migration V29); **1370** (1369 run plus the skipped evaluation) after closing the contacto/ganadero read-audit gap (`GET /explotaciones/{id}` → `LECTURA_EXPLOTACION`, guard `InventarioLecturasTelefonoTest`; no migration); **1388** (1387 run plus the skipped evaluation) after the crotal-madre task (the trámite's mother crotal resolved against the explotación inventory via the shared `resolver`, migration V30; #32 added no backend tests; includes the E2E `laMadreNoSeResuelveContraOtraExplotacionDeLaMismaGestoria` that goes red if the `explotacionId` filter leaks); **1408** (1407 run plus the skipped evaluation) after the WhatsApp-por-gestoría fase 1 task (migration V31; resolución por número de DESTINO, tabla `numero_whatsapp`, `POST /internal/whatsapp/numeros`, guardia `ConsultasSinTenantTest`); also green with JDK 21 — the real `JAVA_HOME` is `~/.jdks/temurin-21/jdk-21.0.12.1+1` (the JDK sits one level below `temurin-21`; in Git Bash pass it Windows-style, `JAVA_HOME='C:\Users\Antonio\.jdks\temurin-21\jdk-21.0.12.1+1' ./mvnw clean test`, a `/c/...` path makes the wrapper fail with "JAVA_HOME is not defined correctly")); **always with `clean`**
   (see the VS Code/ECJ note under Architecture notes). A single test:
   `./mvnw clean test -Dtest=AuthServiceTest`
+  **Flakiness del PostgreSQL embebido:** tras muchas ejecuciones seguidas en la misma máquina/sesión, el
+  PostgreSQL embebido compartido puede dar **errores en bloque** (cargas de contexto que fallan en cascada,
+  «Script Vxx failed», 500 espurios) que **cambian de orden entre ejecuciones** — no son regresiones; la
+  referencia válida es una **ejecución limpia** (`./mvnw clean test`) con los procesos previos ya terminados.
 - Playwright browsers are already installed locally. If they need reinstalling elsewhere (no
   `exec-maven-plugin` is configured in `pom.xml`, so `mvn exec:java` won't work out of the box):
   `mvn dependency:build-classpath -Dmdep.outputFile=cp.txt` then

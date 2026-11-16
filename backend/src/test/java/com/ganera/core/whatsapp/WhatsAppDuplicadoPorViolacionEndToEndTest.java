@@ -151,6 +151,8 @@ class WhatsAppDuplicadoPorViolacionEndToEndTest {
         Map<String, String> p = new LinkedHashMap<>();
         p.put("MessageSid", messageSid);
         p.put("From", "whatsapp:" + TELEFONO);
+        // To = el numero COMPARTIDO (sandbox) configurado en el yml de test: resuelve por telefono del remitente.
+        p.put("To", "whatsapp:+14155238886");
         p.put("Body", "baja del 1234");
         p.put("NumMedia", "0");
         return p;

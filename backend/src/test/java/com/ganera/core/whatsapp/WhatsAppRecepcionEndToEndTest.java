@@ -98,6 +98,8 @@ class WhatsAppRecepcionEndToEndTest {
     @Autowired
     private TramiteRepository tramiteRepository;
     @Autowired
+    private NumeroWhatsappRepository numeroWhatsappRepository;
+    @Autowired
     private ContactoExplotacionRepository contactoExplotacionRepository;
     @Autowired
     private ContactoRepository contactoRepository;
@@ -154,6 +156,7 @@ class WhatsAppRecepcionEndToEndTest {
         mensajeCampoRepository.deleteAll();
         tramiteCrotalRepository.deleteAll();
         tramiteRepository.deleteAll();
+        numeroWhatsappRepository.deleteAll();
         contactoExplotacionRepository.deleteAll();
         contactoRepository.deleteAll();
         explotacionRepository.deleteAll();
@@ -411,15 +414,61 @@ class WhatsAppRecepcionEndToEndTest {
                 .doesNotContain(AUTH_TOKEN);
     }
 
+    // ------------------------------------------- numero por gestoria: DEDICADO por To y aislamiento (V31)
+
+    @Test
+    void numeroDedicadoDelContactoDeSuGestoriaCreaTramiteConEseNumero() {
+        Long numeroId = numeroDedicadoDe(gestoriaA, "+34910000201");
+
+        ResponseEntity<String> r = enviar(parametros("SM-ded-1", TEL_A_UNA, "baja del 1234", "whatsapp:+34910000201"));
+
+        assertThat(r.getStatusCode().value()).isEqualTo(200);
+        assertThat(r.getBody()).isEqualTo(TWIML_ACUSE);
+        Map<String, Object> tramite = unicoTramite();
+        assertThat(((Number) tramite.get("gestoria_id")).longValue()).isEqualTo(gestoriaA.getId());
+        assertThat(((Number) tramite.get("numero_whatsapp_id")).longValue()).isEqualTo(numeroId);
+        assertThat(unicoMensaje().get("telefono_destino")).isEqualTo("+34910000201");
+    }
+
+    /** Aislamiento (clave): un contacto de B que escribe al numero DEDICADO de A es desconocido para A. */
+    @Test
+    void unContactoDeOtraGestoriaQueEscribeAlNumeroDedicadoEsDesconocido() {
+        numeroDedicadoDe(gestoriaA, "+34910000202");
+
+        ResponseEntity<String> r = enviar(parametros("SM-ded-2", TEL_B, "hola", "whatsapp:+34910000202"));
+
+        assertThat(r.getStatusCode().value()).isEqualTo(200);
+        assertThat(r.getBody()).isEqualTo(TWIML_VACIO);
+        assertThat(contarTramites()).isZero();
+        Map<String, Object> mensaje = unicoMensaje();
+        assertThat(mensaje.get("gestoria_id")).isNull();
+        assertThat(mensaje.get("telefono_destino")).isEqualTo("+34910000202");
+    }
+
+    @Test
+    void unDestinoNoRegistradoNiCompartidoEsDesconocido() {
+        ResponseEntity<String> r = enviar(parametros("SM-ded-3", TEL_A_UNA, "hola", "whatsapp:+34999999999"));
+
+        assertThat(r.getStatusCode().value()).isEqualTo(200);
+        assertThat(r.getBody()).isEqualTo(TWIML_VACIO);
+        assertThat(contarTramites()).isZero();
+        assertThat(unicoMensaje().get("telefono_destino")).isEqualTo("+34999999999");
+    }
+
     // ------------------------------------------------------------ ayudas
 
     private static Map<String, String> parametros(String messageSid, String telefono, String cuerpo) {
+        return parametros(messageSid, telefono, cuerpo, "whatsapp:+14155238886");
+    }
+
+    /** Variante con To propio (numero de DESTINO): el compartido sandbox o un numero DEDICADO. */
+    private static Map<String, String> parametros(String messageSid, String telefono, String cuerpo, String to) {
         Map<String, String> p = new LinkedHashMap<>();
         p.put("MessageSid", messageSid);
         p.put("SmsMessageSid", messageSid);
         p.put("AccountSid", "AC00000000000000000000000000000000");
         p.put("From", "whatsapp:" + telefono);
-        p.put("To", "whatsapp:+14155238886");
+        p.put("To", to);
         if (cuerpo != null) {
             p.put("Body", cuerpo);
         }
@@ -427,6 +476,15 @@ class WhatsAppRecepcionEndToEndTest {
         p.put("ProfileName", "Nombre De Perfil");
         p.put("WaId", telefono.substring(1));
         return p;
+    }
+
+    private Long numeroDedicadoDe(Gestoria gestoria, String numeroE164) {
+        com.ganera.core.whatsapp.NumeroWhatsapp numero = new com.ganera.core.whatsapp.NumeroWhatsapp();
+        numero.setGestoria(gestoria);
+        numero.setNumero(numeroE164);
+        numero.setActivo(true);
+        numero.setCreatedAt(java.time.Instant.parse("2026-11-16T10:00:00Z"));
+        return numeroWhatsappRepository.save(numero).getId();
     }
 
     private ResponseEntity<String> enviar(Map<String, String> parametros) {

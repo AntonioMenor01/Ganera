@@ -29,6 +29,8 @@ import com.ganera.core.whatsapp.RespuestaWhatsapp;
 import com.ganera.core.whatsapp.RespuestaWhatsappRepository;
 import com.ganera.core.whatsapp.MensajeCampo;
 import com.ganera.core.whatsapp.MensajeCampoRepository;
+import com.ganera.core.whatsapp.NumeroWhatsapp;
+import com.ganera.core.whatsapp.NumeroWhatsappRepository;
 import com.ganera.core.whatsapp.ResultadoEnvioWhatsapp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -83,6 +85,8 @@ class RespuestaWhatsappEndToEndTest {
     private static final Instant AHORA = IaDePruebaConfig.AHORA;
     private static final String TELEFONO_A = "+34600980001";
     private static final String TELEFONO_B = "+34600980002";
+    /** El whatsapp-from del yml de test (el COMPARTIDO): remitente por defecto de los tramites sin numero DEDICADO. */
+    private static final String REMITENTE_COMPARTIDO = "whatsapp:+14155238886";
     private static final String MOTIVO_FUERA_DE_VENTANA =
             "Han pasado más de 24 horas desde su último mensaje. WhatsApp no deja escribirle hasta que vuelva a escribir.";
 
@@ -102,6 +106,8 @@ class RespuestaWhatsappEndToEndTest {
     private RelojAjustable reloj;
     @Autowired
     private RespuestaWhatsappRepository respuestaWhatsappRepository;
+    @Autowired
+    private NumeroWhatsappRepository numeroWhatsappRepository;
     @Autowired
     private TramiteCrotalRepository tramiteCrotalRepository;
     @Autowired
@@ -163,6 +169,7 @@ class RespuestaWhatsappEndToEndTest {
         mensajeCampoRepository.deleteAll();
         tramiteCrotalRepository.deleteAll();
         tramiteRepository.deleteAll();
+        numeroWhatsappRepository.deleteAll();
         suscripcionRepository.deleteAll();
         contactoRepository.deleteAll();
         explotacionRepository.deleteAll();
@@ -200,8 +207,10 @@ class RespuestaWhatsappEndToEndTest {
         assertThat(respuesta.getBody()).doesNotContain(TELEFONO_A).doesNotContain("ana.resp@test.com")
                 .doesNotContain("SMfalso");
 
-        // El falso recibio exactamente el telefono E.164 del contacto y el texto, fuera de transaccion.
-        assertThat(envio.llamadas()).containsExactly(new EnvioWhatsappFalso.Llamada(TELEFONO_A, texto, false));
+        // El falso recibio exactamente el telefono E.164 del contacto, el texto, fuera de transaccion, y como
+        // remitente el COMPARTIDO (este tramite no tiene numero DEDICADO).
+        assertThat(envio.llamadas()).containsExactly(
+                new EnvioWhatsappFalso.Llamada(TELEFONO_A, texto, false, REMITENTE_COMPARTIDO));
 
         // La fila guardada.
         Map<String, Object> guardada = respuestaEnBd(cuerpo.get("id").asLong());
@@ -250,6 +259,24 @@ class RespuestaWhatsappEndToEndTest {
         // Los logs: ni el texto ni el telefono.
         assertThat(salida.getAll()).doesNotContain(TELEFONO_A).doesNotContain("el crotal completo")
                 .contains("respuestaId=" + cuerpo.get("id").asLong());
+    }
+
+    /** Fase 1 (V31): un tramite que entro por un numero DEDICADO se responde DESDE ese numero, no desde el COMPARTIDO. */
+    @Test
+    void unTramiteConNumeroDedicadoSeRespondeDesdeEseNumero() throws IOException {
+        NumeroWhatsapp numero = numeroDedicado(gestoriaA, "+34910000077");
+        Tramite tramite = deWhatsapp(gestoriaA, contactoA, EstadoTramite.PENDIENTE_REVISION);
+        tramite.setNumeroWhatsapp(numero);
+        tramiteRepository.save(tramite);
+        mensajeDe(gestoriaA, contactoA, tramite, AHORA.minus(Duration.ofHours(2)));
+        String texto = "Hola, Juan.\n— Gestoría Respuestas A";
+
+        ResponseEntity<String> respuesta = responder(tramite.getId(), tokenAna, texto, UUID.randomUUID().toString());
+
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(201);
+        // El remitente es el numero DEDICADO (whatsapp:+34910000077), no el COMPARTIDO.
+        assertThat(envio.llamadas()).containsExactly(
+                new EnvioWhatsappFalso.Llamada(TELEFONO_A, texto, false, "whatsapp:+34910000077"));
     }
 
     /** D6: un campo de mas en el cuerpo (telefono, contactoId, gestoriaId) se ignora; el destino sale
@@ -907,6 +934,15 @@ class RespuestaWhatsappEndToEndTest {
             tramite.setEstadoExtraccion(EstadoExtraccion.COMPLETADA);
         }
         return tramiteRepository.save(tramite);
+    }
+
+    private NumeroWhatsapp numeroDedicado(Gestoria gestoria, String numeroE164) {
+        NumeroWhatsapp numero = new NumeroWhatsapp();
+        numero.setGestoria(gestoria);
+        numero.setNumero(numeroE164);
+        numero.setActivo(true);
+        numero.setCreatedAt(AHORA);
+        return numeroWhatsappRepository.save(numero);
     }
 
     private void mensajeDe(Gestoria gestoria, Contacto contacto, Tramite tramite, Instant cuando) {

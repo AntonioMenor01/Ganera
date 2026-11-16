@@ -46,6 +46,14 @@ public class MensajeCampo {
     @Column(name = "telefono_origen", nullable = false)
     private String telefonoOrigen;
 
+    /**
+     * Número de DESTINO (To) por el que llegó el mensaje, normalizado a E.164 (V31). Null en mensajes
+     * anteriores a V31 y cuando Twilio no envía To. Con él se resuelve la gestoría por número propio
+     * (DEDICADO). Nunca sale en un DTO de respuesta; en logs va enmascarado.
+     */
+    @Column(name = "telefono_destino")
+    private String telefonoDestino;
+
     /** Columna TEXT (V9). Sin @Lob: un @Lob String no valida contra TEXT en H2 y en PostgreSQL se
      * leeria como un large object. */
     @Column(nullable = false, columnDefinition = "TEXT")

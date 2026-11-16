@@ -89,6 +89,7 @@ class InventarioAuditoriaTest {
                 Cobertura.auditada("ovz.PreferenciaOvzEndToEndTest"));
         RUTAS.put("POST /gestorias/registro", Cobertura.auditada("registro.RegistroGestoriaEndToEndTest"));
         RUTAS.put("POST /internal/onboarding/gestoria", Cobertura.auditada("onboarding.OnboardingControllerTest"));
+        RUTAS.put("POST /internal/whatsapp/numeros", Cobertura.auditada("whatsapp.NumeroWhatsappInternoEndToEndTest"));
         RUTAS.put("POST /webhooks/stripe", Cobertura.auditada("facturacion.StripeWebhookEndToEndTest"));
         RUTAS.put("POST /webhooks/twilio/whatsapp", Cobertura.auditada("whatsapp.WhatsAppRecepcionEndToEndTest"));
         RUTAS.put("POST /webhooks/twilio/whatsapp/estado", Cobertura.auditada("whatsapp.TwilioEstadoWebhookEndToEndTest"));

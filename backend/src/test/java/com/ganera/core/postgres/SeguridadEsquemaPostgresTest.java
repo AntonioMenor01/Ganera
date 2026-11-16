@@ -38,11 +38,11 @@ class SeguridadEsquemaPostgresTest {
         String baseDeDatos = migrarComoPropietario();
         JdbcTemplate jdbc = new JdbcTemplate(PostgresEmbebido.dataSource(baseDeDatos));
 
-        // No vacuo: las 30 migraciones versionadas estan en ganera, aplicadas por el propietario
-        // (V1-V30 en Postgres, incluida V26 de db/postgresql).
+        // No vacuo: las 31 migraciones versionadas estan en ganera, aplicadas por el propietario
+        // (V1-V31 en Postgres, incluida V26 de db/postgresql).
         assertThat(jdbc.queryForObject("select count(*) from ganera.flyway_schema_history "
                 + "where success and installed_by = 'ganera_propietario' and version is not null", Integer.class))
-                .isEqualTo(30);
+                .isEqualTo(31);
         assertThat(problemas(baseDeDatos)).isEmpty();
     }
 
@@ -427,7 +427,7 @@ class SeguridadEsquemaPostgresTest {
     private static String migrarComoPropietario() {
         String baseDeDatos = PostgresEmbebido.nuevaBaseDeDatos();
         assertThat(PostgresEmbebido.flywayPropietario(baseDeDatos).load().migrate().migrationsExecuted)
-                .isEqualTo(30);
+                .isEqualTo(31);
         return baseDeDatos;
     }
 

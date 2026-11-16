@@ -45,6 +45,8 @@ import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTest
 class MensajeEntranteServiceTest {
 
     private static final Instant AHORA = Instant.parse("2026-10-05T10:15:30Z");
+    /** El numero COMPARTIDO configurado (ganera.twilio.whatsapp-from); el To por defecto de los helpers. */
+    private static final String NUMERO_COMPARTIDO = "whatsapp:+34910000000";
 
     @Autowired
     private EntityManager entityManager;
@@ -58,6 +60,8 @@ class MensajeEntranteServiceTest {
     private TramiteRepository tramiteRepository;
     @Autowired
     private TramiteCrotalRepository tramiteCrotalRepository;
+    @Autowired
+    private NumeroWhatsappRepository numeroWhatsappRepository;
     @Autowired
     private GestoriaRepository gestoriaRepository;
     @Autowired
@@ -74,7 +78,8 @@ class MensajeEntranteServiceTest {
     @BeforeEach
     void preparar() {
         servicio = new MensajeEntranteService(mensajeCampoRepository, contactoRepository,
-                contactoExplotacionRepository, tramiteRepository, auditoriaService, Clock.fixed(AHORA, ZoneOffset.UTC));
+                contactoExplotacionRepository, tramiteRepository, numeroWhatsappRepository, auditoriaService,
+                Clock.fixed(AHORA, ZoneOffset.UTC), NUMERO_COMPARTIDO);
         gestoriaA = gestoriaRepository.save(new Gestoria("Gestoria mensajes A"));
         gestoriaB = gestoriaRepository.save(new Gestoria("Gestoria mensajes B"));
     }
@@ -242,10 +247,11 @@ class MensajeEntranteServiceTest {
 
     @Test
     void telefonoParaGuardarNormalizaOTruncaA30() {
-        assertThat(new MensajeEntrante("SM", "whatsapp:+34 600 111 222", "", 0).telefonoParaGuardar())
+        assertThat(new MensajeEntrante("SM", "whatsapp:+34 600 111 222", NUMERO_COMPARTIDO, "", 0).telefonoParaGuardar())
                 .isEqualTo("+34600111222");
-        assertThat(new MensajeEntrante("SM", "x".repeat(45), "", 0).telefonoParaGuardar()).isEqualTo("x".repeat(30));
-        assertThat(new MensajeEntrante("SM", "corto", "", 0).telefonoParaGuardar()).isEqualTo("corto");
+        assertThat(new MensajeEntrante("SM", "x".repeat(45), NUMERO_COMPARTIDO, "", 0).telefonoParaGuardar())
+                .isEqualTo("x".repeat(30));
+        assertThat(new MensajeEntrante("SM", "corto", NUMERO_COMPARTIDO, "", 0).telefonoParaGuardar()).isEqualTo("corto");
     }
 
     /** n4: la fecha de recepcion sale del Clock (la purga de T3 se prueba con ella). */
@@ -260,7 +266,8 @@ class MensajeEntranteServiceTest {
     /** n2: el toString del record no puede llevar ni el texto ni el telefono (por si alguien lo loguea). */
     @Test
     void elToStringDeMensajeEntranteNoLlevaNiTextoNiTelefono() {
-        String texto = new MensajeEntrante("SM-ts", "whatsapp:+34600960013", "baja del 1234 secreto", 2).toString();
+        String texto = new MensajeEntrante("SM-ts", "whatsapp:+34600960013", NUMERO_COMPARTIDO,
+                "baja del 1234 secreto", 2).toString();
 
         assertThat(texto).contains("SM-ts").contains("2")
                 .doesNotContain("600960013").doesNotContain("baja").doesNotContain("secreto");
@@ -275,6 +282,78 @@ class MensajeEntranteServiceTest {
 
         assertThat(recepcion.resultado()).isEqualTo(ResultadoMensaje.TRAMITE_CREADO);
         assertThat(tramite(recepcion).getContacto().getId()).isEqualTo(contacto.getId());
+    }
+
+    // ------------------------------------------------- numero por gestoria (DEDICADO / COMPARTIDO)
+
+    @Test
+    void numeroDedicadoResuelveLaGestoriaPorElDestinoYLoGuardaEnElTramite() {
+        NumeroWhatsapp numero = numeroDedicado(gestoriaA, "+34910000055");
+        Contacto contacto = contacto(gestoriaA, "+34600970001", true);
+
+        RecepcionMensaje recepcion = servicio.registrar(
+                new MensajeEntrante("SM-d-1", "whatsapp:+34600970001", "whatsapp:+34910000055", "baja del 1234", 0));
+
+        assertThat(recepcion.resultado()).isEqualTo(ResultadoMensaje.TRAMITE_CREADO);
+        Tramite tramite = tramite(recepcion);
+        assertThat(tramite.getGestoria().getId()).isEqualTo(gestoriaA.getId());
+        assertThat(tramite.getContacto().getId()).isEqualTo(contacto.getId());
+        assertThat(tramite.getNumeroWhatsapp()).isNotNull();
+        assertThat(tramite.getNumeroWhatsapp().getId()).isEqualTo(numero.getId());
+        // Invariante: el numero_whatsapp del tramite es de la MISMA gestoria que el tramite.
+        assertThat(tramite.getNumeroWhatsapp().getGestoria().getId()).isEqualTo(tramite.getGestoria().getId());
+        // El To normalizado se guarda en el mensaje.
+        MensajeCampo mensaje = mensajeCampoRepository.findById(recepcion.mensajeId()).orElseThrow();
+        assertThat(mensaje.getTelefonoDestino()).isEqualTo("+34910000055");
+    }
+
+    /**
+     * Aislamiento (clave): el contacto es de B, pero escribe al numero DEDICADO de A. La gestoria la da el To (A),
+     * y el contacto se busca DENTRO de A (findByGestoriaIdAndTelefono), donde no esta -> desconocido para A, sin
+     * tramite, sin fuga. Si la resolucion DEDICADO usara findByTelefono (global), encontraria al contacto de B y
+     * crearia un tramite en B: por eso esta es la mutacion dirigida.
+     */
+    @Test
+    void unContactoDeOtraGestoriaQueEscribeAlNumeroDedicadoDeOtraEsDesconocido() {
+        numeroDedicado(gestoriaA, "+34910000056");       // numero propio de A
+        contacto(gestoriaB, "+34600970002", true);       // el contacto, en cambio, es de B
+
+        RecepcionMensaje recepcion = servicio.registrar(
+                new MensajeEntrante("SM-d-2", "whatsapp:+34600970002", "whatsapp:+34910000056", "hola", 0));
+
+        assertThat(recepcion.resultado()).isEqualTo(ResultadoMensaje.NUMERO_DESCONOCIDO);
+        assertThat(recepcion.tramiteId()).isNull();
+        assertThat(tramiteRepository.count()).isZero();
+        MensajeCampo mensaje = mensajeCampoRepository.findById(recepcion.mensajeId()).orElseThrow();
+        assertThat(mensaje.getGestoria()).isNull();
+        assertThat(mensaje.getTramite()).isNull();
+        assertThat(mensaje.getTelefonoDestino()).isEqualTo("+34910000056");
+    }
+
+    @Test
+    void unDestinoNoRegistradoNiCompartidoEsDesconocidoAunqueElRemitenteSeaUnContacto() {
+        contacto(gestoriaA, "+34600970003", true);
+
+        RecepcionMensaje recepcion = servicio.registrar(
+                new MensajeEntrante("SM-d-3", "whatsapp:+34600970003", "whatsapp:+34999999999", "hola", 0));
+
+        assertThat(recepcion.resultado()).isEqualTo(ResultadoMensaje.NUMERO_DESCONOCIDO);
+        assertThat(tramiteRepository.count()).isZero();
+        MensajeCampo mensaje = mensajeCampoRepository.findById(recepcion.mensajeId()).orElseThrow();
+        assertThat(mensaje.getTelefonoDestino()).isEqualTo("+34999999999");
+    }
+
+    @Test
+    void elCompartidoGuardaElTelefonoDestinoYDejaElNumeroDelTramiteNull() {
+        contacto(gestoriaA, "+34600970004", true);
+
+        RecepcionMensaje recepcion = servicio.registrar(entrante("SM-d-4", "whatsapp:+34600970004", "baja", 0));
+
+        assertThat(recepcion.resultado()).isEqualTo(ResultadoMensaje.TRAMITE_CREADO);
+        Tramite tramite = tramite(recepcion);
+        assertThat(tramite.getNumeroWhatsapp()).isNull();
+        MensajeCampo mensaje = mensajeCampoRepository.findById(recepcion.mensajeId()).orElseThrow();
+        assertThat(mensaje.getTelefonoDestino()).isEqualTo("+34910000000");
     }
 
     // ------------------------------------------------------------ idempotencia
@@ -296,18 +375,18 @@ class MensajeEntranteServiceTest {
 
     @Test
     void numMediaSeLeeDelFormularioYSiFaltaONoEsNumeroEsCero() {
-        assertThat(MensajeEntrante.desdeFormulario("SM", "f", "b", "3").numMedia()).isEqualTo(3);
-        assertThat(MensajeEntrante.desdeFormulario("SM", "f", "b", null).numMedia()).isZero();
-        assertThat(MensajeEntrante.desdeFormulario("SM", "f", "b", "").numMedia()).isZero();
-        assertThat(MensajeEntrante.desdeFormulario("SM", "f", "b", "dos").numMedia()).isZero();
-        assertThat(MensajeEntrante.desdeFormulario("SM", "f", "b", "-1").numMedia()).isZero();
-        assertThat(MensajeEntrante.desdeFormulario("SM", "f", null, "0").cuerpo()).isEmpty();
+        assertThat(MensajeEntrante.desdeFormulario("SM", "f", "t", "b", "3").numMedia()).isEqualTo(3);
+        assertThat(MensajeEntrante.desdeFormulario("SM", "f", "t", "b", null).numMedia()).isZero();
+        assertThat(MensajeEntrante.desdeFormulario("SM", "f", "t", "b", "").numMedia()).isZero();
+        assertThat(MensajeEntrante.desdeFormulario("SM", "f", "t", "b", "dos").numMedia()).isZero();
+        assertThat(MensajeEntrante.desdeFormulario("SM", "f", "t", "b", "-1").numMedia()).isZero();
+        assertThat(MensajeEntrante.desdeFormulario("SM", "f", "t", null, "0").cuerpo()).isEmpty();
     }
 
     @Test
     void numMediaSeGuardaEnElMensaje() {
         RecepcionMensaje recepcion = servicio.registrar(
-                MensajeEntrante.desdeFormulario("SM-s-11", "whatsapp:+34600960011", null, "2"));
+                MensajeEntrante.desdeFormulario("SM-s-11", "whatsapp:+34600960011", NUMERO_COMPARTIDO, null, "2"));
 
         MensajeCampo mensaje = mensajeCampoRepository.findById(recepcion.mensajeId()).orElseThrow();
         assertThat(mensaje.getNumMedia()).isEqualTo(2);
@@ -317,13 +396,23 @@ class MensajeEntranteServiceTest {
     // ------------------------------------------------------------ ayudas
 
     private static MensajeEntrante entrante(String sid, String from, String cuerpo, int numMedia) {
-        return new MensajeEntrante(sid, from, cuerpo, numMedia);
+        // To por defecto = el numero COMPARTIDO: estos casos ejercen el flujo de hoy (resolucion por telefono).
+        return new MensajeEntrante(sid, from, NUMERO_COMPARTIDO, cuerpo, numMedia);
     }
 
     private Tramite tramite(RecepcionMensaje recepcion) {
         entityManager.flush();
         entityManager.clear();
         return tramiteRepository.findByIdAndGestoriaId(recepcion.tramiteId(), gestoriaA.getId()).orElseThrow();
+    }
+
+    private NumeroWhatsapp numeroDedicado(Gestoria gestoria, String numeroE164) {
+        NumeroWhatsapp numero = new NumeroWhatsapp();
+        numero.setGestoria(gestoria);
+        numero.setNumero(numeroE164);
+        numero.setActivo(true);
+        numero.setCreatedAt(AHORA);
+        return numeroWhatsappRepository.save(numero);
     }
 
     private Contacto contacto(Gestoria gestoria, String telefono, boolean activo) {

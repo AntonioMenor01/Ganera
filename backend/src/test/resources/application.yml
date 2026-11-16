@@ -36,7 +36,9 @@ ganera:
     origen: http://localhost:5173
   twilio:
     webhook-url: ""
-    whatsapp-from: ""
+    # El numero COMPARTIDO de los tests = el del sandbox (lo que los E2E envian como To). Asi la recepcion por
+    # HTTP sigue resolviendo por el telefono del remitente (modalidad COMPARTIDO) como antes de V31.
+    whatsapp-from: "whatsapp:+14155238886"
     status-callback-url: ""
   anthropic:
     api-key: ""

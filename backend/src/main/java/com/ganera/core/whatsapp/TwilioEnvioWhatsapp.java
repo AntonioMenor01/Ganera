@@ -42,7 +42,8 @@ public class TwilioEnvioWhatsapp implements EnvioWhatsapp {
 
     private final String accountSid;
     private final String authToken;
-    private final String remitente;
+    /** Remitente por defecto (whatsapp-from) solo para {@link #configurado()}; el envio usa el que le pasan. */
+    private final String remitentePorDefecto;
     private final URI statusCallback;
 
     private volatile TwilioRestClient cliente;
@@ -55,7 +56,7 @@ public class TwilioEnvioWhatsapp implements EnvioWhatsapp {
             @Value("${ganera.twilio.status-callback-url:}") String statusCallback) {
         this.accountSid = accountSid;
         this.authToken = authToken;
-        this.remitente = ClasificadorEnvioWhatsapp.normalizarRemitente(remitente);
+        this.remitentePorDefecto = ClasificadorEnvioWhatsapp.normalizarRemitente(remitente);
         this.statusCallback = CallbackEstadoWhatsapp.urlCallback(statusCallback);
     }
 
@@ -63,20 +64,27 @@ public class TwilioEnvioWhatsapp implements EnvioWhatsapp {
     public boolean configurado() {
         return accountSid != null && !accountSid.isBlank()
                 && authToken != null && !authToken.isBlank()
-                && remitente != null;
+                && remitentePorDefecto != null;
     }
 
     @Override
-    public ResultadoEnvioWhatsapp enviar(String telefonoE164, String texto) {
+    public ResultadoEnvioWhatsapp enviar(String remitente, String telefonoE164, String texto) {
         if (!configurado()) {
             // El servicio lo comprueba antes (503); esto solo evita construir un cliente sin credenciales.
             log.warn("Envio por WhatsApp sin configurar: no se llama a Twilio");
             return new ResultadoEnvioWhatsapp.Rechazado(null);
         }
+        // El remitente llega ya normalizado desde el servicio; se revalida por si acaso (un numero DEDICADO mal dado
+        // de alta no debe tumbar el envio con una excepcion: es un Rechazado controlado).
+        String remitenteNormalizado = ClasificadorEnvioWhatsapp.normalizarRemitente(remitente);
+        if (remitenteNormalizado == null) {
+            log.warn("Envio por WhatsApp con remitente no valido: no se llama a Twilio");
+            return new ResultadoEnvioWhatsapp.Rechazado(null);
+        }
         try {
             MessageCreator creador = Message.creator(
                     new PhoneNumber(ClasificadorEnvioWhatsapp.destino(telefonoE164)),
-                    new PhoneNumber(remitente),
+                    new PhoneNumber(remitenteNormalizado),
                     texto);
             if (statusCallback != null) {
                 creador.setStatusCallback(statusCallback);

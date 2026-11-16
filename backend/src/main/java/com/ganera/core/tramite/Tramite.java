@@ -4,6 +4,7 @@ import com.ganera.core.contacto.Contacto;
 import com.ganera.core.explotacion.Explotacion;
 import com.ganera.core.gestoria.Usuario;
 import com.ganera.core.shared.tenant.GestoriaScopedEntity;
+import com.ganera.core.whatsapp.NumeroWhatsapp;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -36,6 +37,16 @@ public class Tramite extends GestoriaScopedEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "explotacion_id")
     private Explotacion explotacion;
+
+    /**
+     * Número DEDICADO por el que entró el trámite (V31, fase 1 WhatsApp por gestoría). Null = modalidad
+     * COMPARTIDO o trámite anterior a V31: se responde por el ganera.twilio.whatsapp-from configurado.
+     * Invariante: si no es null, pertenece a la MISMA gestoría que el trámite (lo garantiza la
+     * bifurcación de MensajeEntranteService). Da el número por el que responder y el id para auditoría.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "numero_whatsapp_id")
+    private NumeroWhatsapp numeroWhatsapp;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "tipo_tramite")
