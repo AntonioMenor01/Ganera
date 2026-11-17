@@ -77,5 +77,8 @@ public enum AccionAuditoria {
     CREDENCIAL_OVZ_DESCIFRADA,
 
     // Preferencias OVZ de la gestoria (plan 2026-11-10)
-    PREFERENCIA_OVZ_GUARDADA
+    PREFERENCIA_OVZ_GUARDADA,
+
+    // Alta de un numero de WhatsApp DEDICADO por el endpoint interno (plan 2026-11-16, fase 1). Nunca guarda el telefono.
+    NUMERO_WHATSAPP_REGISTRADO
 }

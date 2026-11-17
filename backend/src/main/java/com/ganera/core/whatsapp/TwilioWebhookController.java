@@ -121,9 +121,10 @@ public class TwilioWebhookController {
         if (messageSid == null || messageSid.isBlank() || from == null || from.isBlank()) {
             return ResponseEntity.badRequest().build();
         }
-        // Un mensaje solo con foto o audio no trae Body.
+        // Un mensaje solo con foto o audio no trae Body. El To (numero de DESTINO) resuelve la gestoria por
+        // numero propio (DEDICADO); su firma ya esta validada (Twilio firma tambien el To).
         MensajeEntrante entrante = MensajeEntrante.desdeFormulario(
-                messageSid, from, parametros.get("Body"), parametros.get("NumMedia"));
+                messageSid, from, parametros.get("To"), parametros.get("Body"), parametros.get("NumMedia"));
 
         RecepcionMensaje recepcion;
         try {

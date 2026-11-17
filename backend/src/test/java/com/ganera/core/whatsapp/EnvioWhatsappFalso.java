@@ -16,8 +16,8 @@ import java.util.function.Supplier;
  */
 public class EnvioWhatsappFalso implements EnvioWhatsapp {
 
-    /** Una llamada a enviar(): a que telefono, que texto y si se hizo dentro de una transaccion. */
-    public record Llamada(String telefono, String texto, boolean dentroDeTransaccion) {
+    /** Una llamada a enviar(): desde que remitente, a que telefono, que texto y si se hizo dentro de una transaccion. */
+    public record Llamada(String telefono, String texto, boolean dentroDeTransaccion, String remitente) {
     }
 
     private final List<Llamada> llamadas = new CopyOnWriteArrayList<>();
@@ -37,8 +37,9 @@ public class EnvioWhatsappFalso implements EnvioWhatsapp {
     }
 
     @Override
-    public ResultadoEnvioWhatsapp enviar(String telefonoE164, String texto) {
-        llamadas.add(new Llamada(telefonoE164, texto, TransactionSynchronizationManager.isActualTransactionActive()));
+    public ResultadoEnvioWhatsapp enviar(String remitente, String telefonoE164, String texto) {
+        llamadas.add(new Llamada(telefonoE164, texto,
+                TransactionSynchronizationManager.isActualTransactionActive(), remitente));
         if (esperaMs > 0) {
             try {
                 Thread.sleep(esperaMs);

@@ -31,12 +31,15 @@ class TwilioWebhookIdempotencyTest {
     @Autowired
     private TramiteRepository tramiteRepository;
     @Autowired
+    private NumeroWhatsappRepository numeroWhatsappRepository;
+    @Autowired
     private AuditoriaService auditoriaService;
 
     @Test
     void unMessageSidYaGuardadoNoDebeVolverAGuardarse() {
         MensajeEntranteService servicio = new MensajeEntranteService(mensajeCampoRepository, contactoRepository,
-                contactoExplotacionRepository, tramiteRepository, auditoriaService, Clock.systemUTC());
+                contactoExplotacionRepository, tramiteRepository, numeroWhatsappRepository, auditoriaService,
+                Clock.systemUTC(), "whatsapp:+34910000000");
 
         MensajeCampo existente = new MensajeCampo();
         existente.setMessageSid("SM999");
@@ -44,7 +47,8 @@ class TwilioWebhookIdempotencyTest {
         existente.setCuerpo("mensaje original");
         mensajeCampoRepository.saveAndFlush(existente);
 
-        RecepcionMensaje recepcion = servicio.registrar(new MensajeEntrante("SM999", "whatsapp:+34600000000", "otro", 0));
+        RecepcionMensaje recepcion = servicio.registrar(
+                new MensajeEntrante("SM999", "whatsapp:+34600000000", "whatsapp:+34910000000", "otro", 0));
 
         assertThat(recepcion.duplicado()).isTrue();
         assertThat(mensajeCampoRepository.count()).isEqualTo(1);

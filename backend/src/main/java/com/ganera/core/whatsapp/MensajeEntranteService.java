@@ -53,21 +53,29 @@ public class MensajeEntranteService {
     private final ContactoRepository contactoRepository;
     private final ContactoExplotacionRepository contactoExplotacionRepository;
     private final TramiteRepository tramiteRepository;
+    private final NumeroWhatsappRepository numeroWhatsappRepository;
     private final AuditoriaService auditoriaService;
     private final Clock reloj;
+    /** El numero COMPARTIDO (ganera.twilio.whatsapp-from) normalizado; vacio si no esta configurado. */
+    private final Optional<String> numeroCompartido;
 
     public MensajeEntranteService(MensajeCampoRepository mensajeCampoRepository,
                                   ContactoRepository contactoRepository,
                                   ContactoExplotacionRepository contactoExplotacionRepository,
                                   TramiteRepository tramiteRepository,
+                                  NumeroWhatsappRepository numeroWhatsappRepository,
                                   AuditoriaService auditoriaService,
-                                  Clock reloj) {
+                                  Clock reloj,
+                                  @org.springframework.beans.factory.annotation.Value("${ganera.twilio.whatsapp-from:}")
+                                  String whatsappFrom) {
         this.mensajeCampoRepository = mensajeCampoRepository;
         this.contactoRepository = contactoRepository;
         this.contactoExplotacionRepository = contactoExplotacionRepository;
         this.tramiteRepository = tramiteRepository;
+        this.numeroWhatsappRepository = numeroWhatsappRepository;
         this.auditoriaService = auditoriaService;
         this.reloj = reloj;
+        this.numeroCompartido = TelefonoNormalizador.normalizar(whatsappFrom);
     }
 
     @Transactional
@@ -77,11 +85,14 @@ public class MensajeEntranteService {
         }
 
         Optional<String> telefono = TelefonoNormalizador.normalizar(entrante.from());
+        Optional<String> destino = entrante.telefonoDestinoNormalizado();
 
         MensajeCampo mensaje = new MensajeCampo();
         mensaje.setMessageSid(entrante.messageSid());
         // Si no se puede normalizar se guarda tal cual (truncado a 30): no puede ser el de ningun Contacto.
         mensaje.setTelefonoOrigen(entrante.telefonoParaGuardar());
+        // El numero de DESTINO (To) normalizado; null si no viene o no se normaliza. Nunca sale en un DTO.
+        mensaje.setTelefonoDestino(destino.orElse(null));
         mensaje.setCuerpo(entrante.cuerpo());
         mensaje.setNumMedia(entrante.numMedia());
         mensaje.setCreatedAt(reloj.instant());
@@ -89,7 +100,28 @@ public class MensajeEntranteService {
         // Primero el mensaje, con flush: un MessageSid repetido revienta aqui, antes de crear nada mas.
         mensajeCampoRepository.saveAndFlush(mensaje);
 
-        Optional<Contacto> contacto = telefono.flatMap(contactoRepository::findByTelefono);
+        // Bifurcacion por el numero de DESTINO (fase 1, plan 2026-11-16):
+        //  - To == whatsapp-from configurado -> COMPARTIDO: se resuelve por el telefono del remitente (global), como hoy.
+        //  - To en numero_whatsapp -> DEDICADO: la gestoria es la duena del numero; el contacto se busca DENTRO de ella
+        //    (findByGestoriaIdAndTelefono). Asi un contacto de otra gestoria que escribe aqui queda como desconocido.
+        //  - ni uno ni otro -> desconocido, como hoy, con un log.warn (sin el numero) para detectar numeros mal dados de alta.
+        Optional<Contacto> contacto;
+        NumeroWhatsapp numeroDedicado = null;
+        if (destino.isPresent() && numeroCompartido.isPresent() && destino.get().equals(numeroCompartido.get())) {
+            contacto = telefono.flatMap(contactoRepository::findByTelefono);
+        } else {
+            Optional<NumeroWhatsapp> numero = destino.flatMap(numeroWhatsappRepository::findByNumero);
+            if (numero.isPresent()) {
+                numeroDedicado = numero.get();
+                Long gestoriaDelNumero = numeroDedicado.getGestoria().getId();
+                contacto = telefono.flatMap(t -> contactoRepository.findByGestoriaIdAndTelefono(gestoriaDelNumero, t));
+            } else {
+                log.warn("Mensaje de WhatsApp a un numero de destino no registrado ni compartido: mensajeCampoId={}",
+                        mensaje.getId());
+                contacto = Optional.empty();
+            }
+        }
+
         if (contacto.isEmpty()) {
             log.info("Mensaje de WhatsApp de un numero desconocido ({}): mensajeCampoId={}, resultado={}",
                     EnmascaradorTelefono.enmascarar(mensaje.getTelefonoOrigen()), mensaje.getId(),
@@ -112,7 +144,7 @@ public class MensajeEntranteService {
             return new RecepcionMensaje(false, ResultadoMensaje.CONTACTO_INACTIVO, mensaje.getId(), null);
         }
 
-        Tramite tramite = tramiteRepository.save(nuevoTramite(remitente, entrante));
+        Tramite tramite = tramiteRepository.save(nuevoTramite(remitente, entrante, numeroDedicado));
         mensaje.setTramite(tramite);
         mensaje.setResultado(ResultadoMensaje.TRAMITE_CREADO);
         auditarMensajeRecibido(gestoriaId, mensaje);
@@ -121,7 +153,9 @@ public class MensajeEntranteService {
                 DatosAuditoria.con(Clave.ESTADO, tramite.getEstado())
                         .y(Clave.ESTADO_EXTRACCION, tramite.getEstadoExtraccion())
                         .y(Clave.EXPLOTACION_ID,
-                                tramite.getExplotacion() != null ? tramite.getExplotacion().getId() : null));
+                                tramite.getExplotacion() != null ? tramite.getExplotacion().getId() : null)
+                        // Id del numero DEDICADO por el que entro (null en COMPARTIDO); nunca el telefono (D9).
+                        .y(Clave.NUMERO_WHATSAPP_ID, numeroDedicado != null ? numeroDedicado.getId() : null));
         log.info("Mensaje de WhatsApp recibido: mensajeCampoId={}, tramiteId={}, gestoriaId={}, estadoExtraccion={}, resultado={}",
                 mensaje.getId(), tramite.getId(), gestoriaId, tramite.getEstadoExtraccion(),
                 ResultadoMensaje.TRAMITE_CREADO);
@@ -136,12 +170,15 @@ public class MensajeEntranteService {
                         .y(Clave.NUM_MEDIA, mensaje.getNumMedia()));
     }
 
-    private Tramite nuevoTramite(Contacto remitente, MensajeEntrante entrante) {
+    private Tramite nuevoTramite(Contacto remitente, MensajeEntrante entrante, NumeroWhatsapp numeroDedicado) {
         Tramite tramite = new Tramite();
         // Siempre la Gestoria del Contacto: es la unica que puede verlo.
         tramite.setGestoria(remitente.getGestoria());
         tramite.setContacto(remitente);
         tramite.setOrigen(OrigenTramite.WHATSAPP);
+        // Numero DEDICADO por el que entro (null en COMPARTIDO/legacy). Invariante: si no es null es de la
+        // misma gestoria que el tramite, porque el remitente se resolvio con findByGestoriaIdAndTelefono de esa gestoria.
+        tramite.setNumeroWhatsapp(numeroDedicado);
         tramite.setExplotacion(explotacionUnica(remitente).orElse(null));
         if (entrante.cuerpo().isBlank()) {
             // Solo foto o audio (adjuntos: B2): no hay nada que extraer; directo a revision.
