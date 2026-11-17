@@ -151,9 +151,16 @@ que la T2 de la extensión, reutilizable como función pura.)
 
 D1–D10 se cierran tal como se recomendaban; D11 con el matiz de Antonio (dos clases de `ERROR_OVZ`).
 
+> **Resultado del spike (cerrado con éxito).** Local: PASO 1–9 OK (login, explotación bovina, menú → baja,
+> crotal + «Buscar», Código RIIA coincide, explotación leída, «Salir» sin presentar). Clever: la prueba de IP
+> (endpoint temporal #38, retirado en #39) devolvió `{"codigoHttp":200}` → **OVZnet responde a la IP de Clever
+> (París)**, sin bloqueo ni geofiltrado. Queda por confirmar en la implementación de D1 que **Chromium arranca
+> dentro del contenedor Docker** del worker (la imagen oficial de Playwright trae las dependencias del sistema).
+
 - **D1 — Infra del worker.** **Worker de OVZ en una instancia Docker aparte** (imagen oficial de Playwright,
   con Chromium y dependencias), no Playwright en la instancia XS Java del backend. Previo: confirmar con el
-  spike que Chromium arranca en Clever y que OVZ responde a la IP de Clever.
+  spike que Chromium arranca en Clever y que OVZ responde a la IP de Clever. **OVZ ya respondió `200` a la IP de
+  Clever (spike cerrado);** falta solo comprobar el arranque de Chromium en el contenedor al montar el worker.
 - **D2 — Lenguaje/stack del worker.** **Playwright Java** en el contenedor (reaprovecha el modelo de dominio y
   la dependencia ya presente), no un worker Node.
 - **D3 — Candado y concurrencia.** Candado **por ganadero**, y para empezar **un solo trabajo global a la vez**

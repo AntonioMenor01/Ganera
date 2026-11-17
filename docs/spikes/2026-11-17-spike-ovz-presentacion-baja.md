@@ -11,12 +11,19 @@ presentar nada** en OVZ:
 
 Ningún código de este spike presenta nada en OVZ. El clic en «Aceptar» está **bloqueado en el código**.
 
-## Resultado (2026-11-17): OK en local ✅
+## Resultado (2026-11-17): OK en local ✅ · (2026-11-18): OVZ responde desde Clever ✅
 
 En el equipo de Antonio, **PASO 1 a 9 OK en ~10 s**: login con los id reales, explotación bovina elegida, menú
 Trámites → Bóvidos → pestaña de baja, crotal escrito + «Buscar», **Código RIIA coincide** con el crotal,
-explotación de ubicación leída, y **«Salir» sin presentar nada**. Queda pendiente la prueba de IP desde Clever
-(§2) y, si procede, el worker Docker.
+explotación de ubicación leída, y **«Salir» sin presentar nada**.
+
+**Prueba de IP desde Clever (§2): OK.** Como `clever ssh` no funcionaba (rechazaba la clave), la hicimos con un
+endpoint temporal en el backend (`GET /internal/diagnostico/ovz-alcance`, PR #38), que hace una sola petición a
+`https://ovznet.juntaex.es/Inicio.aspx` desde la propia instancia de Clever (París) y devuelve solo el código
+HTTP. **Resultado: `{"codigoHttp":200}`** → **OVZnet responde a la IP de Clever**, sin bloqueo ni geofiltrado;
+no hace falta una IP de salida distinta. El endpoint temporal se retira en la PR #39. Con esto, el spike queda
+**cerrado con éxito** y la vía libre para montar el worker Docker con Playwright (§ «Alternativa recomendada» y
+D1 del plan).
 
 ## 1. Spike local — `OvzSpikeBajaMuerteTest`
 
