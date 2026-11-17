@@ -6,9 +6,11 @@ import com.microsoft.playwright.Frame;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
 import com.microsoft.playwright.options.AriaRole;
+import com.microsoft.playwright.options.WaitForSelectorState;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -90,45 +92,83 @@ class OvzSpikeBajaMuerteTest {
             }
             ok(2, "sesion iniciada (Presentacion.aspx / menu delegado)");
 
-            // PASO 3 — navegar SOLO por menús: Trámites › Trámites. Nada de URLs ni Atrás.
-            page.getByText("Trámites", new Page.GetByTextOptions().setExact(true)).first().hover();
-            clicSeguro(page, page.getByRole(AriaRole.LINK,
-                    new Page.GetByRoleOptions().setName("Trámites").setExact(true)).first(), "menu Tramites");
-            page.waitForLoadState();
-            ok(3, "menu Tramites");
+            // PASO 3 — elegir la explotación en el desplegable del menú: la opción cuya ESPECIE termina en
+            // «Bóvidos» (sin acentos ni mayúsculas), por su value. El menú principal solo aparece después.
+            Object opcionesDelegado = page.evaluate(JS_OPCIONES_DELEGADO);
+            if (!(opcionesDelegado instanceof List<?> opciones)) {
+                throw new IllegalStateException("no se encontró el desplegable de explotaciones (ddlDelegado)");
+            }
+            List<String> valoresBovinos = new ArrayList<>();
+            for (Object o : opciones) {
+                java.util.Map<?, ?> m = (java.util.Map<?, ?>) o;
+                if (normaliza(String.valueOf(m.get("especie"))).endsWith("bovidos")) {
+                    valoresBovinos.add(String.valueOf(m.get("value")));
+                }
+            }
+            if (valoresBovinos.size() > 1) {
+                throw new IllegalStateException("varias explotaciones bovinas");
+            }
+            if (valoresBovinos.isEmpty()) {
+                throw new IllegalStateException("no hay explotacion bovina en el desplegable");
+            }
+            page.locator("#ctl00_ucMenu1_ddlDelegado").selectOption(valoresBovinos.get(0));
+            // Postback: la página se recarga y aparece el menú (enlace a wgTramites.aspx en el DOM).
+            page.waitForSelector("a[href*='wgTramites.aspx']", new Page.WaitForSelectorOptions()
+                    .setState(WaitForSelectorState.ATTACHED).setTimeout(TIMEOUT_MS));
+            ok(3, "explotacion bovina elegida, menu cargado");
 
-            // PASO 4 — enlace «Bóvidos» de la tabla de especies.
+            // PASO 4 — menú Trámites › Trámites, localizado por href (sin escribir URLs). Puede requerir hover.
+            try {
+                page.getByText("Trámites", new Page.GetByTextOptions().setExact(true)).first().hover();
+            } catch (RuntimeException ignorado) {
+                // Si no hay un «Trámites» por texto para el hover, seguimos: el enlace por href puede bastar.
+            }
+            clicSeguro(page, page.locator("a[href*='wgTramites.aspx']").first(), "menu Tramites (wgTramites.aspx)");
+            page.waitForLoadState();
+            ok(4, "menu Tramites");
+
+            // PASO 5 — enlace «Bóvidos» de la tabla de especies.
             clicSeguro(page, page.getByRole(AriaRole.LINK,
                     new Page.GetByRoleOptions().setName("Bóvidos").setExact(true)).first(), "enlace Bovidos");
             page.waitForLoadState();
-            ok(4, "entrada a Bovidos");
+            ok(5, "entrada a Bovidos");
 
-            // PASO 5 — pestaña «Baja de Bóvidos».
+            // PASO 6 — pestaña «Baja de Bóvidos».
             clicSeguro(page, page.getByText("Baja de Bóvidos", new Page.GetByTextOptions().setExact(true)).first(),
                     "pestana Baja de Bovidos");
             page.waitForLoadState();
             // Confirmar que el «Aceptar» existe (pantalla correcta) pero sin pulsarlo JAMAS.
             assertNotNull(page.locator("[id$='" + SUFIJO_ACEPTAR + "']"), "no se localizó el formulario de baja");
-            ok(5, "pantalla de baja (Aceptar presente, no se pulsa)");
+            ok(6, "pantalla de baja (Aceptar presente, no se pulsa)");
 
-            // PASO 6 — escribir el crotal (no se loguea) y pulsar «Buscar» (postback que no guarda).
-            page.locator("[id$='TxtCrotal']").first().fill(crotal);
-            clicSeguro(page, page.locator("[id$='P_LinkBuscar']").first(), "boton Buscar");
+            // PASO 7 — escribir el crotal (no se loguea) en _TxtCrotal (dentro de _ctl05_) y pulsar «Buscar».
+            page.locator("[id*='_ctl05_'][id$='TxtCrotal']").first().fill(crotal);
+            clicSeguro(page, page.locator("[id*='_ctl05_'][id$='P_LinkBuscar']").first(), "boton Buscar");
             page.waitForLoadState();
-            ok(6, "crotal buscado");
+            ok(7, "crotal buscado");
 
-            // PASO 7 — leer el Código RIIA y la explotación (sin mostrarlos). Solo confirmamos que se pueden leer.
-            String codigoRiia = textoDe(page, "[id$='Riia'], [id$='RIIA'], [id$='Crotal']");
-            String explotacion = textoDe(page, "[id$='Ubicacion'], [id$='Explotacion']");
+            // PASO 8 — leer _txtCodigoRIIA y _txtExplotacionUbicacion y COMPARAR con el .env (nunca los valores).
+            String codigoRiia = textoDe(page, "[id$='_txtCodigoRIIA']");
+            String explotacionUbic = textoDe(page, "[id$='_txtExplotacionUbicacion']");
             assertNotNull(codigoRiia, "no se pudo leer el Código RIIA");
-            assertNotNull(explotacion, "no se pudo leer la explotación");
-            ok(7, "Codigo RIIA y explotacion leidos (no se muestran)");
+            assertNotNull(explotacionUbic, "no se pudo leer la explotación de ubicación");
+            boolean crotalCuadra = normalizaId(codigoRiia).equals(normalizaId(crotal));
+            String regaEnv = System.getenv("OVZ_REGA"); // opcional
+            String verifExplotacion;
+            if (regaEnv == null || regaEnv.isBlank()) {
+                verifExplotacion = "explotacion leida (define OVZ_REGA para comparar)";
+            } else {
+                verifExplotacion = normalizaId(explotacionUbic).contains(normalizaId(regaEnv))
+                        ? "explotacion COINCIDE con OVZ_REGA" : "explotacion NO coincide con OVZ_REGA";
+            }
+            ok(8, "verificacion: Codigo RIIA " + (crotalCuadra ? "COINCIDE" : "NO coincide")
+                    + " con el crotal; " + verifExplotacion);
 
-            // PASO 8 — salir con «Salir» (cierra sesión). NUNCA «Aceptar».
+            // PASO 9 — salir con «Salir» (cierra sesión). NUNCA «Aceptar».
             clicSeguro(page, page.locator("#" + ID_SALIR), "boton Salir");
             page.waitForLoadState();
             cerrada = true;
-            ok(8, "sesion cerrada con Salir, sin presentar nada");
+            ok(9, "sesion cerrada con Salir, sin presentar nada");
             } catch (ClicProhibidoException e) {
                 // El bloqueo duro saltó: alguien intentó pulsar «Aceptar». Nunca un envío. Cerrar con «Salir».
                 salirBestEffort(page);
@@ -214,7 +254,18 @@ class OvzSpikeBajaMuerteTest {
                 return s;
               };
               document.querySelectorAll('input').forEach(e => out.push(line(e, false)));
-              document.querySelectorAll('select').forEach(e => out.push(line(e, false)));
+              document.querySelectorAll('select').forEach(e => {
+                const id = e.id || '';
+                const name = e.getAttribute('name') || '';
+                const especies = [];
+                for (const o of e.options) {
+                  const t = (o.textContent || '').trim();
+                  const i = t.lastIndexOf(' - ');
+                  especies.push(i >= 0 ? t.slice(i + 3) : t);
+                }
+                out.push('select id=' + id + ' name=' + name + ' opciones=' + e.options.length
+                  + ' especies=[' + especies.join('; ') + ']');
+              });
               document.querySelectorAll('button').forEach(e => out.push(line(e, true)));
               document.querySelectorAll('a').forEach(e => {
                 const h = e.getAttribute('href') || '';
@@ -298,6 +349,38 @@ class OvzSpikeBajaMuerteTest {
         } catch (Throwable e) {
             System.out.println("   (no se pudieron leer los mensajes: " + e.getClass().getSimpleName() + ")");
         }
+    }
+
+    /** JS: opciones del desplegable de explotaciones como [{especie, value}] (especie = lo que va tras « - »). */
+    private static final String JS_OPCIONES_DELEGADO = """
+            () => {
+              const sel = document.getElementById('ctl00_ucMenu1_ddlDelegado');
+              if (!sel) return null;
+              const out = [];
+              for (const o of sel.options) {
+                const txt = (o.textContent || '').trim();
+                const i = txt.lastIndexOf(' - ');
+                out.push({ especie: i >= 0 ? txt.slice(i + 3) : txt, value: o.value });
+              }
+              return out;
+            }
+            """;
+
+    /** Minúsculas y sin acentos (para casar «Bóvidos»/«bovidos»). */
+    private String normaliza(String s) {
+        if (s == null) {
+            return "";
+        }
+        String n = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "");
+        return n.toLowerCase().trim();
+    }
+
+    /** Sin espacios y en mayúsculas (para comparar crotal/REGA sin importar separadores). */
+    private String normalizaId(String s) {
+        if (s == null) {
+            return "";
+        }
+        return s.replaceAll("\\s", "").toUpperCase();
     }
 
     // --- Utilidades ----------------------------------------------------------------------------------------
