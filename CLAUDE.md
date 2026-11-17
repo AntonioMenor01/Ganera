@@ -117,6 +117,23 @@ approval step before anything is written to OVZ.net.
    states (Álvaro's design) belong to escalón 2; they don't appear in design phase 1. There is no
    escalón 3, so no autonomous Playwright execution, no batch sending and no automatic retry. A
    read-only Playwright sync of a newly onboarded Ganadero's inventory is still possible (Prompt 3a).
+   **CAMBIO DE ENFOQUE (2026-11-17, decisión de Antonio; plan
+   `docs/superpowers/plans/2026-11-17-presentacion-automatica-baja-ovz.md`; spike
+   `docs/spikes/2026-11-17-spike-ovz-presentacion-baja.md`):** para la **baja por muerte**, el escalón 2 pasa a
+   ser **presentación automática desde el servidor**: tras **aprobar** el gestor en Ganera (que **es** la
+   revisión humana — nada llega a OVZ sin ella), Ganera inicia sesión en OVZ con las credenciales cifradas del
+   ganadero (M2), navega por menús, **verifica** crotal y explotación, y **pulsa ella el «Aceptar» real**; luego
+   descarga el justificante (Documentos › «Baja Animal») y lo guarda en la ficha del ganadero. Esto
+   **reinterpreta** el «never submits by itself / nothing without the gestor's Enviar» de este paso 7 y de
+   «Non-negotiable rules»: el **clic humano es la Aprobación en Ganera**, no un «Enviar/Aceptar» por trámite.
+   Anti-duplicado estricto: **nunca se reintenta una presentación** ante respuesta incierta (se consulta en
+   Documentos; si no se sabe → `ERROR_OVZ` con aviso). Cuentas con **certificado digital: no soportadas** en
+   automático (aviso y camino manual). El enfoque previo de **extensión de Chrome** (plan
+   `2026-11-17-modo-asistido-baja-muerte.md`, rama `feat/modo-asistido-baja` con T1 el endpoint y T2 la carpeta
+   `extension/`) **queda aparcado, sin borrar**. La redacción final de la regla no-negociable y del flujo se
+   cierra **al implementar** el plan (hoy **solo plan + spike**, sin código de producción); hasta entonces, el
+   texto de arriba y el de «Non-negotiable rules» siguen describiendo el modelo anterior, ya superado para la
+   baja.
 
 ## Non-negotiable rules
 

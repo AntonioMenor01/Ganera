@@ -1,0 +1,179 @@
+# Presentación automática de la baja por muerte en OVZ (escalón 2) — plan
+
+Escrito para: Antonio y quien implemente el escalón 2. **Solo plan, sin código de producción.** Se apoya en el
+mapa real (`docs/referencias/mapa-ovz.md`) y en el spike técnico (`docs/spikes/2026-11-17-spike-ovz-presentacion-baja.md`).
+
+## 0. Cambio de enfoque (importante)
+
+Nuevo requisito de Antonio: **tras aprobar el gestor en Ganera, Ganera presenta el trámite en OVZ por sí sola,
+desde el servidor, con las credenciales del ganadero (cifradas, M2), pulsando ella el «Aceptar» real.** La
+**aprobación en Ganera es la revisión humana**: nada llega a OVZ sin ella. Después, Ganera **descarga los
+documentos** que genera OVZ y los guarda en la ficha del ganadero.
+
+Esto **sustituye**, para la baja, el enfoque anterior de la extensión de Chrome (donde el gestor pulsaba
+«Aceptar»). Aquel trabajo (plan `2026-11-17-modo-asistido-baja-muerte.md` y la rama `feat/modo-asistido-baja`,
+con el endpoint T1 y la lógica de extensión T2) **queda aparcado, no borrado**; aquí abajo se decide qué se
+reutiliza. **Implica revisar una regla no-negociable del CLAUDE.md** (hoy: «nada se envía sin el clic del gestor
+en el formulario que Ganera rellenó»): la nueva lectura es que **el clic humano es la Aprobación en Ganera**, y
+el «Aceptar» de OVZ lo da Ganera automáticamente solo sobre un trámite ya aprobado. Esa reinterpretación se
+anota en CLAUDE.md con este plan y se cierra al implementarlo.
+
+## 1. Flujo
+
+1. El gestor revisa y **aprueba** el trámite (`APROBADO`), igual que hoy. Esa es la puerta humana.
+2. Al aprobar un `BAJA_MUERTE`, se **encola un trabajo de presentación** (no se presenta en la misma petición
+   HTTP; nunca dentro de la transacción de aprobación ni con el lock de la fila).
+3. Un **worker de OVZ** toma el trabajo (candado por ganadero, una sesión OVZ a la vez), descifra la contraseña
+   del ganadero en el momento (M2), abre OVZnet, inicia sesión, navega **solo por menús** hasta la baja, escribe
+   el crotal, pulsa «Buscar».
+4. **Verificación antes de «Aceptar»** (bloqueante): el Código RIIA coincide con el crotal del trámite y la
+   «Explotación de ubicación» coincide con el REGA del trámite. Si no cuadra → **no presenta**, `ERROR_OVZ` con
+   motivo, aviso al gestor.
+5. Si cuadra, Ganera pulsa **«Aceptar»** (presenta la baja). `EJECUTADO_OVZ`.
+6. Ganera **descarga el justificante** (Documentos › Documentos, tipo «Baja Animal») y lo **guarda en la ficha
+   del ganadero**, enlazado al trámite y la explotación.
+7. El gestor ve en Ganera el estado (`EJECUTADO_OVZ`) y el justificante descargable desde la ficha.
+
+## 2. Pantalla de credenciales OVZ por ganadero
+
+- Se **habilita** la pantalla de alta de credenciales OVZ (hoy deshabilitada en `ConfiguracionPage` → «OVZ.net
+  (Cañada)»), **por ganadero**: usuario + contraseña. La contraseña se cifra con `CifradorAesGcm.cifrar()`
+  (devuelve `CredencialOvzCifrada`, único tipo que acepta `Ganadero.setOvzPasswordCifrada`; `@JsonIgnore`, nunca
+  sale en respuestas ni en auditoría ni en logs). El `ovzUsuario` tampoco se expone nunca.
+- Guardar/editar credenciales deja su fila de auditoría (`CREDENCIAL_OVZ_GUARDADA` / `CREDENCIAL_OVZ_MODIFICADA`,
+  actor USUARIO, `EntidadAuditada.GANADERO`, **sin el valor**).
+- El **descifrado** solo ocurre en el worker, vía `DescifradoCredencialOvz.descifrarPasswordParaEnvioOvz(...)`
+  (único descifrador, M2), que aísla por gestoría y deja `CREDENCIAL_OVZ_DESCIFRADA` **antes** de descifrar.
+
+## 3. Cola de trabajos con candado por ganadero
+
+- Tabla `trabajo_ovz` (`GestoriaScopedEntity`): trámite, ganadero, tipo (de momento `BAJA_MUERTE`), estado del
+  trabajo, intentos, instantes, `clave_idempotencia` (un trabajo por trámite; reencolar no duplica), y referencia
+  al documento descargado.
+- **Candado por ganadero** (una sesión OVZ por cuenta a la vez): el worker no procesa dos trabajos del mismo
+  ganadero en paralelo. Entre ganaderos distintos puede serializar o limitar según la infra (una instancia del
+  worker; ver Decisiones).
+- El worker corre **fuera de cualquier petición HTTP** (como `SuscripcionSyncScheduler`): cross-tenant por
+  diseño, pero cada consulta por trámite/ganadero lleva su `gestoriaId` explícito. **Nunca** abre la sesión OVZ
+  dentro de la transacción que bloquea la fila del trámite.
+
+## 4. Estados
+
+- Se **usan** los reservados de `EstadoTramite`: `EN_PROCESO` (trabajo en curso), `EJECUTADO_OVZ` (baja
+  presentada + «Aceptar» dado por Ganera), `ERROR_OVZ` (falló; con motivo y aviso al gestor).
+- `HECHO_EN_OVZ` (marca manual del escalón 1) **se mantiene** para el camino manual; `EJECUTADO_OVZ` es el
+  automático (su etiqueta «ejecutado» ahora es cierta: lo hizo Ganera). Decidir si ambos caminos conviven o si
+  para `BAJA_MUERTE` con credenciales se usa solo el automático (Decisión).
+- Transiciones: `APROBADO` → `EN_PROCESO` → (`EJECUTADO_OVZ` | `ERROR_OVZ`). Desde `ERROR_OVZ`, el gestor puede
+  corregir y reaprobar, o resolverlo a mano; **nunca** se reintenta una presentación automáticamente.
+
+## 5. Verificación antes de «Aceptar»
+
+Bloqueante y en el worker: **crotal** (Código RIIA leído == crotal del trámite) y **explotación** (REGA de
+«Explotación de ubicación» == REGA del trámite). Si cualquiera falla, **no se pulsa «Aceptar»**, el trabajo
+termina en `ERROR_OVZ` con motivo específico, y se avisa al gestor. (La lógica de verificación es la misma idea
+que la T2 de la extensión, reutilizable como función pura.)
+
+## 6. Anti-duplicado (crítico)
+
+- Ganera **nunca reintenta una presentación** ante una respuesta incierta (caída/timeout justo tras «Aceptar»).
+- Ante incertidumbre, **consulta en Documentos › Documentos** (tipo «Baja Animal», por crotal/fecha) si la baja
+  ya aparece: si está → `EJECUTADO_OVZ` (y descarga el justificante); si **no se sabe** con certeza →
+  `ERROR_OVZ` con aviso al gestor para que lo compruebe a mano. Nunca un segundo «Aceptar».
+- La clave de idempotencia del trabajo evita que reencolar el mismo trámite genere dos presentaciones.
+
+## 7. Caducidad de sesión y cuentas con certificado
+
+- **Caducidad (20 min):** la presentación automática es cuestión de segundos (no hay espera humana en el lazo),
+  así que la caducidad apenas aplica; aun así, si aparece `/AvisoSesion.aspx` o el login **antes** de «Aceptar»,
+  el worker reintenta **la navegación** desde el login (no la presentación); si pasa **después** de «Aceptar», es
+  el caso incierto del punto 6 (consultar Documentos, nunca repetir).
+- **Cuentas con certificado digital: NO soportadas** en automático. Si la cuenta del ganadero usa certificado
+  (no hay usuario/contraseña válidos, o la entrada exige «Entrar con Certificado»), el trabajo termina con un
+  `ERROR_OVZ` de motivo claro («esta cuenta usa certificado digital; la baja se hace a mano en OVZ») y el gestor
+  usa el camino manual.
+
+## 8. Auditoría e inventario
+
+- Nuevas `AccionAuditoria` (por enum, sin migración de `CHECK`): presentación (`OVZ_BAJA_PRESENTADA`), error
+  (`OVZ_BAJA_ERROR`), credenciales (`CREDENCIAL_OVZ_GUARDADA`/`_MODIFICADA`), documento guardado
+  (`DOCUMENTO_OVZ_GUARDADO`). Todas **sin datos personales** en `antes`/`despues` (`DatosAuditoria` no admite
+  `String`): ni crotal, ni contraseña, ni nombre de fichero con datos.
+- `CREDENCIAL_OVZ_DESCIFRADA` ya existe (M2).
+- Toda ruta de escritura nueva se **declara en el inventario cerrado** (`InventarioAuditoriaTest`) y respeta la
+  **guardia DML**. Los `@Scheduled`/worker se declaran como los demás planificadores.
+- **Pendientes de M2 que este escalón cierra:** mapear `CredencialOvzDeOtraGestoriaException` y
+  `DescifradoCredencialOvzException` a un error controlado; **descifrar fuera de la transacción** del envío (es
+  `@Transactional`: capturarlo dentro marca rollback-only); y un test que vigile que `DescifradoCredencialOvz`
+  siga siendo el único que descifra.
+
+## 9. Documentos (primer alcance)
+
+- **Descargar el justificante** de la baja: Documentos › Documentos (`/Explotaciones/wgDocumentos.aspx`, tabla
+  `GVDocumentos`, «Tipo Trámite: Baja Animal»; el enlace de la columna «Documento» descarga el fichero —
+  probablemente PDF, PENDIENTE de confirmar en el mapa).
+- **Guardarlo en la ficha del ganadero**, enlazado al **trámite** y la **explotación**, **aislado por gestoría**
+  y **auditado**. Nueva entidad `documento_ovz` (`GestoriaScopedEntity`): ganadero, trámite, explotación, tipo
+  («Baja Animal»), nombre, tamaño, content-type, referencia al binario en el almacén, instante.
+- **Dónde se almacena:** el binario **no** va en la base de datos. Opción recomendada: **Supabase Storage,
+  bucket privado** (la BD ya es Supabase), con acceso solo por el backend (signed URL de corta vida para la
+  descarga desde la ficha); alternativa: Clever Cellar (S3). **Tamaño máximo** a fijar (un justificante PDF es
+  pequeño; p. ej. 10 MB). La **descarga desde la ficha** la sirve el backend tras comprobar la gestoría (nunca
+  una URL pública directa).
+- **Si el justificante aún no está disponible** tras «Aceptar»: se **reintenta la descarga** (no la
+  presentación) con una pauta acotada; si tras N intentos no está, el trámite se queda `EJECUTADO_OVZ` con el
+  **documento marcado como pendiente** (la presentación fue bien; falta el papel), y se reintenta más tarde.
+  **Nunca** se repite la presentación por un documento que no aparece.
+
+## 10. Qué se reutiliza de la T1 (y T2) ya hechas
+
+- **Se reutiliza** la **lógica de ensamblado de datos de relleno** que introdujo la T1 (`DatosBajaOvzResponse`:
+  crotal, fecha `dd/MM/yyyy`, MER, REGA de ubicación) como **fuente interna** de lo que el worker escribe y
+  verifica, y `PlazoBajaOvz` para el aviso de fuera de plazo. El **enum de auditoría** (`OVZ_BAJA_PREPARADA`) se
+  reaprovecha o se complementa con las acciones de presentación/documento.
+- **Se aparca** el **endpoint HTTP** `GET /tramites/{id}/ovz/baja-muerte` (pensado para que una extensión
+  externa leyera los datos): en el modelo servidor-a-servidor el worker lee internamente, no por HTTP. Queda en
+  la rama `feat/modo-asistido-baja` por si se retoma; decidir si se mantiene, se reusa como lectura interna o se
+  retira (Decisión).
+- **Se aparca** toda la carpeta **`extension/`** (T2): no participa en el camino automático. Se conserva sin
+  borrar.
+
+## 11. Decisiones abiertas
+
+- **D1 — Infra del worker.** ¿Worker de OVZ en una **instancia Docker aparte** (imagen oficial de Playwright,
+  recomendado por el spike) o Playwright en la instancia del backend? Depende del resultado del spike en Clever
+  (Chromium + dependencias) y de si OVZ responde a la IP de Clever.
+- **D2 — Lenguaje/stack del worker.** Playwright **Java** (como la dependencia actual del backend) en el
+  contenedor, o un worker Node. Java reaprovecha el modelo de dominio; Node es más ligero para Playwright.
+- **D3 — Candado y concurrencia.** Candado **por ganadero** confirmado; ¿cuántos trabajos de ganaderos distintos
+  a la vez (1 global por el detector de instancias de OVZ, o N si cada uno es sesión/cuenta independiente)?
+- **D4 — Convivencia de caminos.** ¿`HECHO_EN_OVZ` (manual) y `EJECUTADO_OVZ` (automático) conviven por trámite,
+  o para `BAJA_MUERTE` con credenciales se fuerza el automático? ¿Qué pasa si no hay credenciales guardadas (cae
+  al manual)?
+- **D5 — Detección de «ya presentada»** en Documentos: por qué columnas casar (crotal + fecha + tipo), y el
+  umbral para decidir «sí está» vs «incierto → ERROR_OVZ».
+- **D6 — Almacén de documentos.** Supabase Storage (bucket privado) vs Clever Cellar/S3; tamaño máximo; vida de
+  la signed URL; retención del binario.
+- **D7 — Pauta de reintento de la *descarga*** del justificante (cuántos intentos, cada cuánto) y cómo se marca
+  «documento pendiente» sin tocar el estado de presentación.
+- **D8 — Detección de cuenta con certificado** antes de intentar (para dar `ERROR_OVZ` claro y no bloquear la
+  sesión): ¿se sabe por un flag en el ganadero, o se detecta en la pantalla de entrada?
+- **D9 — Selectores reales** (login, Código RIIA, explotación, descarga en `GVDocumentos`): confirmarlos con el
+  spike y la cuenta de Antonio antes de codificar (los ids de login y de solo lectura no están en el mapa).
+- **D10 — Regla no-negociable del CLAUDE.md.** Redactar la nueva versión: «el clic humano es la Aprobación en
+  Ganera; Ganera presenta en OVZ solo un trámite ya aprobado, con verificación previa y sin reintento ante
+  incertidumbre». Reconciliar con los textos de honestidad del frontend.
+- **D11 — Idempotencia y reencolado.** Clave por trámite; qué permite reencolar (solo desde `ERROR_OVZ` tras
+  corrección) y qué no.
+
+## 12. Riesgos
+
+- **Doble presentación**: el mayor riesgo. Mitigado por no reintentar nunca ante incertidumbre + consulta en
+  Documentos + clave de idempotencia del trabajo (§6).
+- **IP de Clever bloqueada por OVZ**: comprobar con el spike (curl a login) antes de montar el worker.
+- **Fragilidad del DOM de OVZ**: localizar por sufijo de id + texto; fallar con claridad; confirmar selectores
+  con el spike.
+- **Credenciales**: solo se descifran en el worker, en el momento, vía el único descifrador (M2); nunca en logs,
+  auditoría ni respuestas.
+- **Aislamiento multi-tenant**: todas las consultas del worker con `gestoriaId` explícito; documentos y trabajos
+  `GestoriaScopedEntity`; descarga del justificante servida por el backend tras comprobar la gestoría.
