@@ -3,13 +3,20 @@
 Escrito para: Antonio. Es una **prueba técnica (spike), no producción**. Responde a dos preguntas, **sin
 presentar nada** en OVZ:
 
-1. **En local** — ¿puede un script Playwright iniciar sesión con las credenciales de un ganadero, navegar solo
-   por menús hasta la baja por muerte, buscar un crotal, leer el Código RIIA y la explotación, y salir, **sin
-   tocar «Aceptar»**?
-2. **En Clever** — ¿se puede ejecutar Chromium + Playwright en nuestra instancia, y responde OVZ desde la IP de
-   Clever (solo la página de login, sin credenciales)?
+1. **En local** — ¿puede un script Playwright iniciar sesión con las credenciales de un ganadero, elegir la
+   explotación bovina, navegar solo por menús hasta la baja por muerte, buscar un crotal, leer el Código RIIA y
+   la explotación de ubicación, y salir, **sin tocar «Aceptar»**?
+2. **En Clever** — ¿responde OVZ desde la IP de Clever (solo la página de login, sin credenciales), y se puede
+   ejecutar Chromium + Playwright en nuestra instancia?
 
 Ningún código de este spike presenta nada en OVZ. El clic en «Aceptar» está **bloqueado en el código**.
+
+## Resultado (2026-11-17): OK en local ✅
+
+En el equipo de Antonio, **PASO 1 a 9 OK en ~10 s**: login con los id reales, explotación bovina elegida, menú
+Trámites → Bóvidos → pestaña de baja, crotal escrito + «Buscar», **Código RIIA coincide** con el crotal,
+explotación de ubicación leída, y **«Salir» sin presentar nada**. Queda pendiente la prueba de IP desde Clever
+(§2) y, si procede, el worker Docker.
 
 ## 1. Spike local — `OvzSpikeBajaMuerteTest`
 
@@ -23,11 +30,15 @@ Crea un `.env` **fuera del repositorio** (p. ej. en `C:\Users\Antonio\Desktop\ga
 lo pegues en el chat, nunca lo commitees, nunca lo imprimas**. Claves:
 
 ```
-OVZ_URL=<la URL de entrada de OVZnet>      # el mapa no la guarda a propósito
+OVZ_URL=https://ovznet.juntaex.es/Inicio.aspx   # la entrada de OVZnet
 OVZ_USUARIO=<usuario del ganadero>
-OVZ_PASSWORD=<contraseña del ganadero>     # usuario/contraseña, NO certificado
+OVZ_PASSWORD=<contraseña del ganadero>          # usuario/contraseña, NO certificado
 OVZ_CROTAL=<crotal completo a buscar>
+OVZ_REGA=<REGA de la explotación>               # OPCIONAL: si se define, compara la explotación de ubicación
 ```
+
+`OVZ_REGA` es **opcional**: con él, el PASO 8 compara también la «Explotación de ubicación» (contención, sin
+mostrar valores: imprime COINCIDE/NO coincide); sin él, solo lee la explotación y compara el crotal.
 
 ### Cómo ejecutarlo (Git Bash)
 
@@ -42,52 +53,78 @@ JAVA_HOME='C:\Users\Antonio\.jdks\temurin-21\jdk-21.0.12.1+1' OVZ_SPIKE=true \
 
 ### Qué hace, paso a paso (y qué verás)
 
-Headless, sin capturas. La salida son solo líneas `PASO N OK: …` o, si algo falla, `PASO FALLO: …`. Nunca
-imprime tu crotal, usuario, contraseña ni el contenido de la página (a lo sumo, el selector o el tipo de error,
-que no llevan datos reales).
+Headless, sin capturas. La salida son solo líneas `PASO N OK: …` o, si algo falla, `PASO FALLO: …` + el
+`Selector que se buscaba: …` + un diagnóstico de estructura. **Nunca** imprime el crotal, usuario, contraseña ni
+el contenido de la página (solo etiquetas de paso, selectores y estructura de controles).
 
-1. Abre `OVZ_URL` (único `goto` permitido: la entrada; dentro ya solo se navega por enlaces/menús).
-2. Login con usuario y contraseña (no certificado); espera `…/Presentacion.aspx`.
-3. Menú **Trámites › Trámites** (por texto de enlace, no por URL).
-4. Enlace **«Bóvidos»**.
-5. Pestaña **«Baja de Bóvidos»**. Comprueba que el botón «Aceptar» **existe** (pantalla correcta) pero **no lo
-   pulsa jamás**.
-6. Escribe el crotal (no se muestra) y pulsa **«Buscar»** (`P_LinkBuscar`, postback que no guarda).
-7. Lee el **Código RIIA** y la **explotación** (sin mostrarlos; solo confirma que se pueden leer).
-8. Pulsa **«Salir»** (`ctl00_ucBarraUsuario1_btnSalir`). Fin, sin presentar nada.
+1. Abre `OVZ_URL` (`Inicio.aspx`; único `goto` permitido: la entrada; dentro ya solo se navega por menús).
+2. Login con `…_txtUsuario` / `…_txtClave` y el **enlace** `…_btnLinkEntrar` (no certificado); espera a
+   `Presentacion.aspx` o a que aparezca el desplegable `ctl00_ucMenu1_ddlDelegado`. Si sigue en `Inicio.aspx`,
+   vuelca los mensajes de error de OVZ.
+3. Elige la explotación bovina en `ctl00_ucMenu1_ddlDelegado`: la opción cuya **especie** termina en «Bóvidos»
+   (sin acentos ni mayúsculas), **por su value**; si hay varias → `PASO FALLO «varias explotaciones bovinas»`.
+4. Menú **Trámites › Trámites** por su `href` (`…/Explotaciones/wgTramites.aspx`), sin teclear URLs.
+5. Enlace **«Bóvidos»** de la tabla de especies.
+6. Pestaña **«Baja de Bóvidos»** → pantalla 1 (búsqueda por crotal).
+7. Escribe el crotal (no se muestra) en `…_ctl05_TxtCrotal` y pulsa **«Buscar»** (`…_ctl05_LinkBuscar`). Si tras
+   «Buscar» sigue en la pantalla 1, vuelca los mensajes de OVZ (p. ej. «animal no encontrado») y para.
+8. En la pantalla 2: confirma que **«Aceptar»** (`…_ctl05_btn_Aceptar`) existe —**solo lo lee, nunca lo
+   pulsa**—, lee `…_ctl05_txtCodigoRIIA` y `…_ctl05_txtExplotacionUbicacion` y **compara** con `OVZ_CROTAL` (y
+   `OVZ_REGA` si está): imprime COINCIDE/NO coincide, nunca los valores.
+9. Pulsa **«Salir»** (`ctl00_ucBarraUsuario1_btnSalir`). Fin, sin presentar nada. Si algún paso falla a mitad,
+   también intenta «Salir» (best-effort) para no dejar la sesión abierta.
 
 ### El bloqueo duro de «Aceptar»
 
-Todos los clics pasan por `clicSeguro(...)`, que llama a `prohibirAceptar(...)`: si el selector o la etiqueta
-contienen `P_btn_Aceptar`, «aceptar» o «solicitar», **lanza una excepción y aborta** en vez de pulsar. El
-selector de «Aceptar» no se usa para pulsar en ningún sitio del script. Es imposible que este spike presente la
-baja aunque un paso se tuerza.
+Todos los clics pasan por `pulsar(...)` / `pulsarPorTexto(...)`, que llaman a `prohibirAceptar(...)`: si el
+selector o la etiqueta contienen `_btn_Aceptar`, «aceptar» o «solicitar», **lanzan y abortan** en vez de pulsar.
+El `…_btn_Aceptar` **solo se LEE** (para confirmar que la pantalla 2 cargó), nunca se pulsa. Es imposible que
+este spike presente la baja aunque un paso se tuerza.
 
-### Nota de fragilidad (esperable en un spike)
+### Mecanismo de localización (cross-frame, sin exigir visibilidad)
 
-Los ids de los **campos de login** y de los **campos de solo lectura** (Código RIIA, explotación) **no están en
-el mapa**. El script los localiza por heurística (tipo de input, texto visible, sufijo de id). Si un paso falla
-por un selector, el log dirá en cuál; con eso afinamos el selector real. No des por bueno ningún selector de
-estos hasta la primera ejecución real (es justo lo que confirma la sesión de mapeo, D13 del plan de la
-extensión).
+Todos los pasos buscan el elemento en **todos los frames por JS** (como el diagnóstico) y actúan por JS
+(foco+value+change para escribir, `element.click()` para pulsar, `select.value`+change para elegir), **sin
+exigir que el elemento sea visible**. Así no dependemos del frame principal ni de la visibilidad. **Recordatorio
+de selectores (del mapa):** el `P_` del mapa es la **forma corta del prefijo de la pestaña**
+(`ctl00_ContentPlaceHolder1_ucPestanasTramites_ctl05_`), **no parte del id**; en selectores se usa el sufijo
+real dentro de `_ctl05_` (p. ej. `[id*='_ctl05_'][id$='_btn_Aceptar']`).
 
-## 2. Clever — Chromium/Playwright y alcance de OVZ
+## 2. Clever — alcance de OVZ desde su IP y Chromium/Playwright
 
-### ¿Responde OVZ desde la IP de Clever? (sin credenciales)
+### Paso a paso: ¿responde `https://ovznet.juntaex.es/Inicio.aspx` desde la IP de Clever? (sin credenciales)
 
-Primero, lo barato y sin navegador: desde una shell/one-off en la instancia de Clever, un `curl` a la página de
-entrada para ver si la IP de París no está bloqueada:
+Esto comprueba solo que OVZ no bloquea la IP de París; **no usa credenciales**.
 
-```
-curl -sS -o /dev/null -w "HTTP %{http_code}\n" "$OVZ_URL"
-```
+1. **Instala `clever-tools`** (una vez), con Node en tu equipo:
+   ```
+   npm i -g clever-tools
+   ```
+2. **Inicia sesión** (abre el navegador para autorizar):
+   ```
+   clever login
+   ```
+3. **Lista tus apps** para ver el nombre/alias de la del backend:
+   ```
+   clever applications
+   ```
+4. **Entra por SSH** en la instancia del backend (sustituye `<app>` por su nombre o id):
+   ```
+   clever ssh --app <app>
+   ```
+5. **Ya dentro de la instancia**, pide **solo las cabeceras** (petición sin cuerpo, sin credenciales):
+   ```
+   curl -sS -o /dev/null -w "HTTP %{http_code}\n" https://ovznet.juntaex.es/Inicio.aspx
+   ```
+   (equivalente con cabeceras completas: `curl -sI https://ovznet.juntaex.es/Inicio.aspx | head -n 1`).
 
-Un `200`/`3xx` indica que OVZ responde a la IP de Clever. Un timeout o `403/503` sugiere bloqueo por IP o
-geofiltrado (OVZnet es de la Junta de Extremadura; podría restringir). Esto se prueba **sin credenciales**.
+**Qué pegarme:** **solo el código HTTP** (p. ej. `HTTP 200`). Nada más. Interpretación: `200`/`3xx` → OVZ
+responde a la IP de Clever; un timeout o `403`/`503` → posible bloqueo por IP o geofiltrado (OVZnet es de la
+Junta de Extremadura), lo que empujaría a ejecutar el worker desde otra IP/ubicación.
 
-Con navegador, el test `OvzAlcanceLoginTest` (`OVZ_SPIKE_ALCANCE=true`, `OVZ_URL=...`) abre la página de login y
-comprueba que hay campo de contraseña (señal de que cargó la pantalla, no un error de proxy). Si Chromium no
-arranca en Clever, este test lo dirá en su mensaje de fallo.
+*(Con navegador, el test `OvzAlcanceLoginTest` —`OVZ_SPIKE_ALCANCE=true`, `OVZ_URL=…`— abre la página de login y
+comprueba que hay campo de contraseña; si Chromium no arranca en Clever, lo dice en su fallo. Pero para la
+prueba de IP basta el `curl` de arriba.)*
 
 ### ¿Se puede ejecutar Chromium + Playwright en la instancia XS del backend?
 
@@ -112,14 +149,6 @@ las dependencias del sistema ya instaladas), que:
 - descifra la contraseña del ganadero solo en el momento (M2) y nunca la registra.
 
 Así el backend (Paris, Java/Maven) sigue ligero y el worker (Docker con Playwright) carga con el navegador. La
-decisión «dónde corre» se cierra en el plan (D-«infra»). Antes de montar el worker conviene confirmar con el
-`curl` de arriba que OVZ responde a la IP de Clever; si bloquea la IP de París, habría que mirar una IP de
-salida distinta o ejecutar el worker en otra ubicación.
-
-### Resultado esperado del spike (qué me dices)
-
-- Local: en qué `PASO N` quedó (idealmente `PASO 8 OK`), o el primer `PASO FALLO` y su selector.
-- Clever: el `HTTP` del `curl` a la página de login, y si `OvzAlcanceLoginTest` arranca Chromium o no.
-
-Con eso decidimos los selectores reales y si el worker Docker es el camino, antes de escribir nada de
-producción.
+decisión «dónde corre» es D1 del plan de la presentación automática. Antes de montar el worker conviene
+confirmar con el `curl` de arriba que OVZ responde a la IP de Clever; si bloquea la IP de París, habría que
+mirar una IP de salida distinta o ejecutar el worker en otra ubicación.
