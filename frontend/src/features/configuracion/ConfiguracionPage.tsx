@@ -640,7 +640,8 @@ function PreferenciasOvzPanel() {
     }
   }
 
-  const opciones = (id: string) => listas.find((l) => l.id === id)?.valores ?? [];
+  const opciones = (id: string) =>
+    (listas.find((l) => l.id === id)?.valores ?? []).map((o) => o.texto);
 
   return (
     <Panel titulo="Preferencias para OVZ">

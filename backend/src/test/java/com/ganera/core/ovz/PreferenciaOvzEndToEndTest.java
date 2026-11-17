@@ -108,26 +108,33 @@ class PreferenciaOvzEndToEndTest {
     }
 
     @Test
-    void listasOvzIncluyenTransporteYMarcanProvisionales() throws Exception {
+    void listasOvzTraenValorYTextoYSoloElCensoEsProvisional() throws Exception {
         ResponseEntity<String> resp = restTemplate.exchange(
                 "/configuracion/listas-ovz", HttpMethod.GET, conToken(tokenA), String.class);
         assertThat(resp.getStatusCode().value()).isEqualTo(200);
         JsonNode listas = objectMapper.readTree(resp.getBody()).get("listas");
         assertThat(listas.isArray()).isTrue();
         boolean transporte = false;
-        boolean sexoProvisional = false;
+        boolean sexoProvisional = true;
+        boolean censoProvisional = false;
         for (JsonNode lista : listas) {
             if ("medio_transporte".equals(lista.get("id").asText())) {
                 transporte = true;
                 assertThat(lista.get("provisional").asBoolean()).isFalse();
-                assertThat(lista.get("valores").toString()).contains("Camión");
+                JsonNode primera = lista.get("valores").get(0);
+                assertThat(primera.get("texto").asText()).isEqualTo("Camión");
+                assertThat(primera.get("valor").asText()).isEqualTo("1");
             }
             if ("sexo".equals(lista.get("id").asText())) {
                 sexoProvisional = lista.get("provisional").asBoolean();
             }
+            if ("categoria_censo".equals(lista.get("id").asText())) {
+                censoProvisional = lista.get("provisional").asBoolean();
+            }
         }
         assertThat(transporte).isTrue();
-        assertThat(sexoProvisional).isTrue();
+        assertThat(sexoProvisional).isFalse();
+        assertThat(censoProvisional).isTrue();
     }
 
     @Test

@@ -56,7 +56,7 @@ public class MistralTramiteExtractionService implements TramiteExtractionService
             CONFIRMACION_MOVIMIENTO, DECLARACION_CENSO, DEMORA_CROTALIZACION, NO_IDENTIFICADO, \
             SIN_TRAMITE>", "crotales": ["<cada crotal tal cual, o lista vacia>"], \
             "fechaHecho": "<yyyy-MM-dd o vacio>", "fechaNacimiento": "<yyyy-MM-dd o vacio>", \
-            "sexo": "<texto o vacio>", "crotalMadre": "<tal cual o vacio>", \
+            "sexo": "<Hembra o Macho (los dos valores de OVZ), o vacio>", "crotalMadre": "<tal cual o vacio>", \
             "numeroMer": "<o vacio>", "destinoRega": "<o vacio>", "destinoTexto": "<o vacio>", \
             "consignatario": "<o vacio>", "aptitudMovimiento": "<o vacio>", \
             "fechaIdentificacion": "<yyyy-MM-dd o vacio>"}
