@@ -282,6 +282,15 @@ approval step before anything is written to OVZ.net.
   Abstracted behind `TramiteExtractionService` so the provider is swappable. Native structured output
   (`output_config.format`, JSON Schema with `additionalProperties: false`) enforces the JSON shape,
   and the server validates it again. See the "Prompt B1" bullet for the rest.
+  **Proveedor activo (2026-11-17, rama `fix/ia-por-defecto-anthropic`):** `ProveedorIaConfig` elige el
+  proveedor con `AI_PROVIDER` (`anthropic` | `mistral`); **por defecto `anthropic`** (`application.yml`
+  → `${AI_PROVIDER:anthropic}`; el `@Value` y `ProveedorIa.POR_DEFECTO` coinciden, y un valor vacío/no
+  reconocido también cae en Anthropic). **El piloto corre con Haiku**, y en Clever `AI_PROVIDER=anthropic`
+  (confirmado por Antonio). Mistral (`MistralTramiteExtractionService`, hoy `mistral-small-latest` vía
+  `MISTRAL_MODEL`) queda **seleccionable a mano** con `AI_PROVIDER=mistral`, pero **pendiente de rehacer
+  con un modelo fijo (snapshot con fecha, no un alias flotante) y de evaluar** antes de usarlo en
+  producción — el default se puso en Mistral unos días (commits `15cedba`/`90bbb20`, 2026-10-23) y se
+  revirtió aquí. `ProveedorIaPorDefectoProduccionTest` fija que sin `AI_PROVIDER` se elige Anthropic.
 - **WhatsApp**: Twilio, one shared number across all Gestorías (see Operational flow above).
 - **Automation**: Playwright (Java) for OVZ.net: read-only sync and, in the future, escalón 2 (modo
   asistido): Ganera fills in the OVZ form for the gestor to review — one trámite at a time, after the
