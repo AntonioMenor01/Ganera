@@ -4,7 +4,7 @@ Documentación de la estructura interna de los formularios de OVZnet / CAÑADA (
 
 Convenciones:
 - Los datos reales se sustituyen por marcadores: `<CROTAL>`, `<NIF>`, `<NOMBRE>`, `<CODIGO_REGA>`, `<FECHA>`, `<TELEFONO>`, `<CLAVE_INTERNA>`, `<N>`.
-- `P_` es la forma corta del prefijo de id indicado en cada sección. El `name` se obtiene cambiando `_` por `$` en el id.
+- **`P_` es la forma corta del prefijo de id de cada sección, NO parte del id.** El id real es `<prefijo de la sección> + <lo que va tras P_>`. Ejemplo (baja, prefijo `ctl00_ContentPlaceHolder1_ucPestanasTramites_ctl05_`): `P_btn_Aceptar` → `…_ucPestanasTramites_ctl05_btn_Aceptar`; `P_LinkBuscar` → `…_ctl05_LinkBuscar`. **En selectores, usa el sufijo real dentro del prefijo de la pestaña** (p. ej. `[id*='_ctl05_'][id$='_btn_Aceptar']`), nunca `P_` literal. El `name` se obtiene cambiando `_` por `$` en el id.
 - Los valores de los catálogos se dan como `Texto [value]`.
 
 ---

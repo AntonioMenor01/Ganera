@@ -41,8 +41,8 @@ import static org.junit.jupiter.api.Assertions.fail;
 @EnabledIfEnvironmentVariable(named = "OVZ_SPIKE", matches = "true")
 class OvzSpikeBajaMuerteTest {
 
-    /** El botón que NUNCA se pulsa. */
-    private static final String SUFIJO_ACEPTAR = "P_btn_Aceptar";
+    /** El botón que NUNCA se pulsa. Sufijo real (el «P_» del mapa es el prefijo de la pestaña, no va en el id). */
+    private static final String SUFIJO_ACEPTAR = "_btn_Aceptar";
     private static final String ID_SALIR = "ctl00_ucBarraUsuario1_btnSalir";
     private static final double TIMEOUT_MS = 20_000;
 
@@ -114,20 +114,28 @@ class OvzSpikeBajaMuerteTest {
                 pulsarPorTexto(page, "Bóvidos", "enlace Bovidos");
                 ok(5, "entrada a Bovidos");
 
-                // PASO 6 — pestaña «Baja de Bóvidos» (por texto).
+                // PASO 6 — pestaña «Baja de Bóvidos» (por texto). Lleva a la PANTALLA 1 (búsqueda por crotal).
                 pulsarPorTexto(page, "Baja de Bóvidos", "pestana Baja de Bovidos");
-                // Confirmar que «Aceptar» existe (pantalla correcta) pero sin pulsarlo JAMÁS: solo se LEE.
-                frameCon(page, "[id$='" + SUFIJO_ACEPTAR + "']", "formulario de baja (Aceptar presente)");
-                ok(6, "pantalla de baja (Aceptar presente, no se pulsa)");
+                ok(6, "pestaña Baja de Bovidos (pantalla de busqueda)");
 
-                // PASO 7 — crotal en _ctl05_..._TxtCrotal y «Buscar».
-                escribir(page, "[id*='_ctl05_'][id$='TxtCrotal']", crotal, "campo crotal");
-                pulsar(page, "[id*='_ctl05_'][id$='P_LinkBuscar']", "boton Buscar");
-                ok(7, "crotal buscado");
+                // PASO 7 — escribir el crotal (no se loguea) en _ctl05_TxtCrotal y pulsar «Buscar» (_ctl05_LinkBuscar).
+                escribir(page, "[id*='_ctl05_'][id$='_TxtCrotal']", crotal, "campo crotal");
+                pulsar(page, "[id*='_ctl05_'][id$='_LinkBuscar']", "boton Buscar");
+                // Tras «Buscar» debe aparecer la PANTALLA 2 (Código RIIA). Si sigue en la 1, el animal no se
+                // encontró o hay un error: volcar los mensajes de OVZ (nunca el crotal) y parar.
+                try {
+                    frameCon(page, "[id*='_ctl05_'][id$='_txtCodigoRIIA']", "pantalla 2 (Codigo RIIA)");
+                } catch (RuntimeException e) {
+                    imprimirErroresOvz(page);
+                    throw new IllegalStateException("tras «Buscar» sigue en la pantalla 1 (ver mensajes de OVZ)");
+                }
+                ok(7, "crotal escrito y «Buscar» pulsado; pantalla 2 cargada");
 
-                // PASO 8 — leer _txtCodigoRIIA y _txtExplotacionUbicacion y COMPARAR con el .env (nunca valores).
-                String codigoRiia = leer(page, "[id$='_txtCodigoRIIA']", "Codigo RIIA");
-                String explotacionUbic = leer(page, "[id$='_txtExplotacionUbicacion']", "explotacion de ubicacion");
+                // PASO 8 — confirmar que «Aceptar» existe (solo LECTURA, nunca se pulsa), leer _txtCodigoRIIA y
+                // _txtExplotacionUbicacion (sufijos reales dentro de _ctl05_) y COMPARAR con el .env (nunca valores).
+                frameCon(page, "[id*='_ctl05_'][id$='" + SUFIJO_ACEPTAR + "']", "Aceptar presente (no se pulsa)");
+                String codigoRiia = leer(page, "[id*='_ctl05_'][id$='_txtCodigoRIIA']", "Codigo RIIA");
+                String explotacionUbic = leer(page, "[id*='_ctl05_'][id$='_txtExplotacionUbicacion']", "explotacion de ubicacion");
                 if (codigoRiia == null) {
                     throw new IllegalStateException("no se pudo leer el Codigo RIIA");
                 }
@@ -413,18 +421,23 @@ class OvzSpikeBajaMuerteTest {
 
     /** Imprime los mensajes de error de OVZ en Inicio.aspx tras un login fallido (solo textos de la app). */
     private void imprimirErroresOvz(Page page) {
-        try {
-            Object res = page.evaluate(JS_ERRORES);
-            System.out.println("MENSAJES DE OVZ EN INICIO.ASPX (textos de la aplicacion, no datos personales):");
-            if (res instanceof List<?> lista && !lista.isEmpty()) {
-                for (Object t : lista) {
-                    System.out.println("   • " + t);
+        System.out.println("MENSAJES DE OVZ (textos de la aplicacion, no datos personales):");
+        boolean alguno = false;
+        for (Frame f : page.frames()) {
+            try {
+                Object res = f.evaluate(JS_ERRORES);
+                if (res instanceof List<?> lista) {
+                    for (Object t : lista) {
+                        System.out.println("   • " + t);
+                        alguno = true;
+                    }
                 }
-            } else {
-                System.out.println("   (ninguno visible)");
+            } catch (Throwable ignored) {
+                // frame no inspeccionable
             }
-        } catch (Throwable e) {
-            System.out.println("   (no se pudieron leer los mensajes: " + e.getClass().getSimpleName() + ")");
+        }
+        if (!alguno) {
+            System.out.println("   (ninguno visible)");
         }
     }
 
