@@ -263,3 +263,62 @@ Sirven para los avisos que tenga la cola en el futuro.
 | Modificar los datos de un animal | 72 h desde el alta |
 | Modificar el último censo | 24 h |
 | Alta por nacimiento | El manual remite a un enlace ("Plazo de notificación de altas por nacimientos") que no incluye |
+
+## 6. Cruce con el mapa de OVZ real (`mapa-ovz.md`)
+
+El 2026-11-16 se mapeó OVZnet/CAÑADA leyendo las páginas con una cuenta de ganadero, **sin presentar
+nada ni con datos reales** (`docs/referencias/mapa-ovz.md`). Es el **mismo sistema** que describe este
+manual (OVZnet de Extremadura), así que las cautelas de arriba siguen valiendo: es Extremadura y es el
+perfil del ganadero. El mapa confirma, matiza o completa lo siguiente.
+
+### 6.1 Lo que el mapa confirma
+- El catálogo de trámites y los seis tipos del MVP (§4) coinciden: Alta individual, Baja de bovino,
+  Solicitud de movimiento, Confirmación de movimientos, Declaración de censo y Animales con demora
+  existen como pantallas reales. El selector de documentos (Documentos › Documentos) los lista con los
+  mismos nombres y añade sus códigos de tipo: Alta Bovino [1], Baja Animal [3], Declaracion de Censo [4],
+  Confirmacion de Movimiento [5], Solicitud de Movimiento [6], Demora Crotalización [25], Guías [9].
+- La venta y el matadero son una **solicitud de movimiento**, no una baja (§1): en el mapa no hay baja
+  por venta ni por matadero; el destino se distingue por el «Tipo Explotación» del REGA de destino
+  (GANADERA [1] / MATADERO [5]). La regla del prompt de la IA se mantiene.
+- Los datos que OVZ rellena solo en la baja (Código RIIA, fecha de nacimiento, raza, sexo, explotación
+  de nacimiento y ubicación, identificación de lidia, Código RIIA madre, país) coinciden con §2.2.
+
+### 6.2 Lo que el mapa aporta de nuevo (y no estaba en el manual)
+- **Listas de valores** que el manual no publicaba (§ "Cautelas"): Sexo (Hembra [H] / Macho [M]), Tipo
+  de identificador (Crotal Electrónico [04]), **134 razas por valor** (ojo: dos «DESCONOCIDA», 901 y
+  955, y «PARDE DE MONTAÑA» [1088] vs «PARDA DE MONTAÑA» [1322] → mapear **por valor**), Aptitud del
+  movimiento (SACRIFICIO [0], VIDA [1], REPRODUCC [2] por defecto, CEBO [3]), Tipo de explotación de
+  destino, Comunidad Autónoma, oficinas de envío/recogida del DI con sus códigos, y los valores de Medio
+  de transporte y Tipo de responsable que el manual sí daba pero sin código. **La única lista del MVP
+  que sigue sin mapear es la Categoría del censo** (no se abrió el formulario de censo).
+- **Mecánica de navegación (crítica para el modo asistido):** la sesión caduca a los **20 minutos** sin
+  actividad y hay un **detector de varias instancias**: escribir una URL, pulsar **Atrás** o abrir **dos
+  pestañas** redirige a `/AvisoSesion.aspx` y **invalida la sesión**. Hay que navegar siempre por los
+  menús. Los botones finales («Aceptar», «Solicitar») **no piden confirmación**: un clic presenta.
+- **Detalle de la baja:** la pantalla 2 trae un adjunto MER opcional (PDF ≤ 5 MB) y la «Oficina
+  Veterinaria de Zona» es un **desplegable desactivado** que viene **preseleccionado** de la explotación
+  (cierra la duda de §2.2 sobre rellenar la oficina: en pantalla no se elige).
+- **Obligatoriedad real por asterisco** (el manual solo tenía capturas): baja → solo **Fecha de muerte**
+  lleva `*` (el crotal es obligatorio para «Buscar», el Nº MER no lleva asterisco); movimiento → llevan
+  `*` Teléfono, REGA destino, Consignatario, Fecha de Salida y Fecha de Llegada; **no** llevan asterisco
+  CA, Medio de transporte, Matrícula, Transportista, Tipo de responsable ni Aptitud (cierra parte de la
+  duda 17 del propio mapa, a reserva del comportamiento del servidor al presentar).
+
+### 6.3 PENDIENTES del mapa que este manual cierra
+- Mapa #5 (¿el crotal de la baja es obligatorio?): **sí**, §2.2 lo marca obligatorio para buscar.
+- Mapa #6 (formato de «Fecha de muerte»): **dd/mm/aaaa**, §2.2 y §2.1.
+- Mapa #8 (justificante de la baja): aparece en Documentos como **«Baja Animal»**; el manual (§E3 del
+  mapa + Documentos) lo trata como descarga, formato **PDF muy probable** (sin confirmar al 100 %).
+- Mapa #10 (¿«Identificador de Lidia» solo con raza LIDIA?): §2.1 lo da como **«Solo ganado de lidia»**.
+- Mapa #17 (obligatorios del movimiento): resuelto en parte por los asteriscos de §2.3 (ver 6.2).
+- Mapa #27 (¿se puede corregir/anular un alta o una baja?): el manual **no** da una anulación de alta/baja
+  como tal; solo **«modificar los datos de un animal en las 72 h siguientes al alta»** (p. 19) y, para
+  guías, la anulación (10 días) y el rechazo en origen (48 h). Para corregir antes de presentar, «Volver».
+
+### 6.4 PENDIENTES que siguen abiertos tras el cruce
+- Categoría del censo (lista de valores): ni manual ni mapa.
+- Confirmación de entrada: el formulario no se pudo ver (sin movimientos pendientes) en ninguna de las dos
+  fuentes (mapa #20).
+- Momento exacto en que la guía PDF queda disponible (al solicitar o al validar la OVZ) (mapa #19).
+- Mensajes de error del servidor al presentar con datos incompletos (mapa #3), y columnas de las tablas de
+  resultado (mapa #21–#24). Todo esto se verá en la sesión de mapeo con la gestoría piloto.

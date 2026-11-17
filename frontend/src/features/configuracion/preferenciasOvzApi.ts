@@ -12,11 +12,17 @@ export interface PreferenciaOvz {
   tipoResponsable: string | null;
 }
 
+/** Una opción de un desplegable de OVZ: el texto visible y el valor interno de OVZ. */
+export interface OpcionOvz {
+  texto: string;
+  valor: string;
+}
+
 export interface ListaOvz {
   id: string;
   etiqueta: string;
   provisional: boolean;
-  valores: string[];
+  valores: OpcionOvz[];
 }
 
 export async function obtenerPreferenciasOvz(): Promise<PreferenciaOvz> {

@@ -113,7 +113,9 @@ public class AnthropicTramiteExtractionService implements TramiteExtractionServi
             String fechaHecho,
             @JsonPropertyDescription("Fecha de nacimiento del ternero (alta) en yyyy-MM-dd; vacío si no aplica.")
             String fechaNacimiento,
-            @JsonPropertyDescription("Sexo del animal si aparece (Macho/Hembra/…); vacío si no se sabe.")
+            @JsonPropertyDescription("Sexo del animal, normalizado a «Hembra» o «Macho» (los dos únicos "
+                    + "valores de OVZ: una becerra/novilla/vaca es «Hembra», un becerro/novillo/toro es "
+                    + "«Macho»); vacío si no se sabe.")
             String sexo,
             @JsonPropertyDescription("Crotal de la madre tal como está escrito; vacío si no aplica.")
             String crotalMadre,
