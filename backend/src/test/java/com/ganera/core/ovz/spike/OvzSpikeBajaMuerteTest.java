@@ -2,11 +2,14 @@ package com.ganera.core.ovz.spike;
 
 import com.microsoft.playwright.Browser;
 import com.microsoft.playwright.BrowserType;
+import com.microsoft.playwright.Frame;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
 import com.microsoft.playwright.options.AriaRole;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -120,7 +123,10 @@ class OvzSpikeBajaMuerteTest {
                 cerrada = true;
                 fail("BLOQUEO DURO: se intentó pulsar «Aceptar» — abortado sin presentar. " + e.getMessage());
             } catch (Throwable e) {
-                // Cualquier fallo a mitad (incluida una aserción): intentar cerrar con «Salir» igualmente.
+                // Cualquier fallo a mitad (incluida una aserción): volcar la ESTRUCTURA de la página (sin valores)
+                // para afinar los selectores, y luego intentar cerrar con «Salir» igualmente.
+                System.out.println("PASO FALLO: " + e.getClass().getSimpleName() + " — " + primeraLinea(e.getMessage()));
+                diagnosticoEstructura(page);
                 salirBestEffort(page);
                 cerrada = true;
                 fail("PASO FALLO: " + e.getClass().getSimpleName() + " — " + primeraLinea(e.getMessage()));
@@ -173,6 +179,81 @@ class OvzSpikeBajaMuerteTest {
         } catch (Throwable ignored) {
             System.out.println("PASO Salir (tras fallo): no se pudo pulsar Salir; la sesion se dejara caducar");
         }
+    }
+
+    // --- Diagnóstico de estructura (solo estructura, NUNCA valores ni textos de usuario) --------------------
+
+    /**
+     * JS que devuelve una lista de líneas describiendo la ESTRUCTURA del frame: por cada input/select/button y
+     * por cada enlace con postback, su etiqueta, type, id, name y (solo botones/enlaces) el texto visible.
+     * NUNCA el {@code value} de un campo ni el contenido de celdas: solo estructura y etiquetas de controles.
+     */
+    private static final String JS_ESTRUCTURA = """
+            () => {
+              const esc = s => (s || '').toString().trim().slice(0, 40);
+              const out = [];
+              const line = (el, conTexto) => {
+                const tag = el.tagName.toLowerCase();
+                const type = el.getAttribute('type') || '';
+                const id = el.id || '';
+                const name = el.getAttribute('name') || '';
+                let s = tag + ' type=' + type + ' id=' + id + ' name=' + name;
+                if (conTexto) s += ' text="' + esc(el.textContent) + '"';
+                return s;
+              };
+              document.querySelectorAll('input').forEach(e => out.push(line(e, false)));
+              document.querySelectorAll('select').forEach(e => out.push(line(e, false)));
+              document.querySelectorAll('button').forEach(e => out.push(line(e, true)));
+              document.querySelectorAll('a').forEach(e => {
+                const h = e.getAttribute('href') || '';
+                const o = e.getAttribute('onclick') || '';
+                if (h.indexOf('__doPostBack') >= 0 || o.indexOf('__doPostBack') >= 0 || h.indexOf('javascript:') === 0) {
+                  out.push(line(e, true));
+                }
+              });
+              return out;
+            }
+            """;
+
+    /** Vuelca la estructura de la página y de cada frame (los campos de login podrían estar en un iframe). */
+    private void diagnosticoEstructura(Page page) {
+        try {
+            System.out.println("--- DIAGNOSTICO DE ESTRUCTURA (solo estructura, sin valores) ---");
+            System.out.println("URL: " + sinParametros(page.url()));
+            try {
+                System.out.println("Titulo: " + page.title());
+            } catch (Throwable ignored) {
+                System.out.println("Titulo: (no disponible)");
+            }
+            List<Frame> frames = page.frames();
+            System.out.println("frames (incluido el principal): " + frames.size());
+            for (int i = 0; i < frames.size(); i++) {
+                Frame f = frames.get(i);
+                System.out.println("[frame " + i + "] name=" + f.name() + " url=" + sinParametros(f.url()));
+                try {
+                    Object res = f.evaluate(JS_ESTRUCTURA);
+                    if (res instanceof List<?> lista) {
+                        for (Object linea : lista) {
+                            System.out.println("   " + linea);
+                        }
+                    }
+                } catch (Throwable e) {
+                    System.out.println("   (no se pudo inspeccionar el frame: " + e.getClass().getSimpleName() + ")");
+                }
+            }
+            System.out.println("--- FIN DIAGNOSTICO ---");
+        } catch (Throwable e) {
+            System.out.println("(no se pudo generar el diagnostico: " + e.getClass().getSimpleName() + ")");
+        }
+    }
+
+    /** URL sin la query (los parámetros pueden llevar claves internas). */
+    private String sinParametros(String url) {
+        if (url == null) {
+            return "(sin url)";
+        }
+        int q = url.indexOf('?');
+        return q >= 0 ? url.substring(0, q) : url;
     }
 
     // --- Utilidades ----------------------------------------------------------------------------------------
