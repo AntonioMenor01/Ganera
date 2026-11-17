@@ -5,52 +5,49 @@ import com.microsoft.playwright.BrowserType;
 import com.microsoft.playwright.Frame;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
-import com.microsoft.playwright.options.AriaRole;
-import com.microsoft.playwright.options.WaitForSelectorState;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * SPIKE (prueba técnica, NO producción) del escalón 2 de OVZ: ¿puede Ganera, desde el servidor, abrir OVZnet,
- * iniciar sesión con las credenciales de un ganadero, navegar SOLO por menús hasta la baja por muerte, buscar
- * un crotal y leer el Código RIIA y la explotación, y salir — SIN presentar nada?
+ * iniciar sesión con las credenciales de un ganadero, elegir la explotación bovina, navegar SOLO por menús
+ * hasta la baja por muerte, buscar un crotal, leer el Código RIIA y la explotación de ubicación y comparar con
+ * el .env, y salir — SIN presentar nada?
  *
- * <p><b>No presenta nada.</b> Hay un <b>bloqueo duro</b>: todo clic pasa por {@link #clicSeguro}, que lanza si
- * el selector apunta al botón «Aceptar» de OVZ ({@code P_btn_Aceptar}). Este script nunca puede pulsarlo.
+ * <p><b>No presenta nada.</b> Bloqueo duro: {@link #pulsar} y {@link #pulsarPorTexto} pasan por
+ * {@link #prohibirAceptar}, que lanza si el selector/etiqueta apunta a «Aceptar» ({@code P_btn_Aceptar}) o
+ * «Solicitar». Ese botón solo se LEE (para confirmar la pantalla), nunca se pulsa.
+ *
+ * <p><b>Mecanismo único de localización:</b> igual que el diagnóstico, todos los pasos buscan el elemento en
+ * TODOS los frames por JS (sin exigir que sea visible si está oculto por estilos) y actúan por JS
+ * (foco+value+change para escribir, {@code element.click()} para pulsar, {@code select.value}+change para
+ * elegir). Así no dependemos de la visibilidad ni del frame principal.
  *
  * <p><b>Desactivado por defecto</b> (patrón de {@code ExtraccionSinTramiteEvalTest}): solo corre con
- * {@code OVZ_SPIKE=true} y las variables de entorno abajo, que Antonio exporta desde un <b>.env fuera del
- * repo</b> (nunca en el chat, nunca en logs, nunca commiteado). No se toma ninguna captura. Los logs solo dicen
- * «PASO N OK» o «PASO N FALLO: …»; nunca el crotal, el usuario ni la contraseña, y nunca el contenido de la
- * página (solo etiquetas de paso y, como mucho, el selector o el tipo de error, que no contienen datos reales).
+ * {@code OVZ_SPIKE=true} y las variables abajo, que Antonio exporta desde un <b>.env fuera del repo</b> (nunca
+ * en el chat, logs ni commits). No se toma ninguna captura. Los logs solo dicen «PASO N OK/FALLO» y estructura;
+ * nunca el crotal, el usuario, la contraseña ni el contenido de la página.
  *
- * <p>Variables de entorno (todas obligatorias para este test):
- * <ul>
- *   <li>{@code OVZ_URL} — URL base de OVZnet (p. ej. la de la página de entrada). El mapa no la guarda.</li>
- *   <li>{@code OVZ_USUARIO}, {@code OVZ_PASSWORD} — credenciales del ganadero (usuario/contraseña, NO certificado).</li>
- *   <li>{@code OVZ_CROTAL} — crotal completo a buscar en la baja.</li>
- * </ul>
+ * <p>Variables: {@code OVZ_URL}, {@code OVZ_USUARIO}, {@code OVZ_PASSWORD}, {@code OVZ_CROTAL} (obligatorias) y
+ * {@code OVZ_REGA} (opcional, para comparar la explotación de ubicación).
  *
- * <p>Ejecutar (Git Bash, con las variables ya exportadas desde el .env):
- * {@code JAVA_HOME=... OVZ_SPIKE=true ./mvnw test -Dtest=OvzSpikeBajaMuerteTest}
- *
- * <p>Es exploratorio: si un paso falla por un selector, el log dice en cuál, para afinarlo. Los ids de login y
- * de los campos de solo lectura NO están en el mapa; aquí se localizan por heurística (tipo de input, texto,
- * sufijo de id) y pueden necesitar ajuste tras la primera ejecución real.
+ * <p>Ejecutar: {@code OVZ_SPIKE=true ./mvnw test -Dtest=OvzSpikeBajaMuerteTest} (con las variables exportadas).
  */
 @EnabledIfEnvironmentVariable(named = "OVZ_SPIKE", matches = "true")
 class OvzSpikeBajaMuerteTest {
 
-    /** El botón que NUNCA se pulsa. El bloqueo duro vive en {@link #clicSeguro}. */
+    /** El botón que NUNCA se pulsa. */
     private static final String SUFIJO_ACEPTAR = "P_btn_Aceptar";
     private static final String ID_SALIR = "ctl00_ucBarraUsuario1_btnSalir";
     private static final double TIMEOUT_MS = 20_000;
+
+    /** Último selector buscado, para que el diagnóstico diga en qué se estaba al fallar. */
+    private String ultimoSelector = "(ninguno)";
 
     @Test
     void preparaLaBajaYSaleSinPresentar() {
@@ -60,124 +57,107 @@ class OvzSpikeBajaMuerteTest {
         String crotal = requerida("OVZ_CROTAL");
 
         try (Playwright playwright = Playwright.create()) {
-            Browser navegador = playwright.chromium()
-                    .launch(new BrowserType.LaunchOptions().setHeadless(true));
+            Browser navegador = playwright.chromium().launch(new BrowserType.LaunchOptions().setHeadless(true));
             Page page = navegador.newContext().newPage();
             page.setDefaultTimeout(TIMEOUT_MS);
             boolean cerrada = false;
             try {
+                // PASO 1 — abrir la entrada de OVZnet (único goto permitido: la entrada, no una interna).
+                page.navigate(url);
+                ok(1, "OVZnet abierto");
 
-            // PASO 1 — abrir la página de entrada de OVZnet (único goto permitido: la entrada, no una interna).
-            page.navigate(url);
-            ok(1, "OVZnet abierto");
-
-            // PASO 2 — login en Inicio.aspx con los ids reales (sufijos _txtUsuario, _txtClave, _btnLinkEntrar).
-            page.locator("[id$='_txtUsuario']").first().fill(usuario);
-            page.locator("[id$='_txtClave']").first().fill(password);
-            // «Entrar» es un ENLACE (<a>) con postback, NO un botón, y NO «Entrar con Certificado».
-            clicSeguro(page, page.locator("[id$='_btnLinkEntrar']").first(), "enlace Entrar");
-            // Tras el postback: la URL pasa a Presentacion.aspx o aparece el desplegable de delegado del menú.
-            try {
-                page.waitForFunction(
-                        "() => location.pathname.toLowerCase().endsWith('/presentacion.aspx')"
-                                + " || document.getElementById('ctl00_ucMenu1_ddlDelegado') !== null",
-                        null, new Page.WaitForFunctionOptions().setTimeout(TIMEOUT_MS));
-            } catch (RuntimeException e) {
-                // Si seguimos en Inicio.aspx, el login no entró: volcar los mensajes de error de OVZ (textos de
-                // la aplicación, no datos personales) para saber si es usuario/contraseña u otra cosa.
-                if (page.url().toLowerCase().contains("inicio.aspx")) {
-                    imprimirErroresOvz(page);
+                // PASO 2 — login con los ids reales de Inicio.aspx (todo por el mecanismo cross-frame).
+                escribir(page, "[id$='_txtUsuario']", usuario, "usuario");
+                escribir(page, "[id$='_txtClave']", password, "clave");
+                pulsar(page, "[id$='_btnLinkEntrar']", "enlace Entrar");
+                try {
+                    page.waitForFunction(
+                            "() => location.pathname.toLowerCase().endsWith('/presentacion.aspx')"
+                                    + " || document.getElementById('ctl00_ucMenu1_ddlDelegado') !== null",
+                            null, new Page.WaitForFunctionOptions().setTimeout(TIMEOUT_MS));
+                } catch (RuntimeException e) {
+                    if (page.url().toLowerCase().contains("inicio.aspx")) {
+                        imprimirErroresOvz(page);
+                    }
+                    throw e;
                 }
-                throw e;
-            }
-            ok(2, "sesion iniciada (Presentacion.aspx / menu delegado)");
+                ok(2, "sesion iniciada");
 
-            // PASO 3 — elegir la explotación en el desplegable del menú: la opción cuya ESPECIE termina en
-            // «Bóvidos» (sin acentos ni mayúsculas), por su value. El menú principal solo aparece después.
-            Object opcionesDelegado = page.evaluate(JS_OPCIONES_DELEGADO);
-            if (!(opcionesDelegado instanceof List<?> opciones)) {
-                throw new IllegalStateException("no se encontró el desplegable de explotaciones (ddlDelegado)");
-            }
-            List<String> valoresBovinos = new ArrayList<>();
-            for (Object o : opciones) {
-                java.util.Map<?, ?> m = (java.util.Map<?, ?>) o;
-                if (normaliza(String.valueOf(m.get("especie"))).endsWith("bovidos")) {
-                    valoresBovinos.add(String.valueOf(m.get("value")));
+                // PASO 3 — elegir la explotación bovina en el desplegable, por value (sin exigir visibilidad).
+                Frame fSel = frameCon(page, "#ctl00_ucMenu1_ddlDelegado", "desplegable de explotaciones");
+                Object opcionesDelegado = fSel.evaluate(JS_OPCIONES_DELEGADO);
+                if (!(opcionesDelegado instanceof List<?> opciones)) {
+                    throw new IllegalStateException("el desplegable no devolvió opciones");
                 }
-            }
-            if (valoresBovinos.size() > 1) {
-                throw new IllegalStateException("varias explotaciones bovinas");
-            }
-            if (valoresBovinos.isEmpty()) {
-                throw new IllegalStateException("no hay explotacion bovina en el desplegable");
-            }
-            page.locator("#ctl00_ucMenu1_ddlDelegado").selectOption(valoresBovinos.get(0));
-            // Postback: la página se recarga y aparece el menú (enlace a wgTramites.aspx en el DOM).
-            page.waitForSelector("a[href*='wgTramites.aspx']", new Page.WaitForSelectorOptions()
-                    .setState(WaitForSelectorState.ATTACHED).setTimeout(TIMEOUT_MS));
-            ok(3, "explotacion bovina elegida, menu cargado");
+                List<String> valoresBovinos = new ArrayList<>();
+                for (Object o : opciones) {
+                    java.util.Map<?, ?> m = (java.util.Map<?, ?>) o;
+                    if (normaliza(String.valueOf(m.get("especie"))).endsWith("bovidos")) {
+                        valoresBovinos.add(String.valueOf(m.get("value")));
+                    }
+                }
+                if (valoresBovinos.size() > 1) {
+                    throw new IllegalStateException("varias explotaciones bovinas");
+                }
+                if (valoresBovinos.isEmpty()) {
+                    throw new IllegalStateException("no hay explotacion bovina en el desplegable");
+                }
+                seleccionarValor(fSel, "#ctl00_ucMenu1_ddlDelegado", valoresBovinos.get(0), "explotacion bovina");
+                frameCon(page, "a[href*='wgTramites.aspx']", "menu cargado tras elegir explotacion");
+                ok(3, "explotacion bovina elegida, menu cargado");
 
-            // PASO 4 — menú Trámites › Trámites, localizado por href (sin escribir URLs). Puede requerir hover.
-            try {
-                page.getByText("Trámites", new Page.GetByTextOptions().setExact(true)).first().hover();
-            } catch (RuntimeException ignorado) {
-                // Si no hay un «Trámites» por texto para el hover, seguimos: el enlace por href puede bastar.
-            }
-            clicSeguro(page, page.locator("a[href*='wgTramites.aspx']").first(), "menu Tramites (wgTramites.aspx)");
-            page.waitForLoadState();
-            ok(4, "menu Tramites");
+                // PASO 4 — menú Trámites por href (sin escribir URLs).
+                pulsar(page, "a[href*='wgTramites.aspx']", "menu Tramites (wgTramites.aspx)");
+                ok(4, "menu Tramites");
 
-            // PASO 5 — enlace «Bóvidos» de la tabla de especies.
-            clicSeguro(page, page.getByRole(AriaRole.LINK,
-                    new Page.GetByRoleOptions().setName("Bóvidos").setExact(true)).first(), "enlace Bovidos");
-            page.waitForLoadState();
-            ok(5, "entrada a Bovidos");
+                // PASO 5 — enlace «Bóvidos» de la tabla de especies (por texto, sin acentos ni mayúsculas).
+                pulsarPorTexto(page, "Bóvidos", "enlace Bovidos");
+                ok(5, "entrada a Bovidos");
 
-            // PASO 6 — pestaña «Baja de Bóvidos».
-            clicSeguro(page, page.getByText("Baja de Bóvidos", new Page.GetByTextOptions().setExact(true)).first(),
-                    "pestana Baja de Bovidos");
-            page.waitForLoadState();
-            // Confirmar que el «Aceptar» existe (pantalla correcta) pero sin pulsarlo JAMAS.
-            assertNotNull(page.locator("[id$='" + SUFIJO_ACEPTAR + "']"), "no se localizó el formulario de baja");
-            ok(6, "pantalla de baja (Aceptar presente, no se pulsa)");
+                // PASO 6 — pestaña «Baja de Bóvidos» (por texto).
+                pulsarPorTexto(page, "Baja de Bóvidos", "pestana Baja de Bovidos");
+                // Confirmar que «Aceptar» existe (pantalla correcta) pero sin pulsarlo JAMÁS: solo se LEE.
+                frameCon(page, "[id$='" + SUFIJO_ACEPTAR + "']", "formulario de baja (Aceptar presente)");
+                ok(6, "pantalla de baja (Aceptar presente, no se pulsa)");
 
-            // PASO 7 — escribir el crotal (no se loguea) en _TxtCrotal (dentro de _ctl05_) y pulsar «Buscar».
-            page.locator("[id*='_ctl05_'][id$='TxtCrotal']").first().fill(crotal);
-            clicSeguro(page, page.locator("[id*='_ctl05_'][id$='P_LinkBuscar']").first(), "boton Buscar");
-            page.waitForLoadState();
-            ok(7, "crotal buscado");
+                // PASO 7 — crotal en _ctl05_..._TxtCrotal y «Buscar».
+                escribir(page, "[id*='_ctl05_'][id$='TxtCrotal']", crotal, "campo crotal");
+                pulsar(page, "[id*='_ctl05_'][id$='P_LinkBuscar']", "boton Buscar");
+                ok(7, "crotal buscado");
 
-            // PASO 8 — leer _txtCodigoRIIA y _txtExplotacionUbicacion y COMPARAR con el .env (nunca los valores).
-            String codigoRiia = textoDe(page, "[id$='_txtCodigoRIIA']");
-            String explotacionUbic = textoDe(page, "[id$='_txtExplotacionUbicacion']");
-            assertNotNull(codigoRiia, "no se pudo leer el Código RIIA");
-            assertNotNull(explotacionUbic, "no se pudo leer la explotación de ubicación");
-            boolean crotalCuadra = normalizaId(codigoRiia).equals(normalizaId(crotal));
-            String regaEnv = System.getenv("OVZ_REGA"); // opcional
-            String verifExplotacion;
-            if (regaEnv == null || regaEnv.isBlank()) {
-                verifExplotacion = "explotacion leida (define OVZ_REGA para comparar)";
-            } else {
-                verifExplotacion = normalizaId(explotacionUbic).contains(normalizaId(regaEnv))
-                        ? "explotacion COINCIDE con OVZ_REGA" : "explotacion NO coincide con OVZ_REGA";
-            }
-            ok(8, "verificacion: Codigo RIIA " + (crotalCuadra ? "COINCIDE" : "NO coincide")
-                    + " con el crotal; " + verifExplotacion);
+                // PASO 8 — leer _txtCodigoRIIA y _txtExplotacionUbicacion y COMPARAR con el .env (nunca valores).
+                String codigoRiia = leer(page, "[id$='_txtCodigoRIIA']", "Codigo RIIA");
+                String explotacionUbic = leer(page, "[id$='_txtExplotacionUbicacion']", "explotacion de ubicacion");
+                if (codigoRiia == null) {
+                    throw new IllegalStateException("no se pudo leer el Codigo RIIA");
+                }
+                if (explotacionUbic == null) {
+                    throw new IllegalStateException("no se pudo leer la explotacion de ubicacion");
+                }
+                boolean crotalCuadra = normalizaId(codigoRiia).equals(normalizaId(crotal));
+                String regaEnv = System.getenv("OVZ_REGA");
+                String verifExplotacion;
+                if (regaEnv == null || regaEnv.isBlank()) {
+                    verifExplotacion = "explotacion leida (define OVZ_REGA para comparar)";
+                } else {
+                    verifExplotacion = normalizaId(explotacionUbic).contains(normalizaId(regaEnv))
+                            ? "explotacion COINCIDE con OVZ_REGA" : "explotacion NO coincide con OVZ_REGA";
+                }
+                ok(8, "verificacion: Codigo RIIA " + (crotalCuadra ? "COINCIDE" : "NO coincide")
+                        + " con el crotal; " + verifExplotacion);
 
-            // PASO 9 — salir con «Salir» (cierra sesión). NUNCA «Aceptar».
-            clicSeguro(page, page.locator("#" + ID_SALIR), "boton Salir");
-            page.waitForLoadState();
-            cerrada = true;
-            ok(9, "sesion cerrada con Salir, sin presentar nada");
+                // PASO 9 — salir con «Salir». NUNCA «Aceptar».
+                pulsar(page, "#" + ID_SALIR, "boton Salir");
+                cerrada = true;
+                ok(9, "sesion cerrada con Salir, sin presentar nada");
             } catch (ClicProhibidoException e) {
-                // El bloqueo duro saltó: alguien intentó pulsar «Aceptar». Nunca un envío. Cerrar con «Salir».
+                System.out.println("BLOQUEO DURO: se intentó pulsar «Aceptar». " + e.getMessage());
                 salirBestEffort(page);
                 cerrada = true;
                 fail("BLOQUEO DURO: se intentó pulsar «Aceptar» — abortado sin presentar. " + e.getMessage());
             } catch (Throwable e) {
-                // Cualquier fallo a mitad (incluida una aserción): volcar la ESTRUCTURA de la página (sin valores)
-                // para afinar los selectores, y luego intentar cerrar con «Salir» igualmente.
                 System.out.println("PASO FALLO: " + e.getClass().getSimpleName() + " — " + primeraLinea(e.getMessage()));
+                System.out.println("Selector que se buscaba: " + ultimoSelector);
                 diagnosticoEstructura(page);
                 salirBestEffort(page);
                 cerrada = true;
@@ -191,20 +171,127 @@ class OvzSpikeBajaMuerteTest {
         }
     }
 
-    // --- Bloqueo duro de «Aceptar» -------------------------------------------------------------------------
+    // --- Mecanismo único de localización (cross-frame, por JS, sin exigir visibilidad) --------------------
 
-    /** Lanza si el selector/locator apunta al «Aceptar» de OVZ; si no, pulsa. Cada clic pasa por aquí. */
-    private void clicSeguro(Page page, com.microsoft.playwright.Locator locator, String etiqueta) {
-        prohibirAceptar(locator.toString());
-        prohibirAceptar(etiqueta);
-        locator.click();
+    /**
+     * Busca el selector CSS en TODOS los frames (como el diagnóstico), esperando hasta {@link #TIMEOUT_MS} a que
+     * aparezca. Devuelve el Frame que lo contiene; lanza nombrando el selector si no aparece.
+     */
+    private Frame frameCon(Page page, String css, String etiqueta) {
+        ultimoSelector = "css=\"" + css + "\" (" + etiqueta + ")";
+        long fin = System.currentTimeMillis() + (long) TIMEOUT_MS;
+        do {
+            for (Frame f : page.frames()) {
+                try {
+                    Object n = f.evaluate("(sel) => document.querySelectorAll(sel).length", css);
+                    if (n instanceof Number num && num.intValue() > 0) {
+                        return f;
+                    }
+                } catch (Throwable ignored) {
+                    // frame aún navegando: se reintenta
+                }
+            }
+            page.waitForTimeout(200);
+        } while (System.currentTimeMillis() < fin);
+        throw new IllegalStateException("no se encontró el selector " + css + " (" + etiqueta + ")");
     }
+
+    /** Escribe en el primer elemento que casa (foco + value + input/change), sin exigir visibilidad. */
+    private void escribir(Page page, String css, String valor, String etiqueta) {
+        Frame f = frameCon(page, css, etiqueta);
+        f.evaluate("([sel, v]) => { const e = document.querySelector(sel); if (e.focus) e.focus();"
+                + " e.value = v; e.dispatchEvent(new Event('input', {bubbles:true}));"
+                + " e.dispatchEvent(new Event('change', {bubbles:true})); }", List.of(css, valor));
+    }
+
+    /** Pulsa el primer elemento que casa (element.click()), sin exigir visibilidad. Bloqueo duro de «Aceptar». */
+    private void pulsar(Page page, String css, String etiqueta) {
+        prohibirAceptar(css);
+        prohibirAceptar(etiqueta);
+        Frame f = frameCon(page, css, etiqueta);
+        f.evaluate("(sel) => { const e = document.querySelector(sel); e.click(); }", css);
+        esperarQuietud(page);
+    }
+
+    /** Elige en un &lt;select&gt; la opción por value y dispara change (postback), sin exigir visibilidad. */
+    private void seleccionarValor(Frame f, String css, String value, String etiqueta) {
+        ultimoSelector = "css=\"" + css + "\" (" + etiqueta + ")";
+        f.evaluate("([sel, v]) => { const s = document.querySelector(sel); s.value = v;"
+                + " s.dispatchEvent(new Event('change', {bubbles:true})); }", List.of(css, value));
+        esperarQuietud(f.page());
+    }
+
+    /** Pulsa el primer clicable cuyo texto/valor normaliza al dado (cross-frame, sin acentos, sin visibilidad). */
+    private void pulsarPorTexto(Page page, String texto, String etiqueta) {
+        prohibirAceptar(texto);
+        prohibirAceptar(etiqueta);
+        ultimoSelector = "texto=\"" + texto + "\" (" + etiqueta + ")";
+        String objetivo = normaliza(texto);
+        long fin = System.currentTimeMillis() + (long) TIMEOUT_MS;
+        do {
+            for (Frame f : page.frames()) {
+                try {
+                    Object res = f.evaluate(JS_TEXTOS_CLICABLES);
+                    if (res instanceof List<?> textos) {
+                        for (int i = 0; i < textos.size(); i++) {
+                            if (normaliza(String.valueOf(textos.get(i))).equals(objetivo)) {
+                                f.evaluate(JS_CLICK_INDICE, i);
+                                esperarQuietud(page);
+                                return;
+                            }
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+            page.waitForTimeout(200);
+        } while (System.currentTimeMillis() < fin);
+        throw new IllegalStateException("no se encontró por texto: " + texto + " (" + etiqueta + ")");
+    }
+
+    /** Lee el value/textContent del primer elemento que casa; devuelve null si no hay. Nunca loguea el valor. */
+    private String leer(Page page, String css, String etiqueta) {
+        Frame f = frameCon(page, css, etiqueta);
+        Object r = f.evaluate("(sel) => { const e = document.querySelector(sel); if (!e) return null;"
+                + " const v = (e.value !== undefined && e.value !== null && e.value !== '')"
+                + " ? e.value : (e.textContent || ''); const t = v.trim(); return t ? t : null; }", css);
+        return r == null ? null : r.toString();
+    }
+
+    private void esperarQuietud(Page page) {
+        try {
+            page.waitForLoadState();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** Todos los clicables de un frame, en orden estable; para &lt;input&gt; se usa el value/alt. */
+    private static final String JS_TEXTOS_CLICABLES = """
+            () => {
+              const els = Array.from(document.querySelectorAll(
+                "a, button, input[type=submit], input[type=button], input[type=image], [onclick]"));
+              return els.map(e => e.tagName === 'INPUT'
+                ? (e.getAttribute('value') || e.getAttribute('alt') || '').trim()
+                : (e.textContent || '').trim());
+            }
+            """;
+
+    /** Pulsa el i-ésimo clicable (mismo orden que JS_TEXTOS_CLICABLES). */
+    private static final String JS_CLICK_INDICE = """
+            (i) => {
+              const els = Array.from(document.querySelectorAll(
+                "a, button, input[type=submit], input[type=button], input[type=image], [onclick]"));
+              if (els[i]) els[i].click();
+            }
+            """;
+
+    // --- Bloqueo duro de «Aceptar» -----------------------------------------------------------------------
 
     private void prohibirAceptar(String texto) {
         if (texto != null) {
             String t = texto.toLowerCase();
             if (t.contains(SUFIJO_ACEPTAR.toLowerCase()) || t.contains("aceptar") || t.contains("solicitar")) {
-                throw new ClicProhibidoException("selector='" + texto + "'");
+                throw new ClicProhibidoException("selector/etiqueta='" + texto + "'");
             }
         }
     }
@@ -215,30 +302,29 @@ class OvzSpikeBajaMuerteTest {
         }
     }
 
-    /**
-     * Intenta cerrar la sesión con «Salir» tras un fallo. Nunca lanza (ya estamos fallando) y solo pulsa el
-     * botón «Salir» por su id — jamás «Aceptar». Si no encuentra «Salir», la sesión se deja caducar.
-     */
+    /** Intenta cerrar con «Salir» tras un fallo. Nunca lanza y solo pulsa el botón «Salir» por su id. */
     private void salirBestEffort(Page page) {
         try {
-            com.microsoft.playwright.Locator salir = page.locator("#" + ID_SALIR);
-            if (salir.count() > 0) {
-                salir.click();
-                System.out.println("PASO Salir (tras fallo) OK: sesion cerrada");
-            } else {
-                System.out.println("PASO Salir (tras fallo): no se encontro el boton Salir; la sesion se dejara caducar");
+            for (Frame f : page.frames()) {
+                Object n = f.evaluate("(sel) => document.querySelectorAll(sel).length", "#" + ID_SALIR);
+                if (n instanceof Number num && num.intValue() > 0) {
+                    f.evaluate("(sel) => { const e = document.querySelector(sel); e.click(); }", "#" + ID_SALIR);
+                    System.out.println("PASO Salir (tras fallo) OK: sesion cerrada");
+                    return;
+                }
             }
-        } catch (Throwable ignored) {
+            System.out.println("PASO Salir (tras fallo): no se encontro el boton Salir; la sesion se dejara caducar");
+        } catch (Throwable e) {
             System.out.println("PASO Salir (tras fallo): no se pudo pulsar Salir; la sesion se dejara caducar");
         }
     }
 
-    // --- Diagnóstico de estructura (solo estructura, NUNCA valores ni textos de usuario) --------------------
+    // --- Diagnóstico de estructura (solo estructura, NUNCA valores ni textos de usuario) ------------------
 
     /**
-     * JS que devuelve una lista de líneas describiendo la ESTRUCTURA del frame: por cada input/select/button y
-     * por cada enlace con postback, su etiqueta, type, id, name y (solo botones/enlaces) el texto visible.
-     * NUNCA el {@code value} de un campo ni el contenido de celdas: solo estructura y etiquetas de controles.
+     * JS que describe la ESTRUCTURA del frame: por cada input/button y enlace con postback su etiqueta, type,
+     * id, name y (botones/enlaces) el texto visible; por cada select, su id/name, nº de opciones y SOLO la
+     * especie de cada opción (lo que va tras « - »). NUNCA el {@code value} ni el REGA.
      */
     private static final String JS_ESTRUCTURA = """
             () => {
@@ -278,7 +364,7 @@ class OvzSpikeBajaMuerteTest {
             }
             """;
 
-    /** Vuelca la estructura de la página y de cada frame (los campos de login podrían estar en un iframe). */
+    /** Vuelca la estructura de la página y de cada frame (los campos podrían estar en un iframe). */
     private void diagnosticoEstructura(Page page) {
         try {
             System.out.println("--- DIAGNOSTICO DE ESTRUCTURA (solo estructura, sin valores) ---");
@@ -310,16 +396,7 @@ class OvzSpikeBajaMuerteTest {
         }
     }
 
-    /** URL sin la query (los parámetros pueden llevar claves internas). */
-    private String sinParametros(String url) {
-        if (url == null) {
-            return "(sin url)";
-        }
-        int q = url.indexOf('?');
-        return q >= 0 ? url.substring(0, q) : url;
-    }
-
-    /** JS que recoge el texto visible de validadores/etiquetas de error (textos de la app, no datos personales). */
+    /** JS que recoge el texto visible de validadores/etiquetas de error (textos de la app, no datos). */
     private static final String JS_ERRORES = """
             () => {
               const out = [];
@@ -334,7 +411,7 @@ class OvzSpikeBajaMuerteTest {
             }
             """;
 
-    /** Imprime los mensajes de error que OVZ muestre en Inicio.aspx tras un login fallido (solo textos de la app). */
+    /** Imprime los mensajes de error de OVZ en Inicio.aspx tras un login fallido (solo textos de la app). */
     private void imprimirErroresOvz(Page page) {
         try {
             Object res = page.evaluate(JS_ERRORES);
@@ -366,6 +443,16 @@ class OvzSpikeBajaMuerteTest {
             }
             """;
 
+    // --- Utilidades --------------------------------------------------------------------------------------
+
+    private String requerida(String nombre) {
+        String v = System.getenv(nombre);
+        if (v == null || v.isBlank()) {
+            fail("Falta la variable de entorno " + nombre + " (expórtala desde tu .env fuera del repo).");
+        }
+        return v;
+    }
+
     /** Minúsculas y sin acentos (para casar «Bóvidos»/«bovidos»). */
     private String normaliza(String s) {
         if (s == null) {
@@ -383,27 +470,12 @@ class OvzSpikeBajaMuerteTest {
         return s.replaceAll("\\s", "").toUpperCase();
     }
 
-    // --- Utilidades ----------------------------------------------------------------------------------------
-
-    private String requerida(String nombre) {
-        String v = System.getenv(nombre);
-        if (v == null || v.isBlank()) {
-            fail("Falta la variable de entorno " + nombre + " (expórtala desde tu .env fuera del repo).");
+    private String sinParametros(String url) {
+        if (url == null) {
+            return "(sin url)";
         }
-        return v;
-    }
-
-    /** Lee el valor/texto de la primera coincidencia; devuelve null si no hay. Nunca loguea el valor. */
-    private String textoDe(Page page, String selector) {
-        com.microsoft.playwright.Locator loc = page.locator(selector).first();
-        if (loc.count() == 0) {
-            return null;
-        }
-        String valor = loc.inputValue();
-        if (valor == null || valor.isBlank()) {
-            valor = loc.textContent();
-        }
-        return (valor == null || valor.isBlank()) ? null : valor;
+        int q = url.indexOf('?');
+        return q >= 0 ? url.substring(0, q) : url;
     }
 
     private void ok(int paso, String que) {
