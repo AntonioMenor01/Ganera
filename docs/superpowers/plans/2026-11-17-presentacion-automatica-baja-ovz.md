@@ -62,10 +62,14 @@ anota en CLAUDE.md con este plan y se cierra al implementarlo.
 - Se **usan** los reservados de `EstadoTramite`: `EN_PROCESO` (trabajo en curso), `EJECUTADO_OVZ` (baja
   presentada + «Aceptar» dado por Ganera), `ERROR_OVZ` (falló; con motivo y aviso al gestor).
 - `HECHO_EN_OVZ` (marca manual del escalón 1) **se mantiene** para el camino manual; `EJECUTADO_OVZ` es el
-  automático (su etiqueta «ejecutado» ahora es cierta: lo hizo Ganera). Decidir si ambos caminos conviven o si
-  para `BAJA_MUERTE` con credenciales se usa solo el automático (Decisión).
-- Transiciones: `APROBADO` → `EN_PROCESO` → (`EJECUTADO_OVZ` | `ERROR_OVZ`). Desde `ERROR_OVZ`, el gestor puede
-  corregir y reaprobar, o resolverlo a mano; **nunca** se reintenta una presentación automáticamente.
+  automático (su etiqueta «ejecutado» ahora es cierta: lo hizo Ganera). **Convivencia (D4):** se usa el
+  automático **cuando hay credenciales guardadas**; si no las hay, cae al **manual** (`HECHO_EN_OVZ`).
+- **Dos clases de `ERROR_OVZ` (D11):** **seguro** (falló **antes** de «Aceptar»: no se presentó nada) e
+  **incierto** (falló **después** de «Aceptar» y la consulta en Documentos no lo resolvió). Se guardan
+  distinguibles (p. ej. un sub-motivo/flag en el trabajo), porque gobiernan el reencolado (§6, D11).
+- Transiciones: `APROBADO` → `EN_PROCESO` → (`EJECUTADO_OVZ` | `ERROR_OVZ` seguro | `ERROR_OVZ` incierto).
+  **Nunca** se reintenta una presentación automáticamente; el reencolado manual depende de la clase de error
+  (§6).
 
 ## 5. Verificación antes de «Aceptar»
 
@@ -79,8 +83,13 @@ que la T2 de la extensión, reutilizable como función pura.)
 - Ganera **nunca reintenta una presentación** ante una respuesta incierta (caída/timeout justo tras «Aceptar»).
 - Ante incertidumbre, **consulta en Documentos › Documentos** (tipo «Baja Animal», por crotal/fecha) si la baja
   ya aparece: si está → `EJECUTADO_OVZ` (y descarga el justificante); si **no se sabe** con certeza →
-  `ERROR_OVZ` con aviso al gestor para que lo compruebe a mano. Nunca un segundo «Aceptar».
-- La clave de idempotencia del trabajo evita que reencolar el mismo trámite genere dos presentaciones.
+  `ERROR_OVZ` **incierto** con aviso al gestor para que lo compruebe a mano. Nunca un segundo «Aceptar».
+- **Reencolado (D11):** desde `ERROR_OVZ` **seguro** (falló antes de «Aceptar»), el gestor **corrige y vuelve a
+  aprobar** y se reencola. Desde `ERROR_OVZ` **incierto** (falló tras «Aceptar»), **solo** se reencola si el
+  gestor **confirma explícitamente** que ha comprobado en OVZ que la baja **no** se presentó; esa confirmación
+  **queda auditada** (actor USUARIO) y es la única vía. Sin ella, no se reencola nunca.
+- La clave de idempotencia del trabajo (por trámite) evita que reencolar el mismo trámite genere dos
+  presentaciones.
 
 ## 7. Caducidad de sesión y cuentas con certificado
 
@@ -138,33 +147,50 @@ que la T2 de la extensión, reutilizable como función pura.)
 - **Se aparca** toda la carpeta **`extension/`** (T2): no participa en el camino automático. Se conserva sin
   borrar.
 
-## 11. Decisiones abiertas
+## 11. Decisiones (cerradas por Antonio el 2026-11-17)
 
-- **D1 — Infra del worker.** ¿Worker de OVZ en una **instancia Docker aparte** (imagen oficial de Playwright,
-  recomendado por el spike) o Playwright en la instancia del backend? Depende del resultado del spike en Clever
-  (Chromium + dependencias) y de si OVZ responde a la IP de Clever.
-- **D2 — Lenguaje/stack del worker.** Playwright **Java** (como la dependencia actual del backend) en el
-  contenedor, o un worker Node. Java reaprovecha el modelo de dominio; Node es más ligero para Playwright.
-- **D3 — Candado y concurrencia.** Candado **por ganadero** confirmado; ¿cuántos trabajos de ganaderos distintos
-  a la vez (1 global por el detector de instancias de OVZ, o N si cada uno es sesión/cuenta independiente)?
-- **D4 — Convivencia de caminos.** ¿`HECHO_EN_OVZ` (manual) y `EJECUTADO_OVZ` (automático) conviven por trámite,
-  o para `BAJA_MUERTE` con credenciales se fuerza el automático? ¿Qué pasa si no hay credenciales guardadas (cae
-  al manual)?
-- **D5 — Detección de «ya presentada»** en Documentos: por qué columnas casar (crotal + fecha + tipo), y el
-  umbral para decidir «sí está» vs «incierto → ERROR_OVZ».
-- **D6 — Almacén de documentos.** Supabase Storage (bucket privado) vs Clever Cellar/S3; tamaño máximo; vida de
-  la signed URL; retención del binario.
-- **D7 — Pauta de reintento de la *descarga*** del justificante (cuántos intentos, cada cuánto) y cómo se marca
-  «documento pendiente» sin tocar el estado de presentación.
-- **D8 — Detección de cuenta con certificado** antes de intentar (para dar `ERROR_OVZ` claro y no bloquear la
-  sesión): ¿se sabe por un flag en el ganadero, o se detecta en la pantalla de entrada?
-- **D9 — Selectores reales** (login, Código RIIA, explotación, descarga en `GVDocumentos`): confirmarlos con el
-  spike y la cuenta de Antonio antes de codificar (los ids de login y de solo lectura no están en el mapa).
-- **D10 — Regla no-negociable del CLAUDE.md.** Redactar la nueva versión: «el clic humano es la Aprobación en
-  Ganera; Ganera presenta en OVZ solo un trámite ya aprobado, con verificación previa y sin reintento ante
-  incertidumbre». Reconciliar con los textos de honestidad del frontend.
-- **D11 — Idempotencia y reencolado.** Clave por trámite; qué permite reencolar (solo desde `ERROR_OVZ` tras
-  corrección) y qué no.
+D1–D10 se cierran tal como se recomendaban; D11 con el matiz de Antonio (dos clases de `ERROR_OVZ`).
+
+- **D1 — Infra del worker.** **Worker de OVZ en una instancia Docker aparte** (imagen oficial de Playwright,
+  con Chromium y dependencias), no Playwright en la instancia XS Java del backend. Previo: confirmar con el
+  spike que Chromium arranca en Clever y que OVZ responde a la IP de Clever.
+- **D2 — Lenguaje/stack del worker.** **Playwright Java** en el contenedor (reaprovecha el modelo de dominio y
+  la dependencia ya presente), no un worker Node.
+- **D3 — Candado y concurrencia.** Candado **por ganadero**, y para empezar **un solo trabajo global a la vez**
+  (serializado), por el detector de «varias instancias» de OVZ y la IP compartida. Subir a N por ganadero solo
+  si se confirma que son sesiones/IPs realmente independientes.
+- **D4 — Convivencia de caminos.** **Automático cuando hay credenciales guardadas**; si no las hay, cae al
+  **manual** (`HECHO_EN_OVZ`). No se fuerza el automático; la ausencia de credenciales no bloquea al gestor.
+- **D5 — Detección de «ya presentada»** en Documentos. Casar por **crotal + tipo «Baja Animal» + fecha**
+  (ventana estrecha alrededor de la muerte/presentación). Match inequívoco → `EJECUTADO_OVZ`; cualquier duda →
+  `ERROR_OVZ` incierto con aviso. Nunca asumir que se presentó.
+- **D6 — Almacén de documentos.** **Supabase Storage, bucket privado** (la BD ya es Supabase); descarga servida
+  por el backend con **signed URL de corta vida** tras comprobar la gestoría; **tamaño máximo ~10 MB**. (Clever
+  Cellar/S3 queda como alternativa si hiciera falta.)
+- **D7 — Reintento de la *descarga*** del justificante. Reintentos **acotados de solo la descarga** (p. ej.
+  +1 min / +10 min / +1 h, máx 3–4); si no aparece, el trámite se queda `EJECUTADO_OVZ` con el **documento
+  marcado como pendiente** y se reintenta más tarde. **Nunca** se reintenta la presentación por un documento
+  que no aparece.
+- **D8 — Detección de cuenta con certificado.** **Flag en el ganadero** (marcado al dar de alta las
+  credenciales: «usa certificado») **+** detección defensiva en la pantalla de entrada. Si se detecta,
+  `ERROR_OVZ` con motivo claro y camino manual; no soportado en automático.
+- **D9 — Selectores reales** (login, Código RIIA, explotación, descarga en `GVDocumentos`). Confirmarlos con el
+  **spike y la cuenta de Antonio antes de codificar**; localizar por **sufijo de id + texto**, nunca id
+  absoluto; fallar con claridad si falta un selector.
+- **D10 — Regla no-negociable del CLAUDE.md.** Redacción nueva: «el **clic humano es la Aprobación en Ganera**;
+  Ganera presenta en OVZ **solo un trámite ya aprobado**, con **verificación previa** (crotal + explotación) y
+  **sin reintento ante incertidumbre**». Se cierra la redacción al implementar y se reconcilia con los textos de
+  honestidad del frontend.
+- **D11 — Idempotencia y reencolado (con el matiz de Antonio).** Clave **por trámite** (reencolar no duplica).
+  El reencolado depende de **qué clase de `ERROR_OVZ`** es (ver §4 y §6):
+  - **`ERROR_OVZ` seguro** — falló **antes** de «Aceptar» (verificación que no cuadra, login, navegación,
+    certificado…): no se presentó nada, así que **reencolar está permitido** tras **corregir y volver a
+    aprobar** el trámite.
+  - **`ERROR_OVZ` incierto** — falló **después** de «Aceptar» (caída/timeout tras pulsarlo) y la consulta en
+    Documentos **no** lo resolvió: **reencolar solo si el gestor confirma explícitamente** que ha comprobado en
+    OVZ que la baja **no** se presentó; esa confirmación **queda auditada** (actor USUARIO) y es la única vía de
+    reintento. Sin esa confirmación, **nunca** se reencola (riesgo de doble presentación).
+  - **`EJECUTADO_OVZ`** nunca se reencola.
 
 ## 12. Riesgos
 
