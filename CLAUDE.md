@@ -324,10 +324,9 @@ approval step before anything is written to OVZ.net.
   placeholder until one is created in the Stripe dashboard) with quantity = active Explotaciones
   count, 15-day trial baked into the Checkout Session. `StripeCheckoutService` sets
   `client_reference_id` = `gestoriaId` on the Checkout Session — this is how the
-  `checkout.session.completed` webhook maps back to a Gestoría, not the Stripe customer ID. Since
-  2026-10-04 the **only** caller is the public self-registration (`POST /gestorias/registro`,
-  `crearSesionCheckoutConCantidadEstimada`): the app's own `POST /facturacion/checkout` was removed
-  (billing moves to Ganera's landing, see "Billing moved out of the app"). Pilot Gestorías (created
+  `checkout.session.completed` webhook maps back to a Gestoría, not the Stripe customer ID. The
+  **only** caller is the public self-registration (`POST /gestorias/registro`,
+  `crearSesionCheckoutConCantidadEstimada`). Pilot Gestorías (created
   via `/internal/onboarding/gestoria`) never touch this flow; when the checkout runs and no
   `Suscripcion` row exists yet for the Gestoría, `SuscripcionService.obtenerOCrearSuscripcion`
   creates one in `TRIAL` on the spot (idempotent via
@@ -341,159 +340,82 @@ approval step before anything is written to OVZ.net.
   already had stored (`TRIAL` → `TRIAL_EXPIRADO_SIN_PAGO`, anything else → `IMPAGO_GRACIA`).
   **Known limitation, accepted for pilot volume:** webhook re-delivery/out-of-order protection is
   only a monotonic guard on `event.created` (`stripe_ultimo_evento_epoch`, strictly-less-than
-  comparison) — there is no dedupe by `event.id`. Two distinct events landing in the same
-  epoch-second can be applied in either order; revisit (e.g. an `event.id` seen-table) before
-  scaling past pilot volume. A daily `@Scheduled` job (`SuscripcionSyncScheduler`, cron
+  comparison) — there is no dedupe by `event.id`. A daily `@Scheduled` job (`SuscripcionSyncScheduler`, cron
   `0 0 3 * * *` `Europe/Madrid`) reconciles `explotacionesContratadas` against the live Explotación
   count for every `ACTIVA`/`IMPAGO_GRACIA` subscription and pushes quantity changes to Stripe
-  (default proration) — deliberately nightly rather than on every Explotación create/delete, to
-  avoid coupling the Explotación CRUD to Stripe calls. It runs outside any HTTP request, so the
+  (default proration). It runs outside any HTTP request, so the
   `gestoriaFilter` Hibernate filter is never active for its queries — that's an intentional
   cross-tenant job, not a multi-tenancy leak. A failed push for one subscription is caught and
   logged per-iteration so it never aborts the rest of the nightly batch.
   **Known limitation:** `SuscripcionSyncScheduler` only reconciles `ACTIVA`/`IMPAGO_GRACIA`
   subscriptions — a Gestoría still in `TRIAL` never gets its `explotacionesContratadas`
-  auto-corrected against its real Explotación count during the trial window. This matters for the
-  public self-registration flow (`POST /gestorias/registro`, see below): the quantity it sends to
-  Stripe is an *estimate* derived from a client-count range, not a real Explotación count (there
-  are no Explotaciones yet at registration time), and that estimate will not self-correct until
-  the subscription actually reaches `ACTIVA`/`IMPAGO_GRACIA` — or until a future manual adjustment
-  screen exists (deliberately out of scope for now). Don't assume `explotacionesContratadas` is
+  auto-corrected against its real Explotación count during the trial window. Don't assume `explotacionesContratadas` is
   accurate for a `TRIAL` subscription.
-  **Known bugs, detected 2026-09-25 in a full-project review:**
-  1. *`invoice.payment_failed` on an already-`TRIAL_EXPIRADO_SIN_PAGO` subscription.* **FIXED
-     (2026-10-26, `feat/stripe-enlace-alta`, test-first.)** `StripeWebhookService.procesarPagoFallido`
-     now maps `TRIAL` **or** `TRIAL_EXPIRADO_SIN_PAGO` → `TRIAL_EXPIRADO_SIN_PAGO` (Prompt 2.7 plan,
-     Decision 4); any other stored state still → `IMPAGO_GRACIA`. Before, the second failed retry after
-     an unpaid trial flipped the subscription to `IMPAGO_GRACIA`, which **re-enabled**
-     `puedeAprobarTramites`. Covered by
-     `StripeWebhookServiceTest.procesarPagoFallidoDesdeTrialExpiradoSinPagoSeQuedaIgualYNoPasaAImpagoGracia`.
+  **Known bugs:**
+  1. *`invoice.payment_failed` on an already-`TRIAL_EXPIRADO_SIN_PAGO` subscription.* **FIXED:**
+     `StripeWebhookService.procesarPagoFallido`
+     maps `TRIAL` **or** `TRIAL_EXPIRADO_SIN_PAGO` → `TRIAL_EXPIRADO_SIN_PAGO`;
+     any other stored state still → `IMPAGO_GRACIA`.
   2. *Abandoned trial never expires.* (Still PENDING.) `SuscripcionService.obtenerOCrearSuscripcion` creates the
-     `Suscripcion` row in `TRIAL` **before** the Checkout Session is completed (from
-     `POST /gestorias/registro`; until 2026-10-04 also from the app's `POST /facturacion/checkout`).
+     `Suscripcion` row in `TRIAL` **before** the Checkout Session is completed.
      If the Gestoría abandons
      Stripe Checkout, no webhook ever arrives and nothing local expires the row, so it stays in
      `TRIAL` — with full approval rights — indefinitely. Needs a design decision (e.g. don't grant
-     `TRIAL` until `checkout.session.completed`, or a local trial-expiry check) before fixing.
-- **Landing payment linking — `alta_pendiente` + onboarding link (2026-10-26, `feat/stripe-enlace-alta`;
-  phase 1 of the "billing from the landing" flow, pilot / semi-manual).** Ganera now charges from the
-  landing (`ganera-web`), which creates Checkout Sessions with a **fixed price per plan** (Base/Gestión/Plus,
-  monthly/annual), **not per Explotación**, carrying `metadata {plan, periodo, prueba, source:"ganera-web"}`
-  and **no `client_reference_id`**. Contract in `ganera-web/docs/INTEGRACION-APP.md`. This task wires the
-  payment to the app **safely**, without yet creating the Usuario or sending any email (that is the automatic
-  phase, below).
-  - **API-version mismatch (critical).** The live webhook is created with API `2026-09-30.endive`; the SDK
-    (stripe-java 28.2.0) is `2024-12-18.acacia`. With that mismatch
-    `evento.getDataObjectDeserializer().getObject()` comes back **empty** and the SDK types
-    (Session/Invoice/Subscription) can't be deserialized from the event, so `manejarXxx` was silently
-    dropping events. The SDK was **not** bumped. Instead all five handled events
-    (`checkout.session.completed`, `invoice.payment_succeeded`, `invoice.payment_failed`,
-    `customer.subscription.updated/deleted`) extract their fields from the **raw JSON**
-    (`getDataObjectDeserializer().getRawJson()` + `getData().getPreviousAttributes()`) with pure static
-    extractors (`extraerCheckout`, `extraerSubscriptionIdDeInvoice`, `extraerSuscripcion` — tested with
-    endive fixtures). Outgoing calls (`Session.listLineItems`, `Subscription.retrieve`) keep using the SDK
-    (Stripe answers in the SDK's version). The invoice's subscription id supports both the old top-level
-    `subscription` and the new `parent.subscription_details.subscription`. **If an essential field can't be
-    extracted → ERROR log (event id + type) + `EventoStripeNoProcesableException` → 5xx so Stripe retries;
-    never a silent 200** (`StripeWebhookController` catches it).
-  - **`alta_pendiente` table (migration `V24`, non-tenant — no `gestoria_id`, exists before the Gestoría):**
-    on `checkout.session.completed` without `client_reference_id`, if `source=="ganera-web"` **or** a session
-    price is in the configurable map (Payment Links), a row is saved (PENDIENTE) with session/customer/
-    subscription ids, email, name, NIF (`customer_details.tax_ids`), billing address, plan, periodo, prueba.
-    Idempotent by `stripe_session_id` UNIQUE. **No message bodies or card data; logs carry ids only.** Each
-    new row logs **WARN with ids only** for Antonio/Adolfo to see in Clever. The RLS `afterMigrate` callback
-    covers it as a normal table (`ganera_app_todo`). Price map: single env var **`STRIPE_PRICE_PLAN_MAP`**
-    (`ganera.stripe.precio-plan-map`), format `priceId=plan:periodo,...`, **empty default, nothing
-    hardcoded**; `source=ganera-web` is recognised without it, the map is only for Payment Links.
-  - **`POST /internal/onboarding/gestoria` accepts an optional `stripeSubscriptionId`:** if present it links
-    the new Gestoría's `Suscripcion` (`stripeCustomerId`, `stripeSubscriptionId`, `plan`/`periodo` from the
-    `alta_pendiente` row or the Subscription metadata) and **recomputes the estado by retrieving the
-    Subscription from Stripe** (`EnlaceStripeService`: `trialing→TRIAL`, `active→ACTIVA`, `past_due→IMPAGO_GRACIA`,
-    `unpaid→SUSPENDIDA`, `canceled→CANCELADA`), then marks the `alta_pendiente` ENLAZADA. **Stripe not
-    configured → 503** (checked before creating anything); a Stripe call failure → 502 **and rolls back** the
-    whole `@Transactional` (Gestoría + Usuario + Suscripción). Recomputing the estado from Stripe at link time
-    means a `invoice.payment_succeeded` that arrived **before** the link isn't lost (order-independent).
-  - **Fixed-plan marker (double-charge guard):** `Suscripcion.plan`/`periodo` columns (migration `V24`).
-    When `plan != null` (a landing/fixed-price subscription), `SuscripcionSyncScheduler.calcularAjustes`
-    **excludes it** from the nightly quantity reconciliation — otherwise the job would push
-    quantity = number of Explotaciones to a fixed price and multiply the charge. `plan == null` keeps the
-    legacy per-Explotación behaviour. Covered by
-    `SuscripcionSyncSchedulerTest.excluyeLasSuscripcionesDePlanFijoAunqueLaCantidadDifiera`.
-  - **Still pending — automatic phase (not built on purpose for the pilot):** create the Usuario and send an
-    **activation email with Ganera's own password-reset token (JWT-based, NOT Supabase Auth)** on
-    `checkout.session.completed`, so the customer who paid gets the account the landing's `/gracias` page
-    promises. Today that email is **not** sent and the Usuario is **not** created automatically — Antonio
-    links each payment by hand via `/internal/onboarding/gestoria`, so a paying customer sees the "we've
-    emailed you" promise but gets nothing until then (accepted gap for the pilot). The `INTEGRACION-APP.md`
-    contract still says Supabase Auth `inviteUserByEmail`; that is **obsolete** (the app uses its own JWT),
-    and the landing's copy of the doc will be corrected by Antonio.
-- **Public self-registration** (`registro` package) — **closed by default since C mínimo
-  (2026-10-06)**: `ganera.registro.abierto` is `false` in `application.yml` and only
+     `TRIAL` until `checkout.session.completed`, or a local trial-expiry check) before fixing. — historia en [docs/historia/decisiones-tecnicas-historico.md](docs/historia/decisiones-tecnicas-historico.md).
+- **Landing payment linking (`alta_pendiente` + onboarding link, 2026-10-26):** cobro desde la landing con precio fijo por plan; `alta_pendiente` (V24) + enlace en el onboarding; API-version mismatch resuelto por JSON crudo. **Guard anti-doble-cargo:** cuando `Suscripcion.plan != null` (plan fijo de la landing), `SuscripcionSyncScheduler.calcularAjustes` **excluye** esa suscripción de la reconciliación nocturna de cantidad (si no, empujaría cantidad = nº de Explotaciones a un precio fijo y multiplicaría el cargo); `plan == null` mantiene el comportamiento por-Explotación. Historico completo en [docs/historia/decisiones-tecnicas-historico.md](docs/historia/decisiones-tecnicas-historico.md).
+- **Public self-registration** (`registro` package) — **closed by default since C mínimo**:
+  `ganera.registro.abierto` is `false` in `application.yml` and only
   `RegistroGestoriaEndToEndTest` opens it; while closed, `RegistroCerradoFilter` answers `404` with no
   body before Spring Security, without reading the body or creating anything. The frontend
   `RegistroPage`, its API and the "Regístrate" link were deleted (`/registro` → `/login`); sign-up
   moves to the landing in Prompt C. The rest of this bullet describes the endpoint when open:
   `POST /gestorias/registro`, public (no JWT,
   no shared secret), in parallel with `/internal/onboarding/gestoria` — the internal endpoint is
-  unchanged and stays for support/manual cases; this is an additional entry point for real
-  customers, not a replacement. Reuses the exact Gestoria→Usuario creation shape already proven by
+  unchanged and stays for support/manual cases. Reuses the exact Gestoria→Usuario creation shape proven by
   `OnboardingController` (`RegistroGestoriaService.crearGestoriaYUsuario`, `@Transactional`), but
   does not set a `Suscripcion` itself — it lets the immediate `StripeCheckoutService` call create it
-  in `TRIAL` via the already-existing `obtenerOCrearSuscripcion`, exactly like the authenticated
-  checkout flow already does. A Gestoría knows its number of clients (Ganaderos), not how many
-  Explotaciones they add up to, so the form asks for a **client-count range**
+  in `TRIAL` via `obtenerOCrearSuscripcion`. The form asks for a **client-count range**
   (`RangoClientes`: `UNO_A_DIEZ`, `ONCE_A_TREINTA`, `TREINTA_UNO_A_SETENTA_Y_CINCO`,
   `SETENTA_Y_SEIS_O_MAS`) instead of an Explotación count. Stripe still bills by Explotaciones
   (unchanged) — each range's **minimum** client count is multiplied by a starting ratio of 1.3
-  Explotaciones/client (a normal Ganadero has 1 Explotación, some have more — an explicit
-  **estimate**, not a real count) and rounded up (`RangoClientes.quantityExplotacionesEstimada()`),
+  Explotaciones/client and rounded up (`RangoClientes.quantityExplotacionesEstimada()`),
   giving quantities 2 / 15 / 41 / 99. Using the range's minimum (not its midpoint) is deliberate: it
-  never over-charges before the real inventory is known — see the `SuscripcionSyncScheduler`/`TRIAL`
-  limitation just above, which is exactly why this estimate won't self-correct until the
-  subscription leaves `TRIAL`. `StripeCheckoutService` gained
+  never over-charges before the real inventory is known. `StripeCheckoutService` gained
   `crearSesionCheckoutConCantidadEstimada(gestoriaId, cantidadEstimada)`, which skips the real
-  Explotación count and uses the private helper and `configuracionCompleta()` guard (its sibling
-  `crearSesionCheckout(gestoriaId)`, used only by the app's checkout, was removed on 2026-10-04). Validation
+  Explotación count and uses the private helper and `configuracionCompleta()` guard. Validation
   (`RegistroGestoriaValidacion`, package-private, pure static methods — deliberately not
-  `spring-boot-starter-validation`'s `@Valid`/`@Email`, which is on the classpath but unused
-  anywhere in this codebase, to avoid introducing a first `@ControllerAdvice` just for this one
-  endpoint) and the duplicate-email case (a real `UNIQUE(email)` violation, not a pre-check
+  `spring-boot-starter-validation`'s `@Valid`/`@Email`) and the duplicate-email case (a real `UNIQUE(email)` violation, not a pre-check
   `findByEmail`) all collapse into **one identical `400` + generic message** (as `{motivo}`, via
-  `shared/web/MotivoErrorResponse`, since the mini-prompt after A2 — it used to be `{mensaje}`;
-  `RegistroErrorResponse` was deleted; a test checks the bodies are byte-identical) — same principle as
-  `AuthService.autenticar`'s uniform `401`, so a duplicate email can't be distinguished from a weak
+  `shared/web/MotivoErrorResponse`) — so a duplicate email can't be distinguished from a weak
   password or a malformed one (no enumeration oracle for which Gestorías are already customers).
   `RegistroGestoriaService.crearGestoriaYUsuario` deliberately does **not** catch
   `DataIntegrityViolationException` itself — it must propagate out of the `@Transactional` method
   so Spring rolls back the `Gestoria` insert together with the failed `Usuario` insert; catching it
   inside would leave an orphan `Gestoria` row. `RegistroGestoriaController`, outside that
   transaction, is the one that catches it to shape the `400` response (and lets the checkout's
-  `StripeException` propagate as a generic `500`).
+  `StripeException` propagate as a generic `500`). — historia en [docs/historia/decisiones-tecnicas-historico.md](docs/historia/decisiones-tecnicas-historico.md).
 - **Excel inventory importer** (`explotacion` package, Prompt 3d): manual fallback for loading
-  Explotaciones/Animales when the OVZ.net read sync (Prompt 3a, still blocked) isn't available.
+  Explotaciones/Animales when the OVZ.net read sync isn't available.
   `POST /explotaciones/importar` (multipart `.xlsx`, Apache POI) parses two fixed-position sheets —
   "Explotaciones" (`codigo_rega, nombre, nif_ganadero, nombre_ganadero`) and "Animales"
   (`crotal, especie, codigo_rega_explotacion`) — reading by column *index*, not header name. A
   missing required sheet or a file that isn't a valid `.xlsx` throws
-  `FicheroImportacionInvalidoException` (mini-prompt after A2), the **only** source of the
+  `FicheroImportacionInvalidoException`, the **only** source of the
   importer's `400`, returned by `ExplotacionImportController` as `{motivo}` (no longer plain text).
   The file type is detected by **content** when opening the workbook (`abrirLibro`, which wraps
   only `new XSSFWorkbook(...)`), not by extension or `Content-Type`: an old `.xls` (OLE2) gets
   "El fichero es un Excel antiguo (.xls)…guárdalo como .xlsx…"; anything else (text, random bytes,
   empty, a non-xlsx ZIP, a truncated xlsx) gets "El fichero no es un Excel .xlsx válido." POI's
   English message never reaches the client. Any other failure while processing rows is still a
-  `500` (never disguised as "invalid file"). Known minor: an `IOException` inside
-  `new XSSFWorkbook(...)` can't be told apart from a server-side read failure of the upload, so
-  the latter would also be that `400`. `especie` is validated (must be
+  `500` (never disguised as "invalid file"). `especie` is validated (must be
   blank or a bovine label — Ganera only handles cattle for now) but **never persisted**: `Animal`
   has no `especie` column, an unsupported value is just a row error. Since Prompt A1 (decision 22)
-  the crotal is normalized with `CrotalNormalizador` (see the "Prompt A1" bullet) **before** it is
+  the crotal is normalized with `CrotalNormalizador` **before** it is
   stored, so `"es-0100 0000.1234"` is saved as `ES010000001234`; an invalid crotal (including 3
   digits or fewer) or one longer than 20 characters after normalization (`animal.crotal
   VARCHAR(20)`) is a row error. The importer still accepts an *incomplete* crotal (4–12 bare
   digits) into inventory — it is the approval rule that blocks sending one to OVZ.net.
-  `crotalUltimosDigitos` is derived as the last 6 characters of the (normalized) crotal — an
-  assumption kept from 3d; A1's trámite resolution doesn't depend on it (it matches by suffix).
+  `crotalUltimosDigitos` is derived as the last 6 characters of the (normalized) crotal.
   An optional third sheet, **"Contactos"** (Prompt A1: `telefono, nombre, codigo_explotacion
   (= codigo_rega), rol`), is processed after the other two if present; `ImportResumenResponse`
   gained a `contactos` summary (0/0/0 without the sheet). Per row: phone normalized, name
@@ -502,85 +424,49 @@ approval step before anything is written to OVZ.net.
   link added/role updated; own and inactive → row error; absent → inserted, and if the insert hits
   the global `UNIQUE(telefono)` (the phone belongs to another Gestoría) → a generic row error that
   never mentions another Gestoría. **Never `findByTelefono` here.**
-  **Known limitation (A1 review M4): existing `Animal.crotal` values were not migrated.** A crotal
-  imported before A1 with separators or lowercase (`ES 0100 0000 1234`) is not equal to its
-  normalized form, so re-importing the same animal now creates a *second* Animal (no UNIQUE
-  collision, the strings differ), and its last digits become `AMBIGUO` forever (there is no UI to
-  delete animals). Such a legacy crotal is also blocked at approval by the format rule. If a real
-  environment ever holds pre-A1 imported data, run a one-off normalizing `UPDATE` on
-  `animal.crotal` (checking for collisions first).
+  **Known limitation (A1 review M4): existing `Animal.crotal` values were not migrated** — a legacy
+  crotal with separators or lowercase re-imports as a *second* Animal and its last digits become
+  `AMBIGUO` forever; if a real environment ever holds pre-A1 imported data, run a one-off normalizing
+  `UPDATE` on `animal.crotal` (checking for collisions first).
   **Cross-tenant existence (A1 decision 17):** `codigo_rega`, `ganadero.nif`, `animal.crotal` and
   `contacto.telefono` are all *globally* unique, so a Gestoría can still deduce that a value exists
-  in another Gestoría (its own value updates, a foreign one fails) — an inherent limitation, same
-  as decision 1 for phones. What A1 closed: the importer used to answer "posible duplicado entre
-  gestorias"; it now answers a neutral "No se ha podido guardar la fila: alguno de sus
+  in another Gestoría (its own value updates, a foreign one fails) — an inherent limitation. The
+  importer answers a neutral "No se ha podido guardar la fila: alguno de sus
   identificadores (código REGA, NIF o crotal) no está disponible.", and `procesarExplotacion`/
   `procesarAnimal` only use finders with an explicit `gestoriaId`
   (`findByCodigoRegaAndGestoriaId`, `findByNifAndGestoriaId`, `findByCrotalAndGestoriaId`). The
   unscoped `findByCodigoRega`/`findByNif`/`findByCrotal` were **removed** from the repositories.
-  Caveat (A1 review M3): that neutral message also covers any other constraint violation on those
-  sheets — e.g. an over-long NIF or name, which aren't length-validated before the DB yet — and is
-  misleading there.
   **Per-row transaction isolation (`ExplotacionImportFilaService`):** `ExplotacionImportService`
-  upserts by `codigoRega`/`crotal`/`nif` (all real-world unique keys, see Domain model) and must
-  never abort the whole file on one bad row — but a code review caught that a *real* unique-
-  constraint violation on `saveAndFlush` (e.g. a `codigoRega` already owned by another Gestoría,
-  invisible to the current tenant filter) left Hibernate's persistence context unusable for the
-  rest of the sheet (`AssertionFailure: don't flush the Session after an exception occurs`) — rows
-  *after* the failing one broke too, with a generic error unrelated to their own data, not just the
-  bad row itself. Fixed by extracting all per-row DB work into `ExplotacionImportFilaService`, a
+  upserts by `codigoRega`/`crotal`/`nif` and must
+  never abort the whole file on one bad row. All per-row DB work lives in `ExplotacionImportFilaService`, a
   **separate** `@Service` bean (self-invocation within the same class doesn't go through Spring's
   `@Transactional` proxy, so REQUIRES_NEW must live on another bean) whose
   `procesarExplotacion`/`procesarAnimal`/`procesarContacto` each run in
   `@Transactional(propagation = REQUIRES_NEW)` — their own transaction, so one row's constraint
   violation rolls back only that row and never touches the rest of the file.
-  **Which `EntityManager` a REQUIRES_NEW row uses (corrected in Prompt A1, decision 19 — the
-  original 3d explanation here was wrong for HTTP).** Over HTTP, open-in-view binds the request's
+  **Which `EntityManager` a REQUIRES_NEW row uses (A1 decision 19).** Over HTTP, open-in-view binds the request's
   `EntityManager` to the thread *without* a transaction, and `ExplotacionImportService` is not
   `@Transactional`, so REQUIRES_NEW has nothing to suspend: it starts its transaction on that same
   OSIV `EntityManager`, where `TenantFilterActivationInterceptor` has already enabled
   `gestoriaFilter`. A brand-new `EntityManager` with **no filter active** is only opened when there
-  is **no `EntityManager` bound to the thread** (a `@Scheduled` job or any other non-request thread
-  — no outer transaction needed for this) **or there is an outer transaction** for REQUIRES_NEW to
+  is **no `EntityManager` bound to the thread** (a `@Scheduled` job or any other non-request thread)
+  **or there is an outer transaction** for REQUIRES_NEW to
   suspend (a `@Transactional` caller, `@DataJpaTest`). That's why each REQUIRES_NEW method still
-  re-enables `gestoriaFilter` with the `gestoriaId` passed in — and, since A1, every query there
+  re-enables `gestoriaFilter` with the `gestoriaId` passed in — and every query there
   also takes that `gestoriaId` as an explicit parameter, so it doesn't depend on the filter at all.
   Any other code that reaches for `REQUIRES_NEW` on a bean touching `GestoriaScopedEntity` data
-  must do the same. (Nit left from the A1 7a review, N2: the Javadoc of `ExplotacionImportFilaService`
-  still lists "a scheduler" under "only when there IS an outer transaction"; the precise condition
-  is the one stated here.)
+  must do the same.
   `GET /explotaciones` and `GET /tramites` (filterable by `estado`) are the first paginated
-  endpoints in the codebase (`Page`/`Pageable`, Spring Data's default web support — no custom
-  config needed). Since Prompt A1 (decision 21) both query with the JWT's `gestoriaId` as an
+  endpoints in the codebase (`Page`/`Pageable`). Since Prompt A1 (decision 21) both query with the JWT's `gestoriaId` as an
   explicit parameter (`findByGestoriaId…`), not only the ambient `gestoriaFilter`, and validate
-  `?sort=` against a whitelist (see the "Prompt A1" bullet). `POST /tramites/{id}/aprobar` gates on
-  `SuscripcionService.puedeAprobarTramites` (`403` if false) — the first real caller of that method.
+  `?sort=` against a whitelist. `POST /tramites/{id}/aprobar` gates on
+  `SuscripcionService.puedeAprobarTramites` (`403` if false).
   Neither `/aprobar` nor `/rechazar` calls `OvzAutomationService`, and approving never will: sending
   is a separate step of escalón 2 (modo asistido), on the gestor's own "Enviar"; since A1
-  both go through `TramiteRevisionService` (see the "Prompt A1" bullet). A tramite id from another
-  Gestoría or that doesn't exist returns `404` (an expected, common case, not a "should never
-  happen" one).
-- **Frontend, Prompt 4 (partial — everything not blocked by OVZ.net):** login, Explotaciones
-  dashboard + Excel import, Trámites queue + review modal, Facturación status page (removed on
-  2026-10-04, see "Billing moved out of the app"). Two backend additions this required, both driven
-  directly by the frontend's stated needs, not speculative: `GET /facturacion/suscripcion`
-  (`FacturacionController`, still used by the banner; `404` if the Gestoría never had a
-  `Suscripcion` — fail-closed, a `GET` must never create one as a side effect; only the
-  registration's checkout → `obtenerOCrearSuscripcion` does) and `GET /tramites/{id}`
-  (`TramiteDetalleResponse`, adds the raw WhatsApp message body via
-  `MensajeCampoRepository.findFirstByTramiteIdAndGestoriaIdOrderByCreatedAtDesc` — with the
-  `gestoriaId` since "Hecho en OVZ"; the unscoped finder was removed — plus the resolved Explotación's
-  `codigoRega`/`nombre` — kept out of the paginated `GET /tramites` list to avoid N+1 there).
-  **CORS** (`SecurityConfig.corsConfigurationSource`, origin from `ganera.frontend.origen` /
-  `FRONTEND_ORIGEN` env var, default `http://localhost:5173`): found by *actually driving the app in
-  a real browser* — every backend test passed and `curl` worked fine, but the browser blocks the
-  request at preflight before it ever reaches a controller, JWT valid or not. `curl`/Postman never
-  send an `Origin` header the way a browser does, so this class of bug is invisible to any
-  request-level test; only a real browser catches it.
-- **Prompt A1 — Contactos, crotales in trámites, editable review** (backend only; plan with all 31
-  decisions in `docs/superpowers/plans/2026-09-25-promptA1-contactos-crotales-revision.md`).
-  Prepares 3b without depending on OVZ.net: which Explotación(es) a phone belongs to, which
-  crotales a Tramite mentions, and letting the Gestoría correct a Tramite before approving it.
+  both go through `TramiteRevisionService`. A tramite id from another
+  Gestoría or that doesn't exist returns `404`. — historia en [docs/historia/decisiones-tecnicas-historico.md](docs/historia/decisiones-tecnicas-historico.md).
+- **Frontend Prompt 4 (parcial):** login, dashboard de Explotaciones + import Excel, cola de Tramites + modal, `GET /facturacion/suscripcion` y `GET /tramites/{id}`, CORS. Historico en [docs/historia/decisiones-tecnicas-historico.md](docs/historia/decisiones-tecnicas-historico.md).
+- **Prompt A1 — Contactos, crotales in trámites, editable review** (backend only).
   Migrations `V15` (Contacto/ContactoExplotacion become tenant-scoped, `rol`, `activo`, drop
   `contacto.tipo`), `V16` (`tramite_crotal`), `V17` (`tramite.version`).
   **Error format (all new endpoints, decision 8):** `409` + `{ "motivo": "..." }` for state
@@ -609,9 +495,8 @@ approval step before anything is written to OVZ.net.
   - `GET /explotaciones/{id}/animales` (paginated; `404` if the Explotación isn't the caller's).
   - `PATCH /tramites/{id}` (see below).
   **`sort` whitelists on every listing (decision 21 + 7a review M1):** `?sort=` outside the list →
-  `400 {"motivo": "Campo de ordenación no permitido."}` (`shared/web/OrdenacionPermitida`) — before,
-  an unknown property was a `500` and a nested one (`ganadero.ovzUsuario`, `gestoria.id`) was
-  accepted. `/explotaciones`: `codigoRega, nombre, id` (default `codigoRega, id`); `/tramites`:
+  `400 {"motivo": "Campo de ordenación no permitido."}` (`shared/web/OrdenacionPermitida`).
+  `/explotaciones`: `codigoRega, nombre, id` (default `codigoRega, id`); `/tramites`:
   `id, estado, createdAt` (default `createdAt desc, id desc`); `/ganaderos`: `nombre, nif, id`
   (default `nombre, id`); `/explotaciones/{id}/animales`: `crotal, id` (default `crotal`);
   `/contactos`: `nombre, telefono, id` (default `nombre, id`). A client-chosen non-unique sort
@@ -624,11 +509,10 @@ approval step before anything is written to OVZ.net.
   crotal completed against the previous Explotación. Exposed as `crotales: [{crotalIndicado,
   crotal, completo, animalId, enInventario, resolucion}]` in `GET /tramites` (loaded in **one**
   query for the whole page), `GET /tramites/{id}` and the PATCH/aprobar/rechazar responses.
-  **`completo` (mini-prompt after A2) describes what was WRITTEN (`crotalIndicado`), not what it
-  resolved to**: `1234` resolved `EN_INVENTARIO` is `completo: false`. Computed when the response is
+  **`completo`** describes what was WRITTEN (`crotalIndicado`), not what it
+  resolved to: `1234` resolved `EN_INVENTARIO` is `completo: false`. Computed when the response is
   built (`CrotalNormalizador` on `crotalIndicado`, no column/migration); a stored value that fails
-  normalization gives `false` plus a `warn` log, never an exception. It lets the frontend paint an
-  incomplete `NO_ENCONTRADO` amber without classifying crotales itself (A2 decision 21).
+  normalization gives `false` plus a `warn` log, never an exception.
   **`CrotalNormalizador`** (pure, no Spring — also used by the importer, decision 22): strips all
   whitespace (including non-breaking spaces pasted from Excel) and `-`, `.`, `/` (decision 24),
   uppercases; must then be `[A-Z0-9]{1,30}` → else `400`. Digits only and ≤ 3 → `400` ("indica al
@@ -651,8 +535,10 @@ approval step before anything is written to OVZ.net.
   same Animal (decision 23) → `200`, `version + 1`. If stored crotales collide after an Explotación
   change, a PATCH without `crotales` gets that `409` and the user must send both fields together.
   **Approval rule (`POST /tramites/{id}/aprobar` `{version}`, `TramiteRevisionService.aprobar`),
-  in the order actually checked:** `403` subscription (`puedeAprobarTramites`; since the
-  mini-prompt after A2 with a fixed `{motivo}` — `TramiteController.MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR`,
+  in the order actually checked:** `403` subscription (`puedeAprobarTramites`; with a fixed `{motivo}` —
+  `TramiteController.MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR` = "Tu suscripción no permite aprobar
+  trámites ahora mismo (prueba terminada o suscripción suspendida). Ponte en contacto con Ganera
+  para regularizarla.",
   the same text the frontend shows — that says nothing about the trámite) → `400` no body /
   `{}` / `version: null` (body is `@RequestBody(required = false)` precisely so the `403` still
   comes first) → `404` → `409` not in `PENDIENTE_REVISION` (**approve and reject only from
@@ -681,13 +567,15 @@ approval step before anything is written to OVZ.net.
   `findConBloqueoByIdAndGestoriaId` (`PESSIMISTIC_WRITE`, `SELECT … FOR UPDATE`, explicit
   `gestoriaId`) and then `refresh`es it — if anything had already loaded that Tramite into the same
   OSIV `EntityManager`, Hibernate would return the cached, possibly stale instance even though the
-  query locks (review M3); keep the lock read the first load of that Tramite in the request, or
+  query locks; keep the lock read the first load of that Tramite in the request, or
   keep the refresh. Validation exceptions propagate out of the service's `@Transactional` and are
   mapped in `TramiteController` (never caught inside and committed). `ConcurrencyFailureException`
   (lock not acquired, optimistic conflict) and `DataIntegrityViolationException` → `409` "se estaba
-  modificando a la vez", never `500`. **Optimistic version (decision 27):** `@Version Long version`
-  on `Tramite`, returned in `TramiteResponse`/`TramiteDetalleResponse`. PATCH, aprobar **and,
-  since the mini-prompt after A2, rechazar** **require** the `version` the screen showed (`400` if
+  modificando a la vez", never `500`. On PostgreSQL, if a `statement_timeout` is ever configured,
+  SQLState `57014` becomes Spring's `QueryTimeoutException` (not a `ConcurrencyFailureException`) →
+  `500`; a `lock_timeout` (`55P03`) does map to `CannotAcquireLock` → `409`. **Optimistic version (decision 27):** `@Version Long version`
+  on `Tramite`, returned in `TramiteResponse`/`TramiteDetalleResponse`. PATCH, aprobar **and
+  rechazar** **require** the `version` the screen showed (`400` if
   missing, `409` if stale, nothing changes). Rechazar's order: `400` no body / `{}` / `version: null`
   (in the controller, before any DB access — same answer for own, foreign or nonexistent) → `404` →
   `409` not `PENDIENTE_REVISION` → `409` stale `version` → `200 RECHAZADO`, `version + 1`
@@ -696,57 +584,19 @@ approval step before anything is written to OVZ.net.
   on aprobar (those only touch `tramite_crotal`, so the increment is forced with an explicit JPQL
   `UPDATE … SET version = version + 1` after a flush — not `PESSIMISTIC_FORCE_INCREMENT`, which
   Hibernate 6.6 silently skipped in `@DataJpaTest`). Estado is checked before version on purpose (a
-  Tramite no longer pending gets its specific motivo, true with any version). Caveat (7a review M2):
-  those raw `EntityManager` calls bypass Spring's exception translation, so a failure there would
-  be a `500`, not a `409` — unreachable while the row lock is held.
-  **Risks to respect in escalón 2 (modo asistido) (Task 6 review M2):** never open the OVZ.net
+  Tramite no longer pending gets its specific motivo, true with any version).
+  **Risks to respect in escalón 2 (modo asistido):** never open the OVZ.net
   (Playwright) session inside the transaction that holds this row lock (other editors/approvers would
-  block for the whole OVZ session, each holding a pooled connection). In escalón 2 the gestor's
-  "Enviar" starts one submission at a time, outside that lock.
-  On PostgreSQL, if a `statement_timeout` is ever configured, SQLState `57014` becomes Spring's
-  `QueryTimeoutException` (not a `ConcurrencyFailureException`) → `500`; a `lock_timeout`
-  (`55P03`) does map to `CannotAcquireLock` → `409`. (The lock-timeout `500` seen on H2 is an
-  H2+Hikari artifact; tests use `LOCK_TIMEOUT=10000` in the H2 URL, decision 31.)
+  block for the whole OVZ session, each holding a pooled connection).
   **`/error` is public (decision 29):** Spring's error dispatch (malformed JSON, wrong type,
   non-numeric id) runs unauthenticated — `JwtAuthenticationFilter` is a `OncePerRequestFilter`
   and doesn't re-run on the error dispatch — so without `permitAll("/error")` every such `400`
   became a `401`, and the frontend treats a `401` as a logout. `/error` only renders the already
   decided status (Boot defaults: no message, no stack trace) and makes no other route public;
-  `/error/x` and every protected route still return `401` without a JWT.
-- **Mini-prompt of backend after A2** (plan with the closed decisions in
-  `docs/superpowers/plans/2026-10-02-mini-prompt-backend-tras-a2.md`; the API gaps the A2 frontend
-  worked around). Besides the changes noted in the importer, self-registration and "Prompt A1"
-  bullets (`{motivo}` everywhere, `version` on rechazar, `403` with `motivo`, `completo`):
-  - `GET /explotaciones/{id}` → `ExplotacionResponse` (same DTO as the list), with
-    `findByIdAndGestoriaId`; `404` with no body for another Gestoría's or a nonexistent one.
-    Side effect: `GET /explotaciones/importar` is now a `400` (non-numeric id) instead of `405`.
-  - `GET /explotaciones?q=` — over the Explotación's `codigoRega` and `nombre` **and the
-    Ganadero's `nombre`**; `q` trimmed; absent/blank = the usual listing; more than 100 characters
-    (UTF-16 units) → `400 {motivo}`, checked **after** the `sort` whitelist. (Its first version
-    matched `q` as one string, case-insensitive but not accent-insensitive; replaced on 2026-10-04 by
-    the accent-insensitive, word-by-word search — see the "Explotación search without accents"
-    bullet below.)
-  - `TramiteResponse` (list, aprobar, rechazar) gained `explotacionCodigoRega` and
-    `explotacionNombre` (null without Explotación), loaded in the page query with
-    `@EntityGraph(attributePaths = "explotacion")` on `TramiteRepository.findByGestoriaId`/
-    `findByGestoriaIdAndEstado` — a test counts SQL statements to guard against N+1 (it first
-    asserts the page query really contains `join explotacion`, so a SQL-format change can't make
-    it pass silently). Two-Gestoría coverage of these lives in `TramiteRevisionEndToEndTest` and
-    the new `ExplotacionEndToEndTest`, not in `TenantIsolationEndToEndTest`.
-  - **Pre-existing N+1 fixed:** `GET /explotaciones` **without** `q` used to load the Ganadero
-    lazily for every distinct Ganadero of the page (`ExplotacionResponse` reads its name), which
-    hurt with the frontend's 500-row pages. `ExplotacionRepository.findByGestoriaId` now has
-    `@EntityGraph(attributePaths = "ganadero")`; `ExplotacionEndToEndTest` asserts zero separate
-    entity fetches and exactly page + count statements (Hibernate statistics). The `q` path already
-    used `join fetch`.
-  - The frontend was touched **only** so Rechazar keeps working (`rechazarTramite(id, version)` in
-    `features/tramites/api.ts`, fed with `detalle?.version` from `useRevisionTramite`). It does
-    **not** consume the rest then; the frontend task before the pilot (2026-10-04) consumes `?q=`,
-    `explotacionCodigoRega`/`explotacionNombre`, `completo` and the `403` `motivo` (see the
-    frontend architecture notes). `GET /explotaciones/{id}` still has no caller.
-- **Explotación search without accents, word by word** (the backend task blocking the pilot,
-  2026-10-04; plan `docs/superpowers/plans/2026-10-04-busqueda-explotaciones-sin-tildes.md`, with
-  Antonio's adjustments A1–A3 at the top). Same `GET /explotaciones?q=` contract, frontend untouched.
+  `/error/x` and every protected route still return `401` without a JWT. — historia en [docs/historia/decisiones-tecnicas-historico.md](docs/historia/decisiones-tecnicas-historico.md).
+- **Mini-prompt backend tras A2:** `GET /explotaciones/{id}`, `?q=`, `{motivo}` en todos los errores, `version` en rechazar, `explotacionCodigoRega`/`Nombre` sin N+1, `completo` por crotal. Sin migraciones. Historico en [docs/historia/decisiones-tecnicas-historico.md](docs/historia/decisiones-tecnicas-historico.md).
+- **Explotación search without accents, word by word** (the backend task blocking the pilot).
+  Same `GET /explotaciones?q=` contract, frontend untouched.
   - **Normalized columns, one per entity:** `explotacion.busqueda` (`codigoRega` + `" "` + `nombre`,
     `NormalizadorBusqueda.textoExplotacion`) and `ganadero.nombre_busqueda`. Each depends only on
     its own row, so it's recalculated in the entity's **explicit setters** (`Explotacion.setCodigoRega/
@@ -771,47 +621,22 @@ approval step before anything is written to OVZ.net.
     `ExplotacionRepository.findAll(Specification, Pageable)` (data query only; `ganadero` is joined
     once). `buscarPorTexto` was removed. **Every `Specification` on `Explotacion` must carry the
     JWT's `gestoria.id`**: the inherited `JpaSpecificationExecutor` methods don't filter by Gestoría
-    by themselves. The predicate is guarded by a `@DataJpaTest` without `gestoriaFilter`
-    (`ExplotacionControllerTest`) — the two-Gestoría E2E tests can't catch its removal, because the
-    ambient filter masks it.
+    by themselves.
   - **Backfill: Flyway Java migration `db.migration.V18__busqueda_normalizada`** (JDBC only, no
     entities): add the columns, fill them in batches with the same `NormalizadorBusqueda`, `SET NOT
     NULL`. **If the normalization rule ever changes, add a new migration that recalculates both
-    columns** (V18 won't run again). It reads the whole table into memory on PostgreSQL (fine at
-    pilot volume; use `setFetchSize` if the pattern is reused on big tables). Tested with a
-    programmatic Flyway on its own H2 (`target 17` → data → migrate, including 1203 rows across
-    batch cuts).
+    columns** (V18 won't run again).
   - **No index:** `like '%p%'` doesn't use a B-tree and the query is bounded by `gestoria_id`. If it
     ever gets slow, a PostgreSQL `pg_trgm` GIN index on the normalized columns (no `unaccent`
-    needed) — noted for Prompt C.
-- **Billing moved out of the app** (2026-10-04; plan
-  `docs/superpowers/plans/2026-10-04-quitar-pago-de-la-app.md`). Ganera charges from its **landing,
-  with Stripe**, not from the app. **Removed:** `POST /facturacion/checkout`, `CheckoutResponse`,
-  `StripeCheckoutService.crearSesionCheckout(gestoriaId)`, the frontend `FacturacionPage`, its route
-  and nav link, `crearSesionCheckout`, the `checkout` error context and the 403's "Ir a
-  Facturación" link. `POST /facturacion/checkout` now answers Boot's `404` (`NoResourceFoundException`,
-  no handler) with a JWT and `401` without one, and creates nothing (`CheckoutEliminadoEndToEndTest`).
-  **Kept:** Stripe webhooks and their state machine, `Suscripcion`/`EstadoSuscripcion`,
-  `puedeAprobarTramites` and the approval `403`, `GET /facturacion/suscripcion` (same path and body,
-  read by the banner), `SuscripcionSyncScheduler`, `StripeConfig`/`stripe-java`/`STRIPE_*`, the pilot
-  onboarding, and the public registration with its Stripe Checkout redirect (untouched until
-  Prompt C replaces it with the sign-up from the landing). Texts that sent users to Facturación now
-  say to contact Ganera, **with no link or `mailto:`** — the 403 `motivo`
-  (`TramiteController.MOTIVO_SUSCRIPCION_NO_PERMITE_APROBAR`, identical to the frontend fallback):
-  "Tu suscripción no permite aprobar trámites ahora mismo (prueba terminada o suscripción
-  suspendida). Ponte en contacto con Ganera para regularizarla." The two known Stripe bugs and the
-  scheduler's review for per-ganadero plans are noted for Prompt C in `ganera-prompts.md`.
-- **Prompt B1 — WhatsApp + AI, the minimum that works** (2026-10-05; plan
-  `docs/superpowers/plans/2026-10-05-promptB1-whatsapp-ia.md`, with Antonio's decisions D1–D8 and
-  additions A1–A5). B2 (unknown-number replies, several trámites per message, attachments, AI usage
-  metering, the real OVZ trámite types, birth registration and the event date) is separate.
+    needed) — noted for Prompt C. — historia en [docs/historia/decisiones-tecnicas-historico.md](docs/historia/decisiones-tecnicas-historico.md).
+- **Billing moved out of the app (2026-10-04):** se quito `POST /facturacion/checkout` y la `FacturacionPage`; se mantienen webhooks Stripe, `Suscripcion`/estados, `puedeAprobarTramites` y el 403. Historico en [docs/historia/decisiones-tecnicas-historico.md](docs/historia/decisiones-tecnicas-historico.md).
+- **Prompt B1 — WhatsApp + AI, the minimum that works.**
   - **Webhook** `POST /webhooks/twilio/whatsapp` (`TwilioWebhookController`): the signature is
     validated with **every** form parameter and the configured public URL
     (`ganera.twilio.webhook-url` / `TWILIO_WEBHOOK_URL`, no query string), never
     `getRequestURL()` (behind a tunnel or proxy it is `http://localhost…`). **Fail-closed:** blank
     token or URL → `503`; missing or bad signature → `403`; then `400` for missing
-    `MessageSid`/`From`. Nothing is stored in any of those cases. At startup it logs only the
-    host it validates against. `RequestValidator` is still built per request (Twilio footgun).
+    `MessageSid`/`From`. Nothing is stored in any of those cases. `RequestValidator` is still built per request (Twilio footgun).
   - **Reception** (`MensajeEntranteService`, one short transaction, message saved first):
     `From` normalized with `TelefonoNormalizador` (one that won't normalize is kept truncated to 30
     and treated as unknown); `findByTelefono` (its only caller); unknown number →
@@ -825,8 +650,7 @@ approval step before anything is written to OVZ.net.
     `existsByMessageSid` in the controller. **A message is never lost:** if creating the Tramite
     fails, `MensajeRescateService` (`REQUIRES_NEW`) stores it as `ERROR_RECEPCION` (no Gestoría) and
     answers `<Response/>`; only if that also fails → `500`, with the `MessageSid` in the log
-    (Twilio does not retry a 5xx by default). Nobody sees `ERROR_RECEPCION` yet; an alert is noted
-    for Prompt C. Stored: `MessageSid`, normalized phone, text, `NumMedia`, result, links; **not**
+    (Twilio does not retry a 5xx by default). Stored: `MessageSid`, normalized phone, text, `NumMedia`, result, links; **not**
     `ProfileName`, `WaId`, `AccountSid`, media URLs. Logs: never the text; phones masked
     (`EnmascaradorTelefono`).
   - **Extraction in the background** (`ExtraccionTramiteScheduler` every 5 s +
@@ -852,10 +676,7 @@ approval step before anything is written to OVZ.net.
     network error or invalid JSON → `ExtraccionFallidaException`, which never chains the SDK cause
     (it carries the model's answer). The system prompt describes the types as Antonio decided: sale
     and slaughterhouse are `SOLICITUD_MOVIMIENTO`; `BAJA_MUERTE` is death or slaughter on the farm
-    (OVZ type names since the ficha OVZ, `V20`). **Jackson:** the
-    SDK declares 2.19.4 and Boot pins 2.18.2; it works today (the SDK checks it when building the
-    client), but a future SDK could require pinning `jackson-bom.version` and would fail on the first
-    call, not at startup.
+    (OVZ type names since the ficha OVZ, `V20`).
   - **Responses:** `TramiteResponse`/`TramiteDetalleResponse` gained `origen` (`"WHATSAPP"`/null),
     `estadoExtraccion` (`PENDIENTE`/`COMPLETADA`/`FALLIDA`/`SIN_TEXTO`/null; `SIN_TRAMITE` since that task) and
     `crotalesDescartados`. The AI's technical failure reason is never exposed.
@@ -864,57 +685,22 @@ approval step before anything is written to OVZ.net.
     `SIN_TEXTO` text). Both periods are configurable and **pending confirmation by Ganera's lawyer**,
     together with the Anthropic and Twilio DPAs (Prompt C notes).
   - **Migration `V19`** (SQL): the `tramite` and `mensaje_campo` columns above; `mensaje_campo.cuerpo`
-    lost its `@Lob` (`TEXT`).
-  - **For production (Prompt C):** add `logServerErrorDetail=false` to the PostgreSQL URL, so a
-    constraint violation can't log `Failing row contains (…)` with message data. (Done in the
-    `clever` profile, see the next bullet.)
-- **C mínimo — demo deployed in the EU** (2026-10-06; plan
-  `docs/superpowers/plans/2026-10-06-promptC-minimo-demo-desplegada.md`, decisions D1–D8). Not the
-  final Prompt C infrastructure: a demo with **invented data only** for Antonio's partner.
-  - **Clever Cloud, Paris zone**: Java/Maven app XS (`APP_FOLDER=backend`, one instance, no
-    autoscaling — the extraction queue doesn't claim rows), PostgreSQL 16 add-on XXS Small Space
-    (replaced by Supabase on 2026-10-19, see the "Supabase" bullet; never deployed),
-    frontend on the Static runtime (pico, `VITE_API_BASE_URL` baked in at build time). Every secret
-    lives only in Clever's environment variables; Claude never sees them. `.clever.json` is ignored.
-  - **`application-clever.yml`** (`SPRING_PROFILES_ACTIVE=clever`): datasource from the add-on's
-    `POSTGRESQL_ADDON_HOST/PORT/DB/USER/PASSWORD` (history: since the Supabase migration the profile reads the seven
-    `SUPABASE_*` variables instead, see the "Supabase" bullet), `?logServerErrorDetail=false`, explicit
-    PostgreSQL driver. Never define a `GANERA_REGISTRO_*` variable there (relaxed binding would open
-    the registration).
-  - **Tests against real PostgreSQL** (`com.ganera.core.postgres`, `io.zonky.test:embedded-postgres`
-    2.2.2 + binaries BOM **17.11.0** since the Supabase migration — Supabase's exact version; 16.15.0 until then —,
-    test scope only, no Docker; `PostgresEmbebido` shares one server per
-    JVM, UTF8, a fresh database per test): Flyway V1–V23 + `ddl-auto=validate`, V18 on existing rows,
-    the `clever` profile end to end, and `InstantTimestampPostgresTest`. **Finding (D8):** with
-    Hibernate 6.6 + pgjdbc 42.7.4 an `Instant` round-trips through a `TIMESTAMP` (without time zone)
-    column with no shift even with the JVM in `Europe/Madrid`, and the extraction queue and
-    retention cut exactly (also in October's repeated hour); that test is the regression guard for
-    pgjdbc/Hibernate upgrades. Only `DEFAULT now()` on rows inserted by hand depends on the session
-    zone (`DefaultNowPostgresTest`): hand-written SQL starts with `SET TIME ZONE 'UTC'` and sets
-    `created_at` explicitly; `TZ=UTC` on Clever and `ALTER DATABASE … SET timezone TO 'UTC'` (since the Supabase
-    migration, done by `backend/supabase/01-preparar-roles-y-esquema.sql`).
-  - Demo data and scripts (two invented Gestorías, Excel, seed SQL for Adminer, onboarding and smoke
-    scripts that Antonio runs in his own terminal) live **outside the repo**, in
-    `C:\Users\Antonio\Desktop\ganera-demo\` (superseded by the `ganera-clever` kit, see "Clever deployment
-    hardening").
-- **Ficha lista para OVZ — escalón 1 de OVZ** (2026-10-07; analysis of the OVZNET manual in
-  `docs/referencias/ovz-tramites-bovino.md`, the PDF itself is git-ignored; plan
-  `docs/superpowers/plans/2026-10-06-ficha-ovz.md`, decisions D1–D8 and the approved T5 shape). Ganera
+    lost its `@Lob` (`TEXT`). — historia en [docs/historia/decisiones-tecnicas-historico.md](docs/historia/decisiones-tecnicas-historico.md).
+- **C minimo (demo en la UE, 2026-10-06):** Clever Paris, perfil `clever`, registro cerrado por defecto, tests contra PostgreSQL real, datos de demo fuera del repo. Historico en [docs/historia/decisiones-tecnicas-historico.md](docs/historia/decisiones-tecnicas-historico.md).
+- **Ficha lista para OVZ — escalón 1 de OVZ.** Ganera
   shows an approved trámite's data in the order of the OVZ form, with Copiar on each field, so the gestor
   pastes it into OVZ by hand. Ganera still writes nothing to OVZ (until escalón 2 (modo asistido), see
   Operational flow step 7).
   - **`TipoTramite` = the OVZ forms** (`V20`, SQL): `ALTA_NACIMIENTO`, `BAJA_MUERTE`,
     `SOLICITUD_MOVIMIENTO`, `CONFIRMACION_MOVIMIENTO`, `DECLARACION_CENSO`, `DEMORA_CROTALIZACION`
     (supersedes A1 decision 18's list). `tipo_tramite` widened to `VARCHAR(30)`; every old `MOVIMIENTO`
-    became `SOLICITUD_MOVIMIENTO` (an old one can't be told apart from an entrada). Migration tested on H2
-    and embedded PostgreSQL. An old value in `PATCH` is a `400`. The AI's `TipoExtraido`/prompt and the
+    became `SOLICITUD_MOVIMIENTO` (an old one can't be told apart from an entrada). An old value in `PATCH` is a `400`. The AI's `TipoExtraido`/prompt and the
     frontend `TIPOS_TRAMITE` changed in the same commit; backend and frontend must deploy together.
   - **`TramiteDetalleResponse` gained `ganaderoNombre`/`ganaderoNif`** (the account to log into OVZ with;
     null without explotación). Never `ovzUsuario`/`ovzPasswordCifrada`:
     `CredencialesOvzDetalleEndToEndTest` (invented password and key) checks neither the plain password
-    nor the ciphertext appears in GET/PATCH bodies or logs. **RESOLVED (M2, 2026-11-09,
-    `feat/ovz-descifrado-bajo-demanda`):** loading the Ganadero used to decrypt its OVZ password, so a corrupt
-    ciphertext or a changed `ENCRYPTION_KEY` gave `500` on the trámite detail and on `/ganaderos`. The field no
+    nor the ciphertext appears in GET/PATCH bodies or logs. **RESOLVED (M2,
+    `feat/ovz-descifrado-bajo-demanda`):** the field no
     longer has `@Convert` (`EncryptedStringConverter` was deleted): the ciphertext stays at rest in the entity,
     those endpoints answer `200`, and the password is decrypted only on demand by `DescifradoCredencialOvz`
     (see the "Auditoría" bullet). Same column format, no migration.
@@ -924,12 +710,9 @@ approval step before anything is written to OVZ.net.
     `AppLayout` (no nav bar). The review dialog opens it with `abrirFichaOvz` (`window.open` with a fixed
     window name and **no `noopener`**, so the new window inherits the `sessionStorage` token; the page sets
     `window.opener = null`). A tab opened without opener (middle click, pasted URL) goes to login and back.
-    Verified in real Chromium and Firefox. `shared/ui/BotonCopiar` (Clipboard API, read-only `Input`
-    fallback, polite live region, always reads "Copiar" for WCAG 2.5.3). See `DESIGN.md` → "Ficha para OVZ".
-  - **Next, before the pilot:** the "sesión de mapeo de OVZ" in `ganera-prompts.md` (OVZ value lists and
-    gestoría preferences) before B2. (D5, marking a trámite as done in OVZ, became "Hecho en OVZ", below.)
-- **Hecho en OVZ — D5 of the ficha OVZ** (2026-10-07; plan `docs/superpowers/plans/2026-10-07-hecho-en-ovz.md`,
-  decisions closed with Antonio). `APROBADO` only means "data reviewed"; the gestor now records that **they**
+    `shared/ui/BotonCopiar` (Clipboard API, read-only `Input`
+    fallback, polite live region, always reads "Copiar" for WCAG 2.5.3). See `DESIGN.md` → "Ficha para OVZ". — historia en [docs/historia/decisiones-tecnicas-historico.md](docs/historia/decisiones-tecnicas-historico.md).
+- **Hecho en OVZ — D5 of the ficha OVZ.** `APROBADO` only means "data reviewed"; the gestor now records that **they**
   entered it in OVZ by hand. Ganera sends nothing.
   - **State `HECHO_EN_OVZ`** (after `APROBADO`) + `tramite.hecho_en_ovz_por` (FK to `usuario`) and
     `tramite.hecho_en_ovz_en` (`TIMESTAMP`, `Instant` from the `Clock`, truncated to microseconds so the
@@ -957,18 +740,11 @@ approval step before anything is written to OVZ.net.
     independent of the system zone). Marking is in the ficha (end of the form, no confirmation) and in
     the review dialog footer; "Quitar la marca" (inline confirmation, "En OVZ no cambia nada") in both. A
     `409` reloads and shows the `motivo`; the ficha also reloads after a network/5xx error. See `DESIGN.md`.
-  - **Known limitations:** a ficha window that kept an older session (someone else logged in later in the
-    main window) marks with the previous Usuario — same Gestoría, nothing leaks. The FK does not enforce
+  - **Known limitations:** the FK does not enforce
     that the Usuario belongs to the Tramite's Gestoría (only the service does; hand-seeded data could show
-    a foreign name or a `500`). A `CHECK` violation would surface as the generic concurrency `409`
-    (unreachable today). The FK has no `ON DELETE`: deleting a Usuario who marked something would fail
-    (there is no way to delete Usuarios today). An inactive Usuario with a still-valid JWT can mark, like
-    every other endpoint.
-- **B2 reducido — the gestoría replies to the Contacto by WhatsApp** (2026-10-11; plan
-  `docs/superpowers/plans/2026-10-11-promptB2-reducido-responder-whatsapp.md`, "Decisiones de Antonio" at the top
-  prevails). Always manual: the gestor sees and edits the text, nothing is ever sent by itself. The Twilio
-  status callback (delivered/read/failed later) came in its own commit, right after (see the next sub-bullet
-  "Status callback").
+    a foreign name or a `500`). The FK has no `ON DELETE`: deleting a Usuario who marked something would fail. An inactive Usuario with a still-valid JWT can mark, like
+    every other endpoint. — historia en [docs/historia/decisiones-tecnicas-historico.md](docs/historia/decisiones-tecnicas-historico.md).
+- **B2 reducido — the gestoría replies to the Contacto by WhatsApp.** Always manual: the gestor sees and edits the text, nothing is ever sent by itself.
   - **Entity `RespuestaWhatsapp`** (`whatsapp` package, `GestoriaScopedEntity`, migration `V22`, table
     `respuesta_whatsapp`): tramite, contacto, `telefono_destino` (copy at send time, nullable), `cuerpo`,
     `enviado_por` (from the JWT), `creado_en`/`actualizado_en`, `estado` (`ENVIANDO`, `ENVIADO` = accepted by
@@ -1010,13 +786,7 @@ approval step before anything is written to OVZ.net.
     generated on opening the panel (`claveIdempotencia()`, with a `getRandomValues` fallback for non-secure
     contexts), kept on network/5xx retries, renewed after success or a `409`. Closing the dialog with an edited
     reply asks inline ("Tienes una respuesta sin enviar."). See `DESIGN.md` → "Responder por WhatsApp".
-  - **Known limitations:** the window is per Contacto, not per phone number (changing a contact's phone could give
-    a 63016 `FALLIDO`); a DB failure right after Twilio accepted gives `500` and leaves `ENVIANDO` (shown as
-    `SIN_CONFIRMAR` after 2 minutes; the same key never resends) — and since the Twilio SID was never stored, the
-    status callback cannot reconcile that row: it stays `SIN_CONFIRMAR`; a farmer's reply ("vale, gracias") still creates a
-    trámite (since SIN_TRAMITE it can be discarded with one click; see that bullet).
-  - **Status callback** (2026-10-11, its own commit; plan `docs/superpowers/plans/2026-10-11-b2-callback-estado-twilio.md`,
-    backend only). If `TWILIO_STATUS_CALLBACK_URL` (`ganera.twilio.status-callback-url`) is a valid http(s) URL with a
+  - **Status callback** (its own commit, backend only). If `TWILIO_STATUS_CALLBACK_URL` (`ganera.twilio.status-callback-url`) is a valid http(s) URL with a
     host and no user, query or fragment (**use `https` in production**), every send asks Twilio to report there;
     otherwise sends go without it and replies stay `ENVIADO`. Endpoint `POST /webhooks/twilio/whatsapp/estado`, no
     JWT, no response body ever. Order: body over 8 KB → `413` (`LimiteCuerpoCallbackEstadoFilter`, only for this
@@ -1032,15 +802,8 @@ approval step before anything is written to OVZ.net.
     **one conditional JPQL `UPDATE … WHERE twilio_message_sid = :sid AND estado IN (:anteriores)`** — repeated,
     out-of-order or concurrent callbacks never go back (checked on embedded PostgreSQL). **The lookup by SID is the
     second deliberately tenant-unscoped query** (the request carries no tenant; the SID is globally `UNIQUE`), next
-    to `ContactoRepository.findByTelefono`; there is no finder by SID. Logs: only SID, states and code.
-    **Known limitations:** a callback that arrives before the send stored the SID (Twilio may report before step 3
-    commits) gets `200` with no change and an `INFO` log with only the SID — **if it happens in the pilot, add a
-    status query to Twilio by SID**; with one `UPDATE` and no read, the log can't tell an unknown SID from a row
-    already in that or a later state, nor give the exact previous state (it logs the set of possible ones);
-    `SIN_CONFIRMAR`/`ENVIANDO` rows with a SID don't exist with today's code (those transitions are tested on
-    seeded rows); a repeated form parameter is signed with its first value (same as the inbound webhook).
-- **SIN_TRAMITE — messages that ask for nothing, and «Descartar»** (2026-10-12; plan
-  `docs/superpowers/plans/2026-10-12-sin-tramite.md`, Antonio's decisions A1–A6 at the top prevail). Since B1 every
+    to `ContactoRepository.findByTelefono`; there is no finder by SID. Logs: only SID, states and code. — historia en [docs/historia/decisiones-tecnicas-historico.md](docs/historia/decisiones-tecnicas-historico.md).
+- **SIN_TRAMITE — messages that ask for nothing, and «Descartar».** Since B1 every
   message of an active Contacto creates a Tramite, so a «vale, gracias» reached the queue.
   - **AI:** `TipoExtraido.SIN_TRAMITE` (distinct from `NO_IDENTIFICADO`: «asks for something, unclear what»); prompt
     with an asymmetric rule («ante la duda, NO_IDENTIFICADO»; a message that mentions an animal, crotal, calf, death,
@@ -1050,9 +813,7 @@ approval step before anything is written to OVZ.net.
     net in `ExtraccionValidador`: SIN_TRAMITE with **any** raw crotal (even an invalid one) or with a tipo → treated as
     a normal result (`COMPLETADA`).
   - **Evaluation against the real Haiku:** `ExtraccionSinTramiteEvalTest`, skipped unless `GANERA_EVAL_IA=true` **and**
-    `ANTHROPIC_API_KEY` are set (never in CI or a normal `./mvnw clean test`); 13 invented messages × 3 passes, report in
-    `backend/target/eval-sin-tramite.md`; fails on any false SIN_TRAMITE **or any FALLO** (an all-FALLO run used to look
-    green). **Only Antonio runs it**, in his own terminal.
+    `ANTHROPIC_API_KEY` are set (never in CI or a normal `./mvnw clean test`). **Only Antonio runs it**, in his own terminal.
   - **`descartable`** (`DescarteTramite`, the single rule): `PENDIENTE_REVISION` ∧ `SIN_TRAMITE` ∧ no tipo ∧ no
     crotales — computed by the backend and exposed in `TramiteResponse`/`TramiteDetalleResponse` (no new query); the
     frontend never recomputes it. Also `motivoRechazo` (`"SIN_TRAMITE"`/null).
@@ -1078,16 +839,9 @@ approval step before anything is written to OVZ.net.
   - **Shared contract:** `frontend/src/test/contrato/descarte-sin-tramite.json` holds **real** backend responses;
     `TramiteDescarteEndToEndTest.lasRespuestasRealesCumplenElContratoQueUsaElFrontend` checks the real responses
     against it (exact fields, JSON types, nulls, list sizes) and `contratoDescarte.test.tsx` drives the UI with it. If
-    the contract changes on purpose, regenerate it from `backend/target/contrato-real/`.
-  - **Known:** the B1 acknowledgement («Recibido, tu gestoría lo revisará.») still goes out for a «vale, gracias» (the
-    AI decides after answering Twilio); the text of a discarded message is kept 12 months like any other — question for
-    Ganera's lawyer (`progress.md`); a reply being sent while someone discards the Tramite isn't locked against it (B2
-    design; tiny window).
-- **Clever deployment hardening** (2026-10-14; plan `docs/superpowers/plans/2026-10-14-despliegue-clever.md`, decisions
-  D1–D6 at the top: `app.ganera.es` static frontend + `api.ganera.es` backend, PostgreSQL XXS Small in Paris, the first
-  base is for the demo only — a new one before the first real data). Since 2026-10-19 the database is **Supabase**
-  (Ireland), not the Clever add-on, and "a new base" means emptying the `ganera` schema and rerunning script 01 (S7);
-  the frontend will move to Vercel (separate task). See the "Supabase" bullet; the plan of 14/10 marks each change.
+    the contract changes on purpose, regenerate it from `backend/target/contrato-real/`. — historia en [docs/historia/decisiones-tecnicas-historico.md](docs/historia/decisiones-tecnicas-historico.md).
+- **Clever deployment hardening** (`app.ganera.es` static frontend + `api.ganera.es` backend). Since the database is **Supabase**
+  (Ireland), "a new base" means emptying the `ganera` schema and rerunning script 01 (S7). See the "Supabase" bullet.
   - **No default Spring user:** `GaneraApplication` excludes `UserDetailsServiceAutoConfiguration` (it created a `user`
     and logged «Using generated security password»); `SinUsuarioPorDefectoTest` starts its own context to avoid a cached
     one.
@@ -1104,22 +858,13 @@ approval step before anything is written to OVZ.net.
     (the test `application.yml` shadows the main one on the test classpath).
   - **Installable web app (PWA), install only:** `public/manifest.webmanifest` (`start_url` `/`, `standalone`, background
     `#f3f2f2`, theme `#eae9e9`), icons 192/512 + 512 maskable + 180 `apple-touch-icon` rendered from
-    `ganera-logo-rojo.svg`; **no service worker**, no offline mode or data cache (`pwa.test.ts`). Real Chromium 151 and
-    Edge 155 report no installability errors. In an installed window the session (`sessionStorage`) ends when the window
+    `ganera-logo-rojo.svg`; **no service worker**, no offline mode or data cache (`pwa.test.ts`). In an installed window the session (`sessionStorage`) ends when the window
     closes.
-  - **Deployment kit** outside the repo in `C:\Users\Antonio\Desktop\ganera-clever\` (replaces
-    `Archivos-Ganera\ganera-demo`): `alta-gestorias.sh`, two invented Excel files, `seed-tramites.sql` (8 trámites per
-    gestoría with OVZ types, one `HECHO_EN_OVZ`, one discardable `SIN_TRAMITE`), `smoke.sh` (41 checks against Clever;
-    recovers the state a demo leaves). Rehearsed against embedded PostgreSQL 16 with the `clever` profile. Updated for
-    Supabase on 2026-10-20: `LEEME.md` uses Supabase's SQL editor instead of Adminer (script 01, passwords with `psql`
-    17 `\password`), `seed-tramites.sql` starts with `SET ROLE ganera_propietario; SET search_path TO ganera;`, and
-    `prueba-supabase.sh` (step 5 of the Supabase smoke) is new; rehearsed against embedded PostgreSQL 17 imitating
-    Supabase (see the "Supabase" bullet).
-- **Supabase — the production database** (2026-10-19/20; plan `docs/superpowers/plans/2026-10-19-migracion-supabase.md`,
-  Antonio's decisions S1–S7 at the top prevail). Supabase replaces **only** the database (project in **eu-west-1,
-  Ireland**, **PostgreSQL 17.11**, Free plan, UTC, **Data API disabled**); the backend stays on Clever (Paris) and the
-  frontend will go to Vercel (separate task). HSTS, CORS fail-closed, no default user and the PWA don't change. The audit
-  trail (trigger, cross-Gestoría `403`, IP) is the next task.
+  - **Deployment kit** outside the repo in `C:\Users\Antonio\Desktop\ganera-clever\`: `alta-gestorias.sh`, two invented Excel files, `seed-tramites.sql` (8 trámites per
+    gestoría with OVZ types, one `HECHO_EN_OVZ`, one discardable `SIN_TRAMITE`), `smoke.sh` (41 checks against Clever).
+    `seed-tramites.sql` starts with `SET ROLE ganera_propietario; SET search_path TO ganera;`. — historia en [docs/historia/decisiones-tecnicas-historico.md](docs/historia/decisiones-tecnicas-historico.md).
+- **Supabase — the production database.** Supabase replaces **only** the database (project in **eu-west-1,
+  Ireland**, **PostgreSQL 17.11**, Free plan, UTC, **Data API disabled**); the backend stays on Clever (Paris).
   - **`clever` profile:** `jdbc:postgresql://${SUPABASE_DB_HOST}:${SUPABASE_DB_PORT}/${SUPABASE_DB_NAME}` with
     **fixed** `sslmode=verify-full`, `sslfactory=org.postgresql.ssl.SingleCertValidatingFactory`,
     `sslfactoryarg=classpath:supabase/ca-raiz.crt`, `currentSchema=ganera` and `logServerErrorDetail=false`; Hikari
@@ -1130,20 +875,14 @@ approval step before anything is written to OVZ.net.
     `ganera_propietario.<ref>`), database `postgres`. **Port 6543 (transaction mode) doesn't work**: it breaks pgjdbc's
     prepared statements and Flyway's advisory lock. Never connect the app as `postgres`.
   - **The CA:** pgjdbc checks the host name after building the socket with that factory, so `verify-full` still
-    verifies it. The real CA goes in `src/main/resources/supabase/ca-raiz.crt` (Antonio downloaded it on 2026-10-20, T0:
-    *Supabase Root 2021 CA*, valid until April 2031); `src/test/resources/supabase/ca-raiz.crt` is a test-only CA that shadows it on the test classpath, with the
+    verifies it. The real CA goes in `src/main/resources/supabase/ca-raiz.crt` (*Supabase Root 2021 CA*, valid until April 2031); `src/test/resources/supabase/ca-raiz.crt` is a test-only CA that shadows it on the test classpath, with the
     test server certificates in `src/test/resources/ssl-pruebas/` (`localhost` only, 100 years, `LEEME.md`).
-    `CaSupabaseTest` reads the main one **from disk** (an X.509 CA, valid, Supabase's subject, not the test one) — it
-    would fail if the file were missing or were the test CA.
+    `CaSupabaseTest` reads the main one **from disk** (an X.509 CA, valid, Supabase's subject, not the test one).
   - **Seven variables, no defaults:** `SUPABASE_DB_HOST/PORT/NAME/USER/PASSWORD`, `SUPABASE_FLYWAY_USER/PASSWORD` (in
     `.env.example`, commented). `ConexionBaseDeDatosEstricta` (`EnvironmentPostProcessor` in `shared/basedatos`, registered
     in `META-INF/spring.factories`, runs before any bean in **every** startup, not only `clever`) resolves
     `spring.datasource.url/username/password` and `spring.flyway.url/user/password` strictly and fails, naming the
-    property and the variable but never a value, if a variable is missing **or defined but blank**. Why: Boot's binder
-    leaves an unresolved `${…}` as text, and an empty host turns into `localhost` in pgjdbc — with `trust` auth (the
-    embedded test server) a missing password would even connect. Side effect in local: `DATABASE_PASSWORD=` (defined,
-    empty) also stops startup, even though `application.yml` has `${DATABASE_PASSWORD:ganera}`; `${X:}` with `X` unset
-    is fine. **Never define `GANERA_*`, `DATABASE_*`, `SPRING_DATASOURCE_*` or `SPRING_FLYWAY_*` on Clever** (relaxed
+    property and the variable but never a value, if a variable is missing **or defined but blank**. **Never define `GANERA_*`, `DATABASE_*`, `SPRING_DATASOURCE_*` or `SPRING_FLYWAY_*` on Clever** (relaxed
     binding would override the profile).
   - **Roles and schema — `backend/supabase/01-preparar-roles-y-esquema.sql`** (Antonio pastes it whole in Supabase's SQL
     editor as `postgres`; one transaction, idempotent, no passwords): `ganera_propietario` (owns the schema and every
@@ -1154,17 +893,15 @@ approval step before anything is written to OVZ.net.
     `PUBLIC`/Supabase roles, `USAGE` only for `ganera_app`; `ALTER DATABASE … SET timezone TO 'UTC'`. Passwords
     afterwards with `psql` 17 `\password` (SCRAM is computed client-side; alternative: paste a SCRAM hash, **never** a
     plain password in the editor). **`02-comprobar-seguridad.sql`**: one read-only query, one row per problem (RLS,
-    exact policies, privileges of `PUBLIC`/`anon`/`authenticated`/`service_role`/`authenticator` on schema, tables,
-    columns, views, sequences, functions, `ganera_app`'s exact privileges, role memberships and attributes, the
+    exact policies, privileges, role memberships and attributes, the
     database's `TimeZone=UTC`); **0 rows = correct**. The tests read both from disk: one source.
   - **Callback `db/postgresql/afterMigrate__seguridad_esquema.sql`** (S1): runs after **every** `migrate` on
     `${flyway:defaultSchema}`, idempotent, over **all** tables (future ones too): `ENABLE ROW LEVEL SECURITY` only if
-    missing (no `FORCE`: the owner doesn't obey it; re-enabling took an `ACCESS EXCLUSIVE` lock on every start),
-    `REVOKE ALL … CASCADE` from `PUBLIC, anon, authenticated, service_role` and `ganera_app`, then for `ganera_app`
+    missing (no `FORCE`: the owner doesn't obey it), `REVOKE ALL … CASCADE` from `PUBLIC, anon, authenticated, service_role` and `ganera_app`, then for `ganera_app`
     `SELECT, INSERT, UPDATE, DELETE` + policy `ganera_app_todo` (`FOR ALL TO ganera_app USING (true) WITH CHECK
     (true)`, created only if missing in `pg_policies`; tenant separation is still the app's job, RLS keeps every other
-    role out). The **"insert-only" list** (`solo_insercion`, today only the reserved name `auditoria` for the coming
-    audit table; the **same** list in 02 — rename both together) gets `SELECT, INSERT` and two policies, never `UPDATE`/
+    role out). The **"insert-only" list** (`solo_insercion`, today only the reserved name `auditoria`;
+    the **same** list in 02 — rename both together) gets `SELECT, INSERT` and two policies, never `UPDATE`/
     `DELETE`. `flyway_schema_history`: nothing for `ganera_app`. Sequences: `USAGE` (`BIGSERIAL`). Functions: no
     `EXECUTE` for the outsiders. Fails with a clear message if a role is missing (fail-closed).
   - **`db/{vendor}`:** `spring.flyway.locations: classpath:db/migration,classpath:db/{vendor}` in **both**
@@ -1182,30 +919,7 @@ approval step before anything is written to OVZ.net.
   - **Tests:** `PostgresEmbebido` (PostgreSQL 17.11) runs with `ssl=on` and the test certificate, creates
     `admin_supabase` (`CREATEROLE CREATEDB`, **not** superuser, like Supabase's `postgres`) and `anon`/`authenticated`/
     `service_role`/`authenticator` (`LOGIN NOINHERIT`, member of the three), and every `nuevaBaseDeDatos()` is owned by
-    `admin_supabase` and gets script 01 run **as `admin_supabase`**. `SeguridadEsquemaPostgresTest`,
-    `PreparacionBaseDeDatosPostgresTest`, `BaseDeDatosPerfilCleverPostgresTest` (each variable missing or blank,
-    `127.0.0.1` vs the `localhost` certificate, no schema, and a real flow as `ganera_app` with RLS),
-    `ConfiguracionBaseDeDatosProduccionTest` and `ConfiguracionFlywayTest` (read the YAMLs from disk),
-    `FlywayH2VendorTest`. Older PostgreSQL tests still connect as superuser to `public`; the callback protects them too.
-  - **`docker-compose`:** `postgres:17-alpine` with script 01 mounted in `/docker-entrypoint-initdb.d/` (without those
-    roles the callback won't let Flyway migrate). It only runs when the volume is created: with an old volume,
-    `docker-compose down -v` (or run the script by hand). The image's user `ganera` is a **superuser** and, because the schema is
-    also called `ganera`, `search_path = "$user", public` makes the local app migrate into `ganera` as that superuser —
-    it works and the callback protects it, but it doesn't reproduce Supabase's role split (T2 review M6). Not tested
-    here (no Docker).
-  - **Known limitations (from the reviews):** the callback doesn't revoke anything from `authenticator` (it may not
-    exist outside Supabase; by default it gets nothing in `ganera`, and 02 detects a hand-made grant, but migrating
-    doesn't undo it — Antonio's decision: fixed in the audit task, with a conditional `REVOKE`); since 2026-10-20 02 also
-    follows **role chains** (T3 second review N1): an outsider role that can become some role R (itself, or through a
-    `pg_has_role(…, 'SET')` chain) which inherits a `ganera_*` role (`'USAGE'`), can `SET ROLE` to it or has ADMIN on it
-    (direct or inherited) shows as «llega por una cadena de roles» — not repeated when a direct clause already flags
-    it; a direct membership without options doesn't hide the chain. So a grant to `anon`, `authenticated` or
-    `service_role` also shows a row for `authenticator`, which can become any of them (and since `pg_has_role` is true
-    for a superuser, being able to become one shows too); the CA validation is only pinned by the URL text (swapping the factory for
-    `NonValidatingFactory` keeps the `127.0.0.1` test green; the exact-URL tests catch it — M2); Spring's chained cause
-    for a missing variable carries the property's **unresolved** raw value (a secret would only show if a variable's
-    value itself contained `${…}` — M4). The real pooler (`rol.<ref>` users), the real CA and `ALTER DATABASE` as
-    Supabase's `postgres` can only be checked by the real smoke (T5).
+    `admin_supabase` and gets script 01 run **as `admin_supabase`**. — historia en [docs/historia/decisiones-tecnicas-historico.md](docs/historia/decisiones-tecnicas-historico.md).
 - **Auditoría — tabla `auditoria` inmutable + inventario cerrado** (2026-10-21 → 2026-10-30, rama
   `feat/auditoria`; plan `docs/superpowers/plans/2026-10-21-auditoria-base.md`, decisiones D1–D10). Registra quién
   hizo qué y cuándo, sin datos personales en el contenido. **Tabla `auditoria`** (`shared/auditoria`, `V25` común
@@ -1331,29 +1045,9 @@ bean — and `shared/basedatos` — `ConexionBaseDeDatosEstricta`, see the "Supa
   constant-time compare, fails closed if unset) instead of a JWT — at the time it's called, no admin
   Usuario exists yet to authenticate as. Replace it with a real admin panel (with its own access
   control) once one exists; don't build more features on top of the shared-secret pattern.
-- **Lombok footgun**: this JDK/Maven combination breaks Lombok's annotation processing when
-  `--release 21` is combined with implicit classpath-based processor discovery (silent
-  "cannot find symbol" for `@Getter`/`@Setter`/`@Slf4j`-generated members). Fixed by declaring
-  `annotationProcessorPaths` explicitly for Lombok in the `maven-compiler-plugin` config in
-  `backend/pom.xml` — don't remove that block thinking it's redundant boilerplate.
-- **Twilio footgun (fixed)**: `TwilioWebhookController` used to build `new RequestValidator(authToken)`
-  in its constructor — Twilio's SDK throws `IllegalArgumentException: Empty key` on a blank token,
-  which meant the *entire app* refused to start whenever `TWILIO_AUTH_TOKEN` was unset (true for
-  every environment at the time; Twilio has been wired to business logic since Prompt B1, and the
-  token can still be blank — the webhook then fails closed). Fixed by constructing
-  `RequestValidator` per-request instead of in the constructor. Don't move Stripe's or any other
-  optional integration's client construction back into a constructor without checking it tolerates
-  a blank credential — verified live by actually starting the app, not just by compiling (see
-  `mvn spring-boot:run` note below).
-- **commons-io footgun (fixed)**: adding Apache POI (`poi`/`poi-ooxml` 5.3.0, for the Prompt 3d Excel
-  importer) caused a runtime `NoSuchMethodError` on `BoundedInputStream.builder()` — Twilio's SDK
-  transitively pulls `commons-io:2.14.0`, which Maven's nearest-wins mediation picked over the
-  newer version POI actually needs (`BoundedInputStream.Builder` only exists from `commons-io`
-  `2.16+`), and this only surfaces at runtime when the importer actually reads a file, never at
-  `mvn compile`. Fixed by pinning `commons-io` to `2.16.1` as an explicit direct dependency in
-  `backend/pom.xml` (a direct dependency always wins mediation over anything transitive, regardless
-  of version). If any future dependency bump touches Twilio, POI, or commons-io, re-check this pin
-  doesn't drift back out of range.
+- **Lombok footgun:** nunca quites el `annotationProcessorPaths` explicito de Lombok en el `maven-compiler-plugin` de `backend/pom.xml` — con `--release 21` + descubrimiento implicito, `@Getter`/`@Setter`/`@Slf4j` fallan en silencio. Ver [footguns](docs/historia/footguns.md).
+- **Twilio footgun:** construye `RequestValidator` por peticion, nunca en el constructor (un `TWILIO_AUTH_TOKEN` vacio impediria arrancar la app); misma cautela con cualquier integracion opcional. Ver [footguns](docs/historia/footguns.md).
+- **commons-io footgun:** manten `commons-io` fijado a `2.16.1` como dependencia directa en `backend/pom.xml` (POI necesita 2.16+, Twilio arrastra 2.14); re-chequea en cualquier bump de Twilio/POI/commons-io. Ver [footguns](docs/historia/footguns.md).
 - `StripeWebhookController` verifies the `Stripe-Signature` header (400 on an invalid signature)
   and dispatches every verified event to `StripeWebhookService.procesarEvento` — no other business
   logic lives in the controller. `StripeWebhookService` is package-private to `facturacion` and
@@ -1576,426 +1270,7 @@ Root:
   `cmd`: `mklink /J .claude\skills\impeccable .agents\skills\impeccable`, or reinstall the skill
   from `skills-lock.json`.
 
-## Current status
-
-Steps 1, 2, 2.5, and 2.7 are complete: infrastructure scaffold; the data model closing out Prompt 2
-(`EstadoSuscripcion`'s final 6 states, `SuscripcionService.puedeAprobarTramites` fail-closed when no
-`Suscripcion` row exists, `Gestoria.modoCartera` + `UsuarioExplotacion`) was rebuilt from scratch and
-re-verified end-to-end on 2026-07-09 following
-`docs/superpowers/plans/2026-07-09-prompt2-estados-suscripcion-cartera.md` (migrations `V10`-`V12`,
-H2 smoke test confirming all 12 migrations apply cleanly with no bean-wiring errors); Prompt 2.5 —
-real Usuario authentication (`POST /auth/login`, `GET /auth/me`) plus manual pilot onboarding
-(`POST /internal/onboarding/gestoria`, temporary — see Architecture notes; it creates the Gestoría,
-its first Usuario, and a `Suscripcion` directly in `ACTIVA`, no Stripe involved) — implemented and
-verified on 2026-07-09 following
-`docs/superpowers/plans/2026-07-09-prompt2.5-autenticacion.md`; and Prompt 2.7 — the full Stripe
-integration (`POST /facturacion/checkout`, the `StripeWebhookService` state machine, and the nightly
-`SuscripcionSyncScheduler` quantity-reconciliation job — see the Stripe bullet under Technical
-decisions for the full design and its one known limitation) — implemented and verified across the
-plan's four tasks on 2026-07-09 following `docs/superpowers/plans/2026-07-09-prompt2.7-stripe.md`: migration
-`V13` adds `stripeSubscriptionId`/`explotacionesContratadas`/`stripeUltimoEventoEpoch` to
-`Suscripcion`; full backend suite green at 79 tests; an H2 smoke test confirming the app boots
-cleanly with all 13 Flyway migrations validating and every Stripe-related env var
-(`STRIPE_API_KEY`/`STRIPE_WEBHOOK_SECRET`/`STRIPE_PRICE_ID_EXPLOTACION`) left blank —
-`POST /facturacion/checkout` returns `503` with a real JWT (Stripe unconfigured) and `401` without
-one, `POST /webhooks/stripe` returns `400` on an invalid signature, and `SuscripcionSyncScheduler`
-wires up with no bean errors. Backend and frontend compile/build cleanly, backend tests pass
-(verified once by actually booting the app — see the H2 smoke-test command above — not just by
-compiling). **`STRIPE_PRICE_ID_EXPLOTACION` is still an empty placeholder** — creating the real
-`Price` in the Stripe dashboard (test mode first) is Antonio's manual action, not something any
-agent does, so a real end-to-end Checkout Session against Stripe test-mode is still pending that
-step. (At that point no AI/WhatsApp business logic was wired; Prompt B1 wired it on 2026-10-05,
-see below.) `OvzAutomationService`'s Playwright logic is still an unimplemented skeleton;
-portfolio filtering by `modoCartera` isn't implemented; there is still no admin panel (public
-self-registration was added later, see below).
-
-Prompt 3d — Excel inventory importer + basic REST controllers — is also complete, implemented and
-verified end-to-end on 2026-07-14 (no separate written plan; the prompt itself, refined through a
-few upfront clarifying questions on schema gaps, served as the spec): migration `V14` adds
-`Ganadero.nif` (globally unique); `POST /explotaciones/importar`, `GET /explotaciones`,
-`GET /tramites`, `POST /tramites/{id}/aprobar`, `POST /tramites/{id}/rechazar` (see the Excel
-importer bullet under Technical decisions for the full design). This is the **first real caller of
-`SuscripcionService.puedeAprobarTramites`** (via `/aprobar`, `403` if it returns false) — though
-`/aprobar` and `/rechazar` only flip `EstadoTramite` in the DB, with no `OvzAutomationService` call
-(approving never sends: that's the gestor's "Enviar" in escalón 2 (modo asistido)). Full backend suite
-green at 91 tests (79 + 12 new); real end-to-end HTTP smoke test
-(H2 + all 14 migrations, onboarding → login → import a real fixture `.xlsx` → list → re-import same
-file and confirm no duplication → 401 without JWT → 404 on an unknown trámite id) — not just the
-`@DataJpaTest`-level suite.
-
-Prompt 4 — functional frontend, **only the part not blocked by OVZ.net** — is complete as of
-2026-07-14: login (JWT in-memory, see Architecture notes), Explotaciones dashboard with the Excel
-importer given real UI prominence, Trámites queue with estado filter + review modal (handles a null
-WhatsApp message/unresolved Explotación without looking broken, since 3b hasn't shipped yet) +
-Aprobar/Rechazar (a `403` on Aprobar shows the real "tu suscripción no permite aprobar trámites"
-reason, never a generic error), and a Facturación status page. Deliberately **not** built (per
-explicit scope): the screen to store OVZ credentials (encrypted), deferred to escalón 2; whether they
-belong to the gestoría or to each ganadero is decided after the OVZ mapping — and any manual
-Ganadero/Explotación creation form — both would either need real OVZ.net access or open a second,
-divergent data-entry path around the Excel importer. Two backend additions this required
-(`GET /facturacion/suscripcion`, `GET /tramites/{id}`) — see the Prompt 4 bullet under Technical
-decisions. Full backend suite green at 101 tests (93 + 7 for the two new endpoints + 1 critical
-end-to-end regression test, see below). Frontend verified with `tsc -b` (clean) + `oxlint` (clean)
-+ a real headless-Chromium session against the real backend (Playwright's npm package, installed
-ad hoc for this — no project skill existed yet for driving this app; consider
-`/run-skill-generator` if this becomes a recurring need) driving: login → Excel import (exact
-resumen match against the backend) → Trámites list + estado filter (confirmed the actual
-`?estado=APROBADO` query fired) → Facturación (ACTIVA, no blocking banner) → logout → redirect to
-`/login`. **Found and fixed two frontend bugs only a live browser catches:** the CORS gap above,
-and `Select`'s trigger showing the raw value (`"TODOS"`) instead of the label until given a
-`children` render-function (see Architecture notes).
-
-Before calling Prompt 4 closed, Antonio explicitly asked to also verify live (not just by backend
-integration tests/code review) the three paths that hadn't been exercised yet: the review-modal
-with a real WhatsApp message + resolved Explotación, the `403`-on-aprobar message, and the
-no-Suscripción banner — plus the null-message/unresolved-Explotación case again for real. Since
-none of these can be produced through the running app yet (no Tramite-creation UI, 3b doesn't
-exist), the data was seeded directly by SQL against the smoke-test H2 instance (a file-backed
-H2 with `AUTO_SERVER=TRUE` so a separate `org.h2.tools.RunScript` process could write to the same
-live database — no app business logic involved in the seeding itself) and driven from a real
-browser. All four looked correct — **but seeding a second real Gestoría with its own login for
-the no-Suscripción check surfaced a real, previously-undetected critical bug**: `GET /tramites`
-and `GET /explotaciones` returned rows from *every* Gestoría, not just the authenticated one. See
-the "Critical footgun" note under the Multi-tenancy bullet above for the full root cause
-(`TenantFilterActivationInterceptor` vs. Spring Boot's `OpenEntityManagerInViewInterceptor`
-ordering) and the fix. This had been latent since the interceptor was first introduced — invisible
-to every previous test and manual smoke test because none of them ever compared two Gestorías
-with overlapping data over real HTTP in the same run. Fixed, verified with a new deliberate
-end-to-end test (confirmed it fails without the fix, passes with it), full suite re-run green, and
-all four scenarios re-verified live in the browser against the fixed backend.
-
-**Before considering that fix sufficient, Antonio asked for a targeted audit of every endpoint
-touching a `GestoriaScopedEntity`** — explicitly rejecting "it uses the same Repository, so it's
-already covered" as a valid argument, since the bug above was at the interceptor/ordering level,
-not the query level, so each endpoint needed its own real two-tenant HTTP test. That audit found
-a **second, independent critical bug**: `gestoriaFilter` never applied to `findById(id)` at all
-(a separate Hibernate behavior, unrelated to interceptor ordering — see the second footgun note
-under Multi-tenancy above), so `GET /tramites/{id}`, `POST /tramites/{id}/aprobar`, and
-`POST /tramites/{id}/rechazar` let any authenticated user view/approve/reject **any Gestoría's**
-trámite by id. Fixed with an explicit `findByIdAndGestoriaId` query in all three, again writing
-the failing test first. `TenantIsolationEndToEndTest` now has one real two-tenant case per
-affected endpoint (7 total); full backend suite green at **110 tests** (101 + 6 more E2E cases +
-3 unit-level cross-tenant checks in `TramiteControllerTest`).
-
-**Public self-registration (`POST /gestorias/registro`) is complete**, implemented and verified on
-2026-07-14: the `registro` package (see the Technical decisions bullet above for the full design —
-`RangoClientes`, `RegistroGestoriaService`, `RegistroGestoriaController`, the new
-`StripeCheckoutService.crearSesionCheckoutConCantidadEstimada` overload, and the `SecurityConfig`
-`permitAll` for this route), plus a matching frontend `RegistroPage` (same brand styling as the rest
-of Prompt 4/the branding pass) reachable from a new "¿No tienes cuenta? Regístrate" link on
-`LoginPage`. Full backend suite green at **135 tests** (110 + 25 new: `RangoClientesTest`,
-`RegistroGestoriaValidacionTest`, `RegistroGestoriaServiceTest`, `RegistroGestoriaControllerTest`, a
-new `RegistroGestoriaEndToEndTest`, and one addition to `StripeCheckoutServiceTest`). Verified with
-a real H2 smoke test over HTTP (`curl`, no `Authorization` header — confirms the route is genuinely
-public, not just returning `401` before ever reaching the controller — followed by a real
-`/auth/login` + `/auth/me` round-trip with the credentials just registered, proving Gestoria+Usuario
-were actually persisted) and in a real browser (Playwright): the "Regístrate" link, the client-range
-`Select` showing real labels (not raw enum values — same care already needed for `TramitesPage`'s
-`Select`), a weak password and a duplicate email producing the exact same generic error message
-(confirming the no-enumeration guard holds visually, not just in a unit test), and a genuinely new
-registration correctly showing the "facturación no configurada" message. **A real end-to-end
-redirect to Stripe's hosted Checkout page is still unverifiable in this sandbox**, for the same
-pre-existing reason as the rest of the Checkout flow: `STRIPE_PRICE_ID_EXPLOTACION` is still an
-empty placeholder (see Prompt 2.7 above) — creating the real `Price` in the Stripe dashboard remains
-Antonio's manual action.
-
-**Prompt A1 — Contactos, crotales in trámites and editable review (backend only) — is complete**
-(2026-09-25 → 2026-09-28), following
-`docs/superpowers/plans/2026-09-25-promptA1-contactos-crotales-revision.md` (31 closed decisions)
-with the Superpowers flow: one implementer subagent + one independent reviewer subagent per task,
-briefs/reports/reviews in `.superpowers/sdd/a1-*`. See the "Prompt A1" bullet under Technical
-decisions for the full design: Contacto tenant-scoped with role on the relation and logical
-delete, `/contactos` CRUD, `/ganaderos`, `/explotaciones/{id}/animales`, the importer's optional
-"Contactos" sheet, `tramite_crotal` + `CrotalNormalizador`, `PATCH /tramites/{id}`, the full
-approval rule (provisional crotal format, decision 28), optimistic `version`, `sort` whitelists
-on every listing, public `/error`. Migrations `V15`–`V17`. Full backend suite green at **415
-tests** (`./mvnw clean test`), plus a real HTTP smoke test on a file-backed H2 (onboarding → login
-→ import with a Contactos sheet → `GET /ganaderos/{id}` with contactos and rol → `GET /contactos` +
-`?sort=noExiste` `400` → a Tramite seeded by SQL → `aprobar` without version `400` / with it `409`
-"Falta asignar la explotación. Falta el tipo de trámite." → `PATCH` `200` (`version` 0 → 1, one
-crotal `EN_INVENTARIO` by its last digits, one full crotal `NO_ENCONTRADO`) → stale-version PATCH
-and `aprobar` `409` → `aprobar` with the new version `200 APROBADO` (`version` 2) → malformed body
-`400`, not `401`). Committed as `2538583` (plus `880d3ca`, which removed the last unscoped
-Animal finder). `TipoTramite` was deliberately left unchanged then (replaced by the OVZ types in the ficha OVZ, `V20`; see
-`ganera-prompts.md`).
-
-**Prompt A2 — frontend for A1 (Ganaderos, animales, editable review) — is complete**
-(2026-09-28 → 2026-10-02), following `docs/superpowers/plans/2026-09-28-promptA2-frontend-revision.md`
-(31 decisions) with the Superpowers flow (reports in `.superpowers/sdd/a2-*`, not committed) and
-the Impeccable skill for every design pass, run from the main session (critique of the queue,
-craft of Ganaderos and the review dialog, audit + polish at the end; direction contracts in
-`.impeccable/surfaces/`). **Frontend only — nothing in `backend/` changed.** Delivered: Vitest/MSW
-test tooling, the single HTTP error model, the session in `sessionStorage`, the brand mark
-(`LogoGanera`, `index.html` in Spanish with `favicon-64.png`), labels/badges from `etiquetas.ts`,
-the queue (filtered by pending, keyboard-accessible rows, REGA column, crotales), Ganaderos list +
-detail, animales per explotación, and the editable review dialog with `version` (see the frontend
-architecture notes). `DESIGN.md` was brought up to date with the new patterns. Verified with
-`npm test` 475/475, `npm run build` and `npm run lint` clean (known warnings only), `./mvnw clean
-test` 415/415, and a real-browser smoke (Playwright from npm outside the repo, Vite dev server,
-backend on a file-backed H2) with two Gestorías: login + reload keeps the session → Excel import
-from the UI with a Contactos sheet (re-import doesn't duplicate) → Ganaderos → detail with
-contactos and `tel:` links → animales paginated → queue filtered by pending → PATCH with `version`
-(crotales resolved `EN_INVENTARIO`) → aprobar with `version` `200` → aprobar without tipo `409` with
-its `motivo` → a stale-version `409` reloads the fresh data and shows the `motivo` → rechazar with
-inline confirmation → read-only `APROBADO` → Facturación; Gestoría B (subscription `SUSPENDIDA`,
-375 px): banner, only its own trámite in the queue, aprobar `403` with the subscription text and no
-logout, `/ganaderos/{A's id}` → "Ganadero no encontrado", Salir clears the token. Known leftovers
-(none blocking): the nav bar overflows at 375 px (fixed in the frontend task before the pilot), the 622 kB
-chunk, the import summary card says "1 filas"/"1 actualizadas" (the announced sentence already
-uses real plurals), and the minors m1–m4 of the Task 10 review.
-
-**Mini-prompt of backend after A2 — complete** (2026-10-02), following
-`docs/superpowers/plans/2026-10-02-mini-prompt-backend-tras-a2.md` (decisions closed with Antonio
-before starting) with the Superpowers flow (T1–T4, one implementer + one independent reviewer each,
-all **Approved** with minors only; reports in `.superpowers/sdd/mp-*`, not committed). See the
-"Mini-prompt of backend after A2" bullet under Technical decisions: `GET /explotaciones/{id}`,
-`?q=`, `403` with `motivo`, `version` required on rechazar (plus the one-line frontend change so
-Rechazar keeps working — the only frontend change), `explotacionCodigoRega`/`explotacionNombre`
-in the trámites list without N+1, the importer's and the registration's `400` as `{motivo}`, and
-`completo` in each crotal. No migrations. Verified with `./mvnw clean test` **472/472** (471 + the N+1 fix's test), `npm test`
-**476/476**, `npm run build` and `npm run lint` clean (known warnings only), and a real `curl`
-smoke against two Gestorías on a file-backed H2 (log in `.superpowers/sdd/mp-t5-smoke.md`; run
-before the N+1 fix, which is covered by its own test). Smoke
-tip: Git Bash's `curl -d '…'` garbles non-ASCII characters on Windows — send JSON bodies with
-`--data-binary @file`.
-
-**Frontend task before the pilot — complete** (2026-10-03 → 2026-10-04), following
-`docs/superpowers/plans/2026-10-03-tarea-frontend-antes-piloto.md` (decisions closed with Antonio)
-with the Superpowers flow (T1–T5, one implementer + one independent reviewer each, all **Approved**
-with minors; reports in `.superpowers/sdd/fp-*`, not committed) and Impeccable for the nav bar
-(shape approved by Antonio before the craft; brief in
-`.impeccable/surfaces/frontend-src-shared-layout-applayout-tsx.md`). **Frontend only.** Delivered:
-mobile nav bar (two rows below `md`, scrolling link strip, no page-level horizontal scroll), the
-importer card's singulars, the review combobox on `GET /explotaciones?q=` (complete list deleted),
-the queue's REGA from `explotacionCodigoRega`, the amber incomplete `NO_ENCONTRADO` from
-`completo`, the `403` `motivo` (already worked; now pinned by tests) and `errores.ts` comments.
-Verified with `npm test` **506/506**, `npm run build` and `npm run lint` clean (known warnings
-only), `./mvnw clean test` **472/472**, and a real-browser smoke with two Gestorías on a
-file-backed H2 at 1440/768/640/375 px (log in `.superpowers/sdd/fp-t6-smoke.md`): no page-level
-horizontal scroll anywhere, active link visible and `scrollY` stable at 375 px, no request to
-`/explotaciones` from the queue, combobox search/400/500/D3d, approve from 375 px, Gestoría B's
-`403` with the backend's `motivo`. The smoke's N1 (keyboard focus landing on a nav link clipped by
-the scrolled strip) was fixed before the commit and checked at 375 px in a real browser.
-Non-blocking leftovers: "Reintentar" inside the combobox isn't reachable by Tab, and the combobox
-list empties while searching (height jump).
-
-**Backend task blocking the pilot — explotación search without accents, word by word — complete**
-(2026-10-04), following `docs/superpowers/plans/2026-10-04-busqueda-explotaciones-sin-tildes.md`
-with the Superpowers flow (T1–T3, one implementer + one independent reviewer each, all **Approved
-with minors**, minors fixed; reports in `.superpowers/sdd/bt-*`, not committed). **Backend only.**
-See the "Explotación search without accents" bullet under Technical decisions. Migration `V18`
-(Java). Verified with `./mvnw clean test` **533/533**, `npm test` **506/506** (frontend untouched),
-and a `curl` smoke with two Gestorías on a file-backed H2 in two phases — `main`'s backend imported
-the data at V17, then the new backend applied V18 to that same database and the searches ran
-against the backfilled rows (log in `.superpowers/sdd/bt-t4-smoke.md`). The only frontend change,
-by Antonio's explicit exception, is the JSDoc of `frontend/src/features/explotaciones/api.ts` (a
-comment, no code); `npm test` 506/506 and `npm run lint` (known warnings only) after it.
-
-**Billing moved out of the app — complete** (2026-10-04), following
-`docs/superpowers/plans/2026-10-04-quitar-pago-de-la-app.md` (inventory "se quita / se queda" and
-decisions closed with Antonio) with the Superpowers flow (T1 backend, T2 frontend, one implementer +
-one independent reviewer each, both **Approved with minors**, minors fixed; reports in
-`.superpowers/sdd/qp-*`, not committed). **Backend and frontend in the same commit** (a contract
-changes). See "Billing moved out of the app" under Technical decisions. Verified with
-`./mvnw clean test` **534/534**, `npm test` **508/508**, `npm run build` and `npm run lint` (known
-warnings only), and a real-browser smoke with two Gestorías (A `ACTIVA`, B `SUSPENDIDA` by SQL) at
-1440 and 375 px (log in `.superpowers/sdd/qp-t3-smoke.md`). **New order of work** (in
-`ganera-prompts.md`): brand colours and typography → Prompt B (with the birth registration: mother's
-crotal, sex and date of birth) → Prompt C.
-
-**Brand colours and typography — complete** (2026-10-05), following
-`docs/superpowers/plans/2026-10-04-colores-y-tipografia.md` (Impeccable shape approved by Antonio on
-2026-10-04, craft from the main session; Superpowers flow T1 tokens + font, T2 classes, T3 logo
-assets, each with an implementer and an independent reviewer: T1 and T2 **Approved with minors**,
-minors fixed; T3 **Approved**; then T5, Antonio's table-link decision (`CLASE_ENLACE_TABLA`), **Approved with
-minors**, minors fixed; reports in `.superpowers/sdd/ct-*`, not committed). **Frontend,
-`DESIGN.md`, `PRODUCT.md` (by Antonio's explicit exception) and the Impeccable surface briefs.**
-Verified with `npm test` **513/513**, `npm run build` and `npm run lint` (known warnings only),
-`./mvnw clean test` **534/534**, `impeccable detect` with no findings, and a real-browser smoke at
-1440 and 375 px with two Gestorías (log in `.superpowers/sdd/ct-t4-smoke.md`; screenshots outside the
-repo in `C:\Users\Antonio\Desktop\capturas-ganera-marca\`). Next in the order of work: Prompt B.
-
-**Prompt B1 — WhatsApp + AI, the minimum that works — complete** (2026-10-05), following
-`docs/superpowers/plans/2026-10-05-promptB1-whatsapp-ia.md` with the Superpowers flow (T0 the three
-defects first — signature, fail-closed, native structured output — then T1 reception, T2 background
-extraction, T3 responses and retention, T4 the minimal frontend; one implementer + one independent
-reviewer each, all **Approved with minors**, minors fixed; reports in `.superpowers/sdd/b1-*`, not
-committed) and Impeccable for T4 (shape approved by Antonio; real-browser pass from the main
-session). **Backend and the minimal frontend in the same commit** (Antonio's explicit exception).
-See the "Prompt B1" bullet under Technical decisions. Migration `V19`. Verified with
-`./mvnw clean test` **676/676**, `npm test` **558/558** (37 files), `npm run build` and
-`npm run lint` (known warnings only), and a **real smoke with the Twilio WhatsApp sandbox from
-Antonio's phone** (Cloudflare quick tunnel, file-backed H2, invented data, two Gestorías; log in
-`.superpowers/sdd/b1-t5-smoke.md`): valid message → acknowledgement on the phone + Tramite only in
-A, extracted by the real Haiku (BAJA, crotal resolved to A's animal and not to B's with the same last
-digits); duplicate `MessageSid` → `<Response/>`, nothing new; AI failure (invalid key in that
-process only) → acknowledgement + `FALLIDA` with the notice, then the 5-minute retry with the real
-key completed it; unknown number → no reply, stored as `NUMERO_DESCONOCIDO`. The smoke also caught
-a misconfigured `TWILIO_AUTH_TOKEN` (an Anthropic key in it): the webhook failed closed with `403`,
-as designed. Tunnel closed and checked (Cloudflare 530/1033), H2 and every smoke file deleted. Next:
-B2 (see `ganera-prompts.md`).
-
-**C mínimo — demo deployed in the EU — code done, deployment pending** (2026-10-06), following
-`docs/superpowers/plans/2026-10-06-promptC-minimo-demo-desplegada.md` (D1–D8 closed with Antonio)
-with the Superpowers flow (T1 tests on real PostgreSQL, T2 `clever` profile + registration closed by
-default, T3 registration screen removed, T4 demo data and scripts outside the repo; one implementer +
-one independent reviewer each, all **Approved with minors**, minors fixed; reports in
-`.superpowers/sdd/c0-*`, not committed). **Backend and frontend in the same commit.** See the "C mínimo"
-bullet under Technical decisions. No migrations. Verified with `./mvnw clean test` **690/690**,
-`npm test` **557/557** (36 files), `npm run build` and `npm run lint` (known warnings only), and a
-dress rehearsal against embedded PostgreSQL 16 (onboarding, both Excel imports, the seed SQL from a
-non-UTC session, `smoke.sh` all PASS). Still to do: deploy on Clever (Antonio's account, console and
-secrets), seed, and the smoke against the deployed environment; then optionally the Twilio sandbox.
-
-**Ficha lista para OVZ (escalón 1 de OVZ) — complete, committed as `db0d234`** (2026-10-06 → 2026-10-07),
-following `docs/superpowers/plans/2026-10-06-ficha-ovz.md` with the Superpowers flow (T1 OVZ types +
-`V20`, T2 titular in the detail + T2b OVZ-password leak test, T3 the pure ficha catalog, T4 the copy
-button, one implementer + one independent reviewer each, all **Approved with minors**, minors fixed; T5
-the page, crafted from the main session with Impeccable after Antonio approved the shape, and reviewed
-independently; reports in `.superpowers/sdd/fo-*`, not committed). See the "Ficha lista para OVZ" bullet
-under Technical decisions. Migration `V20`. Verified with `./mvnw clean test` **706/706**, `npm test`
-**720/720** (40 files), `npm run build` and `npm run lint` (known warnings only), and a real-browser smoke
-(H2 file DB, two invented gestorías seeded through the real API, Playwright outside the repo) with
-36/36 PASS: session inherited by the new window in Chromium and Firefox, real copy and Ctrl+V paste, every
-type and state, cross-gestoría `404`, no page-level horizontal scroll at 375/420/1440 px, login-and-back
-for a tab without opener. The OVZ-password test was mutation-checked before the commit: exposing the
-plain password in `TramiteDetalleResponse` fails it at the body check, and exposing the stored
-ciphertext (a raw read-only mapping of the column) fails it too; both restored with `cp` + `cmp`.
-
-**Hecho en OVZ (D5 of the ficha OVZ) — complete, committed as `747b2ad`** (2026-10-07), following
-`docs/superpowers/plans/2026-10-07-hecho-en-ovz.md` with the Superpowers flow (T1 backend, T2 frontend, one
-implementer + one independent reviewer each: T1 **Approved with minors**, T2 **Changes requested** → fixed →
-**Approved with minors**, minors fixed; T3 smoke delegated; reports in `.superpowers/sdd/ho-*`, not
-committed). No Impeccable pass by Antonio's decision: existing visual patterns, reviewed on the smoke
-screenshots. See the "Hecho en OVZ" bullet under Technical decisions. Migration `V21`. Verified with
-`./mvnw clean test` **742/742**, `npm test` **811/811** (41 files), `npm run build` and `npm run lint`
-(known warnings only), and a real-browser smoke (H2 file DB, two invented gestorías, A `ACTIVA` with three
-usuarios, B `SUSPENDIDA`; Chromium and Firefox) with 13/13 scenarios PASS; screenshots outside the repo in
-`C:\Users\Antonio\Desktop\capturas-ganera-hecho-ovz\`.
-
-**B2 reducido — replying to the Contacto by WhatsApp — complete, committed as `f816f6e`** (2026-10-11), following
-`docs/superpowers/plans/2026-10-11-promptB2-reducido-responder-whatsapp.md` with the Superpowers flow (T1 backend:
-**Changes requested** (the Twilio SDK's 5xx retries) → fixed → **Approved with minors**; T2 frontend: **Approved
-with minors**; the correction rounds after a usage-limit cut were done from the main session with TDD and
-reviewed independently, **Approved with minors**, minors fixed; reports in `.superpowers/sdd/b2-*`, not committed).
-See the "B2 reducido" bullet under Technical decisions. Migration `V22`. Verified with `./mvnw clean test`
-**796/796**, `npm test` **912/912** (43 files), `npm run build` and `npm run lint` (known warnings only), and a
-real-browser smoke with two Gestorías and Twilio faked by a bean compiled outside the repo; screenshots outside the
-repo in `C:\Users\Antonio\Desktop\capturas-ganera-b2\`.
-
-**B2 reducido — Twilio status callback — complete, committed as `5eeb39e`** (2026-10-11), following
-`docs/superpowers/plans/2026-10-11-b2-callback-estado-twilio.md` (backend only; one implementer + one independent
-reviewer, **Approved with minors**, minors accepted as notes; reports `.superpowers/sdd/b2-t4-*`, not committed). See
-the "Status callback" sub-bullet under "B2 reducido". No migration. Verified with `./mvnw clean test` **906/906**
-(frontend untouched, `npm test` **912/912**). **B2 reducido is closed** after Antonio's real sandbox test on
-2026-10-12 (his terminal, his own phone, Cloudflare Quick Tunnel): reply accepted, then `ENTREGADO` and `LEIDO` callbacks
-with the same SID and no error code, no phone or text in the log (details and notes in `progress.md`).
-
-**SIN_TRAMITE — complete** (2026-10-12), following
-`docs/superpowers/plans/2026-10-12-sin-tramite.md` with the Superpowers flow (T1 AI and extraction, T2 discard/undo +
-`V23` + history, T3 frontend; one implementer + one independent reviewer each, all **Approved with minors**, minors
-fixed by the main session with TDD and mutation checks; Antonio's four T3 adjustments and the shared contract test done
-by the main session; reports `.superpowers/sdd/st-*`, not committed). See the "SIN_TRAMITE" bullet under Technical
-decisions. Migration `V23`. Verified with `./mvnw clean test` **968** (967 run, 1 skipped: the evaluation), `npm test`
-**976 in 45**, `npm run build` and `npm run lint` (known warnings only). The prompt was measured against the real Haiku
-by the main session before Antonio's rule (three runs; the first found one false SIN_TRAMITE, «ok, apunta el censo»,
-the prompt was adjusted, the next two had 0); from now on only Antonio runs it. **Antonio's own run** (his terminal):
-0 false SIN_TRAMITE, chat 18/18, 0 failures. **His real smoke with the Twilio sandbox**, steps 1–9 PASS (queue notice,
-«Descartar» with its hint, one-click discard with nothing sent to the phone, `404` from the other Gestoría on discard
-and undo, the ficha OVZ of a discarded one, «Deshacer» with history, «gracias, se ha muerto la 4521» as a death with
-`ES990000004521`). Instructions live outside the repo, in
-`C:\Users\Antonio\Desktop\ganera-prueba-sin-tramite\INSTRUCCIONES.md` (lesson about PowerShell JSON bodies in
-`progress.md`).
-
-**Supabase migration — complete, real smoke (T5) passed, not committed yet** (2026-10-19 → 2026-10-21),
-following `docs/superpowers/plans/2026-10-19-migracion-supabase.md` with the Superpowers flow (T1 PostgreSQL 17 in the
-tests and `db/{vendor}`, **Approved with minors**; T2 roles, schema, RLS and time zone, **Changes requested** → fixed →
-**Approved with minors**; T3 the `clever` profile against Supabase, **Changes requested** → fixed → **Approved with
-minors**; T4 docs and kit; reports `.superpowers/sdd/su-*`, not committed). **Backend, `.env.example`, `docker-compose`
-and docs; frontend untouched.** See the "Supabase" bullet under Technical decisions. No new versioned migration (the
-callback lives in `db/postgresql`). Verified with `./mvnw clean test` **1075** (1074 pass, 1 skipped: the evaluation; JDK 21
-and 23), after the role-chain check of 02 (`pg_has_role`, reviewed), `npm test` **1084 in 50** (unchanged), and a rehearsal of the kit
-against embedded PostgreSQL 17 imitating Supabase (SSL `verify-full`, SCRAM for the two roles, the `clever` profile):
-`prueba-supabase.sh` 5/5 PASS, `alta-gestorias.sh`, both Excel files, the seed from a non-UTC session, `smoke.sh` 39 and
-38 PASS, 02 with 0 rows. **Real smoke (T5, Antonio's terminal, 2026-10-21): all PASS** — the pooler accepts
-`rol.<ref>` and the panel's CA validates it with `verify-full`; the local backend (`clever`, JDK 21) migrated 23
-versions into `ganera` with the callback and no Flyway WARN; `prueba-supabase.sh` 5/5; 02 with 0 rows on real
-Supabase; `UTC`; `anon` denied; `ganera_app` sees 15 explotaciones and not `flyway_schema_history`; S7 done (schema
-emptied, roles kept). Lesson: never paste a password blind into a console prompt — read it from the clipboard and
-set it as a SCRAM hash in the SQL editor (kit `rotar-contrasenas.ps1`, `smoke-supabase-local.ps1`; details in
-`progress.md`). **No commit until Antonio approves it.**
-
-**M2 — OVZ password decrypted on demand and audited — complete** (2026-11-09 → 2026-11-10, branch
-`feat/ovz-descifrado-bajo-demanda`). **Backend only, no migration.** See the "Descifrado de la contraseña OVZ bajo
-demanda" part of the "Auditoría" bullet under Technical decisions (and the pending items for escalón 2 listed there).
-`EncryptedStringConverter` was deleted; `CifradorAesGcm` keeps the same column format; `Ganadero` holds the
-ciphertext at rest and its only writer takes a `CredencialOvzCifrada`; `DescifradoCredencialOvz` is the only place
-that decrypts (no production caller yet) and leaves `CREDENCIAL_OVZ_DESCIFRADA` before decrypting. Independent
-reviewer on the last round: **Approved with minors**, minors fixed (`CredencialOvzCifradaTipoTest` now also pins
-`Ganadero`'s only constructor and its exact list of `String` setters — **it must go red when "opción B" adds a field
-such as the phone; extend the list only after reviewing it**). Verified with `./mvnw clean test` **1338** (0 failures, 0 errors, 1 skipped: the evaluation; JDK 21),
-`npm test` **1117 in 54** (frontend untouched), mutation checks (restored with `cp` + `cmp`) and a local smoke: two
-corrupted ciphertexts → `200` on `/tramites/{id}`, `/ganaderos` and `/ganaderos/{id}`.
-
-**Teléfono en la ficha del ganadero (opción B, primer campo) — complete, not merged yet** (2026-11-10, rama
-`feat/ganadero-telefono`; plan `docs/superpowers/plans/2026-11-10-ganadero-telefono.md`, decisiones D1–D10 y ajustes
-A1–A10). **Backend + frontend en el mismo commit** (cambia un contrato). Base: la rama arranca sobre `main` =
-`27ff412` (merge del mock v2 del frontend de Álvaro, PRs #13–#22, solo `frontend/`). Ver la regla «Manual alta de
-Ganadero» (el `telefono`, el `PUT /ganaderos/{id}/telefono`, el borrado explícito, `GANADERO_MODIFICADO` con
-`campos_cambiados`, `EDITAR_GANADERO`, `V29`, `SETTERS_STRING` y el pendiente de `contacto_titular_id`). Flujo
-Superpowers: T1 backend (implementador + revisor independiente, **Approved**), T2 frontend (añadir sin rediseñar el
-mock v2 de Álvaro; implementador + revisor independiente, **Approved**), T3 smoke + capturas desde la sesión
-principal. Mutaciones A3 reproducidas por la sesión principal (cp/cmp): `findByIdAndGestoriaId`→`findById` → rojo en
-`GanaderoTelefonoEndToEndTest` (`expected null but was "+34612345678"`); quitar el `registrar` → rojo (GuardiaDml
-«sin fila de auditoría»); teléfono en `despues` → no compila (`con(Clave, String)` no existe); y el rojo del test de
-tipo (`CredencialOvzCifradaTipoTest`) con `setTelefono` antes de ampliar la lista. Verificado tras integrar `main`
-(#30 + #29, `origin/main` = `de782a9`) con `./mvnw clean test` **1366** (1365 pasan, 1 skip: la evaluación; JDK 21),
-`npm test` **1144 en 59**, `npm run build` y `npm run lint`
-(solo los 3 avisos conocidos), y un smoke local con H2 (dos gestorías inventadas, datos por la API real): 21/21 HTTP
-PASS (alta con/sin teléfono, PUT poner/cambiar/borrar, `400` sin clave e inválido, `404` ajeno sin cuerpo), auditoría
-por SQL (5 `GANADERO_MODIFICADO`, 2 `LECTURA_GANADERO` — los PUT no añaden ninguna —, 1 `ACCESO_OTRA_GESTORIA`
-`EDITAR_GANADERO` en la gestoría del actor, 0 filas con el teléfono en `antes`/`despues`), el número ausente del log y
-de `GET /ganaderos`/`GET /buscar`, y 10 capturas a 1440 y 375 px fuera del repo
-(`C:\Users\Antonio\Desktop\capturas-ganera-telefono\`, D6, sin Impeccable). La migración se renumeró de `V27` a `V29`
-al integrar `main` (el `V27` de main es el de preferencias OVZ de la #24); en PostgreSQL se aplican 29 migraciones y
-en H2 28 (hueco en V26). **Pendiente tras el merge:** el smoke en
-producción (ganadero 11 de la gestoría de pruebas, `+34600000000`, A5/A8).
-
-**Crotal de la madre resuelto contra el inventario — complete, no merged yet** (2026-11-11 → 2026-11-16, rama
-`feat/crotal-madre`; plan `docs/superpowers/plans/2026-11-11-crotal-madre.md`). **Backend + frontend** (cambia el
-contrato de `TramiteDetalleResponse`), aún sin commitear. Para el registro de nacimiento (`ALTA_NACIMIENTO`), el
-crotal de la madre (`crotal_madre_indicado`, V27) se **resuelve** contra el inventario de la explotación del trámite
-con **exactamente el mismo mecanismo** que los demás crotales: el refactor extrae un método compartido
-`TramiteCrotalService.resolver(CrotalNormalizado, Explotacion, gestoriaId)` (devuelve un record
-`ResultadoResolucionCrotal`) que usan tanto la lista de crotales como `resolverMadre(Tramite, gestoriaId)`; las dos
-búsquedas de `Animal` llevan `explotacionId` **y** `gestoriaId` explícitos (más la red de `enlazado`, que lanza
-`RecursoNoEncontradoException` si el animal recuperado no es de la explotación/gestoría). **Migración `V30`**
-(`crotal_madre VARCHAR(30)` = crotal completado si `EN_INVENTARIO`, si no lo indicado; `crotal_madre_resolucion
-VARCHAR(20)` = enum `ResolucionCrotal`), común H2+PostgreSQL, **sin FK al animal** (la madre es un campo de referencia
-del formulario, no entra en `tramite_crotal`). Se re-resuelve **desde `crotalMadreIndicado`** (lo escrito, no lo
-completado) en alta, extracción IA y al cambiar la explotación en el PATCH; **aprobar NO re-resuelve** la instantánea
-de la madre (solo `recalcularEnlaces` de la lista). Un crotal de madre inválido no rompe (el PATCH valida el formato;
-`resolverMadre` además captura `CrotalInvalidoException` → ambas columnas null). Borrado explícito por `""`/espacios en
-PATCH (null = no cambiar, como el resto de campos OVZ). `TramiteDetalleResponse` expone `crotalMadre`/
-`crotalMadreResolucion`; `TramiteResponse` (lista/aprobar) **no** los lleva. Frontend: `fichaOvz.ts` `campoCrotalMadre`
-copia solo si `EN_INVENTARIO`, con pistas por resolución; `types.ts` añade los dos campos. **Nota de cobertura (del
-revisor):** el aislamiento efectivo lo da `explotacionId` (en los tests de "otra gestoría" el animal ajeno vive además
-en otra explotación, así que por el modelo de datos no se puede construir un test donde `gestoriaId` sea el único
-filtro aislante); `gestoriaId` es **defensa en profundidad** —queda demostrado como load-bearing por los tests de
-resolución positiva, no por un test de aislamiento dedicado—. Flujo Superpowers: implementador + revisor independiente
-**Approved** (las 3 mutaciones dirigidas — quitar `gestoriaId` o `explotacionId` del `resolver` compartido rompe madre
-**y** crotales normales; inyectar `resolverMadre` en `aprobar` lo cata `aprobarNoReResuelveLaInstantaneaDeLaMadre` —
-salieron rojas y se restauraron con cp/cmp). La sesión principal añadió además un E2E de aislamiento
-`explotacionId` (`laMadreNoSeResuelveContraOtraExplotacionDeLaMismaGestoria`, misma gestoría/otra explotación, sufijo
-`31234` solo en A2): el cruce de gestorías ya lo aísla `gestoriaId`, así que ese caso es el que se pone **rojo** si se
-cae el filtro `explotacionId` (verificado con TDD: mutación que ignora la explotación → rojo; restaurado con cp/cmp →
-verde). Integrado `main` (`origin/main` = `6931f01`, PR #32 solo frontend) por
-**fast-forward** sin solape. Verificado con `./mvnw clean test` **1388** (1387 pasan, 1 skip: la evaluación; JDK 21),
-`npm test` **1172 en 61**, `npm run build` y `npm run lint` (solo los 3 avisos conocidos), y un smoke local con H2
-(onboarding → login → import → trámite sembrado → PATCH fija la madre por sufijo `789012` → detalle `crotalMadre =
-ES123456789012`, `EN_INVENTARIO` → aprobar → la madre no cambia en BD ni en el detalle; Flyway aplica V1–V30, 29 en
-H2). **Recuentos de migraciones:** PostgreSQL **30** (V1–V30), H2 **29** (hueco en V26). **No commit hasta que Antonio
-lo apruebe.**
+La historia prompt-a-prompt (pasos 1–2.7, 3d, 4, A1, A2, mini-prompts, busqueda, marca, B1, C minimo, ficha OVZ, Hecho en OVZ, B2, SIN_TRAMITE, Supabase, M2, telefono, crotal madre) esta en [docs/historia/historial-por-prompt.md](docs/historia/historial-por-prompt.md). Estado actual, abajo.
 
 **Still blocked: Prompt 3a and escalón 2 (modo asistido)** — the OVZ.net read sync, and the mode where
 Ganera fills in the OVZ form for the gestor to review — one trámite at a time, after the gestor’s
