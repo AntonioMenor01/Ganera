@@ -59,6 +59,8 @@ class OvzSpikeBajaMuerteTest {
                     .launch(new BrowserType.LaunchOptions().setHeadless(true));
             Page page = navegador.newContext().newPage();
             page.setDefaultTimeout(TIMEOUT_MS);
+            boolean cerrada = false;
+            try {
 
             // PASO 1 — abrir la página de entrada de OVZnet (único goto permitido: la entrada, no una interna).
             page.navigate(url);
@@ -110,14 +112,24 @@ class OvzSpikeBajaMuerteTest {
             // PASO 8 — salir con «Salir» (cierra sesión). NUNCA «Aceptar».
             clicSeguro(page, page.locator("#" + ID_SALIR), "boton Salir");
             page.waitForLoadState();
+            cerrada = true;
             ok(8, "sesion cerrada con Salir, sin presentar nada");
-
-            navegador.close();
-        } catch (ClicProhibidoException e) {
-            // El bloqueo duro saltó: alguien intentó pulsar «Aceptar». Es un fallo del spike, nunca un envío.
-            fail("BLOQUEO DURO: se intentó pulsar «Aceptar» — abortado sin presentar. " + e.getMessage());
-        } catch (RuntimeException e) {
-            fail("PASO FALLO: " + e.getClass().getSimpleName() + " — " + primeraLinea(e.getMessage()));
+            } catch (ClicProhibidoException e) {
+                // El bloqueo duro saltó: alguien intentó pulsar «Aceptar». Nunca un envío. Cerrar con «Salir».
+                salirBestEffort(page);
+                cerrada = true;
+                fail("BLOQUEO DURO: se intentó pulsar «Aceptar» — abortado sin presentar. " + e.getMessage());
+            } catch (Throwable e) {
+                // Cualquier fallo a mitad (incluida una aserción): intentar cerrar con «Salir» igualmente.
+                salirBestEffort(page);
+                cerrada = true;
+                fail("PASO FALLO: " + e.getClass().getSimpleName() + " — " + primeraLinea(e.getMessage()));
+            } finally {
+                if (!cerrada) {
+                    salirBestEffort(page);
+                }
+                navegador.close();
+            }
         }
     }
 
@@ -142,6 +154,24 @@ class OvzSpikeBajaMuerteTest {
     private static final class ClicProhibidoException extends RuntimeException {
         ClicProhibidoException(String msg) {
             super(msg);
+        }
+    }
+
+    /**
+     * Intenta cerrar la sesión con «Salir» tras un fallo. Nunca lanza (ya estamos fallando) y solo pulsa el
+     * botón «Salir» por su id — jamás «Aceptar». Si no encuentra «Salir», la sesión se deja caducar.
+     */
+    private void salirBestEffort(Page page) {
+        try {
+            com.microsoft.playwright.Locator salir = page.locator("#" + ID_SALIR);
+            if (salir.count() > 0) {
+                salir.click();
+                System.out.println("PASO Salir (tras fallo) OK: sesion cerrada");
+            } else {
+                System.out.println("PASO Salir (tras fallo): no se encontro el boton Salir; la sesion se dejara caducar");
+            }
+        } catch (Throwable ignored) {
+            System.out.println("PASO Salir (tras fallo): no se pudo pulsar Salir; la sesion se dejara caducar");
         }
     }
 
