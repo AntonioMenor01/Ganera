@@ -69,14 +69,26 @@ class OvzSpikeBajaMuerteTest {
             page.navigate(url);
             ok(1, "OVZnet abierto");
 
-            // PASO 2 — login con usuario y contraseña (NO certificado). Ids no documentados: heurística.
-            page.locator("input[type=password]").first().fill(password);
-            page.locator("input[type=text]:visible").first().fill(usuario);
-            // Botón de entrar por texto/valor exacto, para NO pulsar «Entrar con Certificado».
-            clicSeguro(page, page.getByRole(AriaRole.BUTTON,
-                    new Page.GetByRoleOptions().setName("Entrar").setExact(true)), "boton Entrar");
-            page.waitForURL("**/Presentacion.aspx", new Page.WaitForURLOptions().setTimeout(TIMEOUT_MS));
-            ok(2, "sesion iniciada (Presentacion.aspx)");
+            // PASO 2 — login en Inicio.aspx con los ids reales (sufijos _txtUsuario, _txtClave, _btnLinkEntrar).
+            page.locator("[id$='_txtUsuario']").first().fill(usuario);
+            page.locator("[id$='_txtClave']").first().fill(password);
+            // «Entrar» es un ENLACE (<a>) con postback, NO un botón, y NO «Entrar con Certificado».
+            clicSeguro(page, page.locator("[id$='_btnLinkEntrar']").first(), "enlace Entrar");
+            // Tras el postback: la URL pasa a Presentacion.aspx o aparece el desplegable de delegado del menú.
+            try {
+                page.waitForFunction(
+                        "() => location.pathname.toLowerCase().endsWith('/presentacion.aspx')"
+                                + " || document.getElementById('ctl00_ucMenu1_ddlDelegado') !== null",
+                        null, new Page.WaitForFunctionOptions().setTimeout(TIMEOUT_MS));
+            } catch (RuntimeException e) {
+                // Si seguimos en Inicio.aspx, el login no entró: volcar los mensajes de error de OVZ (textos de
+                // la aplicación, no datos personales) para saber si es usuario/contraseña u otra cosa.
+                if (page.url().toLowerCase().contains("inicio.aspx")) {
+                    imprimirErroresOvz(page);
+                }
+                throw e;
+            }
+            ok(2, "sesion iniciada (Presentacion.aspx / menu delegado)");
 
             // PASO 3 — navegar SOLO por menús: Trámites › Trámites. Nada de URLs ni Atrás.
             page.getByText("Trámites", new Page.GetByTextOptions().setExact(true)).first().hover();
@@ -254,6 +266,38 @@ class OvzSpikeBajaMuerteTest {
         }
         int q = url.indexOf('?');
         return q >= 0 ? url.substring(0, q) : url;
+    }
+
+    /** JS que recoge el texto visible de validadores/etiquetas de error (textos de la app, no datos personales). */
+    private static final String JS_ERRORES = """
+            () => {
+              const out = [];
+              const vistos = new Set();
+              const sel = "span[id*='Validator'], div[id*='ValidationSummary'], [id*='lblError'], "
+                + "[id*='lblMensaje'], [id*='Error'], .error, [class*='error']";
+              document.querySelectorAll(sel).forEach(e => {
+                const t = ((e.innerText || e.textContent) || '').trim();
+                if (t && !vistos.has(t)) { vistos.add(t); out.push(t.slice(0, 200)); }
+              });
+              return out;
+            }
+            """;
+
+    /** Imprime los mensajes de error que OVZ muestre en Inicio.aspx tras un login fallido (solo textos de la app). */
+    private void imprimirErroresOvz(Page page) {
+        try {
+            Object res = page.evaluate(JS_ERRORES);
+            System.out.println("MENSAJES DE OVZ EN INICIO.ASPX (textos de la aplicacion, no datos personales):");
+            if (res instanceof List<?> lista && !lista.isEmpty()) {
+                for (Object t : lista) {
+                    System.out.println("   • " + t);
+                }
+            } else {
+                System.out.println("   (ninguno visible)");
+            }
+        } catch (Throwable e) {
+            System.out.println("   (no se pudieron leer los mensajes: " + e.getClass().getSimpleName() + ")");
+        }
     }
 
     // --- Utilidades ----------------------------------------------------------------------------------------

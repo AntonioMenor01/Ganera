@@ -12,9 +12,15 @@ Convenciones:
 ## Entrada y menú
 
 ### 1. Inicio de sesión
+- URL de entrada: **`/Inicio.aspx`** (host de OVZnet: `ovznet.juntaex.es`). **Sin iframes.**
 - Tipos: **usuario y contraseña**, o **certificado digital** (botón «Entrar con Certificado»). En la pantalla de entrada no aparece Cl@ve.
+- Ids del formulario de entrada (sufijos estables; prefijo `ctl00_ContentPlaceHolder1_ucLogin2_`):
+  - Usuario: `…_txtUsuario` (`input` text).
+  - Contraseña: `…_txtClave` (`input` password).
+  - **«Entrar»**: `…_btnLinkEntrar` — es un **enlace (`<a>`) con postback**, no un `<button>`.
+  - «Entrar con Certificado»: `…_btnAccesoCertificado` (no usar en el acceso con usuario/contraseña).
 - Al entrar con usuario y contraseña no se pide doble factor.
-- Tras el login se llega a `/Presentacion.aspx`.
+- Tras el login se llega a `/Presentacion.aspx`; señal fiable de sesión iniciada: aparece el desplegable del menú `ctl00_ucMenu1_ddlDelegado` (ver §3).
 
 ### 2. Sesión
 - Caduca tras **20 minutos sin actividad**, según el aviso de la propia web.
