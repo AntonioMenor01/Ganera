@@ -159,3 +159,39 @@ Así el backend (Paris, Java/Maven) sigue ligero y el worker (Docker con Playwri
 decisión «dónde corre» es D1 del plan de la presentación automática. Antes de montar el worker conviene
 confirmar con el `curl` de arriba que OVZ responde a la IP de Clever; si bloquea la IP de París, habría que
 mirar una IP de salida distinta o ejecutar el worker en otra ubicación.
+
+## 3. Mini-spike de Documentos — resultado (2026-11-18): OK ✅
+
+`backend/src/test/java/com/ganera/core/ovz/spike/OvzSpikeDocumentosTest.java`. Test JUnit **desactivado por
+defecto** (solo con `OVZ_SPIKE_DOCUMENTOS=true` + `OVZ_URL`/`OVZ_USUARIO`/`OVZ_PASSWORD` del `.env` fuera del
+repo; nunca en el chat, logs ni commits). Solo lectura: login → explotación bovina → **Documentos › Documentos**
+→ tipo «Baja Animal» [3] → «Buscar» → lee la **estructura** de `GVDocumentos` → descarga un justificante a una
+carpeta temporal **fuera del repo** → «Salir», sin presentar nada (los clics pasan por el bloqueo duro de
+`prohibirAceptar`).
+
+**Resultado de Antonio (2026-11-18):**
+- PASO 1–6 OK (login, explotación bovina, Documentos, tipo «Baja Animal», Buscar).
+- `GVDocumentos`: columnas **[Documento, Tipo, Fecha Creacion]**, **13 filas y 13 enlaces por página**; pie
+  «**32 documentos encontrados**» → **hay paginación**.
+- PASO 8 OK: justificante **`.pdf`, 45 250 bytes** (~45 KB).
+- PASO 9 OK: «Salir» sin presentar. Antonio borró la carpeta temporal.
+
+Con esto se cierra el PENDIENTE de formato del justificante del mapa (§A y §E3, PENDIENTE #24): **PDF ~45 KB**.
+Se ejecutar con:
+
+```
+set -a; source /c/Users/Antonio/Desktop/ganera-ovz-spike/.env; set +a
+cd backend
+JAVA_HOME='C:\Users\Antonio\.jdks\temurin-21\jdk-21.0.12.1+1' OVZ_SPIKE_DOCUMENTOS=true \
+  ./mvnw test -Dtest=OvzSpikeDocumentosTest
+```
+
+### Cómo se identifica el justificante de UNA baja (para T3/T4 y el anti-duplicado D5)
+
+La tabla **no trae el crotal**, así que un justificante de baja se identifica por: **tipo «Baja Animal» +
+Fecha Creación posterior al «Aceptar»** (orden más reciente primero, recorriendo también la **paginación**) **+
+verificación dentro del PDF** de que contiene el crotal del trámite (**extracción de texto**, p. ej. con
+**PDFBox**; **nunca** imprimir el contenido del PDF). Si **no aparece** ninguno o hay **varios candidatos**, el
+documento queda **«pendiente»** y **no se adjunta** (nunca se adivina). **El mismo método sirve para la
+comprobación anti-duplicado de D5**: antes de reintentar/ante incertidumbre, se consulta Documentos con este
+criterio; match inequívoco → ya presentada; cualquier duda → `ERROR_OVZ` incierto, nunca un segundo «Aceptar».

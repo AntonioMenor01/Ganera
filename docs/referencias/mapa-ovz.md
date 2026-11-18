@@ -122,7 +122,7 @@ Leyenda «(*) Datos Obligatorios». No hay validadores de cliente.
 
 **Datos técnicos:** no hay iframes; la URL no cambia; mensajes de error devueltos por el servidor (PENDIENTE).
 
-**Documento generado:** el justificante de la baja. Aparece en **Documentos › Documentos** con «Tipo Trámite: Baja Animal», como un enlace en la columna «Documento» (ver E). Formato probable: PDF (PENDIENTE).
+**Documento generado:** el justificante de la baja. Aparece en **Documentos › Documentos** con «Tipo Trámite: Baja Animal», como un enlace en la columna «Documento» (ver E). Formato **confirmado (mini-spike 2026-11-18): PDF (~45 KB)**. La tabla **no trae el crotal**, así que un justificante de baja se identifica por **tipo «Baja Animal» + Fecha Creación posterior al «Aceptar»** (más reciente primero, mirando la paginación) **+ verificación del crotal dentro del PDF** (extracción de texto, p. ej. PDFBox; nunca imprimir el contenido). Si no aparece o hay varios candidatos → queda «pendiente», no se adjunta (mismo método para el anti-duplicado D5).
 
 **Incidencias:** ninguna aparte de las generales.
 
@@ -322,7 +322,7 @@ Pestañas:
 - **Documentos › Documentos** («Documentos Generados. Esta página nos muestra la lista de documetos que ha generado el usuario.»). URL `/Explotaciones/wgDocumentos.aspx`. Prefijo `ctl00_ContentPlaceHolder1_`.
   - «Tipo Trámite:» `DDLTipoTramite` (**obligatorio**: sin él sale «Es necesario informar un tipo de trámite»): Seleccione un elemento... [xx] · Alta Bovino [1] · Alta No Bovino [2] · Baja Animal [3] · Declaracion de Censo [4] · Confirmacion de Movimiento [5] · Solicitud de Movimiento [6] · Mod Declaracion de Censo [10] · Certificado de Vacunación [16] · Solicitud Anulacion Guias [21] · Solicitud rechazo animales en origen [22] · Traslado de colmenas para trashumancia [23] · Demora Crotalización [25] · Autorizacion datos para informacion telematica [26] · Plan de Reestructuración Porcino Ibérico [27] · Comunicación Resultados Saneamiento [31] · Certificado Ferias [32] · Declaración Responsable Veterinaria [33] · ACTUACION SANITARIA [35] · Guías [9].
   - «Fecha Inicio:» `cldInicio_txtFecha_cldInicio`, «Fecha Fin:» `cldFin_txtFecha_cldFin`, «Buscar» `btnLinkBuscar`.
-  - Resultado para los tipos de trámite: tabla `GVDocumentos` con las columnas **Documento · Tipo · Fecha Creacion**. «Documento» es un enlace con postback que **descarga el justificante** (formato PENDIENTE; probablemente PDF). Pie `LblPieGrid`: «`<N>` documentos encontrados». Hay paginación.
+  - Resultado para los tipos de trámite: tabla `GVDocumentos` con las columnas **Documento · Tipo · Fecha Creacion** (confirmadas, mini-spike 2026-11-18). «Documento» es un enlace con postback que **descarga el justificante** (formato **confirmado: PDF, ~45 KB** para «Baja Animal»). Pie `LblPieGrid`: «`<N>` documentos encontrados» (p. ej. 32). **Paginación confirmada: 13 filas por página.**
   - Resultado para «Guías»: tabla `gvGuiasFirmadas` con las columnas **Solicitud · Fecha Salida · Fecha Llegada · Explotación Destino · Nº Guia · Guía**. La columna «Guía» tiene un botón de imagen (`filetype_pdf.png`) con el título **«Mostrar Guía Firmada en PDF»** (postback). Hay paginación.
 - **Documentos › Resúmenes** («Esta página le permite generar los resúmenes de trámites generados por el usuario.»). URL `/Explotaciones/wgResumen.aspx`.
   - «Tipo Tramite:» `DDLTipoTramite`: Alta Bovino · Alta No Bovino · Baja Animal · Declaracion de Censo · Solicitud de Movimiento · Guías.
@@ -380,7 +380,7 @@ Pestañas:
 21. Columnas del resultado de «Búsqueda de animales».
 22. Columnas de `gvSolicitudes` en «Consulta Solicitudes».
 23. Formato del resumen de «Resúmenes».
-24. Formato del justificante en `GVDocumentos`.
+24. ~~Formato del justificante en `GVDocumentos`.~~ **RESUELTO (mini-spike 2026-11-18): PDF (~45 KB)** para «Baja Animal»; columnas Documento·Tipo·Fecha Creacion, 13 filas/página, con paginación.
 
 **F. Anular o corregir**
 25. Formulario y botones de «Anulación de guías» (no había guías anulables).

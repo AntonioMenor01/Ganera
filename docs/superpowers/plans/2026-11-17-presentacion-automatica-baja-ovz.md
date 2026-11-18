@@ -119,8 +119,14 @@ que la T2 de la extensión, reutilizable como función pura.)
 ## 9. Documentos (primer alcance)
 
 - **Descargar el justificante** de la baja: Documentos › Documentos (`/Explotaciones/wgDocumentos.aspx`, tabla
-  `GVDocumentos`, «Tipo Trámite: Baja Animal»; el enlace de la columna «Documento» descarga el fichero —
-  probablemente PDF, PENDIENTE de confirmar en el mapa).
+  `GVDocumentos`, columnas Documento·Tipo·Fecha Creacion, «Tipo Trámite: Baja Animal»; el enlace de la columna
+  «Documento» descarga el fichero). **Formato confirmado por el mini-spike (2026-11-18): PDF, ~45 KB.** Hay
+  **paginación** (13 filas por página).
+- **Identificar el justificante de UNA baja (la tabla no trae crotal):** tipo «Baja Animal» + **Fecha Creación
+  posterior al «Aceptar»** (más reciente primero, recorriendo la paginación) + **verificación del crotal del
+  trámite dentro del PDF** (extracción de texto, p. ej. **PDFBox**; **nunca** imprimir el contenido). Si no
+  aparece ninguno o hay **varios candidatos** → el documento queda **«pendiente»** y **no se adjunta** (nunca se
+  adivina). **El mismo método es el de la detección «ya presentada» del anti-duplicado (D5, §6).**
 - **Guardarlo en la ficha del ganadero**, enlazado al **trámite** y la **explotación**, **aislado por gestoría**
   y **auditado**. Nueva entidad `documento_ovz` (`GestoriaScopedEntity`): ganadero, trámite, explotación, tipo
   («Baja Animal»), nombre, tamaño, content-type, referencia al binario en el almacén, instante.
@@ -210,3 +216,66 @@ D1–D10 se cierran tal como se recomendaban; D11 con el matiz de Antonio (dos c
   auditoría ni respuestas.
 - **Aislamiento multi-tenant**: todas las consultas del worker con `gestoriaId` explícito; documentos y trabajos
   `GestoriaScopedEntity`; descarga del justificante servida por el backend tras comprobar la gestoría.
+
+## 13. Desglose de tareas (T0–T6)
+
+Orden aprobado por Antonio: **T0 → mini-spike de Documentos (hecho, §9) → T1 → T2 → T3 → T4 → T5 → T6**.
+Forma de trabajo: tareas pequeñas/medianas en la sesión principal con **TDD + solo el revisor independiente**
+(con `-Dtest` dirigido); **implementador subagente solo en T4**; suite completa una vez al final de cada tarea;
+stage ruta a ruta; commits locales, sin push ni PR hasta el OK de Antonio. **Antes de crear cada migración:
+`git fetch` y confirmar que el número (V32/V33/V34) sigue libre.**
+
+**Ajuste previo — perfil del worker (hecho, commit `0ccda44`).** Perfil `worker` con
+`spring.main.web-application-type=none` (ningún endpoint), planificador del worker encendido y los del backend
+apagados; en el backend el worker está desactivado. **No es una T numerada**: es infraestructura del worker que
+se consume en T4 (en Clever el worker arranca con `SPRING_PROFILES_ACTIVE=clever,worker`).
+
+**T0 — Pendientes de M2 (endurecimiento del descifrado). [HECHO]** Sin migración.
+- `DescifradoCredencialOvz.descifrarPasswordParaEnvioOvz` **deja de ser `@Transactional`** (descifrar **fuera de
+  la transacción** del envío; la única escritura es la auditoría, que ya es `REQUIRES_NEW`). Así el worker puede
+  llamarlo dentro de la transacción de su trabajo y capturar su excepción sin dejarla `rollback-only`. Test
+  `DescifradoCredencialOvzTest.llamadoDentroDeOtraTransaccionNoLaMarcaRollbackOnly`.
+- **Test-guardián `DescifradorUnicoTest`** (bytecode, al estilo de `ConsultasSinTenantTest`): solo
+  `DescifradoCredencialOvz` llama a `CifradorAesGcm.descifrar` (cierra el pendiente de que el descifrador es el
+  único; `cifrar` no se restringe).
+- **El tercer pendiente de M2** (mapear `CredencialOvzDeOtraGestoriaException`/`DescifradoCredencialOvzException`
+  a HTTP 404/error controlado) **se reinterpreta**: en el modelo servidor-a-servidor **no hay endpoint HTTP que
+  descifre**; las captura **el worker** y las convierte en `ERROR_OVZ` **seguro** (fallo antes de «Aceptar»). Se
+  cierra en **T4**.
+
+**T1 — Credenciales OVZ por ganadero + flag certificado. Migración V32** (`ganadero.usa_certificado`, boolean,
+default false). Pantalla de alta/edición de credenciales por ganadero (usuario + contraseña cifrada con
+`CifradorAesGcm.cifrar`; `ovzUsuario`/contraseña nunca en respuestas, auditoría ni logs); auditoría
+`CREDENCIAL_OVZ_GUARDADA`/`_MODIFICADA` **sin el valor**. Flag «usa certificado» al dar de alta (D8) + detección
+defensiva en la entrada.
+
+**T2 — Cola de trabajos + encolar al aprobar. Migración V33** (`trabajo_ovz`, `GestoriaScopedEntity`: trámite,
+ganadero, tipo `BAJA_MUERTE`, estado del trabajo, intentos, instantes, `clave_idempotencia` —uno por trámite—,
+**clase de error seguro/incierto** y ref al documento). Al **aprobar** un `BAJA_MUERTE`: **encolar solo si el
+ganadero tiene credenciales y `usa_certificado=false`**; si no, **vía manual (`HECHO_EN_OVZ`)** como hoy (D4).
+Nunca dentro de la transacción de aprobación ni con el lock de la fila. Estados `APROBADO`→`EN_PROCESO`→
+(`EJECUTADO_OVZ`|`ERROR_OVZ` seguro|`ERROR_OVZ` incierto); reencolado según clase de error (D11). Candado por
+ganadero (D3).
+
+**T3 — Documentos: entidad + almacenamiento. Migración V34** (`documento_ovz`, `GestoriaScopedEntity`: ganadero,
+trámite, explotación, tipo «Baja Animal», nombre, tamaño, content-type, ref al binario, instante). Almacén
+**Supabase Storage, bucket privado** (D6), máx ~10 MB; descarga servida por el backend tras comprobar la gestoría
+(signed URL de corta vida). **Identificación del justificante por el método del §9** (tipo + fecha posterior al
+«Aceptar» + verificación del crotal dentro del PDF con PDFBox; si no aparece o hay varios → «pendiente»).
+
+**T4 — Worker Playwright (implementador subagente).** Worker Docker (perfil `clever,worker`), imagen oficial
+Playwright Java (D1/D2). Login → explotación bovina → menú → baja → crotal → «Buscar» → **verificación
+bloqueante** (Código RIIA == crotal; Explotación de ubicación == REGA, §5) → «Aceptar» → descarga del
+justificante (§9). Descifrado con `DescifradoCredencialOvz` (T0), **fuera de la transacción del trabajo**; captura
+de `CredencialOvzDeOtraGestoriaException`/`DescifradoCredencialOvzException` → `ERROR_OVZ` (cierra el mapeo de M2).
+Caducidad de sesión y certificado (§7); anti-duplicado **nunca reintenta ante incertidumbre**, consulta Documentos
+(D5, §9). Auditoría `OVZ_BAJA_PRESENTADA`/`OVZ_BAJA_ERROR`/`DOCUMENTO_OVZ_GUARDADO` (§8) + declarar worker/rutas
+en el inventario cerrado.
+
+**T5 — Frontend.** Estados `EN_PROCESO`/`EJECUTADO_OVZ`/`ERROR_OVZ` (seguro/incierto), aviso al gestor,
+justificante descargable desde la ficha, reencolado según D11 (seguro: corregir + reaprobar; incierto:
+confirmación explícita **auditada**). Textos de honestidad reconciliados con **D10**.
+
+**T6 — Verificación final.** Suite completa backend + frontend, inventario de auditoría, guardia DML, smoke.
+**Redacción final de la regla no-negociable del CLAUDE.md (D10)**: el clic humano es la Aprobación en Ganera;
+Ganera presenta en OVZ solo un trámite ya aprobado, con verificación previa y sin reintento ante incertidumbre.
