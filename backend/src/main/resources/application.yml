@@ -101,6 +101,12 @@ ganera:
       # DESACTIVADO en el backend: el backend no abre sesiones de OVZ ni Playwright. Corre SOLO en el perfil
       # `worker` (instancia Docker aparte, application-worker.yml), donde se pone a true.
       activo: false
+      # Modo del worker (T4): ENSAYO (por defecto, recorre hasta ANTES de «Aceptar» y sale sin presentar nada) o
+      # REAL (pulsa «Aceptar»). Cualquier otro valor se trata como ENSAYO. Se pasa a REAL solo con GANERA_OVZ_WORKER_MODO=REAL.
+      modo: ENSAYO
+      # URL de entrada de OVZnet y pausa del planificador (solo el perfil worker las usa).
+      url: ""
+      intervalo: PT10S
     presentacion-automatica:
       # Interruptor maestro de la presentacion automatica de la baja (escalon 2, plan 2026-11-17, T3). APAGADO por
       # defecto: al aprobar un BAJA_MUERTE NO se encola ningun trabajo en trabajo_ovz, aunque el ganadero tenga

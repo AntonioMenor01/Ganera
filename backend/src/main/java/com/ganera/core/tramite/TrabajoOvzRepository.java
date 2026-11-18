@@ -23,6 +23,9 @@ public interface TrabajoOvzRepository extends JpaRepository<TrabajoOvz, Long> {
     /** El trabajo de un trámite (hay como mucho uno, UNIQUE(tramite_id)), con el gestoriaId explícito. */
     Optional<TrabajoOvz> findByTramiteIdAndGestoriaId(Long tramiteId, Long gestoriaId);
 
+    /** El trabajo por id con el gestoriaId explícito (worker, T4): nunca findById a secas. */
+    Optional<TrabajoOvz> findByIdAndGestoriaId(Long id, Long gestoriaId);
+
     /** ¿Existe ya un trabajo para este trámite? (El UNIQUE es la garantía real; esto es para tests/legibilidad.) */
     boolean existsByTramiteId(Long tramiteId);
 

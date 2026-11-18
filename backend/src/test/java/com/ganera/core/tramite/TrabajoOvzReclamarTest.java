@@ -37,6 +37,7 @@ class TrabajoOvzReclamarTest {
 
     @AfterEach
     void limpiar() {
+        jdbcTemplate.update("delete from auditoria");
         jdbcTemplate.update("delete from trabajo_ovz");
         tramiteRepository.deleteAll();
         explotacionRepository.deleteAll();
@@ -70,6 +71,27 @@ class TrabajoOvzReclamarTest {
         trabajoOvzRepository.saveAndFlush(enError);
 
         assertThat(trabajoOvzService.reclamarSiguiente()).isEmpty();
+    }
+
+    @Test
+    void reclamarUnTrabajoCuyoTramiteYaNoEstaAprobadoLoDejaEnErrorSeguroYNoLoToca() {
+        Gestoria g = gestoriaRepository.save(new Gestoria("Reclamar no aprobado"));
+        TrabajoOvz trabajo = trabajoPendiente(g, "ES010000000104", Instant.now());
+        // Entre encolar y reclamar, el trámite dejó de estar aprobado (p. ej. se rechazó).
+        jdbcTemplate.update("update tramite set estado = 'RECHAZADO' where id = ?", trabajo.getTramite().getId());
+
+        Optional<TrabajoOvz> reclamado = trabajoOvzService.reclamarSiguiente();
+
+        assertThat(reclamado).isEmpty();
+        assertThat(estadoTrabajo(trabajo.getId())).isEqualTo("ERROR");
+        assertThat(jdbcTemplate.queryForObject("select clase_error from trabajo_ovz where id = ?", String.class,
+                trabajo.getId())).isEqualTo("SEGURO");
+        assertThat(jdbcTemplate.queryForObject("select motivo_error from trabajo_ovz where id = ?", String.class,
+                trabajo.getId())).isEqualTo("El trámite ya no estaba aprobado al ir a presentarlo en OVZ.");
+        // El trámite NO se toca: sigue como estaba (no pasa a EN_PROCESO).
+        assertThat(estadoTramite(trabajo.getTramite().getId())).isEqualTo("RECHAZADO");
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from auditoria where accion = 'OVZ_BAJA_ERROR'", Integer.class)).isEqualTo(1);
     }
 
     @Test

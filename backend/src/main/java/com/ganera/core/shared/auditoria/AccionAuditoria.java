@@ -98,5 +98,12 @@ public enum AccionAuditoria {
 
     // Justificante de la baja guardado en la ficha del ganadero (escalon 2, T3). Nunca guarda el contenido ni datos
     // personales: solo el tamaño en bytes (Clave.TAMANO). El entidadId es el id del documento_ovz.
-    OVZ_DOCUMENTO_GUARDADO
+    OVZ_DOCUMENTO_GUARDADO,
+
+    // Worker de OVZ (escalon 2, T4). Solo estados y codigos en antes/despues: el motivo del error va al trabajo,
+    // NUNCA a la auditoria (ni crotal, ni REGA, ni credenciales). OVZ_BAJA_ENSAYO: el ensayo llego hasta antes de
+    // «Aceptar» sin presentar nada.
+    OVZ_BAJA_PRESENTADA,
+    OVZ_BAJA_ERROR,
+    OVZ_BAJA_ENSAYO
 }

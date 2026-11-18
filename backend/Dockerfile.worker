@@ -1,0 +1,27 @@
+# Imagen del WORKER de OVZ (escalon 2, T4): la MISMA base de codigo que el backend, sin servidor web (perfil
+# `worker`) y con Chromium para Playwright. Construir desde la carpeta backend/:
+#   docker build -f Dockerfile.worker -t ganera-worker-ovz .
+# Arranca con SPRING_PROFILES_ACTIVE=clever,worker (ver docs/referencias/worker-ovz-clever.md).
+
+# --- Etapa 1: compilar el jar (sin tests; la suite corre en el CI/local, no aqui) ---
+FROM maven:3.9-eclipse-temurin-21 AS builder
+WORKDIR /build
+COPY pom.xml .
+COPY .mvn .mvn
+COPY src src
+RUN mvn -q -B -DskipTests package
+
+# --- Etapa 2: ejecucion con Playwright + Chromium (imagen oficial de Playwright para Java 1.49.0) ---
+# La version de la imagen debe coincidir con <playwright.version> del pom.xml (1.49.0): si no, Playwright intenta
+# descargar otro Chromium en tiempo de ejecucion.
+# VERIFICAR EN T6: que esta imagen trae un JDK 21 (el jar se compila con --release 21). Si trajera otro, instalar
+# Temurin 21 en esta etapa antes de copiar el jar.
+FROM mcr.microsoft.com/playwright/java:v1.49.0-noble
+WORKDIR /app
+COPY --from=builder /build/target/*.jar /app/app.jar
+
+ENV SPRING_PROFILES_ACTIVE=clever,worker \
+    TZ=UTC
+
+# Sin EXPOSE: el worker no sirve HTTP.
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=70", "-jar", "/app/app.jar"]

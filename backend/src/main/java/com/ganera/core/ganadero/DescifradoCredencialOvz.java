@@ -50,14 +50,29 @@ public class DescifradoCredencialOvz {
         Objects.requireNonNull(ganadero, "ganadero");
         Objects.requireNonNull(principal, "principal");
 
+        return descifrar(ganadero, principal.gestoriaId(), Actor.usuario(principal.usuarioId()));
+    }
+
+    /**
+     * Variante del WORKER de OVZ (T4, escalon 2): sin principal HTTP, actor SISTEMA; el aislamiento se comprueba contra
+     * la gestoria del TRABAJO. Mismo orden y mismas garantias que la via del usuario (aislamiento, fila ANTES de
+     * descifrar, mensaje generico). Tampoco es {@code @Transactional}: el worker la llama FUERA de toda transaccion.
+     */
+    public CredencialOvzEnClaro descifrarPasswordParaWorker(Ganadero ganadero, Long gestoriaIdDelTrabajo) {
+        Objects.requireNonNull(ganadero, "ganadero");
+        Objects.requireNonNull(gestoriaIdDelTrabajo, "gestoriaIdDelTrabajo");
+        return descifrar(ganadero, gestoriaIdDelTrabajo, Actor.sistema());
+    }
+
+    private CredencialOvzEnClaro descifrar(Ganadero ganadero, Long gestoriaEsperada, Actor actor) {
         Long gestoriaGanadero = ganadero.getGestoria().getId();
-        if (!gestoriaGanadero.equals(principal.gestoriaId())) {
+        if (!gestoriaGanadero.equals(gestoriaEsperada)) {
             throw new CredencialOvzDeOtraGestoriaException();
         }
 
         // La fila ANTES de descifrar (REQUIRES_NEW): queda aunque lo de abajo falle.
         auditoriaService.registrarAparte(AccionAuditoria.CREDENCIAL_OVZ_DESCIFRADA, gestoriaGanadero,
-                Actor.usuario(principal.usuarioId()), EntidadAuditada.GANADERO, ganadero.getId(), null, null);
+                actor, EntidadAuditada.GANADERO, ganadero.getId(), null, null);
 
         String plano;
         try {

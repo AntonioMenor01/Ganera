@@ -11,11 +11,14 @@ package com.ganera.core.tramite;
  *   <li>{@code ERROR} — falló; con {@link TipoErrorOvz} SEGURO (antes de «Aceptar», no se presentó nada) o
  *       INCIERTO (tras «Aceptar», sin resolver en Documentos). Lo fija el worker (T4); gobierna el reencolado
  *       (D11).</li>
+ *   <li>{@code ENSAYO_OK} — el worker completó el ensayo (modo ENSAYO, T4) hasta antes de «Aceptar» sin presentar
+ *       nada; terminal, no se reclama otra vez. El trámite vuelve a APROBADO.</li>
  * </ul>
  */
 public enum EstadoTrabajoOvz {
     PENDIENTE,
     EN_PROCESO,
     EJECUTADO,
-    ERROR
+    ERROR,
+    ENSAYO_OK
 }

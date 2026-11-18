@@ -3,6 +3,12 @@ package com.ganera.core.tramite;
 import com.ganera.core.contacto.RecursoNoEncontradoException;
 import com.ganera.core.explotacion.Explotacion;
 import com.ganera.core.ganadero.Ganadero;
+import com.ganera.core.ovz.DatosPresentacionBaja;
+import com.ganera.core.ovz.DocumentoOvzInvalidoException;
+import com.ganera.core.ovz.DocumentoOvzService;
+import com.ganera.core.ovz.Justificante;
+import com.ganera.core.ovz.TipoDocumentoOvz;
+import com.ganera.core.ovz.ValidadorPdf;
 import com.ganera.core.shared.auditoria.AccionAuditoria;
 import com.ganera.core.shared.auditoria.Actor;
 import com.ganera.core.shared.auditoria.AuditoriaService;
@@ -52,6 +58,8 @@ public class TrabajoOvzService {
     private final TrabajoOvzRepository trabajoOvzRepository;
     private final TramiteRepository tramiteRepository;
     private final TramiteCrotalService tramiteCrotalService;
+    private final TramiteCrotalRepository tramiteCrotalRepository;
+    private final DocumentoOvzService documentoOvzService;
     private final AuditoriaService auditoriaService;
     private final Clock clock;
     /**
@@ -68,6 +76,8 @@ public class TrabajoOvzService {
     public TrabajoOvzService(TrabajoOvzRepository trabajoOvzRepository,
                              TramiteRepository tramiteRepository,
                              TramiteCrotalService tramiteCrotalService,
+                             TramiteCrotalRepository tramiteCrotalRepository,
+                             DocumentoOvzService documentoOvzService,
                              AuditoriaService auditoriaService,
                              Clock clock,
                              @org.springframework.beans.factory.annotation.Value(
@@ -75,6 +85,8 @@ public class TrabajoOvzService {
         this.trabajoOvzRepository = trabajoOvzRepository;
         this.tramiteRepository = tramiteRepository;
         this.tramiteCrotalService = tramiteCrotalService;
+        this.tramiteCrotalRepository = tramiteCrotalRepository;
+        this.documentoOvzService = documentoOvzService;
         this.auditoriaService = auditoriaService;
         this.clock = clock;
         this.presentacionAutomaticaActiva = presentacionAutomaticaActiva;
@@ -138,7 +150,8 @@ public class TrabajoOvzService {
      *
      * <p>Cross-tenant por diseño (como los planificadores): no hay petición ni {@code gestoriaFilter}. No deja fila
      * de auditoría: los eventos auditados de la presentación (presentada/error) los deja el worker al terminar (T4);
-     * esta reclama es un paso interno. No se usa desde ningún endpoint autenticado.
+     * esta reclama es un paso interno (salvo el re-check de APROBADO, que sí audita OVZ_BAJA_ERROR). No se usa desde
+     * ningún endpoint autenticado.
      */
     @Transactional
     public Optional<TrabajoOvz> reclamarSiguiente() {
@@ -149,6 +162,20 @@ public class TrabajoOvzService {
         }
         TrabajoOvz trabajo = candidatos.get(0);
         Instant ahora = ahora();
+        if (trabajo.getTramite().getEstado() != EstadoTramite.APROBADO) {
+            // Re-check (T4): entre encolar y reclamar el trámite pudo dejar de estar aprobado (rechazado, marcado a
+            // mano como hecho en OVZ...). NUNCA se presenta algo que ya no está aprobado: el trabajo queda en ERROR
+            // SEGURO y el trámite NO se toca.
+            trabajo.setEstado(EstadoTrabajoOvz.ERROR);
+            trabajo.setClaseError(TipoErrorOvz.SEGURO);
+            trabajo.setMotivoError(MOTIVO_NO_APROBADO);
+            trabajo.setActualizadoEn(ahora);
+            auditoriaService.registrar(AccionAuditoria.OVZ_BAJA_ERROR, trabajo.getGestoria().getId(), Actor.sistema(),
+                    EntidadAuditada.TRABAJO_OVZ, trabajo.getId(),
+                    DatosAuditoria.con(Clave.ESTADO, EstadoTrabajoOvz.PENDIENTE),
+                    DatosAuditoria.con(Clave.ESTADO, EstadoTrabajoOvz.ERROR));
+            return Optional.empty();
+        }
         trabajo.setEstado(EstadoTrabajoOvz.EN_PROCESO);
         trabajo.setActualizadoEn(ahora);
         // El trámite del trabajo pasa a EN_PROCESO (entidad gestionada; se vuelca al commit).
@@ -208,6 +235,137 @@ public class TrabajoOvzService {
                 .crotalesPorTramite(List.of(tramite.getId()), gestoriaId)
                 .getOrDefault(tramite.getId(), List.of());
         return TramiteResponse.from(tramite, crotales);
+    }
+
+    // ------------------------------------------------------------------ worker de OVZ (T4)
+
+    static final String MOTIVO_NO_APROBADO =
+            "El trámite ya no estaba aprobado al ir a presentarlo en OVZ.";
+    static final int MAX_MOTIVO = 500;
+
+    private static final java.time.format.DateTimeFormatter FORMATO_FECHA_OVZ =
+            java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
+    /**
+     * Datos para presentar la baja, cargados en una transacción corta y con el {@code gestoriaId} explícito (T4).
+     * Exige exactamente UN crotal completo, REGA y fecha de muerte; si falta algo lanza
+     * {@link DatosPresentacionInvalidosException} (el worker la trata como error SEGURO, sin abrir OVZ).
+     */
+    @Transactional(readOnly = true)
+    public DatosPresentacionBaja datosPresentacion(Long trabajoId, Long gestoriaId) {
+        TrabajoOvz trabajo = trabajoOvzRepository.findByIdAndGestoriaId(trabajoId, gestoriaId)
+                .orElseThrow(() -> new DatosPresentacionInvalidosException("No se encontró el trabajo de OVZ."));
+        Tramite tramite = trabajo.getTramite();
+        Explotacion explotacion = tramite.getExplotacion();
+        if (explotacion == null || explotacion.getCodigoRega() == null || explotacion.getCodigoRega().isBlank()) {
+            throw new DatosPresentacionInvalidosException("El trámite no tiene explotación (REGA) para presentarlo en OVZ.");
+        }
+        if (tramite.getFechaHecho() == null) {
+            throw new DatosPresentacionInvalidosException("El trámite no tiene fecha de muerte para presentarlo en OVZ.");
+        }
+        List<TramiteCrotal> crotales = tramiteCrotalRepository
+                .findByTramiteIdAndGestoriaIdOrderByIdAsc(tramite.getId(), gestoriaId);
+        if (crotales.size() != 1) {
+            throw new DatosPresentacionInvalidosException(
+                    "La presentación automática de la baja exige exactamente un crotal en el trámite.");
+        }
+        String crotal = crotales.get(0).getCrotal();
+        if (crotal == null || crotal.isBlank()) {
+            throw new DatosPresentacionInvalidosException("El crotal del trámite no está completo.");
+        }
+        Ganadero ganadero = trabajo.getGanadero();
+        return new DatosPresentacionBaja(tramite.getId(), ganadero.getId(), crotal,
+                explotacion.getCodigoRega(), tramite.getFechaHecho().format(FORMATO_FECHA_OVZ),
+                tramite.getNumeroMer(), ganadero.getOvzUsuario(), ganadero.isUsaCertificado());
+    }
+
+    /**
+     * Fin del ENSAYO (T4): el worker llegó hasta antes de «Aceptar» sin presentar nada. El trabajo queda en
+     * {@code ENSAYO_OK} (terminal) y el trámite vuelve a {@code APROBADO}.
+     */
+    @Transactional
+    public void finalizarEnsayo(Long trabajoId, Long gestoriaId) {
+        TrabajoOvz trabajo = cargarTrabajo(trabajoId, gestoriaId);
+        Tramite tramite = cargarTramiteConBloqueo(trabajo, gestoriaId);
+        trabajo.setEstado(EstadoTrabajoOvz.ENSAYO_OK);
+        trabajo.setActualizadoEn(ahora());
+        tramite.setEstado(EstadoTramite.APROBADO);
+        auditar(AccionAuditoria.OVZ_BAJA_ENSAYO, gestoriaId, trabajo, EstadoTrabajoOvz.ENSAYO_OK);
+    }
+
+    /**
+     * La baja SE PRESENTÓ (T4): trabajo {@code EJECUTADO}, trámite {@code EJECUTADO_OVZ}. Si hay justificante lo
+     * guarda; si falta (o no es un PDF válido) el estado queda igual (el documento queda pendiente, D7): perder el
+     * hecho «presentada» por un justificante defectuoso sería peor que no tener el PDF.
+     */
+    @Transactional
+    public void finalizarEjecutado(Long trabajoId, Long gestoriaId, Optional<Justificante> justificante) {
+        TrabajoOvz trabajo = cargarTrabajo(trabajoId, gestoriaId);
+        Tramite tramite = cargarTramiteConBloqueo(trabajo, gestoriaId);
+        trabajo.setEstado(EstadoTrabajoOvz.EJECUTADO);
+        trabajo.setClaseError(null);
+        trabajo.setMotivoError(null);
+        trabajo.setIntentos(trabajo.getIntentos() + 1);
+        trabajo.setActualizadoEn(ahora());
+        tramite.setEstado(EstadoTramite.EJECUTADO_OVZ);
+        tramite.setMotivoError(null);
+        auditar(AccionAuditoria.OVZ_BAJA_PRESENTADA, gestoriaId, trabajo, EstadoTrabajoOvz.EJECUTADO);
+        if (justificante.isPresent() && pdfValido(justificante.get().contenido())) {
+            documentoOvzService.guardar(tramite, trabajo.getGanadero(), tramite.getExplotacion(),
+                    TipoDocumentoOvz.BAJA_ANIMAL, "Baja Animal.pdf", justificante.get().contenido(), Actor.sistema());
+        }
+    }
+
+    /**
+     * Error de la presentación (T4): {@code SEGURO} (antes de «Aceptar») o {@code INCIERTO} (después, sin resolver en
+     * Documentos). El motivo es el texto para el gestor: va al trabajo y al trámite, NUNCA a la auditoría.
+     */
+    @Transactional
+    public void finalizarError(Long trabajoId, Long gestoriaId, TipoErrorOvz clase, String motivo) {
+        TrabajoOvz trabajo = cargarTrabajo(trabajoId, gestoriaId);
+        Tramite tramite = cargarTramiteConBloqueo(trabajo, gestoriaId);
+        String texto = recortar(motivo);
+        trabajo.setEstado(EstadoTrabajoOvz.ERROR);
+        trabajo.setClaseError(clase);
+        trabajo.setMotivoError(texto);
+        trabajo.setIntentos(trabajo.getIntentos() + 1);
+        trabajo.setActualizadoEn(ahora());
+        tramite.setEstado(EstadoTramite.ERROR_OVZ);
+        tramite.setMotivoError(texto);
+        auditar(AccionAuditoria.OVZ_BAJA_ERROR, gestoriaId, trabajo, EstadoTrabajoOvz.ERROR);
+    }
+
+    private TrabajoOvz cargarTrabajo(Long trabajoId, Long gestoriaId) {
+        return trabajoOvzRepository.findByIdAndGestoriaId(trabajoId, gestoriaId)
+                .orElseThrow(RecursoNoEncontradoException::new);
+    }
+
+    /** Bloqueo de fila + refresh, como reencolar (footgun M3: el trámite podría estar cacheado en el EntityManager). */
+    private Tramite cargarTramiteConBloqueo(TrabajoOvz trabajo, Long gestoriaId) {
+        Tramite tramite = tramiteRepository.findConBloqueoByIdAndGestoriaId(trabajo.getTramite().getId(), gestoriaId)
+                .orElseThrow(RecursoNoEncontradoException::new);
+        entityManager.refresh(tramite);
+        return tramite;
+    }
+
+    private void auditar(AccionAuditoria accion, Long gestoriaId, TrabajoOvz trabajo, EstadoTrabajoOvz despues) {
+        auditoriaService.registrar(accion, gestoriaId, Actor.sistema(), EntidadAuditada.TRABAJO_OVZ, trabajo.getId(),
+                DatosAuditoria.con(Clave.ESTADO, EstadoTrabajoOvz.EN_PROCESO),
+                DatosAuditoria.con(Clave.ESTADO, despues));
+    }
+
+    private static boolean pdfValido(byte[] contenido) {
+        try {
+            ValidadorPdf.exigirPdfValido(contenido);
+            return true;
+        } catch (DocumentoOvzInvalidoException e) {
+            return false;
+        }
+    }
+
+    private static String recortar(String motivo) {
+        String m = motivo == null || motivo.isBlank() ? "Error al presentar la baja en OVZ." : motivo.trim();
+        return m.length() > MAX_MOTIVO ? m.substring(0, MAX_MOTIVO) : m;
     }
 
     private Instant ahora() {
