@@ -100,11 +100,6 @@ class InventarioAuditoriaTest {
         // nombres/codigos de rega/crotales sin texto libre ni telefonos. Las lecturas sensibles que SI se
         // auditan son los detalles (LECTURA_GANADERO, LECTURA_TRAMITE, LECTURA_CONTACTOS). Ver BuscadorController.
 
-        // GET /internal/diagnostico/ovz-alcance (endpoint TEMPORAL): EXENTO. Es un GET (no se descubre aqui,
-        // que solo mira POST/PUT/PATCH/DELETE) que NO escribe nada ni toca datos: hace una peticion HTTP a una
-        // URL fija y devuelve solo un codigo de estado. Protegido por X-Internal-Secret. Se borra en cuanto
-        // tengamos el resultado de alcance de OVZ. Ver DiagnosticoController.
-
         // --- Planificadores ---
         PLANIFICADORES.put("SuscripcionSyncScheduler.reconciliarCantidadesConStripe",
                 Cobertura.auditada("facturacion.SuscripcionSyncSchedulerAuditoriaTest"));
