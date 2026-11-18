@@ -41,7 +41,8 @@ import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTest
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = NONE)
-@Import({TramiteRevisionService.class, TramiteCrotalService.class, TramiteRevisionServiceTest.RelojFijo.class,
+@Import({TramiteRevisionService.class, TrabajoOvzService.class, TramiteCrotalService.class,
+        TramiteRevisionServiceTest.RelojFijo.class,
         com.ganera.core.shared.auditoria.AuditoriaService.class,
         com.ganera.core.whatsapp.WhatsappDetalleService.class})
 class TramiteRevisionServiceTest {

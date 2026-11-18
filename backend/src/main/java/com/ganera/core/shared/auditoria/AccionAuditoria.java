@@ -86,5 +86,12 @@ public enum AccionAuditoria {
     PREFERENCIA_OVZ_GUARDADA,
 
     // Alta de un numero de WhatsApp DEDICADO por el endpoint interno (plan 2026-11-16, fase 1). Nunca guarda el telefono.
-    NUMERO_WHATSAPP_REGISTRADO
+    NUMERO_WHATSAPP_REGISTRADO,
+
+    // Cola de presentacion automatica de la baja en OVZ (escalon 2, T2). Nunca guardan datos personales (ni crotal
+    // ni credenciales): solo estados y codigos. OVZ_INCIERTO_CONFIRMADO es el reencolado de un ERROR INCIERTO tras
+    // la confirmacion explicita del gestor de que la baja NO se presento (D11).
+    OVZ_TRABAJO_ENCOLADO,
+    OVZ_TRABAJO_REENCOLADO,
+    OVZ_INCIERTO_CONFIRMADO
 }

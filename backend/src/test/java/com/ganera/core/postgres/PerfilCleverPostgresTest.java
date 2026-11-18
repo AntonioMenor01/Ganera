@@ -72,11 +72,11 @@ class PerfilCleverPostgresTest {
             List<String> versiones = admin.queryForList("select version from ganera.flyway_schema_history "
                     + "where success order by installed_rank", String.class);
             assertThat(versiones).containsExactlyElementsOf(
-                    IntStream.rangeClosed(1, 32).mapToObj(String::valueOf).toList());
+                    IntStream.rangeClosed(1, 33).mapToObj(String::valueOf).toList());
             assertThat(admin.queryForList("select distinct installed_by from ganera.flyway_schema_history",
                     String.class)).containsExactly(PostgresEmbebido.PROPIETARIO);
             assertThat(admin.queryForObject("select count(*) from ganera.flyway_schema_history", Long.class))
-                    .isEqualTo(32);
+                    .isEqualTo(33);
 
             // Las tablas de negocio son del propietario (ninguna de la app).
             List<String> duenos = admin.queryForList("select distinct tableowner from pg_tables "

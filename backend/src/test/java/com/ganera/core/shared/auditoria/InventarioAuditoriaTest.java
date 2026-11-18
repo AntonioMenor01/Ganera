@@ -81,6 +81,7 @@ class InventarioAuditoriaTest {
         RUTAS.put("POST /tramites/{id}/desmarcar-hecho-ovz", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
         RUTAS.put("POST /tramites/{id}/descartar", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
         RUTAS.put("POST /tramites/{id}/deshacer-descarte", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
+        RUTAS.put("POST /tramites/{id}/reencolar-ovz", Cobertura.auditada("tramite.PresentacionOvzEndToEndTest"));
         RUTAS.put("POST /tramites/{id}/respuestas-whatsapp", Cobertura.auditada("tramite.RespuestaWhatsappEndToEndTest"));
         RUTAS.put("POST /explotaciones/importar", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
         RUTAS.put("POST /ganaderos", Cobertura.auditada("ganadero.GanaderoAltaEndToEndTest"));

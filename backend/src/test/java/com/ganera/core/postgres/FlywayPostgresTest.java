@@ -22,8 +22,8 @@ import java.util.stream.IntStream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Primera vez de Flyway contra PostgreSQL real (Prompt C, T1): V1-V32 (V18 es Java; V26 solo vive en
- * db/postgresql, pero en Postgres SI se aplica, asi que las 32 estan todas) en una base de datos limpia
+ * Primera vez de Flyway contra PostgreSQL real (Prompt C, T1): V1-V33 (V18 es Java; V26 solo vive en
+ * db/postgresql, pero en Postgres SI se aplica, asi que las 33 estan todas) en una base de datos limpia
  * de PostgreSQL 17, y despues Hibernate arrancado encima con ddl-auto=validate.
  */
 class FlywayPostgresTest {
@@ -36,11 +36,11 @@ class FlywayPostgresTest {
         MigrateResult resultado = flyway(dataSource).migrate();
 
         assertThat(resultado.success).isTrue();
-        // En Postgres se aplica tambien db/postgresql (V26), asi que V1-V32 van todas, sin hueco.
-        assertThat(resultado.migrationsExecuted).isEqualTo(32);
+        // En Postgres se aplica tambien db/postgresql (V26), asi que V1-V33 van todas, sin hueco.
+        assertThat(resultado.migrationsExecuted).isEqualTo(33);
         MigrationInfo[] aplicadas = flyway(dataSource).info().applied();
         assertThat(Arrays.stream(aplicadas).map(m -> m.getVersion().getVersion()).toList())
-                .containsExactlyElementsOf(IntStream.rangeClosed(1, 32).mapToObj(String::valueOf).toList());
+                .containsExactlyElementsOf(IntStream.rangeClosed(1, 33).mapToObj(String::valueOf).toList());
         assertThat(aplicadas).allSatisfy(m -> assertThat(m.getState()).isEqualTo(MigrationState.SUCCESS));
         assertThat(aplicadas[17].getType().name()).isEqualTo("JDBC"); // V18, la migracion Java
         assertThat(new JdbcTemplate(dataSource).queryForObject("select version()", String.class))
@@ -62,7 +62,7 @@ class FlywayPostgresTest {
             JdbcTemplate jdbc = contexto.getBean(JdbcTemplate.class);
             List<String> versiones = jdbc.queryForList(
                     "select version from flyway_schema_history where success order by installed_rank", String.class);
-            assertThat(versiones).hasSize(32).last().isEqualTo("32");
+            assertThat(versiones).hasSize(33).last().isEqualTo("33");
         }
     }
 
@@ -82,7 +82,7 @@ class FlywayPostgresTest {
             // Flyway 10.20.1 solo registra en DEBUG una ubicacion inexistente: con failOnMissingLocations, una
             // carpeta db/postgresql que no llegue al classpath hace fallar el test.
             assertThat(PostgresEmbebido.flyway(PostgresEmbebido.dataSource(baseDeDatos)).failOnMissingLocations(true)
-                    .load().migrate().migrationsExecuted).isEqualTo(32);
+                    .load().migrate().migrationsExecuted).isEqualTo(33);
         } finally {
             logFlyway.detachAppender(eventos);
             eventos.stop();
@@ -90,7 +90,7 @@ class FlywayPostgresTest {
 
         // Comprobacion de que de verdad se ha capturado el log de Flyway; si no, la siguiente no probaria nada.
         assertThat(eventos.list).extracting(ILoggingEvent::getFormattedMessage)
-                .anyMatch(mensaje -> mensaje.contains("Successfully applied 32 migrations"));
+                .anyMatch(mensaje -> mensaje.contains("Successfully applied 33 migrations"));
         assertThat(eventos.list)
                 .filteredOn(evento -> evento.getLevel().isGreaterOrEqual(Level.WARN))
                 .extracting(ILoggingEvent::getFormattedMessage)

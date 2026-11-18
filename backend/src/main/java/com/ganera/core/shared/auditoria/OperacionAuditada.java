@@ -22,6 +22,7 @@ public enum OperacionAuditada {
     DESCARTAR,
     DESHACER_DESCARTE,
     RESPONDER_WHATSAPP,
+    REENCOLAR_OVZ,
 
     // Ganadero
     VER_GANADERO,

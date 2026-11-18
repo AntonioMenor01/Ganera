@@ -62,6 +62,7 @@ public class TramiteController {
     private final MensajeCampoRepository mensajeCampoRepository;
     private final TramiteCrotalService tramiteCrotalService;
     private final TramiteRevisionService tramiteRevisionService;
+    private final TrabajoOvzService trabajoOvzService;
     private final TramiteAltaService tramiteAltaService;
     private final WhatsappDetalleService whatsappDetalleService;
     private final AuditoriaService auditoriaService;
@@ -73,6 +74,7 @@ public class TramiteController {
             MensajeCampoRepository mensajeCampoRepository,
             TramiteCrotalService tramiteCrotalService,
             TramiteRevisionService tramiteRevisionService,
+            TrabajoOvzService trabajoOvzService,
             TramiteAltaService tramiteAltaService,
             WhatsappDetalleService whatsappDetalleService,
             AuditoriaService auditoriaService,
@@ -82,6 +84,7 @@ public class TramiteController {
         this.mensajeCampoRepository = mensajeCampoRepository;
         this.tramiteCrotalService = tramiteCrotalService;
         this.tramiteRevisionService = tramiteRevisionService;
+        this.trabajoOvzService = trabajoOvzService;
         this.tramiteAltaService = tramiteAltaService;
         this.whatsappDetalleService = whatsappDetalleService;
         this.auditoriaService = auditoriaService;
@@ -344,6 +347,31 @@ public class TramiteController {
                         OperacionAuditada.DESHACER_DESCARTE),
                 () -> ResponseEntity.ok(tramiteRevisionService.deshacerDescarte(
                         principal.gestoriaId(), principal.usuarioId(), id, version)));
+    }
+
+    /**
+     * Reencola la presentación automática de una baja que terminó en error (escalón 2, T2, D11). Quien reencola es
+     * SIEMPRE el usuario del JWT. Sin comprobación de suscripción. Orden: 400 sin version (antes de buscar nada) →
+     * 404 sin cuerpo (otra gestoría o no existe; deja ACCESO_OTRA_GESTORIA) → 409 sin trabajo / ya ejecutado / no es
+     * un error → 409 version desfasada → 409 si el error es INCIERTO y no se confirma explícitamente que la baja NO
+     * se presentó → 200 TramiteResponse (trabajo PENDIENTE de nuevo, trámite APROBADO, version + 1). El cuerpo es
+     * opcional para Spring a propósito, para que la falta de version dé nuestro 400 con motivo.
+     */
+    @PostMapping("/tramites/{id}/reencolar-ovz")
+    public ResponseEntity<?> reencolarOvz(
+            @AuthenticationPrincipal GaneraUserPrincipal principal,
+            @PathVariable Long id,
+            @RequestBody(required = false) TramiteReencolarOvzRequest request) {
+        Long version = request != null ? request.version() : null;
+        if (version == null) {
+            return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_FALTA_VERSION));
+        }
+        boolean confirmado = request != null && Boolean.TRUE.equals(request.confirmadoNoPresentado());
+        return traducirErrores(
+                () -> accesoAjeno.tramite(principal.usuarioId(), principal.gestoriaId(), id,
+                        OperacionAuditada.REENCOLAR_OVZ),
+                () -> ResponseEntity.ok(trabajoOvzService.reencolar(
+                        principal.gestoriaId(), principal.usuarioId(), id, version, confirmado)));
     }
 
     /**

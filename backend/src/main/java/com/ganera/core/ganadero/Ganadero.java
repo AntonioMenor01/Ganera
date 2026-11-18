@@ -45,6 +45,11 @@ public class Ganadero extends GestoriaScopedEntity {
     @Column(name = "telefono", length = 30)
     private String telefono;
 
+    /**
+     * Usuario OVZ del ganadero (escalon 2). {@code @JsonIgnore} (defensa en profundidad, T2): aunque ningun DTO lo
+     * expone, serializar la entidad nunca debe sacarlo; se descifra/usa solo en la via de envio a OVZ.
+     */
+    @JsonIgnore
     @Column(name = "ovz_usuario")
     private String ovzUsuario;
 

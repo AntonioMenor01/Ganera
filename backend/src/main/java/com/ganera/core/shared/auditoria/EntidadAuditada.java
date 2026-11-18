@@ -18,5 +18,6 @@ public enum EntidadAuditada {
     MENSAJE_CAMPO,
     IMPORTACION,
     PREFERENCIA_OVZ,
-    NUMERO_WHATSAPP
+    NUMERO_WHATSAPP,
+    TRABAJO_OVZ
 }
