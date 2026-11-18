@@ -5,10 +5,13 @@ import com.ganera.core.contacto.RolContacto;
 import java.util.List;
 
 /**
- * GET /ganaderos/{id}. DTO explicito: nunca expone las credenciales OVZ del Ganadero. El {@code telefono} de la
- * ficha (nullable) sale SOLO aqui, en el detalle: nunca en el listado ni en el buscador (D9).
+ * GET /ganaderos/{id}. DTO explicito: nunca expone el usuario ni la contrasena OVZ del Ganadero. El estado de las
+ * credenciales se resume en dos booleanos ({@code tieneCredencialesOvz} = hay contrasena guardada;
+ * {@code usaCertificadoOvz} = la cuenta entra con certificado); la contrasena es solo de escritura. El
+ * {@code telefono} de la ficha (nullable) sale SOLO aqui, en el detalle: nunca en el listado ni en el buscador (D9).
  */
 public record GanaderoDetalleResponse(Long id, String nombre, String nif, String telefono,
+                                      boolean tieneCredencialesOvz, boolean usaCertificadoOvz,
                                       List<ExplotacionDeGanadero> explotaciones) {
 
     public record ExplotacionDeGanadero(

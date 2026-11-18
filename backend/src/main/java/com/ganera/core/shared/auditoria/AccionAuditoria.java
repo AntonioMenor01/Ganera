@@ -76,6 +76,12 @@ public enum AccionAuditoria {
     // Descifrado bajo demanda de la contrasena OVZ (M2), en la via de envio a OVZ. Nunca guarda la contrasena.
     CREDENCIAL_OVZ_DESCIFRADA,
 
+    // Credenciales OVZ por ganadero (escalon 2, T1). Nunca guardan el usuario ni la contrasena: solo los
+    // codigos de los campos cambiados.
+    CREDENCIAL_OVZ_GUARDADA,
+    CREDENCIAL_OVZ_MODIFICADA,
+    CREDENCIAL_OVZ_BORRADA,
+
     // Preferencias OVZ de la gestoria (plan 2026-11-10)
     PREFERENCIA_OVZ_GUARDADA,
 

@@ -108,7 +108,10 @@ public class GanaderoConsultaService {
                         pendientesPorExplotacion.getOrDefault(e.getId(), 0L),
                         contactosPorExplotacion.getOrDefault(e.getId(), List.of())))
                 .toList();
+        // tieneCredencialesOvz = hay contrasena guardada (la usa el worker, T2/T4); usaCertificadoOvz = la cuenta
+        // entra con certificado (D8). Nunca se expone el usuario ni la contrasena.
+        boolean tieneCredenciales = ganadero.getOvzPasswordCifrada() != null;
         return new GanaderoDetalleResponse(ganadero.getId(), ganadero.getNombre(), ganadero.getNif(),
-                ganadero.getTelefono(), detalleExplotaciones);
+                ganadero.getTelefono(), tieneCredenciales, ganadero.isUsaCertificado(), detalleExplotaciones);
     }
 }

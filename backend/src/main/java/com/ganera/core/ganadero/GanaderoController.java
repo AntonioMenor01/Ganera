@@ -16,6 +16,7 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -42,21 +43,26 @@ public class GanaderoController {
             "El teléfono no es válido. Revísalo e inténtalo de nuevo.";
     static final String MOTIVO_TELEFONO_FALTA_CLAVE =
             "Indica el teléfono (o déjalo vacío para quitarlo).";
+    static final String MOTIVO_CREDENCIALES_OVZ_FALTAN =
+            "Indica el usuario y la contraseña de OVZ.net, o marca que la cuenta entra con certificado digital.";
 
     private final GanaderoConsultaService ganaderoConsultaService;
     private final GanaderoAltaService ganaderoAltaService;
     private final GanaderoEdicionService ganaderoEdicionService;
+    private final GanaderoCredencialesOvzService ganaderoCredencialesOvzService;
     private final AuditoriaService auditoriaService;
     private final AccesoAjeno accesoAjeno;
 
     public GanaderoController(GanaderoConsultaService ganaderoConsultaService,
                               GanaderoAltaService ganaderoAltaService,
                               GanaderoEdicionService ganaderoEdicionService,
+                              GanaderoCredencialesOvzService ganaderoCredencialesOvzService,
                               AuditoriaService auditoriaService,
                               AccesoAjeno accesoAjeno) {
         this.ganaderoConsultaService = ganaderoConsultaService;
         this.ganaderoAltaService = ganaderoAltaService;
         this.ganaderoEdicionService = ganaderoEdicionService;
+        this.ganaderoCredencialesOvzService = ganaderoCredencialesOvzService;
         this.auditoriaService = auditoriaService;
         this.accesoAjeno = accesoAjeno;
     }
@@ -173,6 +179,60 @@ public class GanaderoController {
             // Fuera de la transaccion del servicio (como el detalle): si el id es de otra gestoria, deja la fila
             // ACCESO_OTRA_GESTORIA en la gestoria del actor (REQUIRES_NEW); la respuesta sigue siendo 404 sin cuerpo.
             accesoAjeno.ganadero(principal.usuarioId(), principal.gestoriaId(), id, OperacionAuditada.EDITAR_GANADERO);
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(actualizado.get());
+    }
+
+    /**
+     * Guarda (o reemplaza) las credenciales OVZ del ganadero (escalon 2, T1). La contrasena es SOLO de escritura:
+     * entra, se cifra y nunca vuelve en la respuesta (el detalle solo trae tieneCredencialesOvz/usaCertificadoOvz).
+     * Orden: 400 {motivo} en el controlador ANTES de tocar la BD (cuerpo ausente; o, sin certificado, usuario o
+     * contrasena en blanco) -> 404 sin cuerpo si el ganadero es de otra gestoria o no existe (con fila
+     * ACCESO_OTRA_GESTORIA en la gestoria del actor) -> 200 con el detalle actualizado. Con {@code usaCertificado}
+     * true se ignoran usuario/contrasena y se marca la cuenta como de certificado (D8).
+     */
+    @PutMapping("/ganaderos/{id}/credenciales-ovz")
+    public ResponseEntity<?> guardarCredencialesOvz(
+            @AuthenticationPrincipal GaneraUserPrincipal principal,
+            @PathVariable Long id,
+            @RequestBody(required = false) CredencialesOvzRequest request) {
+        if (request == null) {
+            return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_CREDENCIALES_OVZ_FALTAN));
+        }
+        boolean usaCertificado = Boolean.TRUE.equals(request.usaCertificado());
+        String usuario = request.usuario();
+        String password = request.password();
+        if (!usaCertificado && (usuario == null || usuario.isBlank() || password == null || password.isBlank())) {
+            // Sin certificado, usuario y contrasena son obligatorios (para cambiar el usuario hay que reenviar la
+            // contrasena). 400 antes de tocar la BD: misma respuesta para id propio, ajeno o inexistente.
+            return ResponseEntity.badRequest().body(new MotivoErrorResponse(MOTIVO_CREDENCIALES_OVZ_FALTAN));
+        }
+        Optional<GanaderoDetalleResponse> actualizado = ganaderoCredencialesOvzService.guardar(
+                principal.gestoriaId(), principal.usuarioId(), id,
+                usuario == null ? null : usuario.trim(), password, usaCertificado);
+        if (actualizado.isEmpty()) {
+            accesoAjeno.ganadero(principal.usuarioId(), principal.gestoriaId(), id,
+                    OperacionAuditada.EDITAR_CREDENCIALES_OVZ);
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(actualizado.get());
+    }
+
+    /**
+     * Borra las credenciales OVZ del ganadero (usuario, contrasena y flag de certificado). 404 sin cuerpo si es de
+     * otra gestoria o no existe (con fila ACCESO_OTRA_GESTORIA en la gestoria del actor); 200 con el detalle
+     * actualizado en otro caso. Idempotente.
+     */
+    @DeleteMapping("/ganaderos/{id}/credenciales-ovz")
+    public ResponseEntity<?> borrarCredencialesOvz(
+            @AuthenticationPrincipal GaneraUserPrincipal principal,
+            @PathVariable Long id) {
+        Optional<GanaderoDetalleResponse> actualizado = ganaderoCredencialesOvzService.borrar(
+                principal.gestoriaId(), principal.usuarioId(), id);
+        if (actualizado.isEmpty()) {
+            accesoAjeno.ganadero(principal.usuarioId(), principal.gestoriaId(), id,
+                    OperacionAuditada.EDITAR_CREDENCIALES_OVZ);
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(actualizado.get());

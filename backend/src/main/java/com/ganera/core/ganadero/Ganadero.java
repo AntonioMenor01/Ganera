@@ -49,6 +49,14 @@ public class Ganadero extends GestoriaScopedEntity {
     private String ovzUsuario;
 
     /**
+     * La cuenta OVZ del ganadero entra con certificado digital (escalon 2, T1, migracion V32). Esas cuentas NO se
+     * soportan en la presentacion automatica (D8): el worker no las usa y cae al camino manual. Es un flag (no un
+     * secreto): no afecta a {@code CredencialOvzCifradaTipoTest} (no es un setter de String).
+     */
+    @Column(name = "usa_certificado", nullable = false)
+    private boolean usaCertificado;
+
+    /**
      * Ciphertext EN REPOSO de la contrasena OVZ (M2): ya NO lleva {@code @Convert}, asi que materializar el
      * Ganadero no descifra nada; el descifrado es bajo demanda ({@code DescifradoCredencialOvz}). El getter
      * devuelve el ciphertext tal cual.

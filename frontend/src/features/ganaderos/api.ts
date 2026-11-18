@@ -54,3 +54,33 @@ export async function cambiarTelefonoGanadero(
   const { data } = await httpClient.put<GanaderoDetalle>(`/ganaderos/${id}/telefono`, { telefono });
   return data;
 }
+
+/** Datos para guardar las credenciales de OVZ.net de un ganadero. Con `usaCertificado` el usuario y la
+ * contraseña se ignoran (la cuenta entra con certificado y no se envía en automático). */
+export interface CredencialesOvz {
+  usuario: string;
+  password: string;
+  usaCertificado: boolean;
+}
+
+/**
+ * Guarda (o reemplaza) las credenciales de OVZ.net del ganadero (PUT /ganaderos/{id}/credenciales-ovz). La
+ * contraseña es de escritura: va al backend, se cifra y nunca vuelve. Con certificado no se mandan usuario ni
+ * contraseña. El backend responde 400 `{motivo}` si faltan, o 404 si no es de tu gestoría; devuelve el detalle
+ * actualizado, con el que se repinta la ficha sin volver a pedirlo.
+ */
+export async function guardarCredencialesOvz(
+  id: number,
+  { usuario, password, usaCertificado }: CredencialesOvz,
+): Promise<GanaderoDetalle> {
+  const cuerpo = usaCertificado ? { usaCertificado: true } : { usuario, password, usaCertificado: false };
+  const { data } = await httpClient.put<GanaderoDetalle>(`/ganaderos/${id}/credenciales-ovz`, cuerpo);
+  return data;
+}
+
+/** Borra las credenciales de OVZ.net del ganadero (DELETE /ganaderos/{id}/credenciales-ovz). Devuelve el
+ * detalle actualizado. */
+export async function borrarCredencialesOvz(id: number): Promise<GanaderoDetalle> {
+  const { data } = await httpClient.delete<GanaderoDetalle>(`/ganaderos/${id}/credenciales-ovz`);
+  return data;
+}

@@ -26,6 +26,7 @@ public enum OperacionAuditada {
     // Ganadero
     VER_GANADERO,
     EDITAR_GANADERO,
+    EDITAR_CREDENCIALES_OVZ,
 
     // Explotacion
     VER_EXPLOTACION,

@@ -13,7 +13,12 @@ import {
   mensajeDeError,
   type ErrorApi,
 } from "@/shared/api/errores";
-import { cambiarTelefonoGanadero, obtenerGanadero } from "./api";
+import {
+  borrarCredencialesOvz,
+  cambiarTelefonoGanadero,
+  guardarCredencialesOvz,
+  obtenerGanadero,
+} from "./api";
 import type { ExplotacionDeGanadero, GanaderoDetalle } from "./types";
 import { formatearTelefono, hrefTelefono } from "./telefono";
 import { CLASE_ENLACE } from "@/shared/ui/enlace";
@@ -232,6 +237,14 @@ function Ficha({
         </div>
       </div>
 
+      <AccesoOvz
+        ganaderoId={ganadero.id}
+        tieneCredenciales={ganadero.tieneCredencialesOvz}
+        usaCertificado={ganadero.usaCertificadoOvz}
+        onActualizado={setGanadero}
+        onNoEncontrado={onNoEncontrado}
+      />
+
       {explotaciones.length > MAX_EXPLOTACIONES_SIN_INDICE && (
         <IndiceExplotaciones explotaciones={explotaciones} />
       )}
@@ -390,6 +403,218 @@ function EditorTelefono({
         )}
       </div>
     </form>
+  );
+}
+
+const ID_TITULO_OVZ = "ficha-acceso-ovz-titulo";
+const ID_INPUT_OVZ_USUARIO = "ficha-ovz-usuario";
+const ID_INPUT_OVZ_PASSWORD = "ficha-ovz-password";
+const ID_AYUDA_OVZ = "ficha-ovz-ayuda";
+
+/**
+ * Sección «Acceso a OVZ.net»: credenciales por ganadero (PUT/DELETE /ganaderos/{id}/credenciales-ovz). La
+ * contraseña es de solo escritura — nunca llega del servidor, así que el campo arranca vacío y nunca se rellena.
+ * Estado: «No configuradas» / «Credenciales guardadas» / «Entra con certificado digital». Una petición a la vez;
+ * el 200 repinta la ficha con la respuesta (sin volver a pedir el detalle); el 404 lleva a «Ganadero no
+ * encontrado»; el 400 (y la red/5xx) conservan lo escrito y muestran el motivo.
+ */
+function AccesoOvz({
+  ganaderoId,
+  tieneCredenciales,
+  usaCertificado,
+  onActualizado,
+  onNoEncontrado,
+}: {
+  ganaderoId: number;
+  tieneCredenciales: boolean;
+  usaCertificado: boolean;
+  onActualizado: (ganadero: GanaderoDetalle) => void;
+  onNoEncontrado: () => void;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [cert, setCert] = useState(usaCertificado);
+  const [usuario, setUsuario] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [trabajando, setTrabajando] = useState(false);
+  const botonRef = useRef<HTMLButtonElement>(null);
+  const primerCampoRef = useRef<HTMLInputElement>(null);
+  const volverAlBoton = useRef(false);
+
+  useEffect(() => {
+    if (editando) {
+      primerCampoRef.current?.focus();
+    } else if (volverAlBoton.current) {
+      volverAlBoton.current = false;
+      botonRef.current?.focus();
+    }
+  }, [editando]);
+
+  const configurado = tieneCredenciales || usaCertificado;
+
+  function abrir() {
+    setCert(usaCertificado);
+    // La contraseña NUNCA se siembra desde el servidor: el campo arranca vacío siempre.
+    setUsuario("");
+    setPassword("");
+    setError(null);
+    setEditando(true);
+  }
+
+  function cancelar() {
+    volverAlBoton.current = true;
+    setError(null);
+    setEditando(false);
+  }
+
+  async function aplicar(accion: () => Promise<GanaderoDetalle>) {
+    if (trabajando) return; // Una sola petición a la vez.
+    setError(null);
+    setTrabajando(true);
+    try {
+      const actualizado = await accion();
+      onActualizado(actualizado);
+      volverAlBoton.current = true;
+      setEditando(false);
+    } catch (err) {
+      const errorApi = aErrorApi(err);
+      if (errorApi.tipo === "no-encontrado") {
+        onNoEncontrado();
+        return;
+      }
+      setError(mensajeDeError(errorApi));
+    } finally {
+      setTrabajando(false);
+    }
+  }
+
+  const faltanDatos = !cert && (usuario.trim() === "" || password === "");
+
+  if (!editando) {
+    return (
+      <section
+        aria-labelledby={ID_TITULO_OVZ}
+        className="flex flex-col gap-2 border border-border bg-card p-5"
+      >
+        <h2 id={ID_TITULO_OVZ} className="text-sm font-bold text-muted-foreground">
+          Acceso a OVZ.net
+        </h2>
+        {usaCertificado ? (
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-semibold">Entra con certificado digital</p>
+            <p className="text-[13px] text-muted-foreground">
+              La baja por muerte no se puede enviar en automático con certificado; se hace a mano en OVZ.net.
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm font-semibold">
+            {tieneCredenciales ? "Credenciales guardadas" : "No configuradas"}
+          </p>
+        )}
+        <div className="mt-1 flex flex-wrap gap-2">
+          <Button ref={botonRef} variant="outline" size="sm" onClick={abrir} disabled={trabajando}>
+            {configurado ? "Cambiar credenciales" : "Añadir credenciales"}
+          </Button>
+          {configurado && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void aplicar(() => borrarCredencialesOvz(ganaderoId))}
+              disabled={trabajando}
+            >
+              Borrar credenciales
+            </Button>
+          )}
+        </div>
+        {error && (
+          <Alert variant="destructive">
+            <CircleAlertIcon />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+      </section>
+    );
+  }
+
+  return (
+    <section
+      aria-labelledby={ID_TITULO_OVZ}
+      className="flex flex-col gap-3 border border-border bg-card p-5"
+    >
+      <h2 id={ID_TITULO_OVZ} className="text-sm font-bold text-muted-foreground">
+        Acceso a OVZ.net
+      </h2>
+      <form
+        className="flex max-w-sm flex-col gap-3"
+        onSubmit={(evento) => {
+          evento.preventDefault();
+          if (faltanDatos) return;
+          void aplicar(() =>
+            guardarCredencialesOvz(ganaderoId, {
+              usuario: usuario.trim(),
+              password,
+              usaCertificado: cert,
+            }),
+          );
+        }}
+        noValidate
+      >
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <input
+            ref={primerCampoRef}
+            type="checkbox"
+            className="size-4 accent-primary"
+            checked={cert}
+            onChange={(e) => setCert(e.target.checked)}
+          />
+          La cuenta entra con certificado digital
+        </label>
+
+        {!cert && (
+          <>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={ID_INPUT_OVZ_USUARIO}>Usuario de OVZ.net</Label>
+              <Input
+                id={ID_INPUT_OVZ_USUARIO}
+                autoComplete="off"
+                value={usuario}
+                onChange={(e) => setUsuario(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={ID_INPUT_OVZ_PASSWORD}>Contraseña de OVZ.net</Label>
+              <Input
+                id={ID_INPUT_OVZ_PASSWORD}
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                aria-describedby={ID_AYUDA_OVZ}
+              />
+              <p id={ID_AYUDA_OVZ} className="text-[13px] text-muted-foreground">
+                La contraseña no se muestra nunca. Para cambiar el usuario, vuelve a escribir la contraseña.
+              </p>
+            </div>
+          </>
+        )}
+
+        {error && (
+          <Alert variant="destructive">
+            <CircleAlertIcon />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" size="sm" disabled={trabajando || faltanDatos}>
+            {trabajando ? "Guardando…" : "Guardar"}
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={cancelar} disabled={trabajando}>
+            Cancelar
+          </Button>
+        </div>
+      </form>
+    </section>
   );
 }
 
