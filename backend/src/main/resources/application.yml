@@ -95,6 +95,12 @@ ganera:
     lote: 10
     # Plazo tras el 1.er, 2.o y 3.er fallo; tras el 4.o fallo no hay mas intentos (D4).
     reintentos: PT1M,PT5M,PT30M
+  ovz:
+    worker:
+      # Planificador del worker de presentacion automatica de la baja en OVZ (escalon 2, plan 2026-11-17).
+      # DESACTIVADO en el backend: el backend no abre sesiones de OVZ ni Playwright. Corre SOLO en el perfil
+      # `worker` (instancia Docker aparte, application-worker.yml), donde se pone a true.
+      activo: false
   retencion:
     # Job nocturno de retencion de mensajes de WhatsApp (B1, T3, D6), despues del de Stripe (03:00).
     activo: true

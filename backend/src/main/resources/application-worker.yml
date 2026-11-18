@@ -1,0 +1,38 @@
+# Perfil del WORKER de OVZ (escalon 2: presentacion automatica de la baja; plan 2026-11-17).
+# El worker corre en una instancia Docker aparte (imagen oficial de Playwright con Chromium, D1/D2), con la
+# MISMA base de codigo que el backend pero SIN servidor web: no expone NINGUN endpoint HTTP. Su unico trabajo es
+# el planificador del worker de OVZ (ganera.ovz.worker.activo=true). Los planificadores propios del backend
+# (extraccion por IA, retencion de WhatsApp) se APAGAN aqui para que el worker haga «solo lo suyo».
+# Se activa con SPRING_PROFILES_ACTIVE=worker. En el backend normal este perfil NO esta activo y
+# ganera.ovz.worker.activo es false (application.yml): el planificador del worker NO corre en el backend.
+# Lo comprueba PerfilWorkerTest (arranque sin servidor web + flags).
+#
+# IMPORTANTE (produccion): este perfil SOLO cambia el tipo de aplicacion (sin web) y los flags de los
+# planificadores. NO configura base de datos, SSL, Flyway, CORS ni HSTS: eso vive en application-clever.yml.
+# En Clever el worker Docker arranca con SPRING_PROFILES_ACTIVE=clever,worker (clever aporta Supabase + TLS,
+# worker apaga el servidor web y enciende el planificador del worker). Con `worker` a secas no hay conexion a
+# Supabase (ConexionBaseDeDatosEstricta fallaria el arranque, que es lo correcto).
+spring:
+  main:
+    # Sin servidor web (ni Tomcat ni DispatcherServlet): el worker no escucha HTTP, asi que no hay superficie de
+    # endpoints que exponer. Spring Boot re-enlaza spring.main.* desde este yaml de perfil antes de crear el
+    # contexto, asi que el tipo de aplicacion pasa a NONE aunque los servlets esten en el classpath.
+    web-application-type: none
+
+ganera:
+  ovz:
+    worker:
+      # El planificador del worker de OVZ corre SOLO aqui (en el backend esta a false).
+      activo: true
+  extraccion:
+    planificador:
+      # La extraccion por IA es trabajo del backend, no del worker.
+      activo: false
+  retencion:
+    # La retencion nocturna de WhatsApp es trabajo del backend, no del worker.
+    activo: false
+  facturacion:
+    sync:
+      # La reconciliacion nocturna de cantidades con Stripe (SuscripcionSyncScheduler) es trabajo del backend.
+      # Apagada aqui para que, con el worker desplegado junto al backend, no haya dos reconciliaciones a las 03:00.
+      activo: false
