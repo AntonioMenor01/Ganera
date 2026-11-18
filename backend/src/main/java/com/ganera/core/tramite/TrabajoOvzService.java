@@ -54,6 +54,13 @@ public class TrabajoOvzService {
     private final TramiteCrotalService tramiteCrotalService;
     private final AuditoriaService auditoriaService;
     private final Clock clock;
+    /**
+     * Interruptor maestro de la presentacion automatica (T3). APAGADO por defecto: al aprobar NO se encola nada
+     * (via manual, HECHO_EN_OVZ), aunque el ganadero tenga credenciales. Solo afecta al encolado al aprobar
+     * ({@link #encolarSiProcede}); el reencolado manual de un trabajo ya existente ({@link #reencolar}) es una
+     * accion explicita del gestor y no depende de este interruptor.
+     */
+    private final boolean presentacionAutomaticaActiva;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -62,12 +69,15 @@ public class TrabajoOvzService {
                              TramiteRepository tramiteRepository,
                              TramiteCrotalService tramiteCrotalService,
                              AuditoriaService auditoriaService,
-                             Clock clock) {
+                             Clock clock,
+                             @org.springframework.beans.factory.annotation.Value(
+                                     "${ganera.ovz.presentacion-automatica.activa:false}") boolean presentacionAutomaticaActiva) {
         this.trabajoOvzRepository = trabajoOvzRepository;
         this.tramiteRepository = tramiteRepository;
         this.tramiteCrotalService = tramiteCrotalService;
         this.auditoriaService = auditoriaService;
         this.clock = clock;
+        this.presentacionAutomaticaActiva = presentacionAutomaticaActiva;
     }
 
     /**
@@ -77,6 +87,10 @@ public class TrabajoOvzService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void encolarSiProcede(Tramite tramite, Long gestoriaId, Long usuarioId) {
+        if (!presentacionAutomaticaActiva) {
+            // Interruptor apagado (T3): nada se encola al aprobar; la baja se tramita por la via manual.
+            return;
+        }
         if (tramite.getTipoTramite() != TipoTramite.BAJA_MUERTE) {
             return;
         }

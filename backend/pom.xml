@@ -25,6 +25,7 @@
         <stripe.version>28.2.0</stripe.version>
         <playwright.version>1.49.0</playwright.version>
         <poi.version>5.3.0</poi.version>
+        <pdfbox.version>3.0.7</pdfbox.version>
         <commons-io.version>2.16.1</commons-io.version>
         <embedded-postgres.version>2.2.2</embedded-postgres.version>
         <!-- PostgreSQL 17.11, la version de Supabase (migracion a Supabase, T1). -->
@@ -130,6 +131,13 @@
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
             <version>${poi.version}</version>
+        </dependency>
+        <!-- PDFBox: verificar el crotal dentro del justificante de la baja (escalon 2, T3). Extraccion de texto;
+             nunca imprime el contenido. PDFBox 3.x no arrastra commons-io (usa su propio pdfbox-io). -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>${pdfbox.version}</version>
         </dependency>
         <!-- Fijado explicito: Twilio arrastra commons-io 2.14.0 (nearest-wins de Maven lo elegiria
              sobre el que pide POI), pero POI 5.3.0 usa BoundedInputStream.Builder, que no existe

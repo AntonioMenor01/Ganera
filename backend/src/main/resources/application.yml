@@ -101,6 +101,11 @@ ganera:
       # DESACTIVADO en el backend: el backend no abre sesiones de OVZ ni Playwright. Corre SOLO en el perfil
       # `worker` (instancia Docker aparte, application-worker.yml), donde se pone a true.
       activo: false
+    presentacion-automatica:
+      # Interruptor maestro de la presentacion automatica de la baja (escalon 2, plan 2026-11-17, T3). APAGADO por
+      # defecto: al aprobar un BAJA_MUERTE NO se encola ningun trabajo en trabajo_ovz, aunque el ganadero tenga
+      # credenciales (la via sigue siendo la manual, HECHO_EN_OVZ). Se encenderá cuando el worker (T4) este listo.
+      activa: false
   retencion:
     # Job nocturno de retencion de mensajes de WhatsApp (B1, T3, D6), despues del de Stripe (03:00).
     activo: true

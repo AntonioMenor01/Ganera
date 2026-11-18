@@ -33,6 +33,9 @@ public enum OperacionAuditada {
     VER_EXPLOTACION,
     VER_ANIMALES,
 
+    // Documento OVZ (descarga del justificante)
+    DESCARGAR_DOCUMENTO_OVZ,
+
     // Contacto
     EDITAR_CONTACTO,
     DESACTIVAR_CONTACTO,

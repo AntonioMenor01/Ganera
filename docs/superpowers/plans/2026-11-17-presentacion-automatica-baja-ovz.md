@@ -129,12 +129,18 @@ que la T2 de la extensión, reutilizable como función pura.)
   adivina). **El mismo método es el de la detección «ya presentada» del anti-duplicado (D5, §6).**
 - **Guardarlo en la ficha del ganadero**, enlazado al **trámite** y la **explotación**, **aislado por gestoría**
   y **auditado**. Nueva entidad `documento_ovz` (`GestoriaScopedEntity`): ganadero, trámite, explotación, tipo
-  («Baja Animal»), nombre, tamaño, content-type, referencia al binario en el almacén, instante.
-- **Dónde se almacena:** el binario **no** va en la base de datos. Opción recomendada: **Supabase Storage,
-  bucket privado** (la BD ya es Supabase), con acceso solo por el backend (signed URL de corta vida para la
-  descarga desde la ficha); alternativa: Clever Cellar (S3). **Tamaño máximo** a fijar (un justificante PDF es
-  pequeño; p. ej. 10 MB). La **descarga desde la ficha** la sirve el backend tras comprobar la gestoría (nunca
-  una URL pública directa).
+  («Baja Animal»), nombre, tamaño, content-type, SHA-256, instante.
+- **Dónde se almacena (D6 revisada, 2026-11-18; implementado en T3):** el binario va **en Postgres**, no en
+  Supabase Storage. Dos tablas: `documento_ovz` (metadatos) y `documento_ovz_contenido` (`BYTEA`, 1:1 con la misma
+  PK; separada para que el listado de la ficha no cargue el binario). **Solo PDF** (cabecera `%PDF`) y **máximo 10
+  MB** (lo valida `ValidadorPdf` antes de escribir y lo refuerza un `CHECK`). La **descarga desde la ficha** la
+  sirve el backend tras comprobar la gestoría (`GET /documentos-ovz/{id}/contenido`, adjunto; nunca una URL pública
+  directa); el listado es `GET /ganaderos/{id}/documentos` (metadatos). Un recurso ajeno → `404` sin cuerpo +
+  `ACCESO_OTRA_GESTORIA`; la descarga deja `LECTURA_DOCUMENTO_OVZ`. El guardado (lo usará el worker, T4) deja
+  `OVZ_DOCUMENTO_GUARDADO` **sin el contenido** (solo el tamaño). Interruptor maestro
+  `ganera.ovz.presentacion-automatica.activa` (false por defecto): apagado → no se encola al aprobar.
+  *(Nota: Supabase Storage / Clever Cellar queda descartado para este alcance; el justificante es pequeño y cabe
+  en la BD con el resto del aislamiento multi-tenant ya resuelto.)*
 - **Si el justificante aún no está disponible** tras «Aceptar»: se **reintenta la descarga** (no la
   presentación) con una pauta acotada; si tras N intentos no está, el trámite se queda `EJECUTADO_OVZ` con el
   **documento marcado como pendiente** (la presentación fue bien; falta el papel), y se reintenta más tarde.
@@ -177,9 +183,12 @@ D1–D10 se cierran tal como se recomendaban; D11 con el matiz de Antonio (dos c
 - **D5 — Detección de «ya presentada»** en Documentos. Casar por **crotal + tipo «Baja Animal» + fecha**
   (ventana estrecha alrededor de la muerte/presentación). Match inequívoco → `EJECUTADO_OVZ`; cualquier duda →
   `ERROR_OVZ` incierto con aviso. Nunca asumir que se presentó.
-- **D6 — Almacén de documentos.** **Supabase Storage, bucket privado** (la BD ya es Supabase); descarga servida
-  por el backend con **signed URL de corta vida** tras comprobar la gestoría; **tamaño máximo ~10 MB**. (Clever
-  Cellar/S3 queda como alternativa si hiciera falta.)
+- **D6 — Almacén de documentos. [REVISADA 2026-11-18 → Postgres; implementada en T3.]** El binario del justificante
+  se guarda **en Postgres** (`documento_ovz` + `documento_ovz_contenido` `BYTEA`, 1:1), **no** en Supabase Storage.
+  **Solo PDF** (cabecera `%PDF`), **máximo 10 MB**. Descarga servida por el backend tras comprobar la gestoría
+  (`GET /documentos-ovz/{id}/contenido`, adjunto; sin URL pública). Se descarta Supabase Storage/Clever Cellar para
+  este alcance: el justificante es pequeño y así el aislamiento multi-tenant es el mismo que el del resto del
+  esquema (nada de signed URLs ni un almacén externo que asegurar aparte).
 - **D7 — Reintento de la *descarga*** del justificante. Reintentos **acotados de solo la descarga** (p. ej.
   +1 min / +10 min / +1 h, máx 3–4); si no aparece, el trámite se queda `EJECUTADO_OVZ` con el **documento
   marcado como pendiente** y se reintenta más tarde. **Nunca** se reintenta la presentación por un documento
@@ -257,11 +266,16 @@ Nunca dentro de la transacción de aprobación ni con el lock de la fila. Estado
 (`EJECUTADO_OVZ`|`ERROR_OVZ` seguro|`ERROR_OVZ` incierto); reencolado según clase de error (D11). Candado por
 ganadero (D3).
 
-**T3 — Documentos: entidad + almacenamiento. Migración V34** (`documento_ovz`, `GestoriaScopedEntity`: ganadero,
-trámite, explotación, tipo «Baja Animal», nombre, tamaño, content-type, ref al binario, instante). Almacén
-**Supabase Storage, bucket privado** (D6), máx ~10 MB; descarga servida por el backend tras comprobar la gestoría
-(signed URL de corta vida). **Identificación del justificante por el método del §9** (tipo + fecha posterior al
-«Aceptar» + verificación del crotal dentro del PDF con PDFBox; si no aparece o hay varios → «pendiente»).
+**T3 — Documentos: entidad + almacenamiento. [HECHA 2026-11-18.] Migración V34** (`documento_ovz`,
+`GestoriaScopedEntity`: ganadero, trámite, explotación, tipo «Baja Animal», nombre, tamaño, content-type, SHA-256,
+instante; + `documento_ovz_contenido` `BYTEA` 1:1). Almacén **en Postgres** (D6 revisada), solo PDF (cabecera
+`%PDF`), máx 10 MB (`ValidadorPdf` + `CHECK`); descarga servida por el backend tras comprobar la gestoría
+(`GET /documentos-ovz/{id}/contenido` adjunto; `GET /ganaderos/{id}/documentos` metadatos; ajeno → 404 +
+`ACCESO_OTRA_GESTORIA`; descarga → `LECTURA_DOCUMENTO_OVZ`). Servicio de guardado (lo usará el worker) auditado con
+`OVZ_DOCUMENTO_GUARDADO` sin contenido. **Verificación del crotal dentro del PDF con PDFBox** (`BuscadorCrotalEnPdf`,
+lógica pura) para el método del §9 (la T4 la usa para identificar el justificante). Interruptor
+`ganera.ovz.presentacion-automatica.activa` (false por defecto): apagado → no se encola al aprobar. Recuentos de
+migraciones: Postgres 34 / H2 33.
 
 **T4 — Worker Playwright (implementador subagente).** Worker Docker (perfil `clever,worker`), imagen oficial
 Playwright Java (D1/D2). Login → explotación bovina → menú → baja → crotal → «Buscar» → **verificación

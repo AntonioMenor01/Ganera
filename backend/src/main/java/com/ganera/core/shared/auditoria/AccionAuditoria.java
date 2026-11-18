@@ -71,6 +71,7 @@ public enum AccionAuditoria {
     LECTURA_GANADERO,
     LECTURA_CONTACTOS,
     LECTURA_EXPLOTACION,
+    LECTURA_DOCUMENTO_OVZ,
     ACCESO_OTRA_GESTORIA,
 
     // Descifrado bajo demanda de la contrasena OVZ (M2), en la via de envio a OVZ. Nunca guarda la contrasena.
@@ -93,5 +94,9 @@ public enum AccionAuditoria {
     // la confirmacion explicita del gestor de que la baja NO se presento (D11).
     OVZ_TRABAJO_ENCOLADO,
     OVZ_TRABAJO_REENCOLADO,
-    OVZ_INCIERTO_CONFIRMADO
+    OVZ_INCIERTO_CONFIRMADO,
+
+    // Justificante de la baja guardado en la ficha del ganadero (escalon 2, T3). Nunca guarda el contenido ni datos
+    // personales: solo el tamaño en bytes (Clave.TAMANO). El entidadId es el id del documento_ovz.
+    OVZ_DOCUMENTO_GUARDADO
 }

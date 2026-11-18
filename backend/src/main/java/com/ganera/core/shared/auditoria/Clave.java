@@ -44,6 +44,8 @@ public enum Clave {
     CONTACTOS_CREADOS,
     CONTACTOS_ACTUALIZADOS,
     CONTACTOS_ERRORES,
+    /** Tamaño en bytes de un justificante OVZ guardado (OVZ_DOCUMENTO_GUARDADO, T3); un numero, nunca el contenido. */
+    TAMANO,
     /** La pone DatosAuditoria sola cuando recorta una lista de ids (maximo 50 en total). */
     TRUNCADO;
 

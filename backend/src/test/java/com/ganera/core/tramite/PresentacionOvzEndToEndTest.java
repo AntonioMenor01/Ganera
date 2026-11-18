@@ -30,6 +30,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.context.TestPropertySource;
 
 import java.time.Instant;
 import java.util.List;
@@ -42,8 +43,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * sobre un servidor real y DOS gestorías. El encolado va en la MISMA transacción que la aprobación y solo si el
  * ganadero tiene credenciales y no usa certificado (D4/D8); el reencolado de un error INCIERTO exige confirmación
  * explícita y queda auditado. Cada acción deja su fila EXACTA en la gestoría del actor y ninguna en la otra.
+ *
+ * <p>El interruptor maestro {@code ganera.ovz.presentacion-automatica.activa} se enciende SOLO aquí
+ * ({@code @TestPropertySource}, T3): el encolado al aprobar solo ocurre con el interruptor encendido. La posición
+ * apagada (el valor por defecto) se prueba en {@code PresentacionOvzInterruptorApagadoEndToEndTest}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@TestPropertySource(properties = "ganera.ovz.presentacion-automatica.activa=true")
 @ExtendWith(GuardiaDmlExtension.class)
 class PresentacionOvzEndToEndTest {
 

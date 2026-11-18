@@ -22,7 +22,8 @@ public final class GuardiaDml {
 
     /** Tablas de negocio cuyas escrituras deben ir acompañadas de una fila de auditoria. */
     public static final Set<String> TABLAS_NEGOCIO = Set.of(
-            "tramite", "tramite_crotal", "tramite_evento", "trabajo_ovz", "respuesta_whatsapp",
+            "tramite", "tramite_crotal", "tramite_evento", "trabajo_ovz", "documento_ovz",
+            "documento_ovz_contenido", "respuesta_whatsapp",
             "contacto", "contacto_explotacion", "ganadero", "explotacion", "animal",
             "gestoria", "usuario", "suscripcion", "mensaje_campo", "alta_pendiente");
 

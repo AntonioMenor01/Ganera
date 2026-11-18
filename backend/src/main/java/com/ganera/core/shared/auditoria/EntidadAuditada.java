@@ -19,5 +19,6 @@ public enum EntidadAuditada {
     IMPORTACION,
     PREFERENCIA_OVZ,
     NUMERO_WHATSAPP,
-    TRABAJO_OVZ
+    TRABAJO_OVZ,
+    DOCUMENTO_OVZ
 }
