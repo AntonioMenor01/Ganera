@@ -7,7 +7,6 @@ import com.ganera.core.shared.auditoria.EntidadAuditada;
 import com.ganera.core.shared.crypto.CifradorAesGcm;
 import com.ganera.core.shared.security.GaneraUserPrincipal;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Objects;
 
@@ -28,6 +27,13 @@ import java.util.Objects;
  *   <li><b>Descifrar</b>: un ciphertext corrupto (o sin credencial) da {@link DescifradoCredencialOvzException},
  *       con mensaje generico (nunca el valor); la fila ya quedo.</li>
  * </ol>
+ *
+ * <p><b>Deliberadamente NO es {@code @Transactional}</b> (escalon 2, T0, pendiente de M2): la unica escritura es la
+ * auditoria, que ya va en su propia transaccion ({@code registrarAparte}, {@code REQUIRES_NEW}), y el descifrado es
+ * puro. Si el metodo fuera {@code @Transactional (REQUIRED)}, el worker que lo llame dentro de la transaccion de su
+ * trabajo y capture su excepcion dejaria esa transaccion {@code rollback-only} y el commit del trabajo fallaria con
+ * {@code UnexpectedRollbackException}. Sin la anotacion, lanzar aqui no contamina la transaccion del que llama. Lo
+ * fija {@code DescifradoCredencialOvzTest.llamadoDentroDeOtraTransaccionNoLaMarcaRollbackOnly}.
  */
 @Service
 public class DescifradoCredencialOvz {
@@ -40,7 +46,6 @@ public class DescifradoCredencialOvz {
         this.auditoriaService = auditoriaService;
     }
 
-    @Transactional
     public CredencialOvzEnClaro descifrarPasswordParaEnvioOvz(Ganadero ganadero, GaneraUserPrincipal principal) {
         Objects.requireNonNull(ganadero, "ganadero");
         Objects.requireNonNull(principal, "principal");

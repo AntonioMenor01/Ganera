@@ -141,6 +141,10 @@ class OvzSpikeDocumentosTest {
                 if (pie != null) {
                     System.out.println("Pie del grid (texto de la app): " + pie);
                 }
+                // Cuenta las anclas dentro de GVDocumentos. En la ejecucion de Antonio (2026-11-18) dio 13 enlaces
+                // para 13 filas: una por fila de datos (el enlace «Documento»), sin anclas de paginador dentro de la
+                // tabla. Si un futuro layout metiera el paginador dentro de GVDocumentos, este conteo lo incluiria;
+                // para el spike basta con descargar el PRIMER enlace (la «Documento» de la primera fila).
                 Object nEnlaces = fGrid.evaluate("() => document.querySelectorAll(\"[id$='_GVDocumentos'] a\").length");
                 int enlaces = (nEnlaces instanceof Number n) ? n.intValue() : 0;
                 ok(7, "estructura de GVDocumentos leida; enlaces en la tabla=" + enlaces);
@@ -235,8 +239,17 @@ class OvzSpikeDocumentosTest {
 
     private void seleccionarValor(Frame f, String css, String value, String etiqueta) {
         ultimoSelector = "css=\"" + css + "\" (" + etiqueta + ")";
-        f.evaluate("([sel, v]) => { const s = document.querySelector(sel); s.value = v;"
-                + " s.dispatchEvent(new Event('change', {bubbles:true})); }", List.of(css, value));
+        // Verifica que la opcion existe ANTES de asignarla: si el catalogo de OVZ cambiara (p. ej. «Baja Animal»
+        // dejara de ser value=3), s.value='' silenciosamente dispararia el postback con una seleccion vacia y el
+        // fallo posterior seria un «selector no encontrado» confuso. Asi fallamos con un mensaje claro.
+        Object seleccionada = f.evaluate("([sel, v]) => { const s = document.querySelector(sel); if (!s) return false;"
+                + " if (!Array.from(s.options).some(o => o.value === v)) return false;"
+                + " s.value = v; s.dispatchEvent(new Event('change', {bubbles:true})); return true; }",
+                List.of(css, value));
+        if (!(seleccionada instanceof Boolean ok) || !ok) {
+            throw new IllegalStateException("el desplegable " + css + " no tiene la opcion esperada ("
+                    + etiqueta + "); ¿cambio el catalogo de OVZ?");
+        }
         esperarQuietud(f.page());
     }
 
