@@ -14,6 +14,10 @@ import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.servlet.DispatcherServlet;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -74,7 +78,9 @@ class PerfilWorkerTest {
                 "--spring.profiles.active=worker",
                 "--spring.datasource.url=jdbc:h2:mem:perfil_worker;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000",
                 "--spring.datasource.hikari.pool-name=perfil-worker",
-                "--spring.jmx.enabled=false")) {
+                "--spring.jmx.enabled=false",
+                // El servidor de salud del worker enlaza un puerto; con PORT=0 usa uno efimero y no choca con el 8080.
+                "--PORT=0")) {
 
             assertThat(contexto).isNotInstanceOf(WebApplicationContext.class);
             assertThat(contexto.getBeanNamesForType(DispatcherServlet.class)).isEmpty();
@@ -93,6 +99,47 @@ class PerfilWorkerTest {
             // necesita SUPABASE_FLYWAY_USER/_PASSWORD (ConexionBaseDeDatosEstricta tampoco las exige).
             assertThat(contexto.getBeanNamesForType(org.flywaydb.core.Flyway.class))
                     .as("Flyway apagado en el worker (migra solo el backend)").isEmpty();
+        }
+    }
+
+    @Test
+    void elWorkerExponeUnServidorDeSaludConGetRaiz200YResto404() throws Exception {
+        // Clever exige que el worker escuche en 0.0.0.0:8080 aunque no sirva HTTP de la aplicacion. El servidor de
+        // salud (com.sun.net.httpserver, independiente de Spring MVC) cubre eso: GET / -> 200 "ok", el resto -> 404.
+        // Con PORT=0 enlaza un puerto efimero para no chocar con el 8080 de otra ejecucion.
+        try (ConfigurableApplicationContext contexto = new SpringApplicationBuilder(GaneraApplication.class).run(
+                "--spring.profiles.active=worker",
+                "--spring.datasource.url=jdbc:h2:mem:salud_worker;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000",
+                "--spring.datasource.hikari.pool-name=salud-worker",
+                "--spring.jmx.enabled=false",
+                "--PORT=0")) {
+
+            // Sigue sin servidor web de Spring: el servidor de salud no es Tomcat ni añade un DispatcherServlet.
+            assertThat(contexto).isNotInstanceOf(WebApplicationContext.class);
+            assertThat(contexto.getBeanNamesForType(DispatcherServlet.class)).isEmpty();
+
+            int puerto = contexto.getBean(ServidorSaludWorker.class).puerto();
+            String base = "http://127.0.0.1:" + puerto;
+            HttpClient cliente = HttpClient.newHttpClient();
+
+            HttpResponse<String> salud = cliente.send(
+                    HttpRequest.newBuilder(URI.create(base + "/")).GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(salud.statusCode()).isEqualTo(200);
+            assertThat(salud.body()).isEqualTo("ok");
+
+            // Cualquier otra ruta (p. ej. un endpoint de la aplicacion) -> 404: no hay superficie de aplicacion.
+            HttpResponse<String> otraRuta = cliente.send(
+                    HttpRequest.newBuilder(URI.create(base + "/tramites")).GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(otraRuta.statusCode()).isEqualTo(404);
+
+            // Otro metodo en / tambien -> 404 (solo GET /).
+            HttpResponse<String> postRaiz = cliente.send(
+                    HttpRequest.newBuilder(URI.create(base + "/"))
+                            .POST(HttpRequest.BodyPublishers.noBody()).build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(postRaiz.statusCode()).isEqualTo(404);
         }
     }
 }

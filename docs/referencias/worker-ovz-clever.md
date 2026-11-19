@@ -1,8 +1,17 @@
 # Worker de OVZ en Clever Cloud (escalón 2, T4)
 
 El worker presenta las bajas por muerte aprobadas en OVZnet (plan `docs/superpowers/plans/2026-11-17-presentacion-automatica-baja-ovz.md`).
-Es la **misma base de código** que el backend, arrancada con el perfil `worker`: **no sirve HTTP** (no hay Tomcat ni
-endpoints) y solo ejecuta su planificador. T6 lo despliega; esto deja el contrato.
+Es la **misma base de código** que el backend, arrancada con el perfil `worker`: **no sirve HTTP de la aplicación**
+(no hay Tomcat ni endpoints) y solo ejecuta su planificador. T6 lo despliega; esto deja el contrato.
+
+## Servidor de salud (puerto 8080)
+
+Clever exige que **toda** aplicación (también las Docker) escuche en `0.0.0.0:8080`, o rechaza el despliegue con
+«Your application is not listening on 8080». Como el worker arranca sin servidor web, un **servidor de salud
+independiente de Spring MVC** (`ServidorSaludWorker`, `com.sun.net.httpserver` del JDK) abre ese puerto: escucha en
+`0.0.0.0:${PORT:8080}` y responde `200 ok` (texto plano, sin datos) a `GET /` y `404` a todo lo demás (otra ruta u
+otro método). No levanta Tomcat ni expone ningún endpoint de la aplicación, y se cierra al parar. Solo arranca en el
+perfil `worker` (en el backend normal Tomcat ya ocupa el 8080). Clever inyecta el puerto en la variable `PORT`.
 
 ## Aplicación
 
