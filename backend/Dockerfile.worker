@@ -27,5 +27,8 @@ COPY --from=builder /build/target/*.jar /app/app.jar
 ENV SPRING_PROFILES_ACTIVE=clever,worker \
     TZ=UTC
 
-# Sin EXPOSE: el worker no sirve HTTP.
+# El worker no sirve HTTP de la aplicacion, pero abre un servidor de salud en 0.0.0.0:8080 (ServidorSaludWorker),
+# que es lo que Clever exige para aceptar el despliegue. Clever inyecta el puerto en la variable PORT (8080 por
+# defecto); ver docs/referencias/worker-ovz-clever.md.
+EXPOSE 8080
 ENTRYPOINT ["java", "-XX:MaxRAMPercentage=70", "-jar", "/app/app.jar"]
