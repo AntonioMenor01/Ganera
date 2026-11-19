@@ -1,6 +1,8 @@
 package com.ganera.core.shared.auditoria;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,7 +16,10 @@ import org.springframework.core.Ordered;
  * <p>{@code ganera.auditoria.ip-desde-x-forwarded-for} es fail-closed: {@code false} si la propiedad no existe; solo
  * {@code application-clever.yml} la pone a {@code true} (D5).
  */
+// Solo en apps web (servlet): registra un filtro de servlet. El backend siempre es web (identico a hoy); el WORKER de
+// OVZ (web-application-type: none) no tiene cadena de filtros. Ver PerfilCleverWorkerArranqueTest.
 @Configuration
+@ConditionalOnWebApplication(type = Type.SERVLET)
 class ContextoPeticionConfig {
 
     @Bean

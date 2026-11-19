@@ -1,14 +1,14 @@
 package com.ganera.core.shared.security;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.util.matcher.AnyRequestMatcher;
@@ -18,14 +18,15 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
 
+// Solo en apps con servidor web (servlet): el backend siempre lo es, asi que se carga identica a hoy. El WORKER de
+// OVZ (perfil `worker`, web-application-type: none) NO es web, por lo que esta clase (y con ella @EnableWebSecurity,
+// securityFilterChain y corsConfigurationSource) no se carga alli. Antes, en `clever,worker`, corsConfigurationSource
+// resolvia @Value("${ganera.frontend.origen}") = ${FRONTEND_ORIGEN} (sin variable en el worker) y el contexto no
+// arrancaba (Clever: «not listening on 8080»). Lo fija PerfilCleverWorkerArranqueTest.
 @Configuration
+@ConditionalOnWebApplication(type = Type.SERVLET)
 @EnableWebSecurity
 public class SecurityConfig {
-
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
 
     /** El frontend (Vite, otro origen/puerto) llama a esta API vía fetch/axios -- sin esto el
      * navegador bloquea la respuesta en el preflight antes de que la request llegue a ningun
