@@ -133,7 +133,7 @@ describe("TramitesPage: etiquetas legibles", () => {
     await screen.findByRole("button", { name: "Revisar trámite #1" })
     const tabla = screen.getByRole("table")
     expect(within(tabla).getByText("Pendiente de revisión")).toHaveClass("bg-warning")
-    expect(within(tabla).getByText("Hecho en OVZ.net")).toHaveClass("bg-success")
+    expect(within(tabla).getByText("Presentado en OVZ")).toHaveClass("bg-success")
     expect(screen.getByText("Solicitud de movimiento")).toBeInTheDocument()
     expect(screen.getByText("Alta por nacimiento")).toBeInTheDocument()
     for (const enumCrudo of ["PENDIENTE_REVISION", "EJECUTADO_OVZ", "SOLICITUD_MOVIMIENTO", "ALTA_NACIMIENTO"]) {
@@ -259,7 +259,7 @@ describe("TramitesPage: filas accesibles por teclado (P0 de la critique)", () =>
     expect(boton).not.toHaveClass("text-enlace")
     expect(boton).toHaveClass("font-medium", "tabular-nums")
 
-    for (let i = 0; i < 10 && document.activeElement !== boton; i++) await user.tab()
+    for (let i = 0; i < 20 && document.activeElement !== boton; i++) await user.tab()
     expect(boton).toHaveFocus()
   })
 
@@ -429,7 +429,7 @@ describe("TramitesPage: crotales visibles en la fila", () => {
 })
 
 describe("TramitesPage: filtro y paginación", () => {
-  it("las pestañas del filtro: las etiquetas de ESTADOS_TRAMITE, sin los tres de la automatización (Hecho en OVZ, D5)", async () => {
+  it("las pestañas del filtro: las etiquetas de ESTADOS_TRAMITE, con los tres de la presentación automática (T5)", async () => {
     server.use(http.get(apiUrl("/tramites"), () => paginaTramites([], 0, 0)))
     montar()
     await screen.findByText("No hay trámites en «Pendiente de revisión».")
@@ -440,12 +440,12 @@ describe("TramitesPage: filtro y paginación", () => {
       ESTADOS_TRAMITE.PENDIENTE_EXTRACCION.etiqueta,
       ESTADOS_TRAMITE.PENDIENTE_REVISION.etiqueta,
       "Aprobado · falta OVZ",
+      "Presentando en OVZ…",
+      "Presentado en OVZ",
+      "Error al presentar en OVZ",
       "Hecho en OVZ",
       ESTADOS_TRAMITE.RECHAZADO.etiqueta,
     ])
-    for (const fuera of ["En proceso", "Hecho en OVZ.net", "Error en OVZ.net"]) {
-      expect(screen.queryByRole("tab", { name: fuera })).not.toBeInTheDocument()
-    }
   })
 
   it.each([

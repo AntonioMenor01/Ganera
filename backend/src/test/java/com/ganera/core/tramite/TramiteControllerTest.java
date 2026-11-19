@@ -38,7 +38,9 @@ import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTest
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = NONE)
-@Import({TramiteCrotalService.class, TramiteRevisionService.class, RelojConfig.class,
+@Import({TramiteCrotalService.class, TramiteRevisionService.class, TrabajoOvzService.class, RelojConfig.class,
+        com.ganera.core.ovz.DocumentoOvzService.class,
+        com.ganera.core.ovz.PresentacionAutomaticaConfig.class,
         com.ganera.core.shared.auditoria.AuditoriaService.class,
         com.ganera.core.whatsapp.WhatsappDetalleService.class})
 class TramiteControllerTest {
@@ -66,6 +68,8 @@ class TramiteControllerTest {
     private TramiteCrotalService tramiteCrotalService;
     @Autowired
     private TramiteRevisionService tramiteRevisionService;
+    @Autowired
+    private TrabajoOvzService trabajoOvzService;
     @Autowired
     private jakarta.persistence.EntityManager entityManager;
     @Autowired
@@ -927,6 +931,7 @@ class TramiteControllerTest {
                 mensajeCampoRepository,
                 tramiteCrotalService,
                 tramiteRevisionService,
+                trabajoOvzService,
                 org.mockito.Mockito.mock(TramiteAltaService.class),
                 whatsappDetalleService,
                 org.mockito.Mockito.mock(com.ganera.core.shared.auditoria.AuditoriaService.class),

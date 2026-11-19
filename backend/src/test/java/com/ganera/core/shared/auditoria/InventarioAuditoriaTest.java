@@ -81,10 +81,15 @@ class InventarioAuditoriaTest {
         RUTAS.put("POST /tramites/{id}/desmarcar-hecho-ovz", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
         RUTAS.put("POST /tramites/{id}/descartar", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
         RUTAS.put("POST /tramites/{id}/deshacer-descarte", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
+        RUTAS.put("POST /tramites/{id}/reencolar-ovz", Cobertura.auditada("tramite.PresentacionOvzEndToEndTest"));
         RUTAS.put("POST /tramites/{id}/respuestas-whatsapp", Cobertura.auditada("tramite.RespuestaWhatsappEndToEndTest"));
         RUTAS.put("POST /explotaciones/importar", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
         RUTAS.put("POST /ganaderos", Cobertura.auditada("ganadero.GanaderoAltaEndToEndTest"));
         RUTAS.put("PUT /ganaderos/{id}/telefono", Cobertura.auditada("ganadero.GanaderoTelefonoEndToEndTest"));
+        RUTAS.put("PUT /ganaderos/{id}/credenciales-ovz",
+                Cobertura.auditada("ganadero.CredencialesOvzEndToEndTest"));
+        RUTAS.put("DELETE /ganaderos/{id}/credenciales-ovz",
+                Cobertura.auditada("ganadero.CredencialesOvzEndToEndTest"));
         RUTAS.put("PUT /configuracion/preferencias-ovz",
                 Cobertura.auditada("ovz.PreferenciaOvzEndToEndTest"));
         RUTAS.put("POST /gestorias/registro", Cobertura.auditada("registro.RegistroGestoriaEndToEndTest"));
@@ -105,6 +110,8 @@ class InventarioAuditoriaTest {
                 Cobertura.auditada("facturacion.SuscripcionSyncSchedulerAuditoriaTest"));
         PLANIFICADORES.put("ExtraccionTramiteScheduler.procesarPendientes",
                 Cobertura.auditada("tramite.ExtraccionTramiteServiceTest"));
+        PLANIFICADORES.put("WorkerOvzScheduler.procesarPendientes",
+                Cobertura.auditada("ovz.WorkerOvzServiceTest"));
         PLANIFICADORES.put("RetencionMensajesScheduler.aplicarRetencion",
                 Cobertura.auditada("whatsapp.RetencionMensajesServiceTest"));
 
@@ -247,14 +254,26 @@ class InventarioAuditoriaTest {
 
     /** Escanea com.ganera.core por clases/interfaces asignables a {@code tipo} (incluye interfaces). */
     private static Set<Class<?>> escanear(Class<?> tipo) {
+        AssignableTypeFilter filtroTipo = new AssignableTypeFilter(tipo);
         ClassPathScanningCandidateComponentProvider scanner =
                 new ClassPathScanningCandidateComponentProvider(false) {
+                    /**
+                     * Sin evaluar @Conditional: un @Scheduled de un componente condicional (p. ej. el WorkerOvzScheduler,
+                     * solo con ganera.ovz.worker.activo=true) tambien tiene que estar en el inventario aunque no sea un
+                     * bean en el contexto de test (el escaner trae un Environment vacio y lo descartaria en silencio).
+                     */
+                    @Override
+                    protected boolean isCandidateComponent(org.springframework.core.type.classreading.MetadataReader reader)
+                            throws java.io.IOException {
+                        return filtroTipo.match(reader, getMetadataReaderFactory());
+                    }
+
                     @Override
                     protected boolean isCandidateComponent(AnnotatedBeanDefinition bd) {
                         return bd.getMetadata().isIndependent();
                     }
                 };
-        scanner.addIncludeFilter(new AssignableTypeFilter(tipo));
+        scanner.addIncludeFilter(filtroTipo);
         Set<Class<?>> clases = new java.util.HashSet<>();
         for (var bd : scanner.findCandidateComponents("com.ganera.core")) {
             try {

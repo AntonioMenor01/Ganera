@@ -71,14 +71,39 @@ public enum AccionAuditoria {
     LECTURA_GANADERO,
     LECTURA_CONTACTOS,
     LECTURA_EXPLOTACION,
+    LECTURA_DOCUMENTO_OVZ,
     ACCESO_OTRA_GESTORIA,
 
     // Descifrado bajo demanda de la contrasena OVZ (M2), en la via de envio a OVZ. Nunca guarda la contrasena.
     CREDENCIAL_OVZ_DESCIFRADA,
 
+    // Credenciales OVZ por ganadero (escalon 2, T1). Nunca guardan el usuario ni la contrasena: solo los
+    // codigos de los campos cambiados.
+    CREDENCIAL_OVZ_GUARDADA,
+    CREDENCIAL_OVZ_MODIFICADA,
+    CREDENCIAL_OVZ_BORRADA,
+
     // Preferencias OVZ de la gestoria (plan 2026-11-10)
     PREFERENCIA_OVZ_GUARDADA,
 
     // Alta de un numero de WhatsApp DEDICADO por el endpoint interno (plan 2026-11-16, fase 1). Nunca guarda el telefono.
-    NUMERO_WHATSAPP_REGISTRADO
+    NUMERO_WHATSAPP_REGISTRADO,
+
+    // Cola de presentacion automatica de la baja en OVZ (escalon 2, T2). Nunca guardan datos personales (ni crotal
+    // ni credenciales): solo estados y codigos. OVZ_INCIERTO_CONFIRMADO es el reencolado de un ERROR INCIERTO tras
+    // la confirmacion explicita del gestor de que la baja NO se presento (D11).
+    OVZ_TRABAJO_ENCOLADO,
+    OVZ_TRABAJO_REENCOLADO,
+    OVZ_INCIERTO_CONFIRMADO,
+
+    // Justificante de la baja guardado en la ficha del ganadero (escalon 2, T3). Nunca guarda el contenido ni datos
+    // personales: solo el tamaño en bytes (Clave.TAMANO). El entidadId es el id del documento_ovz.
+    OVZ_DOCUMENTO_GUARDADO,
+
+    // Worker de OVZ (escalon 2, T4). Solo estados y codigos en antes/despues: el motivo del error va al trabajo,
+    // NUNCA a la auditoria (ni crotal, ni REGA, ni credenciales). OVZ_BAJA_ENSAYO: el ensayo llego hasta antes de
+    // «Aceptar» sin presentar nada.
+    OVZ_BAJA_PRESENTADA,
+    OVZ_BAJA_ERROR,
+    OVZ_BAJA_ENSAYO
 }

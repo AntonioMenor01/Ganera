@@ -83,6 +83,8 @@ function detalleDe(t: Tramite, extra: Partial<TramiteDetalle> = {}): TramiteDeta
     consignatario: null,
     aptitudMovimiento: null,
     fechaIdentificacion: null,
+    sePresentaraAutomaticamente: false,
+    presentacionOvz: null,
     ...extra,
   };
 }

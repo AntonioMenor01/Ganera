@@ -47,6 +47,8 @@ const DETALLE = {
   consignatario: null,
   aptitudMovimiento: null,
   fechaIdentificacion: null,
+  sePresentaraAutomaticamente: false,
+  presentacionOvz: null,
 }
 
 function renderDialog() {

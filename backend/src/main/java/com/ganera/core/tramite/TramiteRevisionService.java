@@ -94,6 +94,7 @@ public class TramiteRevisionService {
     private final WhatsappDetalleService whatsappDetalleService;
     private final TramiteEventoRepository tramiteEventoRepository;
     private final AuditoriaService auditoriaService;
+    private final TrabajoOvzService trabajoOvzService;
 
     /** Proxy compartido: dentro de la transaccion es el EntityManager de la peticion (OSIV). */
     @PersistenceContext
@@ -109,7 +110,8 @@ public class TramiteRevisionService {
             Clock clock,
             WhatsappDetalleService whatsappDetalleService,
             TramiteEventoRepository tramiteEventoRepository,
-            AuditoriaService auditoriaService) {
+            AuditoriaService auditoriaService,
+            TrabajoOvzService trabajoOvzService) {
         this.tramiteRepository = tramiteRepository;
         this.explotacionRepository = explotacionRepository;
         this.tramiteCrotalService = tramiteCrotalService;
@@ -120,6 +122,7 @@ public class TramiteRevisionService {
         this.whatsappDetalleService = whatsappDetalleService;
         this.tramiteEventoRepository = tramiteEventoRepository;
         this.auditoriaService = auditoriaService;
+        this.trabajoOvzService = trabajoOvzService;
     }
 
     /**
@@ -312,6 +315,10 @@ public class TramiteRevisionService {
                     EntidadAuditada.TRAMITE, tramite.getId(),
                     DatosAuditoria.con(Clave.ESTADO, EstadoTramite.PENDIENTE_REVISION).y(Clave.VERSION, versionLeida),
                     DatosAuditoria.con(Clave.ESTADO, EstadoTramite.APROBADO).y(Clave.VERSION, tramite.getVersion()));
+            // Presentacion automatica de la baja (escalon 2, T2): en la MISMA transaccion de la aprobacion se encola
+            // un trabajo si es un BAJA_MUERTE con credenciales y sin certificado (D4/D8); si no, no cambia nada
+            // (via manual, HECHO_EN_OVZ). El worker (T4) lo presenta FUERA de esta transaccion y del lock de la fila.
+            trabajoOvzService.encolarSiProcede(tramite, gestoriaId, usuarioId);
         }
         return TramiteResponse.from(tramite, respuestas(filas));
     }
@@ -555,8 +562,16 @@ public class TramiteRevisionService {
                 .findFirstByTramiteIdAndGestoriaIdOrderByCreatedAtDesc(tramite.getId(), gestoriaId)
                 .map(MensajeCampo::getCuerpo)
                 .orElse(null);
+        // presentacionDe solo para BAJA_MUERTE (unico tipo con trabajo): evita una consulta en balde en el
+        // resto. En estos caminos (PATCH/descartar/deshacer) el tramite esta en PENDIENTE_REVISION y aun no
+        // hay trabajo, asi que normalmente es null de todas formas.
+        PresentacionOvzResponse presentacion = tramite.getTipoTramite() == TipoTramite.BAJA_MUERTE
+                ? trabajoOvzService.presentacionDe(tramite.getId(), gestoriaId).orElse(null)
+                : null;
         return TramiteDetalleResponse.from(tramite, mensajeOriginal, respuestas(filas),
-                whatsappDetalleService.bloque(tramite, gestoriaId), historialDescarte(tramite.getId(), gestoriaId));
+                whatsappDetalleService.bloque(tramite, gestoriaId), historialDescarte(tramite.getId(), gestoriaId),
+                trabajoOvzService.sePresentaraAutomaticamente(tramite),
+                presentacion);
     }
 
     /**

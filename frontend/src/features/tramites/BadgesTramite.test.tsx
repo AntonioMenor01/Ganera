@@ -5,7 +5,7 @@ import { BadgeEstadoTramite, BadgeResolucionCrotal, BadgeRolContacto } from "./B
 describe("BadgeEstadoTramite", () => {
   it("muestra la etiqueta, no el enum, con el par de color de su variante", () => {
     render(<BadgeEstadoTramite estado="ERROR_OVZ" />)
-    const badge = screen.getByText("Error en OVZ.net")
+    const badge = screen.getByText("Error al presentar en OVZ")
     expect(badge).toHaveClass("bg-danger", "text-danger-foreground")
     expect(screen.queryByText("ERROR_OVZ")).not.toBeInTheDocument()
   })

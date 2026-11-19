@@ -14,6 +14,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -53,6 +55,8 @@ class DescifradoCredencialOvzTest {
     private JdbcTemplate jdbcTemplate;
     @Autowired
     private PasswordEncoder passwordEncoder;
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     private Gestoria gestoriaA;
     private Gestoria gestoriaB;
@@ -116,6 +120,26 @@ class DescifradoCredencialOvzTest {
 
         // La fila quedo (REQUIRES_NEW), leida por JDBC fuera de cualquier transaccion con rollback.
         assertThat(contarFilasDescifrado()).isEqualTo(1);
+    }
+
+    @Test
+    void llamadoDentroDeOtraTransaccionNoLaMarcaRollbackOnly() {
+        // Simula al worker (escalon 2): una transaccion externa que llama al descifrado, captura su excepcion
+        // (ganadero de otra gestoria) y despues confirma su propio trabajo. Si descifrarPasswordParaEnvioOvz
+        // fuera @Transactional (REQUIRED), la transaccion externa quedaria rollback-only y este commit lanzaria
+        // UnexpectedRollbackException. Sin la anotacion, el commit confirma el trabajo con normalidad.
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        Long idUsuarioTrabajo = tx.execute(estado -> {
+            try {
+                servicio.descifrarPasswordParaEnvioOvz(ganaderoA, principal(usuarioB, gestoriaB));
+            } catch (CredencialOvzDeOtraGestoriaException esperada) {
+                // el worker la captura y sigue con su trabajo
+            }
+            return crearUsuario(gestoriaA, "tras-descifrado@test.com").getId();
+        });
+
+        assertThat(idUsuarioTrabajo).isNotNull();
+        assertThat(usuarioRepository.findById(idUsuarioTrabajo)).isPresent();
     }
 
     // ------------------------------------------------------------------ helpers

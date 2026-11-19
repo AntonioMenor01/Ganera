@@ -22,14 +22,19 @@ public enum OperacionAuditada {
     DESCARTAR,
     DESHACER_DESCARTE,
     RESPONDER_WHATSAPP,
+    REENCOLAR_OVZ,
 
     // Ganadero
     VER_GANADERO,
     EDITAR_GANADERO,
+    EDITAR_CREDENCIALES_OVZ,
 
     // Explotacion
     VER_EXPLOTACION,
     VER_ANIMALES,
+
+    // Documento OVZ (descarga del justificante)
+    DESCARGAR_DOCUMENTO_OVZ,
 
     // Contacto
     EDITAR_CONTACTO,

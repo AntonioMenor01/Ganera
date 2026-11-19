@@ -127,6 +127,26 @@ export async function desmarcarHechoEnOvz(id: number, version: number): Promise<
   return data;
 }
 
+/**
+ * Escalón 2 (T5, D11): reencola la presentación automática de una baja que terminó en ERROR_OVZ
+ * (`POST /tramites/{id}/reencolar-ovz`). El trabajo vuelve a la cola y el trámite a APROBADO. `version`
+ * es la que mostraba la pantalla (si no es la actual, 409). Si el error fue INCIERTO (falló tras
+ * confirmar en OVZ), el backend exige `confirmadoNoPresentado: true` —el gestor confirma que ha
+ * comprobado que la baja NO se presentó— o responde 409; esa confirmación queda auditada. Devuelve el
+ * `TramiteResponse` (como aprobar). Sin bloqueo de suscripción.
+ */
+export async function reencolarPresentacionOvz(
+  id: number,
+  version: number,
+  confirmadoNoPresentado = false,
+): Promise<Tramite> {
+  const { data } = await httpClient.post<Tramite>(`/tramites/${id}/reencolar-ovz`, {
+    version,
+    ...(confirmadoNoPresentado ? { confirmadoNoPresentado: true } : {}),
+  });
+  return data;
+}
+
 /** SIN_TRAMITE: descarta un mensaje sin trámite (pasa a `RECHAZADO` con motivo `SIN_TRAMITE`). Solo
  * cambia el trámite en Ganera: no envía nada por WhatsApp ni a OVZ. `version` la de la pantalla (si
  * no es la actual, 409). Devuelve el DETALLE (con el historial), como el PATCH. Sin bloqueo de

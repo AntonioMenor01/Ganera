@@ -156,7 +156,7 @@ describe("GanaderoDetallePage: ficha", () => {
     expect(screen.getByText("Sin NIF")).toBeInTheDocument()
   })
 
-  it("no enseña nada de OVZ aunque la respuesta trajera campos de más", async () => {
+  it("nunca renderiza valores de credenciales OVZ aunque la respuesta trajera campos de más", async () => {
     responderCon(() =>
       HttpResponse.json({
         ...ganadero([explotacion(1, CONTACTOS)]),
@@ -166,7 +166,9 @@ describe("GanaderoDetallePage: ficha", () => {
     )
     montar()
     await screen.findByRole("heading", { level: 1, name: "Ana Ruiz Gómez" })
-    expect(document.body.textContent).not.toMatch(/ovz|usuario-ovz-secreto|xyz/i)
+    // La sección «Acceso a OVZ.net» existe (y por eso el texto «OVZ» aparece), pero NUNCA se renderiza el
+    // usuario ni el texto cifrado que el servidor pudiera filtrar: solo el estado (aquí, «No configuradas»).
+    expect(document.body.textContent).not.toMatch(/usuario-ovz-secreto|xyz/)
   })
 })
 

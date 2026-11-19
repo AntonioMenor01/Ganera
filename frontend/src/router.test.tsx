@@ -129,6 +129,8 @@ describe("rutas: ficha para OVZ (ficha OVZ, T5)", () => {
     consignatario: null,
     aptitudMovimiento: null,
     fechaIdentificacion: null,
+    sePresentaraAutomaticamente: false,
+    presentacionOvz: null,
   }
 
   it("con sesión, /tramites/5/ovz es la ficha, fuera del layout (sin la barra de la app)", async () => {

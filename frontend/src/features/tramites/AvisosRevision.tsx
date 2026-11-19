@@ -28,6 +28,8 @@ const TITULO_ERROR: Record<AccionRevision, string> = {
   desmarcar: "No se ha quitado la marca",
   descartar: "No se ha descartado el mensaje",
   deshacer: "No se ha deshecho el descarte",
+  // Escalón 2 (T5): reintento de la presentación automática en OVZ.
+  reencolar: "No se ha podido reintentar la presentación",
 };
 
 function BotonCerrarAviso({ onClick }: { onClick: () => void }) {

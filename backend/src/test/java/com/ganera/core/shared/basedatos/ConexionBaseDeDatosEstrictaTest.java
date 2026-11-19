@@ -141,6 +141,50 @@ class ConexionBaseDeDatosEstrictaTest {
         assertThatCode(() -> comprobar(Map.of("otra.cosa", "${NO_EXISTE}"))).doesNotThrowAnyException();
     }
 
+    /**
+     * Perfil worker (T6): con {@code spring.flyway.enabled=false} la BD la migra solo el backend, asi que el worker
+     * NO necesita las variables de Flyway (SUPABASE_FLYWAY_USER/_PASSWORD). No se exigen cuando Flyway esta apagado,
+     * aunque sus placeholders se queden sin resolver.
+     */
+    @Test
+    void conFlywayApagadoNoSeExigenLasVariablesDeFlyway() {
+        Map<String, Object> propiedades = new HashMap<>();
+        propiedades.put("spring.flyway.enabled", "false");
+        propiedades.put("spring.datasource.url", "${DATABASE_URL:jdbc:postgresql://localhost:5432/ganera}");
+        propiedades.put("spring.datasource.username", "${SUPABASE_DB_USER}");
+        propiedades.put("spring.datasource.password", "${SUPABASE_DB_PASSWORD}");
+        propiedades.put("SUPABASE_DB_USER", "app");
+        propiedades.put("SUPABASE_DB_PASSWORD", VALOR_SECRETO);
+        // Las de Flyway sin resolver: con Flyway apagado no deben hacer fallar el arranque.
+        propiedades.put("spring.flyway.user", "${SUPABASE_FLYWAY_USER}");
+        propiedades.put("spring.flyway.password", "${SUPABASE_FLYWAY_PASSWORD}");
+
+        assertThatCode(() -> comprobar(propiedades)).doesNotThrowAnyException();
+    }
+
+    /** Pero las de la aplicacion se siguen exigiendo aunque Flyway este apagado. */
+    @Test
+    void conFlywayApagadoLasVariablesDeLaAppSeSiguenExigiendo() {
+        Map<String, Object> propiedades = new HashMap<>();
+        propiedades.put("spring.flyway.enabled", "false");
+        propiedades.put("spring.datasource.password", "${SUPABASE_DB_PASSWORD}");
+
+        assertThatThrownBy(() -> comprobar(propiedades))
+                .hasStackTraceContaining("Could not resolve placeholder 'SUPABASE_DB_PASSWORD'")
+                .hasStackTraceContaining("spring.datasource.password");
+    }
+
+    /** Con Flyway encendido (por defecto, el backend) las variables de Flyway se exigen como siempre. */
+    @Test
+    void conFlywayEncendidoSeExigenLasVariablesDeFlyway() {
+        Map<String, Object> propiedades = new HashMap<>();
+        propiedades.put("spring.flyway.user", "${SUPABASE_FLYWAY_USER}");
+
+        assertThatThrownBy(() -> comprobar(propiedades))
+                .hasStackTraceContaining("Could not resolve placeholder 'SUPABASE_FLYWAY_USER'")
+                .hasStackTraceContaining("spring.flyway.user");
+    }
+
     private static String trazaCompleta(Throwable e) {
         StringBuilder traza = new StringBuilder();
         for (Throwable t = e; t != null; t = t.getCause()) {

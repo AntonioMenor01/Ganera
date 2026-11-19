@@ -359,9 +359,13 @@ class GanaderoEndToEndTest {
 
         assertThat(lista).isNotBlank();
         assertThat(detalle).isNotBlank();
+        // El listado (GanaderoResumenResponse) no expone NADA de OVZ, ni el estado.
+        assertThat(lista.toLowerCase(Locale.ROOT)).doesNotContain("ovz");
+        // El detalle resume el estado en tieneCredencialesOvz/usaCertificadoOvz (contienen «Ovz»), pero NUNCA el
+        // usuario ni la contraseña: ni sus valores en claro ni las claves de la entidad.
         for (String cuerpo : List.of(lista, detalle)) {
-            assertThat(cuerpo.toLowerCase(Locale.ROOT)).doesNotContain("ovz");
-            assertThat(cuerpo).doesNotContain("password-ovz-secreta");
+            assertThat(cuerpo).doesNotContain("password-ovz-secreta").doesNotContain("usuario-ovz-");
+            assertThat(cuerpo).doesNotContain("ovzUsuario").doesNotContain("ovzPassword");
         }
     }
 

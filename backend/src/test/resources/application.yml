@@ -46,6 +46,10 @@ ganera:
     # Los tests deciden cuando se procesa la cola (llaman al servicio); nada de pasadas solas.
     planificador:
       activo: false
+  ovz:
+    worker:
+      # El worker de OVZ (escalon 2) nunca corre en los tests.
+      activo: false
   retencion:
     # Los tests llaman a RetencionMensajesService cuando quieren; el job nocturno no corre.
     activo: false

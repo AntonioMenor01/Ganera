@@ -1,6 +1,6 @@
 import { httpClient } from "@/shared/api/httpClient";
 import type { Pagina } from "@/shared/api/types";
-import type { GanaderoDetalle, GanaderoResumen } from "./types";
+import type { DocumentoOvz, GanaderoDetalle, GanaderoResumen } from "./types";
 
 export interface OpcionesListarGanaderos {
   /** Valores de `sort` en orden (`campo,asc|desc`); campos permitidos: nombre, nif, id. Vacío =
@@ -52,5 +52,54 @@ export async function cambiarTelefonoGanadero(
   telefono: string | null,
 ): Promise<GanaderoDetalle> {
   const { data } = await httpClient.put<GanaderoDetalle>(`/ganaderos/${id}/telefono`, { telefono });
+  return data;
+}
+
+/** Datos para guardar las credenciales de OVZ.net de un ganadero. Con `usaCertificado` el usuario y la
+ * contraseña se ignoran (la cuenta entra con certificado y no se envía en automático). */
+export interface CredencialesOvz {
+  usuario: string;
+  password: string;
+  usaCertificado: boolean;
+}
+
+/**
+ * Guarda (o reemplaza) las credenciales de OVZ.net del ganadero (PUT /ganaderos/{id}/credenciales-ovz). La
+ * contraseña es de escritura: va al backend, se cifra y nunca vuelve. Con certificado no se mandan usuario ni
+ * contraseña. El backend responde 400 `{motivo}` si faltan, o 404 si no es de tu gestoría; devuelve el detalle
+ * actualizado, con el que se repinta la ficha sin volver a pedirlo.
+ */
+export async function guardarCredencialesOvz(
+  id: number,
+  { usuario, password, usaCertificado }: CredencialesOvz,
+): Promise<GanaderoDetalle> {
+  const cuerpo = usaCertificado ? { usaCertificado: true } : { usuario, password, usaCertificado: false };
+  const { data } = await httpClient.put<GanaderoDetalle>(`/ganaderos/${id}/credenciales-ovz`, cuerpo);
+  return data;
+}
+
+/** Borra las credenciales de OVZ.net del ganadero (DELETE /ganaderos/{id}/credenciales-ovz). Devuelve el
+ * detalle actualizado. */
+export async function borrarCredencialesOvz(id: number): Promise<GanaderoDetalle> {
+  const { data } = await httpClient.delete<GanaderoDetalle>(`/ganaderos/${id}/credenciales-ovz`);
+  return data;
+}
+
+/**
+ * Justificantes de OVZ del ganadero (GET /ganaderos/{id}/documentos, escalón 2, T5). Solo metadatos; el
+ * binario se descarga aparte. Un ganadero ajeno/inexistente responde 404.
+ */
+export async function listarDocumentosOvz(id: number, signal?: AbortSignal): Promise<DocumentoOvz[]> {
+  const { data } = await httpClient.get<DocumentoOvz[]>(`/ganaderos/${id}/documentos`, { signal });
+  return data;
+}
+
+/**
+ * Descarga el contenido (PDF) de un justificante (GET /documentos-ovz/{id}/contenido, escalón 2, T5). Lo
+ * sirve el backend como adjunto tras comprobar la gestoría (nunca una URL pública), así que hay que
+ * pedirlo con el JWT (httpClient) y no con un enlace directo. Devuelve el Blob.
+ */
+export async function descargarDocumentoOvz(id: number): Promise<Blob> {
+  const { data } = await httpClient.get<Blob>(`/documentos-ovz/${id}/contenido`, { responseType: "blob" });
   return data;
 }

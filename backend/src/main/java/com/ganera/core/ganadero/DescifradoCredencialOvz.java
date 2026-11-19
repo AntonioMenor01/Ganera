@@ -7,7 +7,6 @@ import com.ganera.core.shared.auditoria.EntidadAuditada;
 import com.ganera.core.shared.crypto.CifradorAesGcm;
 import com.ganera.core.shared.security.GaneraUserPrincipal;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Objects;
 
@@ -28,6 +27,13 @@ import java.util.Objects;
  *   <li><b>Descifrar</b>: un ciphertext corrupto (o sin credencial) da {@link DescifradoCredencialOvzException},
  *       con mensaje generico (nunca el valor); la fila ya quedo.</li>
  * </ol>
+ *
+ * <p><b>Deliberadamente NO es {@code @Transactional}</b> (escalon 2, T0, pendiente de M2): la unica escritura es la
+ * auditoria, que ya va en su propia transaccion ({@code registrarAparte}, {@code REQUIRES_NEW}), y el descifrado es
+ * puro. Si el metodo fuera {@code @Transactional (REQUIRED)}, el worker que lo llame dentro de la transaccion de su
+ * trabajo y capture su excepcion dejaria esa transaccion {@code rollback-only} y el commit del trabajo fallaria con
+ * {@code UnexpectedRollbackException}. Sin la anotacion, lanzar aqui no contamina la transaccion del que llama. Lo
+ * fija {@code DescifradoCredencialOvzTest.llamadoDentroDeOtraTransaccionNoLaMarcaRollbackOnly}.
  */
 @Service
 public class DescifradoCredencialOvz {
@@ -40,19 +46,33 @@ public class DescifradoCredencialOvz {
         this.auditoriaService = auditoriaService;
     }
 
-    @Transactional
     public CredencialOvzEnClaro descifrarPasswordParaEnvioOvz(Ganadero ganadero, GaneraUserPrincipal principal) {
         Objects.requireNonNull(ganadero, "ganadero");
         Objects.requireNonNull(principal, "principal");
 
+        return descifrar(ganadero, principal.gestoriaId(), Actor.usuario(principal.usuarioId()));
+    }
+
+    /**
+     * Variante del WORKER de OVZ (T4, escalon 2): sin principal HTTP, actor SISTEMA; el aislamiento se comprueba contra
+     * la gestoria del TRABAJO. Mismo orden y mismas garantias que la via del usuario (aislamiento, fila ANTES de
+     * descifrar, mensaje generico). Tampoco es {@code @Transactional}: el worker la llama FUERA de toda transaccion.
+     */
+    public CredencialOvzEnClaro descifrarPasswordParaWorker(Ganadero ganadero, Long gestoriaIdDelTrabajo) {
+        Objects.requireNonNull(ganadero, "ganadero");
+        Objects.requireNonNull(gestoriaIdDelTrabajo, "gestoriaIdDelTrabajo");
+        return descifrar(ganadero, gestoriaIdDelTrabajo, Actor.sistema());
+    }
+
+    private CredencialOvzEnClaro descifrar(Ganadero ganadero, Long gestoriaEsperada, Actor actor) {
         Long gestoriaGanadero = ganadero.getGestoria().getId();
-        if (!gestoriaGanadero.equals(principal.gestoriaId())) {
+        if (!gestoriaGanadero.equals(gestoriaEsperada)) {
             throw new CredencialOvzDeOtraGestoriaException();
         }
 
         // La fila ANTES de descifrar (REQUIRES_NEW): queda aunque lo de abajo falle.
         auditoriaService.registrarAparte(AccionAuditoria.CREDENCIAL_OVZ_DESCIFRADA, gestoriaGanadero,
-                Actor.usuario(principal.usuarioId()), EntidadAuditada.GANADERO, ganadero.getId(), null, null);
+                actor, EntidadAuditada.GANADERO, ganadero.getId(), null, null);
 
         String plano;
         try {

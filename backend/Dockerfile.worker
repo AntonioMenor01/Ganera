@@ -1,0 +1,31 @@
+# Imagen del WORKER de OVZ (escalon 2, T4): la MISMA base de codigo que el backend, sin servidor web (perfil
+# `worker`) y con Chromium para Playwright. Construir desde la carpeta backend/:
+#   docker build -f Dockerfile.worker -t ganera-worker-ovz .
+# Arranca con SPRING_PROFILES_ACTIVE=clever,worker (ver docs/referencias/worker-ovz-clever.md).
+
+# --- Etapa 1: compilar el jar (sin tests; la suite corre en el CI/local, no aqui) ---
+FROM maven:3.9-eclipse-temurin-21 AS builder
+WORKDIR /build
+COPY pom.xml .
+COPY .mvn .mvn
+COPY src src
+RUN mvn -q -B -DskipTests package
+
+# --- Etapa 2: ejecucion con Playwright + Chromium (imagen oficial de Playwright para Java 1.49.0) ---
+# La version de la imagen debe coincidir con <playwright.version> del pom.xml (1.49.0): si no, Playwright intenta
+# descargar otro Chromium en tiempo de ejecucion.
+# VERIFICADO EN T6 (2026-11-19): esta imagen trae JDK 21. El Dockerfile oficial de playwright-java v1.49.0
+# (utils/docker/Dockerfile.noble) instala `openjdk-21-jdk` y fija JAVA_HOME=/usr/lib/jvm/java-21-openjdk-*, asi que
+# el jar compilado con --release 21 arranca sin instalar otro JDK. (Si un bump de <playwright.version> cambiara la
+# base a una con otro JDK, habria que instalar Temurin 21 aqui antes de copiar el jar.)
+# Chromium arranca con --no-sandbox y --disable-dev-shm-usage (el worker corre como root en el contenedor): esos
+# flags se pasan en PlaywrightNavegadorOvz.abrir() (setArgs), no aqui, asi que no hace falta nada mas en la imagen.
+FROM mcr.microsoft.com/playwright/java:v1.49.0-noble
+WORKDIR /app
+COPY --from=builder /build/target/*.jar /app/app.jar
+
+ENV SPRING_PROFILES_ACTIVE=clever,worker \
+    TZ=UTC
+
+# Sin EXPOSE: el worker no sirve HTTP.
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=70", "-jar", "/app/app.jar"]

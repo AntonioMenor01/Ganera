@@ -3,6 +3,7 @@ package com.ganera.core.shared.auditoria;
 import com.ganera.core.contacto.ContactoRepository;
 import com.ganera.core.explotacion.ExplotacionRepository;
 import com.ganera.core.ganadero.GanaderoRepository;
+import com.ganera.core.ovz.DocumentoOvzRepository;
 import com.ganera.core.tramite.TramiteRepository;
 import org.springframework.stereotype.Component;
 
@@ -31,15 +32,17 @@ public class AccesoAjeno {
     private final GanaderoRepository ganaderoRepository;
     private final ExplotacionRepository explotacionRepository;
     private final ContactoRepository contactoRepository;
+    private final DocumentoOvzRepository documentoOvzRepository;
 
     public AccesoAjeno(AuditoriaService auditoriaService, TramiteRepository tramiteRepository,
                        GanaderoRepository ganaderoRepository, ExplotacionRepository explotacionRepository,
-                       ContactoRepository contactoRepository) {
+                       ContactoRepository contactoRepository, DocumentoOvzRepository documentoOvzRepository) {
         this.auditoriaService = auditoriaService;
         this.tramiteRepository = tramiteRepository;
         this.ganaderoRepository = ganaderoRepository;
         this.explotacionRepository = explotacionRepository;
         this.contactoRepository = contactoRepository;
+        this.documentoOvzRepository = documentoOvzRepository;
     }
 
     /** Audita si el Tramite de ese id es de otra gestoria. Devuelve true si era ajeno (dejo fila). */
@@ -64,6 +67,12 @@ public class AccesoAjeno {
     public boolean contacto(Long usuarioId, Long gestoriaId, Long id, OperacionAuditada operacion) {
         return auditarSiAjeno(contactoRepository.existsByIdAndGestoriaIdNot(id, gestoriaId),
                 usuarioId, gestoriaId, EntidadAuditada.CONTACTO, id, operacion);
+    }
+
+    /** Audita si el DocumentoOvz de ese id es de otra gestoria (descarga del justificante). */
+    public boolean documentoOvz(Long usuarioId, Long gestoriaId, Long id, OperacionAuditada operacion) {
+        return auditarSiAjeno(documentoOvzRepository.existsByIdAndGestoriaIdNot(id, gestoriaId),
+                usuarioId, gestoriaId, EntidadAuditada.DOCUMENTO_OVZ, id, operacion);
     }
 
     /**

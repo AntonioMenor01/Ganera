@@ -19,6 +19,7 @@ import { obtenerPreferenciasOvz, type PreferenciaOvz } from "@/features/configur
 import { desmarcarHechoEnOvz, marcarHechoEnOvz, obtenerDetalleTramite } from "./api";
 import { TEXTO_FICHA_DESCARTADO, TITULO_FICHA_DESCARTADO } from "./descarte";
 import { esDescartado } from "./etiquetas";
+import { estadoPresentacionOvz } from "./presentacionOvz";
 import {
   PISTA_EXPLOTACION,
   construirFichaOvz,
@@ -410,6 +411,18 @@ function Contenido({
   }
   if (modo === "no-disponible") {
     return <SinFicha titulo="Ficha no disponible" texto="Ganera no prepara la ficha de un trámite en este estado." />;
+  }
+  // Escalón 2 (T5, D10): una baja APROBADA pero en cola de presentación automática NO se copia a mano
+  // (la va a presentar Ganera; decirle al gestor que la copie y que «Ganera no envía nada» sería
+  // deshonesto). Los demás estados automáticos (EN_PROCESO/EJECUTADO_OVZ/ERROR_OVZ) ya son «no-disponible».
+  if (estadoPresentacionOvz(detalle)?.clase === "en-cola") {
+    return (
+      <SinFicha
+        titulo="Se presentará en OVZ automáticamente"
+        texto="Esta baja está en cola: la presentará Ganera en OVZ con las credenciales del ganadero. No hay que copiarla a mano."
+        neutro
+      />
+    );
   }
 
   const resultado = construirFichaOvz(detalle, preferencias);

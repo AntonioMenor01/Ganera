@@ -12,6 +12,7 @@ import com.stripe.model.Subscription;
 import com.stripe.param.SubscriptionUpdateParams;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -33,6 +34,11 @@ import java.util.function.Function;
  */
 @Slf4j
 @Component
+// Reconciliacion nocturna de cantidades con Stripe: es trabajo del BACKEND. Por defecto activa
+// (matchIfMissing=true: el backend no necesita declarar nada). El perfil `worker` (escalon 2 de OVZ) la
+// apaga con ganera.facturacion.sync.activo=false para que el worker haga «solo lo suyo» y no haya una
+// segunda reconciliacion concurrente con la del backend a las 03:00.
+@ConditionalOnProperty(name = "ganera.facturacion.sync.activo", havingValue = "true", matchIfMissing = true)
 class SuscripcionSyncScheduler {
 
     private final SuscripcionRepository suscripcionRepository;

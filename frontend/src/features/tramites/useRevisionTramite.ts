@@ -15,6 +15,7 @@ import {
   marcarHechoEnOvz,
   obtenerDetalleTramite,
   rechazarTramite,
+  reencolarPresentacionOvz,
 } from "./api";
 import { esDescartado, presentacionEstadoTramite, type EstadoConMotivo, type TipoTramite } from "./etiquetas";
 import {
@@ -64,16 +65,18 @@ export type AccionRevision =
   | "marcar"
   | "desmarcar"
   | "descartar"
-  | "deshacer";
+  | "deshacer"
+  | "reencolar";
 
 /** Descartar y deshacer el descarte (SIN_TRAMITE): responden con el detalle (`TramiteDetalleResponse`). */
 type AccionDescarte = "descartar" | "deshacer";
 
-/** Acciones que cambian el estado y responden con `TramiteResponse`. */
-type AccionEstado = Exclude<AccionRevision, "guardar" | AccionDescarte>;
+/** Acciones que cambian el estado y responden con `TramiteResponse` por `LLAMADA` (2 argumentos:
+ * id + version). Reencolar responde igual pero lleva un tercer argumento (confirmado), así que va aparte. */
+type AccionEstado = "aprobar" | "rechazar" | "marcar" | "desmarcar";
 
-/** Toda acción que cambia el estado (las de `TramiteResponse` y las del descarte). */
-type AccionCambio = AccionEstado | AccionDescarte;
+/** Toda acción que cambia el estado (las de `TramiteResponse`, el descarte y reencolar). */
+type AccionCambio = AccionEstado | AccionDescarte | "reencolar";
 
 export type CargaRevision =
   /** Sin trámite (`tramiteId` null: modal cerrado). */
@@ -163,6 +166,8 @@ export interface RevisionTramite {
   puedeDescartar: boolean;
   /** SIN_TRAMITE: es un descartado (`RECHAZADO` + `SIN_TRAMITE`), sin otra acción en curso. */
   puedeDeshacerDescarte: boolean;
+  /** Escalón 2 (T5): es un `ERROR_OVZ` (la presentación automática falló), sin otra acción en curso. */
+  puedeReencolar: boolean;
   /** Nunca lanzan: todo resultado acaba en `aviso` o en `carga`. Si no se puede, no hacen nada. */
   guardar: () => Promise<void>;
   aprobar: () => Promise<void>;
@@ -171,6 +176,9 @@ export interface RevisionTramite {
   desmarcarHechoEnOvz: () => Promise<void>;
   descartar: () => Promise<void>;
   deshacerDescarte: () => Promise<void>;
+  /** Reintenta la presentación automática en OVZ (reencolar). `confirmadoNoPresentado` solo lo
+   * necesita un error INCIERTO (el backend lo exige, D11). */
+  reencolar: (confirmadoNoPresentado?: boolean) => Promise<void>;
 
   aviso: AvisoRevision | null;
   descartarAviso: () => void;
@@ -433,7 +441,12 @@ const CONTEXTO_DE_ACCION: Record<AccionRevision, ContextoError> = {
   desmarcar: "desmarcar-hecho-ovz",
   descartar: "descartar-tramite",
   deshacer: "deshacer-descarte",
+  reencolar: "reencolar-ovz",
 };
+
+/** Escalón 2 (T5): reintento de la presentación automática en OVZ (reencolar). Honesto: es la vía
+ * automática, Ganera sí presenta sobre un trámite ya aprobado. */
+const TEXTO_EXITO_REENCOLAR = "La presentación se ha vuelto a encolar.";
 
 /** Sin «OVZ» en los de la marca: la franja y el badge ya lo dicen (honestidad: nada habla de que
  * Ganera haga algo en OVZ). */
@@ -478,6 +491,9 @@ const CONSTA_TRAS: Record<AccionCambio, (tramite: EstadoConMotivo) => boolean> =
   desmarcar: (t) => t.estado === "APROBADO",
   descartar: esDescartado,
   deshacer: (t) => t.estado === "PENDIENTE_REVISION",
+  // Reencolar deja el trámite APROBADO (el trabajo vuelve a la cola): si la recarga tras un fallo
+  // incierto lo muestra así, se aplicó.
+  reencolar: (t) => t.estado === "APROBADO",
 };
 
 /** Descartar y deshacer: el estado del que parte cada uno. Si la recarga tras un fallo incierto lo
@@ -492,6 +508,9 @@ const SIGUE_COMO_ANTES: Record<"descartar" | "deshacer", (tramite: EstadoConMoti
 const ESTADO_EN_FRASE: Readonly<Record<string, string>> = {
   APROBADO: "aprobado",
   HECHO_EN_OVZ: "hecho en OVZ",
+  // Escalón 2 (T5): la etiqueta del badge lleva «…»/mayúsculas que no encajan en una frase.
+  EN_PROCESO: "presentándose en OVZ",
+  EJECUTADO_OVZ: "presentado en OVZ",
 };
 
 /** N2 de la revisión 9a: red o 5xx al aprobar/rechazar, y la recarga muestra el trámite ya cerrado.
@@ -612,6 +631,7 @@ export function useRevisionTramite(
   const puedeDesmarcarHechoEnOvz = listo && detalle.estado === "HECHO_EN_OVZ" && libre;
   const puedeDescartar = listo && libre && sePuedeDescartar(detalle, formulario);
   const puedeDeshacerDescarte = listo && libre && sePuedeDeshacerDescarte(detalle);
+  const puedeReencolar = listo && libre && detalle.estado === "ERROR_OVZ";
 
   /**
    * Pide el detalle dentro de la sesión (la recarga se aborta si la sesión se cierra). null si la
@@ -841,6 +861,24 @@ export function useRevisionTramite(
     });
   }
 
+  /** Escalón 2 (T5, D11): reintenta la presentación automática en OVZ. Responde con `TramiteResponse`
+   * (trámite APROBADO, trabajo de nuevo en cola), como aprobar; un error INCIERTO exige confirmar
+   * primero que la baja NO se presentó (el backend da 409 si no). Un 409 recarga con el motivo. */
+  function reencolar(confirmadoNoPresentado = false): Promise<void> {
+    const version = detalle?.version;
+    return ejecutar("reencolar", puedeReencolar && version !== undefined, async (sesion, id) => {
+      const tramite = await reencolarPresentacionOvz(id, version!, confirmadoNoPresentado);
+      onCambiadoRef.current();
+      if (!sesion.activa) return;
+      dispatch({
+        tipo: "respuesta-accion",
+        tramite,
+        aviso: { tipo: "exito", accion: "reencolar", mensaje: TEXTO_EXITO_REENCOLAR },
+      });
+      await recargarTrasExito(sesion, id);
+    });
+  }
+
   /** B2 reducido: recarga solo el bloque de WhatsApp (ver `RevisionTramite.recargarWhatsapp`). */
   async function recargarWhatsapp(): Promise<ResultadoRecargaWhatsapp> {
     const sesion = sesionRef.current;
@@ -911,8 +949,10 @@ export function useRevisionTramite(
     desmarcarHechoEnOvz: () => cambiarEstado("desmarcar", puedeDesmarcarHechoEnOvz),
     puedeDescartar,
     puedeDeshacerDescarte,
+    puedeReencolar,
     descartar: () => cambiarDescarte("descartar", puedeDescartar),
     deshacerDescarte: () => cambiarDescarte("deshacer", puedeDeshacerDescarte),
+    reencolar,
 
     aviso,
     descartarAviso: () => dispatch({ tipo: "descartar-aviso" }),

@@ -170,6 +170,7 @@ export type ContextoError =
   | "guardar-tramite"
   | "marcar-hecho-ovz"
   | "desmarcar-hecho-ovz"
+  | "reencolar-ovz"
   | "descartar-tramite"
   | "deshacer-descarte"
   | "responder-whatsapp"
@@ -251,6 +252,13 @@ const TEXTOS: Record<ContextoError, TextosContexto> = {
   },
   "desmarcar-hecho-ovz": {
     generico: "No se ha podido quitar la marca. Inténtalo de nuevo.",
+    noEncontrado: TEXTO_TRAMITE_NO_ENCONTRADO,
+  },
+  // Escalón 2 (T5): POST /tramites/{id}/reencolar-ovz. Su 409 (versión, estado o incierto sin
+  // confirmar) trae `{motivo}`, que es lo que se enseña; esto es la reserva. Sin 403: no depende de
+  // la suscripción.
+  "reencolar-ovz": {
+    generico: "No se ha podido reintentar la presentación en OVZ. Inténtalo de nuevo.",
     noEncontrado: TEXTO_TRAMITE_NO_ENCONTRADO,
   },
   // SIN_TRAMITE: POST /tramites/{id}/descartar y /deshacer-descarte. Sus 400/409 traen `{motivo}`, que

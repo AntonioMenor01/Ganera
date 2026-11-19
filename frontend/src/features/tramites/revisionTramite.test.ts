@@ -57,6 +57,8 @@ function detalle(parcial: Partial<TramiteDetalle> = {}): TramiteDetalle {
     consignatario: null,
     aptitudMovimiento: null,
     fechaIdentificacion: null,
+    sePresentaraAutomaticamente: false,
+    presentacionOvz: null,
     ...parcial,
   }
 }

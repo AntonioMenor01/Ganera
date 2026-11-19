@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, ChevronDown, CircleAlertIcon, Phone, PlusIcon } from "lucide-react";
+import {
+  ArrowLeft,
+  ChevronDown,
+  CircleAlertIcon,
+  DownloadIcon,
+  FileTextIcon,
+  Phone,
+  PlusIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,8 +21,17 @@ import {
   mensajeDeError,
   type ErrorApi,
 } from "@/shared/api/errores";
-import { cambiarTelefonoGanadero, obtenerGanadero } from "./api";
-import type { ExplotacionDeGanadero, GanaderoDetalle } from "./types";
+import {
+  borrarCredencialesOvz,
+  cambiarTelefonoGanadero,
+  descargarDocumentoOvz,
+  guardarCredencialesOvz,
+  listarDocumentosOvz,
+  obtenerGanadero,
+} from "./api";
+import type { DocumentoOvz, ExplotacionDeGanadero, GanaderoDetalle } from "./types";
+import { etiquetaTipoDocumento, formatearTamano } from "./documentosOvz";
+import { fechaHoraMadrid } from "@/features/tramites/fechaMadrid";
 import { formatearTelefono, hrefTelefono } from "./telefono";
 import { CLASE_ENLACE } from "@/shared/ui/enlace";
 import { AnimalesDeExplotacion } from "@/features/explotaciones/AnimalesDeExplotacion";
@@ -232,6 +249,16 @@ function Ficha({
         </div>
       </div>
 
+      <AccesoOvz
+        ganaderoId={ganadero.id}
+        tieneCredenciales={ganadero.tieneCredencialesOvz}
+        usaCertificado={ganadero.usaCertificadoOvz}
+        onActualizado={setGanadero}
+        onNoEncontrado={onNoEncontrado}
+      />
+
+      <DocumentosOvz ganaderoId={ganadero.id} />
+
       {explotaciones.length > MAX_EXPLOTACIONES_SIN_INDICE && (
         <IndiceExplotaciones explotaciones={explotaciones} />
       )}
@@ -390,6 +417,336 @@ function EditorTelefono({
         )}
       </div>
     </form>
+  );
+}
+
+const ID_TITULO_OVZ = "ficha-acceso-ovz-titulo";
+const ID_INPUT_OVZ_USUARIO = "ficha-ovz-usuario";
+const ID_INPUT_OVZ_PASSWORD = "ficha-ovz-password";
+const ID_AYUDA_OVZ = "ficha-ovz-ayuda";
+
+/**
+ * Sección «Acceso a OVZ.net»: credenciales por ganadero (PUT/DELETE /ganaderos/{id}/credenciales-ovz). La
+ * contraseña es de solo escritura — nunca llega del servidor, así que el campo arranca vacío y nunca se rellena.
+ * Estado: «No configuradas» / «Credenciales guardadas» / «Entra con certificado digital». Una petición a la vez;
+ * el 200 repinta la ficha con la respuesta (sin volver a pedir el detalle); el 404 lleva a «Ganadero no
+ * encontrado»; el 400 (y la red/5xx) conservan lo escrito y muestran el motivo.
+ */
+function AccesoOvz({
+  ganaderoId,
+  tieneCredenciales,
+  usaCertificado,
+  onActualizado,
+  onNoEncontrado,
+}: {
+  ganaderoId: number;
+  tieneCredenciales: boolean;
+  usaCertificado: boolean;
+  onActualizado: (ganadero: GanaderoDetalle) => void;
+  onNoEncontrado: () => void;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [cert, setCert] = useState(usaCertificado);
+  const [usuario, setUsuario] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [trabajando, setTrabajando] = useState(false);
+  const botonRef = useRef<HTMLButtonElement>(null);
+  const primerCampoRef = useRef<HTMLInputElement>(null);
+  const volverAlBoton = useRef(false);
+
+  useEffect(() => {
+    if (editando) {
+      primerCampoRef.current?.focus();
+    } else if (volverAlBoton.current) {
+      volverAlBoton.current = false;
+      botonRef.current?.focus();
+    }
+  }, [editando]);
+
+  const configurado = tieneCredenciales || usaCertificado;
+
+  function abrir() {
+    setCert(usaCertificado);
+    // La contraseña NUNCA se siembra desde el servidor: el campo arranca vacío siempre.
+    setUsuario("");
+    setPassword("");
+    setError(null);
+    setEditando(true);
+  }
+
+  function cancelar() {
+    volverAlBoton.current = true;
+    setError(null);
+    setEditando(false);
+  }
+
+  async function aplicar(accion: () => Promise<GanaderoDetalle>) {
+    if (trabajando) return; // Una sola petición a la vez.
+    setError(null);
+    setTrabajando(true);
+    try {
+      const actualizado = await accion();
+      onActualizado(actualizado);
+      volverAlBoton.current = true;
+      setEditando(false);
+    } catch (err) {
+      const errorApi = aErrorApi(err);
+      if (errorApi.tipo === "no-encontrado") {
+        onNoEncontrado();
+        return;
+      }
+      setError(mensajeDeError(errorApi));
+    } finally {
+      setTrabajando(false);
+    }
+  }
+
+  const faltanDatos = !cert && (usuario.trim() === "" || password === "");
+
+  if (!editando) {
+    return (
+      <section
+        aria-labelledby={ID_TITULO_OVZ}
+        className="flex flex-col gap-2 border border-border bg-card p-5"
+      >
+        <h2 id={ID_TITULO_OVZ} className="text-sm font-bold text-muted-foreground">
+          Acceso a OVZ.net
+        </h2>
+        {usaCertificado ? (
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-semibold">Entra con certificado digital</p>
+            <p className="text-[13px] text-muted-foreground">
+              La baja por muerte no se puede enviar en automático con certificado; se hace a mano en OVZ.net.
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm font-semibold">
+            {tieneCredenciales ? "Credenciales guardadas" : "No configuradas"}
+          </p>
+        )}
+        <div className="mt-1 flex flex-wrap gap-2">
+          <Button ref={botonRef} variant="outline" size="sm" onClick={abrir} disabled={trabajando}>
+            {configurado ? "Cambiar credenciales" : "Añadir credenciales"}
+          </Button>
+          {configurado && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void aplicar(() => borrarCredencialesOvz(ganaderoId))}
+              disabled={trabajando}
+            >
+              Borrar credenciales
+            </Button>
+          )}
+        </div>
+        {error && (
+          <Alert variant="destructive">
+            <CircleAlertIcon />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+      </section>
+    );
+  }
+
+  return (
+    <section
+      aria-labelledby={ID_TITULO_OVZ}
+      className="flex flex-col gap-3 border border-border bg-card p-5"
+    >
+      <h2 id={ID_TITULO_OVZ} className="text-sm font-bold text-muted-foreground">
+        Acceso a OVZ.net
+      </h2>
+      <form
+        className="flex max-w-sm flex-col gap-3"
+        onSubmit={(evento) => {
+          evento.preventDefault();
+          if (faltanDatos) return;
+          void aplicar(() =>
+            guardarCredencialesOvz(ganaderoId, {
+              usuario: usuario.trim(),
+              password,
+              usaCertificado: cert,
+            }),
+          );
+        }}
+        noValidate
+      >
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <input
+            ref={primerCampoRef}
+            type="checkbox"
+            className="size-4 accent-primary"
+            checked={cert}
+            onChange={(e) => setCert(e.target.checked)}
+          />
+          La cuenta entra con certificado digital
+        </label>
+
+        {!cert && (
+          <>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={ID_INPUT_OVZ_USUARIO}>Usuario de OVZ.net</Label>
+              <Input
+                id={ID_INPUT_OVZ_USUARIO}
+                autoComplete="off"
+                value={usuario}
+                onChange={(e) => setUsuario(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={ID_INPUT_OVZ_PASSWORD}>Contraseña de OVZ.net</Label>
+              <Input
+                id={ID_INPUT_OVZ_PASSWORD}
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                aria-describedby={ID_AYUDA_OVZ}
+              />
+              <p id={ID_AYUDA_OVZ} className="text-[13px] text-muted-foreground">
+                La contraseña no se muestra nunca. Para cambiar el usuario, vuelve a escribir la contraseña.
+              </p>
+            </div>
+          </>
+        )}
+
+        {error && (
+          <Alert variant="destructive">
+            <CircleAlertIcon />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" size="sm" disabled={trabajando || faltanDatos}>
+            {trabajando ? "Guardando…" : "Guardar"}
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={cancelar} disabled={trabajando}>
+            Cancelar
+          </Button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+const ID_TITULO_DOCS_OVZ = "ficha-documentos-ovz-titulo";
+
+type VistaDocs =
+  | { estado: "cargando" }
+  | { estado: "error" }
+  | { estado: "listo"; documentos: DocumentoOvz[] };
+
+/**
+ * Sección «Documentos de OVZ» (escalón 2, T5): los justificantes que Ganera ha descargado de OVZ tras
+ * presentar una baja. Lista (tipo, fecha, tamaño) y descarga. El binario lo sirve el backend como adjunto
+ * tras comprobar la gestoría, así que la descarga va con el JWT (httpClient) y un enlace temporal de blob,
+ * nunca una URL directa. Carga sola; un 404 (ganadero ajeno) o un fallo caen en el estado de error con
+ * «Reintentar». Si no hay documentos, no se enseña nada (la sección aparece solo cuando hay justificantes).
+ */
+function DocumentosOvz({ ganaderoId }: { ganaderoId: number }) {
+  const [vista, setVista] = useState<VistaDocs>({ estado: "cargando" });
+  const [intento, setIntento] = useState(0);
+  const [descargando, setDescargando] = useState<number | null>(null);
+  const [errorDescarga, setErrorDescarga] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controlador = new AbortController();
+    setVista({ estado: "cargando" });
+    listarDocumentosOvz(ganaderoId, controlador.signal)
+      .then((documentos) => setVista({ estado: "listo", documentos }))
+      .catch((err: unknown) => {
+        if (esCancelacion(err)) return;
+        setVista({ estado: "error" });
+      });
+    return () => controlador.abort();
+  }, [ganaderoId, intento]);
+
+  async function descargar(documento: DocumentoOvz) {
+    if (descargando !== null) return; // una descarga a la vez
+    setErrorDescarga(null);
+    setDescargando(documento.id);
+    try {
+      const blob = await descargarDocumentoOvz(documento.id);
+      const url = URL.createObjectURL(blob);
+      const enlace = document.createElement("a");
+      enlace.href = url;
+      enlace.download = documento.nombre;
+      document.body.appendChild(enlace);
+      enlace.click();
+      enlace.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setErrorDescarga("No se ha podido descargar el documento. Inténtalo de nuevo.");
+    } finally {
+      setDescargando(null);
+    }
+  }
+
+  // Mientras carga o si falla la carga, no se ocupa espacio con una sección vacía salvo el error (que sí
+  // se muestra, con «Reintentar»). Sin documentos tampoco se pinta: la sección solo existe si hay papeles.
+  if (vista.estado === "cargando") return null;
+  if (vista.estado === "error") {
+    return (
+      <section aria-labelledby={ID_TITULO_DOCS_OVZ} className="flex flex-col gap-2 border border-border bg-card p-5">
+        <h2 id={ID_TITULO_DOCS_OVZ} className="text-sm font-bold text-muted-foreground">
+          Documentos de OVZ
+        </h2>
+        <Alert variant="destructive">
+          <CircleAlertIcon />
+          <AlertDescription>
+            <p>No se han podido cargar los documentos de OVZ.</p>
+            <Button variant="outline" size="sm" onClick={() => setIntento((n) => n + 1)} className="mt-2">
+              Reintentar
+            </Button>
+          </AlertDescription>
+        </Alert>
+      </section>
+    );
+  }
+  if (vista.documentos.length === 0) return null;
+
+  return (
+    <section aria-labelledby={ID_TITULO_DOCS_OVZ} className="flex flex-col gap-3 border border-border bg-card p-5">
+      <h2 id={ID_TITULO_DOCS_OVZ} className="text-sm font-bold text-muted-foreground">
+        Documentos de OVZ
+      </h2>
+      <p className="text-[13px] text-muted-foreground">
+        Justificantes que Ganera ha descargado de OVZ al presentar una baja.
+      </p>
+      {errorDescarga && (
+        <Alert variant="destructive">
+          <CircleAlertIcon />
+          <AlertDescription>{errorDescarga}</AlertDescription>
+        </Alert>
+      )}
+      <ul className="flex flex-col divide-y divide-border">
+        {vista.documentos.map((documento) => (
+          <li key={documento.id} className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 py-3 first:pt-0">
+            <FileTextIcon aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
+            <div className="min-w-0 flex-1">
+              <p className="min-w-0 truncate text-sm font-medium">{etiquetaTipoDocumento(documento.tipo)}</p>
+              <p className="text-[13px] text-muted-foreground tabular-nums">
+                {fechaHoraMadrid(documento.creadoEn) ?? "—"}
+                {" · "}
+                {formatearTamano(documento.tamano)}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void descargar(documento)}
+              disabled={descargando !== null}
+            >
+              <DownloadIcon aria-hidden="true" className="size-3.5" />
+              {descargando === documento.id ? "Descargando…" : "Descargar"}
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

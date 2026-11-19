@@ -53,12 +53,15 @@ type FiltroEstado = EstadoTramite | "TODOS";
 /** Decisión 28: la cola se abre en lo que hay que revisar. "Todos" sigue en el filtro. */
 const FILTRO_INICIAL: FiltroEstado = "PENDIENTE_REVISION";
 
-/** Estados que se pueden filtrar (Hecho en OVZ, D5): sin EN_PROCESO/EJECUTADO_OVZ/ERROR_OVZ, que son
- * de la automatización (3c) y hoy no se dan. Siguen en ESTADOS_TRAMITE para etiquetarlos si llegan. */
+/** Estados que se pueden filtrar. Desde la presentación automática de la baja (escalón 2, T5) se
+ * añaden EN_PROCESO/EJECUTADO_OVZ/ERROR_OVZ, que ahora sí se dan (Ganera presenta la baja en OVZ). */
 const ESTADOS_FILTRABLES: readonly EstadoTramite[] = [
   "PENDIENTE_EXTRACCION",
   "PENDIENTE_REVISION",
   "APROBADO",
+  "EN_PROCESO",
+  "EJECUTADO_OVZ",
+  "ERROR_OVZ",
   "HECHO_EN_OVZ",
   "RECHAZADO",
 ];
@@ -75,6 +78,9 @@ const ESTADOS: { value: FiltroEstado; label: string }[] = [
 /** Vacío con frase propia; el resto, «No hay trámites en «{etiqueta}».». */
 const TEXTOS_VACIO: Partial<Record<EstadoTramite, string>> = {
   APROBADO: "No hay trámites aprobados pendientes de hacer en OVZ.",
+  EN_PROCESO: "No hay trámites presentándose en OVZ ahora mismo.",
+  EJECUTADO_OVZ: "No hay trámites presentados en OVZ.",
+  ERROR_OVZ: "No hay trámites con error al presentarse en OVZ.",
   HECHO_EN_OVZ: "No hay trámites marcados como hechos en OVZ.",
 };
 

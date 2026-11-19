@@ -260,7 +260,10 @@ class GanaderoTelefonoEndToEndTest {
     void laRespuestaDelPutNoContieneCredencialesOvz() {
         ResponseEntity<String> respuesta = put(tokenA, ganaderoA, "{\"telefono\":\"612345678\"}");
         assertThat(respuesta.getStatusCode().value()).isEqualTo(200);
-        assertThat(respuesta.getBody().toLowerCase(java.util.Locale.ROOT)).doesNotContain("ovz");
+        // El detalle resume las credenciales en los booleanos tieneCredencialesOvz/usaCertificadoOvz (que SI
+        // contienen «Ovz»), pero NUNCA expone el usuario ni la contrasena: ni sus claves ni un valor en claro.
+        assertThat(respuesta.getBody()).doesNotContain("ovzUsuario").doesNotContain("ovzPassword")
+                .doesNotContain("password");
     }
 
     @Test
