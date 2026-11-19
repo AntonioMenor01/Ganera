@@ -144,6 +144,31 @@ public class TrabajoOvzService {
     }
 
     /**
+     * Si al aprobar este trámite se encolaría una presentación automática (T5): misma condición que
+     * {@link #encolarSiProcede} (interruptor encendido, {@code BAJA_MUERTE}, con explotación y con credenciales
+     * usuario+contraseña sin certificado, D4/D8), pero SIN tocar la cola. Lo usa el detalle para el botón «Aprobar y
+     * presentar en OVZ» y para saber que la vía será la automática. Lee el ganadero por la explotación (dentro de la
+     * petición, OSIV); no abre transacción.
+     */
+    public boolean sePresentaraAutomaticamente(Tramite tramite) {
+        if (!presentacionAutomaticaActiva || tramite.getTipoTramite() != TipoTramite.BAJA_MUERTE) {
+            return false;
+        }
+        Explotacion explotacion = tramite.getExplotacion();
+        return explotacion != null && tieneCredencialesParaAutomatico(explotacion.getGanadero());
+    }
+
+    /**
+     * El estado del trabajo de presentación de este trámite para el detalle (T5), o vacío si no tiene (vía manual u
+     * otro tipo). Solo lectura, con el {@code gestoriaId} explícito; un trabajo de otra gestoría nunca se ve.
+     * {@link PresentacionOvzResponse} solo lee campos escalares del trabajo (no navega a entidades LAZY).
+     */
+    public Optional<PresentacionOvzResponse> presentacionDe(Long tramiteId, Long gestoriaId) {
+        return trabajoOvzRepository.findByTramiteIdAndGestoriaId(tramiteId, gestoriaId)
+                .map(PresentacionOvzResponse::from);
+    }
+
+    /**
      * «Reclamar trabajo» del worker (T4), D3: toma UN trabajo PENDIENTE a nivel global de forma atómica (bloqueo de
      * fila {@code FOR UPDATE SKIP LOCKED} en Postgres; en H2 degrada a {@code FOR UPDATE}, suficiente porque el
      * worker es único y serializado) y pasa el trabajo y su trámite a EN_PROCESO. Vacío si no hay ninguno.

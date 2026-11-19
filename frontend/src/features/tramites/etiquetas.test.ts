@@ -74,9 +74,9 @@ describe("ESTADOS_TRAMITE", () => {
     PENDIENTE_REVISION: { etiqueta: "Pendiente de revisión", variante: "warning" },
     APROBADO: { etiqueta: "Aprobado · falta OVZ", variante: "warning" },
     HECHO_EN_OVZ: { etiqueta: "Hecho en OVZ", variante: "success" },
-    EN_PROCESO: { etiqueta: "En proceso", variante: "warning" },
-    EJECUTADO_OVZ: { etiqueta: "Hecho en OVZ.net", variante: "success" },
-    ERROR_OVZ: { etiqueta: "Error en OVZ.net", variante: "danger" },
+    EN_PROCESO: { etiqueta: "Presentando en OVZ…", variante: "warning" },
+    EJECUTADO_OVZ: { etiqueta: "Presentado en OVZ", variante: "success" },
+    ERROR_OVZ: { etiqueta: "Error al presentar en OVZ", variante: "danger" },
     RECHAZADO: { etiqueta: "Rechazado", variante: "danger" },
   }
 

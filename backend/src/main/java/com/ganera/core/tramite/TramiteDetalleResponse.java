@@ -23,7 +23,10 @@ import java.util.List;
  * (TramiteResponse) no lo lleva.
  * motivoRechazo y descartable: mismos valores que en TramiteResponse. historialDescarte (A6): quien descarto o
  * deshizo el descarte y cuando, en orden cronologico; lista vacia si no hay (nunca null). La carga
- * TramiteRevisionService.historialDescarte en UNA consulta con el usuario. */
+ * TramiteRevisionService.historialDescarte en UNA consulta con el usuario.
+ * sePresentaraAutomaticamente (escalon 2, T5): true si al aprobar este tramite Ganera lo presentaria sola en OVZ
+ * (BAJA_MUERTE con credenciales sin certificado y el interruptor encendido, D4/D8); el frontend pinta «Aprobar y
+ * presentar en OVZ» y la vista previa. presentacionOvz: el estado del trabajo de presentacion (null si no hay). */
 public record TramiteDetalleResponse(
         Long id,
         String tipoTramite,
@@ -57,11 +60,14 @@ public record TramiteDetalleResponse(
         String destinoTexto,
         String consignatario,
         String aptitudMovimiento,
-        LocalDate fechaIdentificacion) {
+        LocalDate fechaIdentificacion,
+        boolean sePresentaraAutomaticamente,
+        PresentacionOvzResponse presentacionOvz) {
 
     public static TramiteDetalleResponse from(
             Tramite tramite, String mensajeOriginal, List<TramiteCrotalResponse> crotales,
-            WhatsappTramiteResponse whatsapp, List<EventoDescarteResponse> historialDescarte) {
+            WhatsappTramiteResponse whatsapp, List<EventoDescarteResponse> historialDescarte,
+            boolean sePresentaraAutomaticamente, PresentacionOvzResponse presentacionOvz) {
         boolean tieneExplotacion = tramite.getExplotacion() != null;
         Ganadero ganadero = tieneExplotacion ? tramite.getExplotacion().getGanadero() : null;
         return new TramiteDetalleResponse(
@@ -97,6 +103,8 @@ public record TramiteDetalleResponse(
                 tramite.getDestinoTexto(),
                 tramite.getConsignatario(),
                 tramite.getAptitudMovimiento(),
-                tramite.getFechaIdentificacion());
+                tramite.getFechaIdentificacion(),
+                sePresentaraAutomaticamente,
+                presentacionOvz);
     }
 }

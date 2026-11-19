@@ -170,7 +170,9 @@ public class TramiteController {
         return ResponseEntity.ok(TramiteDetalleResponse.from(
                 tramite.get(), mensajeOriginal, crotalesDe(tramite.get(), principal.gestoriaId()),
                 whatsappDetalleService.bloque(tramite.get(), principal.gestoriaId()),
-                tramiteRevisionService.historialDescarte(id, principal.gestoriaId())));
+                tramiteRevisionService.historialDescarte(id, principal.gestoriaId()),
+                trabajoOvzService.sePresentaraAutomaticamente(tramite.get()),
+                trabajoOvzService.presentacionDe(id, principal.gestoriaId()).orElse(null)));
     }
 
     /**

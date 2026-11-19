@@ -7,14 +7,21 @@ import { setUnauthorizedHandler } from "@/shared/api/authSession"
 import { apiUrl } from "@/test/apiBaseUrl"
 import { server } from "@/test/server"
 import type { Explotacion } from "@/features/explotaciones/types"
-import type { EstadoTramite, EventoDescarte, Tramite, TramiteCrotal, WhatsappTramite } from "./types"
+import type {
+  EstadoTramite,
+  EventoDescarte,
+  PresentacionOvz,
+  Tramite,
+  TramiteCrotal,
+  WhatsappTramite,
+} from "./types"
 import { TramiteReviewDialog } from "./TramiteReviewDialog"
 
 const DETALLE = {
   id: 7,
   tipoTramite: "ALTA_NACIMIENTO",
   estado: "PENDIENTE_REVISION",
-  motivoError: null,
+  motivoError: null as string | null,
   explotacionId: 3,
   explotacionCodigoRega: "ES123",
   explotacionNombre: "La Dehesa",
@@ -30,18 +37,20 @@ const DETALLE = {
   motivoRechazo: null as string | null,
   descartable: false,
   historialDescarte: [] as EventoDescarte[],
-  fechaHecho: null,
+  fechaHecho: null as string | null,
   fechaNacimiento: null,
   sexo: null,
   crotalMadreIndicado: null,
   crotalMadre: null,
   crotalMadreResolucion: null,
-  numeroMer: null,
+  numeroMer: null as string | null,
   destinoRega: null,
   destinoTexto: null,
   consignatario: null,
   aptitudMovimiento: null,
   fechaIdentificacion: null,
+  sePresentaraAutomaticamente: false,
+  presentacionOvz: null as PresentacionOvz | null,
 }
 
 type Detalle = typeof DETALLE
@@ -203,7 +212,7 @@ describe("TramiteReviewDialog: etiquetas legibles", () => {
       ),
     )
     renderDialog()
-    expect(await screen.findByText("Error en OVZ.net")).toHaveClass("bg-danger")
+    expect(await screen.findByText("Error al presentar en OVZ")).toHaveClass("bg-danger")
     // Cabecera (look mock) + campo «Tipo de trámite»: misma etiqueta, nunca el enum.
     expect(screen.getAllByText("Demora de crotalización").length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByText("ERROR_OVZ")).not.toBeInTheDocument()
@@ -413,14 +422,17 @@ describe("TramiteReviewDialog: solo lectura fuera de PENDIENTE_REVISION (decisi�
       expect(within(dialogo).queryByRole("textbox")).not.toBeInTheDocument()
       expect(within(dialogo).queryByRole("combobox")).not.toBeInTheDocument()
       // Sin acciones de revisión: solo cerrar y, en APROBADO, abrir la ficha para OVZ (ficha OVZ, T5) y
-      // marcarlo como hecho en OVZ; en HECHO_EN_OVZ, quitar la marca y abrir la ficha (Hecho en OVZ).
+      // marcarlo como hecho en OVZ; en HECHO_EN_OVZ, quitar la marca y abrir la ficha (Hecho en OVZ);
+      // en ERROR_OVZ, «Reintentar» la presentación automática (escalón 2, T5).
       const ABRIR = "Abrir ficha para OVZ (se abre en otra ventana)"
       const esperados =
         estado === "APROBADO"
           ? [ABRIR, "Marcar como hecho en OVZ", "Cerrar"]
           : estado === "HECHO_EN_OVZ"
             ? ["Quitar la marca", ABRIR, "Cerrar"]
-            : ["Cerrar"]
+            : estado === "ERROR_OVZ"
+              ? ["Reintentar", "Cerrar"]
+              : ["Cerrar"]
       expect(within(dialogo).getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual(esperados)
     })
   }
@@ -1420,7 +1432,7 @@ describe("TramiteReviewDialog: correcciones tras la revisión de 9b", () => {
     const dialogo = await dialogoListo()
     await user.click(boton(dialogo, "Aprobar"))
     const texto = await within(dialogo).findByText(
-      "No hubo respuesta a tiempo. El trámite consta ahora como en proceso.",
+      "No hubo respuesta a tiempo. El trámite consta ahora como presentándose en OVZ.",
     )
     const alerta = texto.closest("[role=alert]") as HTMLElement
     expect(alerta).not.toBeNull()
@@ -1441,7 +1453,7 @@ describe("TramiteReviewDialog: correcciones tras la revisión de 9b", () => {
     const dialogo = await dialogoListo()
     await user.click(boton(dialogo, "Aprobar"))
     const texto = await within(dialogo).findByText(
-      "No hubo respuesta a tiempo. El trámite consta ahora como en proceso.",
+      "No hubo respuesta a tiempo. El trámite consta ahora como presentándose en OVZ.",
     )
     const alerta = texto.closest("[role=alert]") as HTMLElement
     expect(alerta).toHaveAttribute("data-aviso", "estado-cambiado")
@@ -2269,5 +2281,173 @@ describe("TramiteReviewDialog: honestidad con «Descartar» (SIN_TRAMITE)", () =
     await within(dialogo).findByText("No se ha descartado el mensaje")
     expect(dialogo).not.toHaveTextContent(PROHIBIDAS)
     expect(within(dialogo).queryAllByText(/OVZ/)).toEqual([])
+  })
+})
+
+// =============================================================================================
+// Escalón 2 (T5): presentación automática de la baja en OVZ.
+
+function presentacionOvz(parcial: Partial<NonNullable<Detalle["presentacionOvz"]>> = {}) {
+  return { estadoTrabajo: "PENDIENTE", claseError: null, actualizadoEn: null, ...parcial }
+}
+
+const CROTAL_BAJA = crotal("1234", {
+  crotal: "ES010000001234",
+  resolucion: "EN_INVENTARIO",
+  enInventario: true,
+  animalId: 1,
+})
+
+describe("TramiteReviewDialog: presentación automática — aprobar y vista previa (T5)", () => {
+  it("una BAJA_MUERTE que se presentará en automático: botón «Aprobar y presentar en OVZ» y vista previa", async () => {
+    server.use(
+      http.get(apiUrl("/tramites/7"), () =>
+        HttpResponse.json(
+          detalle({
+            tipoTramite: "BAJA_MUERTE",
+            sePresentaraAutomaticamente: true,
+            crotales: [CROTAL_BAJA],
+            fechaHecho: "2026-10-07",
+            numeroMer: "MER-9",
+          }),
+        ),
+      ),
+    )
+    renderDialog()
+    const dialogo = await dialogoListo()
+
+    expect(boton(dialogo, "Aprobar y presentar en OVZ")).toBeInTheDocument()
+    expect(within(dialogo).queryByRole("button", { name: "Aprobar" })).not.toBeInTheDocument()
+
+    const previa = within(dialogo).getByText("Al aprobar, Ganera presentará esta baja en OVZ:").closest("div")!
+    expect(within(previa).getByText("ES010000001234")).toBeInTheDocument()
+    expect(within(previa).getByText("ES123 · La Dehesa")).toBeInTheDocument()
+    expect(within(previa).getByText("07/10/2026")).toBeInTheDocument()
+    expect(within(previa).getByText("MER-9")).toBeInTheDocument()
+  })
+
+  it("sin presentación automática: botón «Aprobar» de siempre y sin vista previa", async () => {
+    server.use(
+      http.get(apiUrl("/tramites/7"), () =>
+        HttpResponse.json(detalle({ tipoTramite: "BAJA_MUERTE", sePresentaraAutomaticamente: false, crotales: [CROTAL_BAJA] })),
+      ),
+    )
+    renderDialog()
+    const dialogo = await dialogoListo()
+
+    expect(boton(dialogo, "Aprobar")).toBeInTheDocument()
+    expect(within(dialogo).queryByText("Al aprobar, Ganera presentará esta baja en OVZ:")).not.toBeInTheDocument()
+  })
+})
+
+describe("TramiteReviewDialog: presentación automática — estados (T5)", () => {
+  it("APROBADO en cola: franja «Se presentará en OVZ automáticamente» y sin «Marcar como hecho en OVZ»", async () => {
+    server.use(
+      http.get(apiUrl("/tramites/7"), () =>
+        HttpResponse.json(detalle({ estado: "APROBADO", presentacionOvz: presentacionOvz({ estadoTrabajo: "PENDIENTE" }) })),
+      ),
+    )
+    renderDialog()
+    const dialogo = await dialogoListo()
+
+    expect(within(dialogo).getByText("Se presentará en OVZ automáticamente")).toBeInTheDocument()
+    expect(within(dialogo).queryByRole("button", { name: "Marcar como hecho en OVZ" })).not.toBeInTheDocument()
+    // Honestidad (D10): mientras Ganera va a presentarla, NO se enseña el texto de la vía manual
+    // «Ganera no envía nada» (sería contradictorio); la presentación va ligada a la aprobación del gestor.
+    expect(within(dialogo).queryByText(/Ganera no envía nada/)).not.toBeInTheDocument()
+  })
+
+  it("APROBADO tras un ensayo: franja «Ensayo completado» y sigue ofreciendo «Marcar como hecho en OVZ»", async () => {
+    server.use(
+      http.get(apiUrl("/tramites/7"), () =>
+        HttpResponse.json(detalle({ estado: "APROBADO", presentacionOvz: presentacionOvz({ estadoTrabajo: "ENSAYO_OK" }) })),
+      ),
+    )
+    renderDialog()
+    const dialogo = await dialogoListo()
+
+    expect(within(dialogo).getByText("Ensayo completado")).toBeInTheDocument()
+    expect(boton(dialogo, "Marcar como hecho en OVZ")).toBeInTheDocument()
+  })
+
+  it("EN_PROCESO: franja «Presentando en OVZ…»", async () => {
+    server.use(http.get(apiUrl("/tramites/7"), () => HttpResponse.json(detalle({ estado: "EN_PROCESO" }))))
+    renderDialog()
+    const dialogo = await dialogoListo()
+    expect(within(dialogo).getAllByText("Presentando en OVZ…").length).toBeGreaterThanOrEqual(1)
+  })
+
+  it("EJECUTADO_OVZ: franja «Presentado en OVZ» con la fecha", async () => {
+    server.use(
+      http.get(apiUrl("/tramites/7"), () =>
+        HttpResponse.json(
+          detalle({ estado: "EJECUTADO_OVZ", presentacionOvz: presentacionOvz({ estadoTrabajo: "EJECUTADO", actualizadoEn: "2026-10-07T10:30:00Z" }) }),
+        ),
+      ),
+    )
+    renderDialog()
+    const dialogo = await dialogoListo()
+    const franja = dialogo.querySelector("[data-franja-presentacion-ovz]") as HTMLElement
+    expect(franja).not.toBeNull()
+    expect(within(franja).getByText("Presentado en OVZ")).toBeInTheDocument()
+    expect(within(franja).getByText(/07\/10\/2026, 12:30/)).toBeInTheDocument()
+  })
+})
+
+describe("TramiteReviewDialog: presentación automática — reintentar (T5, D11)", () => {
+  it("ERROR_OVZ seguro: «Reintentar» (sin casilla) reencola con {version}", async () => {
+    let cuerpo: unknown
+    detallesEnOrden(
+      () =>
+        HttpResponse.json(
+          detalle({ estado: "ERROR_OVZ", version: 2, motivoError: "La verificación no cuadró", presentacionOvz: presentacionOvz({ estadoTrabajo: "ERROR", claseError: "SEGURO" }) }),
+        ),
+      () => HttpResponse.json(detalle({ estado: "APROBADO", version: 3, presentacionOvz: presentacionOvz({ estadoTrabajo: "PENDIENTE" }) })),
+    )
+    server.use(
+      http.post(apiUrl("/tramites/7/reencolar-ovz"), async ({ request }) => {
+        cuerpo = await request.json()
+        return HttpResponse.json(respuestaLista(detalle({ estado: "APROBADO", version: 3 })))
+      }),
+    )
+    const user = userEvent.setup()
+    renderDialog()
+    const dialogo = await dialogoListo()
+    expect(within(dialogo).queryByRole("checkbox")).not.toBeInTheDocument()
+    expect(within(dialogo).getByText("La verificación no cuadró")).toBeInTheDocument()
+
+    await user.click(boton(dialogo, "Reintentar"))
+    await within(dialogo).findByText("La presentación se ha vuelto a encolar.")
+    expect(cuerpo).toEqual({ version: 2 })
+  })
+
+  it("ERROR_OVZ incierto: aviso, «Reintentar» desactivado hasta marcar la casilla, y reencola con confirmadoNoPresentado", async () => {
+    let cuerpo: unknown
+    detallesEnOrden(
+      () =>
+        HttpResponse.json(
+          detalle({ estado: "ERROR_OVZ", version: 2, presentacionOvz: presentacionOvz({ estadoTrabajo: "ERROR", claseError: "INCIERTO" }) }),
+        ),
+      () => HttpResponse.json(detalle({ estado: "APROBADO", version: 3, presentacionOvz: presentacionOvz({ estadoTrabajo: "PENDIENTE" }) })),
+    )
+    server.use(
+      http.post(apiUrl("/tramites/7/reencolar-ovz"), async ({ request }) => {
+        cuerpo = await request.json()
+        return HttpResponse.json(respuestaLista(detalle({ estado: "APROBADO", version: 3 })))
+      }),
+    )
+    const user = userEvent.setup()
+    renderDialog()
+    const dialogo = await dialogoListo()
+
+    expect(within(dialogo).getByText(/No sabemos si la baja se presentó en OVZ/)).toBeInTheDocument()
+    expect(boton(dialogo, "Reintentar")).toBeDisabled()
+
+    await user.click(within(dialogo).getByRole("checkbox"))
+    expect(boton(dialogo, "Reintentar")).toBeEnabled()
+
+    await user.click(boton(dialogo, "Reintentar"))
+    await within(dialogo).findByText("La presentación se ha vuelto a encolar.")
+    expect(cuerpo).toEqual({ version: 2, confirmadoNoPresentado: true })
   })
 })

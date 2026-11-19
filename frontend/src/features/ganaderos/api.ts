@@ -1,6 +1,6 @@
 import { httpClient } from "@/shared/api/httpClient";
 import type { Pagina } from "@/shared/api/types";
-import type { GanaderoDetalle, GanaderoResumen } from "./types";
+import type { DocumentoOvz, GanaderoDetalle, GanaderoResumen } from "./types";
 
 export interface OpcionesListarGanaderos {
   /** Valores de `sort` en orden (`campo,asc|desc`); campos permitidos: nombre, nif, id. Vacío =
@@ -82,5 +82,24 @@ export async function guardarCredencialesOvz(
  * detalle actualizado. */
 export async function borrarCredencialesOvz(id: number): Promise<GanaderoDetalle> {
   const { data } = await httpClient.delete<GanaderoDetalle>(`/ganaderos/${id}/credenciales-ovz`);
+  return data;
+}
+
+/**
+ * Justificantes de OVZ del ganadero (GET /ganaderos/{id}/documentos, escalón 2, T5). Solo metadatos; el
+ * binario se descarga aparte. Un ganadero ajeno/inexistente responde 404.
+ */
+export async function listarDocumentosOvz(id: number, signal?: AbortSignal): Promise<DocumentoOvz[]> {
+  const { data } = await httpClient.get<DocumentoOvz[]>(`/ganaderos/${id}/documentos`, { signal });
+  return data;
+}
+
+/**
+ * Descarga el contenido (PDF) de un justificante (GET /documentos-ovz/{id}/contenido, escalón 2, T5). Lo
+ * sirve el backend como adjunto tras comprobar la gestoría (nunca una URL pública), así que hay que
+ * pedirlo con el JWT (httpClient) y no con un enlace directo. Devuelve el Blob.
+ */
+export async function descargarDocumentoOvz(id: number): Promise<Blob> {
+  const { data } = await httpClient.get<Blob>(`/documentos-ovz/${id}/contenido`, { responseType: "blob" });
   return data;
 }

@@ -148,6 +148,43 @@ class PresentacionOvzEndToEndTest {
         assertThat(trabajoOvzRepository.existsByTramiteId(tramite.getId())).isFalse();
     }
 
+    // ==================== Detalle: se presentará automáticamente / estado del trabajo (T5) ====================
+
+    @Test
+    void elDetalleDeUnaBajaConCredencialesDicePresentaraAutomaticamenteYSinTrabajoAun() throws Exception {
+        Explotacion explotacion = explotacionConGanadero(gestoriaA, "ES010000000020", true, false);
+        Tramite tramite = bajaMuertePendiente(gestoriaA, explotacion);
+
+        var detalle = detalleJson(tramite.getId());
+        assertThat(detalle.get("sePresentaraAutomaticamente").asBoolean()).isTrue();
+        // Pendiente de revisión: aún no hay trabajo encolado (solo se encola al aprobar).
+        assertThat(detalle.get("presentacionOvz").isNull()).isTrue();
+    }
+
+    @Test
+    void elDetalleSinCredencialesNoSePresentaAutomaticamente() throws Exception {
+        Explotacion explotacion = explotacionConGanadero(gestoriaA, "ES010000000021", false, false);
+        Tramite tramite = bajaMuertePendiente(gestoriaA, explotacion);
+
+        var detalle = detalleJson(tramite.getId());
+        assertThat(detalle.get("sePresentaraAutomaticamente").asBoolean()).isFalse();
+        assertThat(detalle.get("presentacionOvz").isNull()).isTrue();
+    }
+
+    @Test
+    void elDetalleDeUnTrabajoEnErrorInciertoLlevaElEstadoYLaClaseDeError() throws Exception {
+        TrabajoOvz trabajo = trabajoEnError(gestoriaA, "ES010000000022", TipoErrorOvz.INCIERTO);
+        long tramiteId = trabajo.getTramite().getId();
+
+        var detalle = detalleJson(tramiteId);
+        var presentacion = detalle.get("presentacionOvz");
+        assertThat(presentacion.isNull()).isFalse();
+        assertThat(presentacion.get("estadoTrabajo").asText()).isEqualTo("ERROR");
+        assertThat(presentacion.get("claseError").asText()).isEqualTo("INCIERTO");
+        // presentacionOvz nunca lleva el texto del motivo: ese va en tramite.motivoError (lo fija el worker).
+        assertThat(presentacion.has("motivoError")).isFalse();
+    }
+
     // ==================== Reencolado (D11) ====================
 
     @Test
@@ -336,6 +373,22 @@ class PresentacionOvzEndToEndTest {
         headers.setBearerAuth(tokenA);
         headers.setContentType(MediaType.APPLICATION_JSON);
         return restTemplate.postForEntity(path, new HttpEntity<>(cuerpo, headers), String.class);
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /** GET /tramites/{id} con Accept: application/json (el SDK de Twilio trae jackson-xml y si no se pide JSON la
+     * respuesta llega en XML, footgun del CLAUDE.md). Devuelve el árbol JSON. */
+    private com.fasterxml.jackson.databind.JsonNode detalleJson(long tramiteId) throws Exception {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(tokenA);
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+        ResponseEntity<String> r = restTemplate.exchange(
+                "/tramites/" + tramiteId, org.springframework.http.HttpMethod.GET,
+                new HttpEntity<>(headers), String.class);
+        assertThat(r.getStatusCode().value()).isEqualTo(200);
+        return JSON.readTree(r.getBody());
     }
 
     private long versionTramite(long tramiteId) {

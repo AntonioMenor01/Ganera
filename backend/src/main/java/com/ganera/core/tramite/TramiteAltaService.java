@@ -40,6 +40,7 @@ public class TramiteAltaService {
     private final TramiteCrotalService tramiteCrotalService;
     private final WhatsappDetalleService whatsappDetalleService;
     private final AuditoriaService auditoriaService;
+    private final TrabajoOvzService trabajoOvzService;
 
     public TramiteAltaService(TramiteRepository tramiteRepository,
                               ExplotacionRepository explotacionRepository,
@@ -47,7 +48,8 @@ public class TramiteAltaService {
                               GestoriaRepository gestoriaRepository,
                               TramiteCrotalService tramiteCrotalService,
                               WhatsappDetalleService whatsappDetalleService,
-                              AuditoriaService auditoriaService) {
+                              AuditoriaService auditoriaService,
+                              TrabajoOvzService trabajoOvzService) {
         this.tramiteRepository = tramiteRepository;
         this.explotacionRepository = explotacionRepository;
         this.contactoRepository = contactoRepository;
@@ -55,6 +57,7 @@ public class TramiteAltaService {
         this.tramiteCrotalService = tramiteCrotalService;
         this.whatsappDetalleService = whatsappDetalleService;
         this.auditoriaService = auditoriaService;
+        this.trabajoOvzService = trabajoOvzService;
     }
 
     @Transactional
@@ -100,7 +103,11 @@ public class TramiteAltaService {
 
         return TramiteDetalleResponse.from(tramite, null, respuestas(filas),
                 whatsappDetalleService.bloque(tramite, gestoriaId),
-                List.of());
+                List.of(),
+                // Recién creado (PENDIENTE_REVISION): sin trabajo aún; sePresentara sí aplica (una BAJA_MUERTE manual
+                // con credenciales abriría con «Aprobar y presentar en OVZ»).
+                trabajoOvzService.sePresentaraAutomaticamente(tramite),
+                null);
     }
 
     private static void aplicarCamposOvz(Tramite tramite, TramiteAltaRequest request) {

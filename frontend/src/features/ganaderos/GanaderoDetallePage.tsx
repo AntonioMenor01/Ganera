@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, ChevronDown, CircleAlertIcon, Phone, PlusIcon } from "lucide-react";
+import {
+  ArrowLeft,
+  ChevronDown,
+  CircleAlertIcon,
+  DownloadIcon,
+  FileTextIcon,
+  Phone,
+  PlusIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,10 +24,14 @@ import {
 import {
   borrarCredencialesOvz,
   cambiarTelefonoGanadero,
+  descargarDocumentoOvz,
   guardarCredencialesOvz,
+  listarDocumentosOvz,
   obtenerGanadero,
 } from "./api";
-import type { ExplotacionDeGanadero, GanaderoDetalle } from "./types";
+import type { DocumentoOvz, ExplotacionDeGanadero, GanaderoDetalle } from "./types";
+import { etiquetaTipoDocumento, formatearTamano } from "./documentosOvz";
+import { fechaHoraMadrid } from "@/features/tramites/fechaMadrid";
 import { formatearTelefono, hrefTelefono } from "./telefono";
 import { CLASE_ENLACE } from "@/shared/ui/enlace";
 import { AnimalesDeExplotacion } from "@/features/explotaciones/AnimalesDeExplotacion";
@@ -244,6 +256,8 @@ function Ficha({
         onActualizado={setGanadero}
         onNoEncontrado={onNoEncontrado}
       />
+
+      <DocumentosOvz ganaderoId={ganadero.id} />
 
       {explotaciones.length > MAX_EXPLOTACIONES_SIN_INDICE && (
         <IndiceExplotaciones explotaciones={explotaciones} />
@@ -614,6 +628,124 @@ function AccesoOvz({
           </Button>
         </div>
       </form>
+    </section>
+  );
+}
+
+const ID_TITULO_DOCS_OVZ = "ficha-documentos-ovz-titulo";
+
+type VistaDocs =
+  | { estado: "cargando" }
+  | { estado: "error" }
+  | { estado: "listo"; documentos: DocumentoOvz[] };
+
+/**
+ * Sección «Documentos de OVZ» (escalón 2, T5): los justificantes que Ganera ha descargado de OVZ tras
+ * presentar una baja. Lista (tipo, fecha, tamaño) y descarga. El binario lo sirve el backend como adjunto
+ * tras comprobar la gestoría, así que la descarga va con el JWT (httpClient) y un enlace temporal de blob,
+ * nunca una URL directa. Carga sola; un 404 (ganadero ajeno) o un fallo caen en el estado de error con
+ * «Reintentar». Si no hay documentos, no se enseña nada (la sección aparece solo cuando hay justificantes).
+ */
+function DocumentosOvz({ ganaderoId }: { ganaderoId: number }) {
+  const [vista, setVista] = useState<VistaDocs>({ estado: "cargando" });
+  const [intento, setIntento] = useState(0);
+  const [descargando, setDescargando] = useState<number | null>(null);
+  const [errorDescarga, setErrorDescarga] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controlador = new AbortController();
+    setVista({ estado: "cargando" });
+    listarDocumentosOvz(ganaderoId, controlador.signal)
+      .then((documentos) => setVista({ estado: "listo", documentos }))
+      .catch((err: unknown) => {
+        if (esCancelacion(err)) return;
+        setVista({ estado: "error" });
+      });
+    return () => controlador.abort();
+  }, [ganaderoId, intento]);
+
+  async function descargar(documento: DocumentoOvz) {
+    if (descargando !== null) return; // una descarga a la vez
+    setErrorDescarga(null);
+    setDescargando(documento.id);
+    try {
+      const blob = await descargarDocumentoOvz(documento.id);
+      const url = URL.createObjectURL(blob);
+      const enlace = document.createElement("a");
+      enlace.href = url;
+      enlace.download = documento.nombre;
+      document.body.appendChild(enlace);
+      enlace.click();
+      enlace.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setErrorDescarga("No se ha podido descargar el documento. Inténtalo de nuevo.");
+    } finally {
+      setDescargando(null);
+    }
+  }
+
+  // Mientras carga o si falla la carga, no se ocupa espacio con una sección vacía salvo el error (que sí
+  // se muestra, con «Reintentar»). Sin documentos tampoco se pinta: la sección solo existe si hay papeles.
+  if (vista.estado === "cargando") return null;
+  if (vista.estado === "error") {
+    return (
+      <section aria-labelledby={ID_TITULO_DOCS_OVZ} className="flex flex-col gap-2 border border-border bg-card p-5">
+        <h2 id={ID_TITULO_DOCS_OVZ} className="text-sm font-bold text-muted-foreground">
+          Documentos de OVZ
+        </h2>
+        <Alert variant="destructive">
+          <CircleAlertIcon />
+          <AlertDescription>
+            <p>No se han podido cargar los documentos de OVZ.</p>
+            <Button variant="outline" size="sm" onClick={() => setIntento((n) => n + 1)} className="mt-2">
+              Reintentar
+            </Button>
+          </AlertDescription>
+        </Alert>
+      </section>
+    );
+  }
+  if (vista.documentos.length === 0) return null;
+
+  return (
+    <section aria-labelledby={ID_TITULO_DOCS_OVZ} className="flex flex-col gap-3 border border-border bg-card p-5">
+      <h2 id={ID_TITULO_DOCS_OVZ} className="text-sm font-bold text-muted-foreground">
+        Documentos de OVZ
+      </h2>
+      <p className="text-[13px] text-muted-foreground">
+        Justificantes que Ganera ha descargado de OVZ al presentar una baja.
+      </p>
+      {errorDescarga && (
+        <Alert variant="destructive">
+          <CircleAlertIcon />
+          <AlertDescription>{errorDescarga}</AlertDescription>
+        </Alert>
+      )}
+      <ul className="flex flex-col divide-y divide-border">
+        {vista.documentos.map((documento) => (
+          <li key={documento.id} className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 py-3 first:pt-0">
+            <FileTextIcon aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
+            <div className="min-w-0 flex-1">
+              <p className="min-w-0 truncate text-sm font-medium">{etiquetaTipoDocumento(documento.tipo)}</p>
+              <p className="text-[13px] text-muted-foreground tabular-nums">
+                {fechaHoraMadrid(documento.creadoEn) ?? "—"}
+                {" · "}
+                {formatearTamano(documento.tamano)}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void descargar(documento)}
+              disabled={descargando !== null}
+            >
+              <DownloadIcon aria-hidden="true" className="size-3.5" />
+              {descargando === documento.id ? "Descargando…" : "Descargar"}
+            </Button>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

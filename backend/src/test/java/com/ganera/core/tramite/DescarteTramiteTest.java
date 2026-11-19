@@ -89,15 +89,16 @@ class DescarteTramiteTest {
         assertThat(TramiteResponse.from(tramite, null).descartable()).isTrue();
         assertThat(TramiteResponse.from(tramite, List.of()).descartable()).isTrue();
         assertThat(TramiteResponse.from(tramite, List.of(UN_CROTAL)).descartable()).isFalse();
-        assertThat(TramiteDetalleResponse.from(tramite, null, List.of(), null, List.of()).descartable()).isTrue();
-        assertThat(TramiteDetalleResponse.from(tramite, null, List.of(UN_CROTAL), null, List.of()).descartable())
-                .isFalse();
+        assertThat(TramiteDetalleResponse.from(tramite, null, List.of(), null, List.of(), false, null).descartable())
+                .isTrue();
+        assertThat(TramiteDetalleResponse.from(tramite, null, List.of(UN_CROTAL), null, List.of(), false, null)
+                .descartable()).isFalse();
         assertThat(TramiteResponse.from(tramite, null).motivoRechazo()).isNull();
 
         tramite.setEstado(EstadoTramite.RECHAZADO);
         tramite.setMotivoRechazo(MotivoRechazo.SIN_TRAMITE);
         TramiteResponse fila = TramiteResponse.from(tramite, null);
-        TramiteDetalleResponse detalle = TramiteDetalleResponse.from(tramite, null, null, null, null);
+        TramiteDetalleResponse detalle = TramiteDetalleResponse.from(tramite, null, null, null, null, false, null);
         assertThat(fila.motivoRechazo()).isEqualTo("SIN_TRAMITE");
         assertThat(fila.descartable()).isFalse();
         assertThat(detalle.motivoRechazo()).isEqualTo("SIN_TRAMITE");

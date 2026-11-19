@@ -39,6 +39,23 @@ export interface ExplotacionDeGanadero {
   contactos: ContactoDeExplotacion[];
 }
 
+/** Metadatos de un justificante de OVZ de la ficha del ganadero (`DocumentoOvzResponse`, escalón 2, T5).
+ * Nunca trae el binario: se descarga aparte por `GET /documentos-ovz/{id}/contenido`. */
+export interface DocumentoOvz {
+  id: number;
+  tramiteId: number;
+  /** `TipoDocumentoOvz` del backend, p. ej. `"BAJA_ANIMAL"`. Se etiqueta con `etiquetaTipoDocumento`. */
+  tipo: string;
+  /** Nombre del fichero, p. ej. `"Baja Animal.pdf"`. */
+  nombre: string;
+  /** Tamaño en bytes. */
+  tamano: number;
+  contentType: string;
+  sha256: string;
+  /** ISO-8601 UTC con `Z`. Se enseña en hora de Madrid. */
+  creadoEn: string;
+}
+
 export interface ContactoDeExplotacion {
   contactoId: number;
   nombre: string;

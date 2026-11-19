@@ -116,6 +116,28 @@ export interface TramiteDetalle {
   consignatario: string | null;
   aptitudMovimiento: string | null;
   fechaIdentificacion: string | null;
+  /** Escalón 2 (T5): true si al aprobar esta BAJA_MUERTE Ganera la presentaría sola en OVZ (hay
+   * credenciales sin certificado y el interruptor está encendido). El botón pasa a «Aprobar y
+   * presentar en OVZ» y se enseña la vista previa de lo que se va a presentar. Solo en el detalle. */
+  sePresentaraAutomaticamente: boolean;
+  /** Escalón 2 (T5): estado de la presentación automática de este trámite, o null si no tiene
+   * trabajo (vía manual u otro tipo). Solo en el detalle. */
+  presentacionOvz: PresentacionOvz | null;
+}
+
+/** Escalón 2 (T5): reflejo del trabajo de presentación automática en el detalle (`PresentacionOvzResponse`).
+ * Nunca lleva el motivo de error (ese va en `TramiteDetalle.motivoError`) ni dato personal alguno. */
+export interface PresentacionOvz {
+  /** `EstadoTrabajoOvz`: `PENDIENTE` (en cola), `EN_PROCESO` (presentando), `EJECUTADO` (presentada),
+   * `ERROR` (falló) o `ENSAYO_OK` (ensayo completado sin presentar). String: uno desconocido se trata
+   * como estado neutro. */
+  estadoTrabajo: string;
+  /** `TipoErrorOvz`: `SEGURO` (falló antes de «Aceptar», no se presentó nada) o `INCIERTO` (falló tras
+   * «Aceptar», sin confirmar); null salvo cuando `estadoTrabajo === "ERROR"`. Gobierna el reencolado:
+   * un INCIERTO exige confirmación explícita (D11). */
+  claseError: string | null;
+  /** Instante del último cambio del trabajo (ISO-8601 UTC con `Z`), p. ej. cuándo se presentó. */
+  actualizadoEn: string | null;
 }
 
 /** B2 reducido: una respuesta de la gestoría al contacto por WhatsApp (`RespuestaWhatsappResponse`).

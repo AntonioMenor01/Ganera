@@ -14,7 +14,11 @@ describe("GanaderoDetallePage: animales solo al desplegar (m1)", () => {
   it("no se pide nada hasta pulsar 'Ver animales', y solo lo de esa sección; plegar lo desmonta", async () => {
     const peticiones: string[] = []
     const escuchar = ({ request }: { request: Request }) => {
-      peticiones.push(new URL(request.url).pathname)
+      const ruta = new URL(request.url).pathname
+      // La sección «Documentos de OVZ» (T5) pide los documentos al montar; es ajeno a la carga perezosa
+      // de animales que prueba este test.
+      if (ruta.endsWith("/documentos")) return
+      peticiones.push(ruta)
     }
     server.events.on("request:start", escuchar)
     server.use(

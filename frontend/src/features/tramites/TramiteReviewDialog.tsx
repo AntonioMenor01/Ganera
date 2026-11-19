@@ -1,5 +1,13 @@
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
-import { CircleAlertIcon, CircleCheckIcon, ExternalLinkIcon, XIcon } from "lucide-react";
+import {
+  CircleAlertIcon,
+  CircleCheckIcon,
+  ClockIcon,
+  ExternalLinkIcon,
+  InfoIcon,
+  Loader2Icon,
+  XIcon,
+} from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -45,6 +53,15 @@ import {
   TEXTO_CONFIRMAR_QUITAR_MARCA,
   textoHechoEnOvz,
 } from "./hechoEnOvz";
+import {
+  TEXTOS_PRESENTACION,
+  TEXTO_BOTON_REINTENTANDO,
+  TEXTO_BOTON_REINTENTAR,
+  estadoPresentacionOvz,
+  textoBotonAprobar,
+  vistaPreviaPresentacion,
+  type EstadoPresentacionOvz,
+} from "./presentacionOvz";
 import { useRevisionTramite, type AccionRevision, type RevisionTramite } from "./useRevisionTramite";
 import { useRespuestaWhatsapp, type RespuestaWhatsappPanel } from "./useRespuestaWhatsapp";
 import { SeccionWhatsapp, type DescarteRespuesta } from "./SeccionWhatsapp";
@@ -88,6 +105,7 @@ const TEXTO_EN_CURSO: Record<AccionRevision, string> = {
   desmarcar: TEXTO_BOTON_QUITANDO_MARCA,
   descartar: TEXTO_BOTON_DESCARTANDO,
   deshacer: TEXTO_BOTON_DESHACIENDO,
+  reencolar: TEXTO_BOTON_REINTENTANDO,
 };
 
 const TEXTO_SIN_TIPO = "Sin determinar todavía";
@@ -106,6 +124,9 @@ export function TramiteReviewDialog({
   // El panel de WhatsApp solo cuenta mientras se ve: si el trámite pasa a «no encontrado» (p. ej. un
   // 404 al guardar con el panel abierto), el modal se cierra como siempre (M1b de la revisión).
   const panelVisible = carga.estado === "listo" && respuesta.abierto;
+  // Escalón 2 (T5): estado de la presentación automática de la baja (null si no aplica). Decide el pie
+  // (reintentar en ERROR_OVZ; la marca manual se oculta mientras está en cola) y la casilla de incierto.
+  const presentacion = detalle && carga.estado === "listo" ? estadoPresentacionOvz(detalle) : null;
   // El número que se ve en el título: se conserva durante la animación de cierre (id ya null).
   const [idVisible, setIdVisible] = useState(tramiteId);
   const [idPrevio, setIdPrevio] = useState(tramiteId);
@@ -415,8 +436,13 @@ export function TramiteReviewDialog({
         )}
 
         {/* Ficha OVZ (T5): un trámite aprobado se pasa a OVZ a mano desde su ficha, en otra ventana.
-            Hecho en OVZ: cuando la persona lo ha terminado allí, lo marca aquí (o quita la marca). */}
-        {!editable && carga.estado === "listo" && detalle?.estado === "APROBADO" && (
+            Hecho en OVZ: cuando la persona lo ha terminado allí, lo marca aquí (o quita la marca).
+            Mientras la presentación automática está EN COLA, no se ofrece la marca manual: la va a
+            presentar Ganera (el ensayo sí la deja, porque en ensayo no se presenta nada). */}
+        {!editable &&
+          carga.estado === "listo" &&
+          detalle?.estado === "APROBADO" &&
+          presentacion?.clase !== "en-cola" && (
           <div
             ref={pieRef}
             className="flex flex-col gap-2 border-t-2 border-divisor bg-card px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
@@ -466,6 +492,18 @@ export function TramiteReviewDialog({
               </div>
             )}
           </div>
+        )}
+
+        {/* Escalón 2 (T5, D11): la presentación automática falló. Seguro → «Reintentar» directo; incierto
+            → aviso y casilla obligatoria antes de poder reintentar (riesgo de duplicar la baja). */}
+        {!editable && carga.estado === "listo" && detalle?.estado === "ERROR_OVZ" && (
+          <PieReintentarOvz
+            incierto={presentacion?.clase === "error" && presentacion.incierto}
+            enviando={enviando === "reencolar"}
+            puedeReintentar={revision.puedeReencolar}
+            onReintentar={(confirmado) => void revision.reencolar(confirmado)}
+            pieRef={pieRef}
+          />
         )}
 
         {/* Al final del DOM (como el cierre de DialogContent) para que el orden de tabulación sea
@@ -543,11 +581,17 @@ function Cuerpo({
           </AlertDescription>
         </Alert>
       );
-    case "listo":
+    case "listo": {
       if (!detalle) return null;
+      // Escalón 2 (T5): presentación automática de la baja. La franja informa de los estados (en cola,
+      // presentando, presentado, ensayo); el error va en el pie, con «Reintentar».
+      const presentacion = estadoPresentacionOvz(detalle);
       return (
         <>
           {detalle.estado === "HECHO_EN_OVZ" && <FranjaHechoEnOvz detalle={detalle} />}
+          {presentacion && presentacion.clase !== "error" && (
+            <FranjaPresentacionOvz estado={presentacion} />
+          )}
           {esDescartado(detalle) && (
             <BandaDescartado revision={revision} ids={ids} deshacer={deshacer} />
           )}
@@ -605,6 +649,7 @@ function Cuerpo({
           </div>
         </>
       );
+    }
   }
 }
 
@@ -670,6 +715,107 @@ function FranjaHechoEnOvz({ detalle }: { detalle: TramiteDetalle }) {
       <CircleCheckIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
       <span className="font-medium">{textoHechoEnOvz(detalle)}</span>
     </p>
+  );
+}
+
+/** Escalón 2 (T5): franja de estado de la presentación automática de la baja (en cola, presentando,
+ * presentado, ensayo). El ERROR no pasa por aquí: va en el pie con «Reintentar». Honesto (D10): aquí
+ * SÍ se dice «presentando/presentado en OVZ» porque es cierto (lo hace Ganera sobre un trámite ya
+ * aprobado). */
+function FranjaPresentacionOvz({ estado }: { estado: EstadoPresentacionOvz }) {
+  if (estado.clase === "error") return null;
+  const presentada = estado.clase === "presentada";
+  const T = TEXTOS_PRESENTACION;
+  const { icono, titulo, cuerpo } =
+    estado.clase === "en-cola"
+      ? { icono: ClockIcon, titulo: T.enCola.titulo, cuerpo: T.enCola.cuerpo }
+      : estado.clase === "presentando"
+        ? { icono: Loader2Icon, titulo: T.presentando.titulo, cuerpo: T.presentando.cuerpo }
+        : estado.clase === "ensayo"
+          ? { icono: InfoIcon, titulo: T.ensayo.titulo, cuerpo: T.ensayo.cuerpo }
+          : {
+              icono: CircleCheckIcon,
+              titulo: T.presentada.titulo,
+              cuerpo: estado.fecha ? T.presentada.cuerpoConFecha(estado.fecha) : T.presentada.cuerpoSinFecha,
+            };
+  const Icono = icono;
+  return (
+    <div
+      data-franja-presentacion-ovz
+      data-presentacion={estado.clase}
+      className={cn(
+        "mb-4 flex items-start gap-2 px-3 py-2 text-sm",
+        presentada ? "bg-success text-success-foreground" : "bg-neutral text-neutral-foreground",
+      )}
+    >
+      <Icono
+        aria-hidden="true"
+        className={cn(
+          "mt-0.5 size-4 shrink-0",
+          estado.clase === "presentando" && "motion-safe:animate-spin",
+        )}
+      />
+      <span className="min-w-0">
+        <span className="font-semibold">{titulo}</span> <span>{cuerpo}</span>
+      </span>
+    </div>
+  );
+}
+
+/** Escalón 2 (T5, D11): pie de un trámite en ERROR_OVZ. Un error SEGURO (no se presentó nada) se
+ * reintenta directamente; un INCIERTO (falló tras confirmar en OVZ) exige marcar la casilla de que se
+ * ha comprobado que la baja NO está presentada, porque reintentar podría duplicarla. El motivo concreto
+ * del fallo ya sale en el cuerpo (Alert «Motivo del error»). */
+function PieReintentarOvz({
+  incierto,
+  enviando,
+  puedeReintentar,
+  onReintentar,
+  pieRef,
+}: {
+  incierto: boolean;
+  enviando: boolean;
+  puedeReintentar: boolean;
+  onReintentar: (confirmadoNoPresentado: boolean) => void;
+  pieRef: RefObject<HTMLDivElement | null>;
+}) {
+  const [confirmado, setConfirmado] = useState(false);
+  const idCasilla = useId();
+  const T = incierto ? TEXTOS_PRESENTACION.errorIncierto : TEXTOS_PRESENTACION.errorSeguro;
+  const faltaConfirmar = incierto && !confirmado;
+  return (
+    <div
+      ref={pieRef}
+      className="flex flex-col gap-3 border-t-2 border-divisor bg-card px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+    >
+      <div className="flex min-w-0 items-start gap-2 text-sm">
+        <CircleAlertIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-danger-foreground" />
+        <p className="min-w-0">
+          <span className="font-semibold">{T.titulo}.</span> {T.cuerpo}
+        </p>
+      </div>
+      {incierto && (
+        <label htmlFor={idCasilla} className="flex items-start gap-2 text-sm font-medium">
+          <input
+            id={idCasilla}
+            type="checkbox"
+            className="mt-0.5 size-4 shrink-0 accent-primary"
+            checked={confirmado}
+            onChange={(e) => setConfirmado(e.target.checked)}
+            disabled={enviando}
+          />
+          {TEXTOS_PRESENTACION.errorIncierto.confirmacion}
+        </label>
+      )}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button
+          onClick={() => onReintentar(incierto)}
+          disabled={!puedeReintentar || faltaConfirmar || enviando}
+        >
+          {enviando ? TEXTO_BOTON_REINTENTANDO : TEXTO_BOTON_REINTENTAR}
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -845,7 +991,46 @@ function DatosEditables({ revision, ids }: { revision: RevisionTramite; ids: Ids
       </Campo>
 
       <CamposOvzEditables revision={revision} ocupado={ocupado} />
+
+      {/* Escalón 2 (T5): si al aprobar Ganera va a presentar la baja en OVZ, se enseña exactamente lo
+          que se presentará (de lo GUARDADO: aprobar exige no tener cambios sin guardar). */}
+      {detalle.sePresentaraAutomaticamente && <VistaPreviaPresentar detalle={detalle} />}
     </>
+  );
+}
+
+/** Escalón 2 (T5): vista previa de lo que Ganera presentará en OVZ al aprobar una baja (crotal,
+ * explotación, fecha de muerte, MER). Honesto (D10): la aprobación es la revisión humana; lo que se
+ * lista es justo lo que se va a presentar. */
+function VistaPreviaPresentar({ detalle }: { detalle: TramiteDetalle }) {
+  const previa = vistaPreviaPresentacion(detalle);
+  const filas: { etiqueta: string; valor: string | null }[] = [
+    { etiqueta: "Crotal", valor: previa.crotal },
+    { etiqueta: "Explotación", valor: previa.explotacion },
+    { etiqueta: "Fecha de muerte", valor: previa.fechaMuerte },
+    { etiqueta: "Número MER", valor: previa.numeroMer },
+  ];
+  return (
+    <div
+      data-vista-previa-ovz
+      className="flex min-w-0 flex-col gap-2 border border-primary/40 bg-primary/5 p-4"
+    >
+      <p className="text-sm font-semibold">Al aprobar, Ganera presentará esta baja en OVZ:</p>
+      <dl className="grid gap-2 sm:grid-cols-2">
+        {filas.map(({ etiqueta, valor }) => (
+          <div key={etiqueta} className="flex min-w-0 flex-col gap-0.5">
+            <dt className="text-xs text-muted-foreground">{etiqueta}</dt>
+            <dd className="text-sm break-words">
+              {valor ?? <span className="text-muted-foreground">—</span>}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <p className="text-xs text-muted-foreground">
+        Ganera verifica el crotal y la explotación en OVZ antes de confirmar. Si algo no cuadra, no
+        presenta nada y te avisa.
+      </p>
+    </div>
   );
 }
 
@@ -1081,7 +1266,11 @@ function BarraAcciones({
             disabled={!revision.puedeAprobar}
             aria-describedby={descritoPor}
           >
-            {enviando === "aprobar" ? TEXTO_EN_CURSO.aprobar : "Aprobar"}
+            {enviando === "aprobar"
+              ? TEXTO_EN_CURSO.aprobar
+              : revision.detalle
+                ? textoBotonAprobar(revision.detalle)
+                : "Aprobar"}
           </Button>
         </div>
       </div>

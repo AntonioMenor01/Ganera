@@ -44,6 +44,8 @@ const DETALLE = {
   consignatario: null,
   aptitudMovimiento: null,
   fechaIdentificacion: null,
+  sePresentaraAutomaticamente: false,
+  presentacionOvz: null,
 }
 
 const RESPUESTA_LISTA = {

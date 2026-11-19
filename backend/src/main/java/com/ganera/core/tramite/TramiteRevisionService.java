@@ -563,7 +563,9 @@ public class TramiteRevisionService {
                 .map(MensajeCampo::getCuerpo)
                 .orElse(null);
         return TramiteDetalleResponse.from(tramite, mensajeOriginal, respuestas(filas),
-                whatsappDetalleService.bloque(tramite, gestoriaId), historialDescarte(tramite.getId(), gestoriaId));
+                whatsappDetalleService.bloque(tramite, gestoriaId), historialDescarte(tramite.getId(), gestoriaId),
+                trabajoOvzService.sePresentaraAutomaticamente(tramite),
+                trabajoOvzService.presentacionDe(tramite.getId(), gestoriaId).orElse(null));
     }
 
     /**

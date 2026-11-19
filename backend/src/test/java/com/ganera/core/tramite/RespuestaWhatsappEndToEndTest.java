@@ -748,7 +748,8 @@ class RespuestaWhatsappEndToEndTest {
                 "hechoEnOvzEn", "hechoEnOvzPorNombre", "whatsapp", "motivoRechazo", "descartable", "historialDescarte",
                 "fechaHecho", "fechaNacimiento", "sexo", "crotalMadreIndicado", "crotalMadre", "crotalMadreResolucion",
                 "numeroMer", "destinoRega",
-                "destinoTexto", "consignatario", "aptitudMovimiento", "fechaIdentificacion");
+                "destinoTexto", "consignatario", "aptitudMovimiento", "fechaIdentificacion",
+                "sePresentaraAutomaticamente", "presentacionOvz");
     }
 
     @Test
