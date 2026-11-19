@@ -22,8 +22,6 @@ class TwilioEnvioWhatsappArranqueTest {
 
     @Autowired
     private EnvioWhatsapp envioWhatsapp;
-    @Autowired
-    private org.springframework.boot.web.servlet.FilterRegistrationBean<LimiteCuerpoCallbackEstadoFilter> limiteCallback;
 
     @Test
     void conTwilioVacioArrancaYElEnvioRealNoEstaConfigurado() {
@@ -46,9 +44,18 @@ class TwilioEnvioWhatsappArranqueTest {
                 .isNull();
     }
 
-    /** El tope de tamano del callback va antes de Spring Security y solo en su ruta exacta. */
+    /**
+     * El tope de tamano del callback va antes de Spring Security y solo en su ruta exacta. Se comprueba sobre el bean
+     * que construye la config, no inyectandolo: {@link WhatsappFiltrosConfig} lleva
+     * {@code @ConditionalOnWebApplication(SERVLET)}, asi que su {@code FilterRegistrationBean} solo existe en un
+     * contexto web (el backend), nunca en este contexto {@code NONE} ni en el WORKER de OVZ (web-application-type:
+     * none), que no tiene cadena de filtros. Que de verdad quede registrado y filtre en el backend web lo cubren los
+     * E2E del callback de estado.
+     */
     @Test
     void elFiltroDeTamanoDelCallbackVaAntesDeSpringSecurityYSoloEnSuRuta() {
+        org.springframework.boot.web.servlet.FilterRegistrationBean<LimiteCuerpoCallbackEstadoFilter> limiteCallback =
+                new WhatsappFiltrosConfig().limiteCuerpoCallbackEstado();
         assertThat(limiteCallback.getOrder())
                 .isLessThan(org.springframework.boot.autoconfigure.security.SecurityProperties.DEFAULT_FILTER_ORDER);
         assertThat(limiteCallback.getUrlPatterns()).containsExactly("/webhooks/twilio/whatsapp/estado");

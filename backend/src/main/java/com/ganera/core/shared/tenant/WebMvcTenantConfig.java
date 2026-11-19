@@ -1,11 +1,16 @@
 package com.ganera.core.shared.tenant;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+// Solo en apps web (servlet): infra de Spring MVC. El backend siempre es web (identico a hoy); el WORKER de OVZ
+// (web-application-type: none) no registra interceptores MVC. Ver PerfilCleverWorkerArranqueTest.
 @Configuration
+@ConditionalOnWebApplication(type = Type.SERVLET)
 public class WebMvcTenantConfig implements WebMvcConfigurer {
 
     private final TenantFilterActivationInterceptor tenantFilterActivationInterceptor;

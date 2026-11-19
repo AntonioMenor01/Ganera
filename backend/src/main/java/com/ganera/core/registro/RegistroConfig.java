@@ -1,6 +1,8 @@
 package com.ganera.core.registro;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,7 +17,10 @@ import org.springframework.core.Ordered;
  * <p>{@code ganera.registro.abierto} es fail-closed (D4): {@code false} en application.yml y
  * {@code false} tambien aqui si la propiedad no existe. Solo la abren los tests que la necesitan.
  */
+// Solo en apps web (servlet): registra un filtro de servlet. El backend siempre es web (identico a hoy); el WORKER de
+// OVZ (web-application-type: none) no tiene cadena de filtros. Ver PerfilCleverWorkerArranqueTest.
 @Configuration
+@ConditionalOnWebApplication(type = Type.SERVLET)
 class RegistroConfig {
 
     static final String RUTA_REGISTRO = "/gestorias/registro";
