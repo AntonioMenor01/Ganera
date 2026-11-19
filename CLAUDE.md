@@ -108,39 +108,52 @@ approval step before anything is written to OVZ.net.
    data into OVZ by hand (ficha OVZ) and click "Marcar como hecho en OVZ" → `HECHO_EN_OVZ`, recording
    who and when (reversible; see the "Hecho en OVZ" bullet under Technical decisions). In escalón 1
    Ganera sends nothing; escalón 2 is step 7.
-7. **OVZ is always assisted, never automatic** (partners' decision of 2026-10-06,
-   `docs/referencias/decisiones-ovz-y-piloto.md`; scope clarified by Antonio on 2026-10-12): Ganera
-   **never** submits a trámite to OVZ.net by itself. Escalón 1 (done) is the ficha to copy by hand.
-   **Escalón 2 (modo asistido)**, pending the OVZ mapping session: Ganera fills in the OVZ form and the
-   gestor reviews it — **one trámite at a time, after the gestor’s “Enviar”; Ganera downloads the
-   justificante**. Nothing is ever sent without that click. The "Enviar a OVZ" button and the send
-   states (Álvaro's design) belong to escalón 2; they don't appear in design phase 1. There is no
-   escalón 3, so no autonomous Playwright execution, no batch sending and no automatic retry. A
-   read-only Playwright sync of a newly onboarded Ganadero's inventory is still possible (Prompt 3a).
-   **CAMBIO DE ENFOQUE (2026-11-17, decisión de Antonio; plan
-   `docs/superpowers/plans/2026-11-17-presentacion-automatica-baja-ovz.md`; spike
-   `docs/spikes/2026-11-17-spike-ovz-presentacion-baja.md`):** para la **baja por muerte**, el escalón 2 pasa a
-   ser **presentación automática desde el servidor**: tras **aprobar** el gestor en Ganera (que **es** la
-   revisión humana — nada llega a OVZ sin ella), Ganera inicia sesión en OVZ con las credenciales cifradas del
-   ganadero (M2), navega por menús, **verifica** crotal y explotación, y **pulsa ella el «Aceptar» real**; luego
-   descarga el justificante (Documentos › «Baja Animal») y lo guarda en la ficha del ganadero. Esto
-   **reinterpreta** el «never submits by itself / nothing without the gestor's Enviar» de este paso 7 y de
-   «Non-negotiable rules»: el **clic humano es la Aprobación en Ganera**, no un «Enviar/Aceptar» por trámite.
-   Anti-duplicado estricto: **nunca se reintenta una presentación** ante respuesta incierta (se consulta en
-   Documentos; si no se sabe → `ERROR_OVZ` con aviso). Cuentas con **certificado digital: no soportadas** en
-   automático (aviso y camino manual). El enfoque previo de **extensión de Chrome** (plan
-   `2026-11-17-modo-asistido-baja-muerte.md`, rama `feat/modo-asistido-baja` con T1 el endpoint y T2 la carpeta
-   `extension/`) **queda aparcado, sin borrar**. La redacción final de la regla no-negociable y del flujo se
-   cierra **al implementar** el plan (hoy **solo plan + spike**, sin código de producción); hasta entonces, el
-   texto de arriba y el de «Non-negotiable rules» siguen describiendo el modelo anterior, ya superado para la
-   baja.
+7. **OVZ is always assisted, never autonomous** (partners' decision of 2026-10-06,
+   `docs/referencias/decisiones-ovz-y-piloto.md`; scope clarified by Antonio on 2026-10-12). Escalón 1
+   (done) is the ficha to copy by hand. For escalón 2, **the human gate is the gestor's "Aprobar" in
+   Ganera** — nothing reaches OVZ.net without an approved trámite, and no AI confidence ever skips that
+   approval. There is no escalón 3 (no batch sending, no automatic retry). A read-only Playwright sync of a
+   newly onboarded Ganadero's inventory is still possible (Prompt 3a). Two shapes of escalón 2:
+   - For most trámite types (modo asistido, Álvaro's design, pending the OVZ mapping session): Ganera fills
+     in the OVZ form and the gestor reviews and sends it — **one trámite at a time, after the gestor's
+     "Enviar"; Ganera downloads the justificante**. The "Enviar a OVZ" button and the send states belong to
+     escalón 2; they don't appear in design phase 1.
+   - **For the baja por muerte — presentación automática desde el servidor (IMPLEMENTED, T0–T6, branch
+     `feat/ovz-presentacion-automatica`; plan
+     `docs/superpowers/plans/2026-11-17-presentacion-automatica-baja-ovz.md`, decisiones D1–D11; spike
+     `docs/spikes/2026-11-17-spike-ovz-presentacion-baja.md`).** After the gestor **approves** a
+     `BAJA_MUERTE` in Ganera (that approval **is** the human review — nothing reaches OVZ without it), a job
+     is enqueued (`trabajo_ovz`, never inside the approval transaction or the row lock) and an **OVZ worker**
+     (separate Docker instance, official Playwright Java image with Chromium, profile `clever,worker`) logs
+     into OVZ with the ganadero's encrypted credentials (M2, decrypted only in the worker, never logged),
+     navigates by menus, **verifies** the crotal (Código RIIA) and the explotación (REGA) **before** acting,
+     and only then presses "Aceptar" itself; it then downloads the justificante (Documentos › "Baja Animal",
+     verified by crotal inside the PDF) and stores it in the ganadero's ficha (Postgres, D6). **The worker
+     defaults to ENSAYO mode** (`GANERA_OVZ_WORKER_MODO`): it walks everything up to **before** "Aceptar" and
+     exits without presenting (`ENSAYO_OK`); REAL mode (the real "Aceptar") only with
+     `GANERA_OVZ_WORKER_MODO=REAL`. **Anti-duplicado estricto: una presentación nunca se reintenta** ante una
+     respuesta incierta (se consulta Documentos; si no se resuelve → `ERROR_OVZ` incierto con aviso al
+     gestor, que solo se reencola con confirmación explícita auditada, D11). Cuentas con **certificado
+     digital: no soportadas** en automático (aviso y camino manual, D8). **Fail-closed por doble interruptor
+     (T6):** se encola solo si `ganera.ovz.presentacion-automatica.activa` (maestro, apagado por defecto)
+     **y** la gestoría está en `ganera.ovz.presentacion-automatica.gestorias` (lista vacía por defecto); si
+     no hay credenciales guardadas, cae al camino manual (`HECHO_EN_OVZ`, D4). El enfoque previo de
+     **extensión de Chrome** (plan `2026-11-17-modo-asistido-baja-muerte.md`, rama `feat/modo-asistido-baja`)
+     **queda aparcado, sin borrar**.
 
 ## Non-negotiable rules
 
-- **Nothing is ever sent to OVZ.net without the gestor's explicit click on "Enviar"** in the form
-  Ganera filled in (escalón 2 (modo asistido)), after reviewing it, **one trámite at a time**.
-  "Aprobar" executes nothing in OVZ; it only marks the data as reviewed, and only an approved trámite
-  can reach that form. No AI confidence threshold ever skips either step.
+- **The human click is the gestor's "Aprobar" in Ganera, and nothing reaches OVZ.net without it** (D10,
+  closed 2026-11-17). Ganera presents to OVZ.net **only trámites already approved**, **one at a time**,
+  with **prior verification** (crotal + explotación) and **never a retry on an uncertain response**. No AI
+  confidence threshold ever skips the approval. Two readings, both subject to this rule:
+  - *Modo asistido (most types):* Ganera fills in the OVZ form and the gestor sends it with an explicit
+    "Enviar"; only an approved trámite can reach that form.
+  - *Baja por muerte (presentación automática, implemented):* the approval **is** the human gate; the
+    `BAJA_MUERTE` worker then presses OVZ's real "Aceptar" by itself **only on an approved trámite**, after
+    verifying crotal (Código RIIA) and explotación (REGA), and **the worker starts in ENSAYO mode by
+    default** (never presses "Aceptar" until `GANERA_OVZ_WORKER_MODO=REAL`). A presentation is **never
+    retried** on uncertainty. See Operational flow step 7.
 - OVZ.net credentials are encrypted at rest (AES-256-GCM, `CifradorAesGcm`; decrypted only on demand, see the
   "Auditoría" bullet), key from
   `ENCRYPTION_KEY` env var only — never hardcoded, never a silent insecure default (the app fails

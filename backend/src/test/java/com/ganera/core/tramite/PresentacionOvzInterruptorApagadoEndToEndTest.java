@@ -9,6 +9,7 @@ import com.ganera.core.facturacion.Suscripcion;
 import com.ganera.core.facturacion.SuscripcionRepository;
 import com.ganera.core.ganadero.Ganadero;
 import com.ganera.core.ganadero.GanaderoRepository;
+import com.ganera.core.ovz.PresentacionAutomaticaProperties;
 import com.ganera.core.gestoria.Gestoria;
 import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.gestoria.Usuario;
@@ -41,7 +42,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * ningún trabajo (vía manual). La posición encendida se prueba en {@link PresentacionOvzEndToEndTest}.
  *
  * <p>Es la mutación «encolar con el interruptor apagado»: quitar el gate de {@code encolarSiProcede} pondría este
- * test en rojo (encolaría con el interruptor apagado).
+ * test en rojo (encolaría con el interruptor apagado). Un segundo caso (T6) comprueba que, con el maestro apagado,
+ * tener la gestoría en la lista {@code gestorias} NO basta para encolar (hace falta activa Y la lista).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ExtendWith(GuardiaDmlExtension.class)
@@ -58,12 +60,14 @@ class PresentacionOvzInterruptorApagadoEndToEndTest {
     @Autowired private TramiteRepository tramiteRepository;
     @Autowired private TrabajoOvzRepository trabajoOvzRepository;
     @Autowired private SuscripcionRepository suscripcionRepository;
+    @Autowired private PresentacionAutomaticaProperties presentacionAutomatica;
 
     private Gestoria gestoria;
     private String token;
 
     @BeforeEach
     void preparar() {
+        presentacionAutomatica.getGestorias().clear();
         gestoria = gestoriaRepository.save(new Gestoria("Interruptor apagado"));
         Usuario usuario = new Usuario();
         usuario.setGestoria(gestoria);
@@ -82,6 +86,7 @@ class PresentacionOvzInterruptorApagadoEndToEndTest {
 
     @AfterEach
     void limpiar() {
+        presentacionAutomatica.getGestorias().clear();
         LimpiezaAuditoria.borrar(jdbcTemplate);
         jdbcTemplate.update("delete from trabajo_ovz");
         jdbcTemplate.update("delete from tramite_crotal");
@@ -123,6 +128,45 @@ class PresentacionOvzInterruptorApagadoEndToEndTest {
                 new HttpEntity<>(Map.of("version", version), headers), String.class);
 
         // El trámite se aprueba igual (vía manual), pero NO se encola nada con el interruptor apagado.
+        assertThat(r.getStatusCode().value()).isEqualTo(200);
+        assertThat(trabajoOvzRepository.existsByTramiteId(tramite.getId())).isFalse();
+        assertThat(acciones()).contains("TRAMITE_APROBADO").doesNotContain("OVZ_TRABAJO_ENCOLADO");
+    }
+
+    @Test
+    void conLaGestoriaEnLaListaPeroElMaestroApagadoTampocoEncola() {
+        // T6: la gestoría está en la lista de habilitadas, pero el interruptor maestro sigue APAGADO (valor por
+        // defecto de este contexto). Hacen falta las dos cosas (activa Y en la lista): con el maestro apagado, la
+        // lista no basta y NO se encola nada.
+        presentacionAutomatica.getGestorias().add(gestoria.getId());
+
+        Ganadero ganadero = new Ganadero();
+        ganadero.setGestoria(gestoria);
+        ganadero.setNombre("Ganadero en lista, maestro apagado");
+        ganadero.setOvzUsuario("ovzuser");
+        ganadero.setOvzPasswordCifrada(cifrador.cifrar("ovzpass"));
+        ganaderoRepository.save(ganadero);
+        Explotacion explotacion = new Explotacion();
+        explotacion.setGestoria(gestoria);
+        explotacion.setGanadero(ganadero);
+        explotacion.setCodigoRega("ES990000000002");
+        explotacion.setNombre("Finca en lista");
+        explotacionRepository.save(explotacion);
+        Tramite tramite = new Tramite();
+        tramite.setGestoria(gestoria);
+        tramite.setExplotacion(explotacion);
+        tramite.setEstado(EstadoTramite.PENDIENTE_REVISION);
+        tramite.setTipoTramite(TipoTramite.BAJA_MUERTE);
+        tramiteRepository.save(tramite);
+
+        long version = jdbcTemplate.queryForObject("select version from tramite where id = ?", Long.class,
+                tramite.getId());
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        ResponseEntity<String> r = restTemplate.postForEntity("/tramites/" + tramite.getId() + "/aprobar",
+                new HttpEntity<>(Map.of("version", version), headers), String.class);
+
         assertThat(r.getStatusCode().value()).isEqualTo(200);
         assertThat(trabajoOvzRepository.existsByTramiteId(tramite.getId())).isFalse();
         assertThat(acciones()).contains("TRAMITE_APROBADO").doesNotContain("OVZ_TRABAJO_ENCOLADO");

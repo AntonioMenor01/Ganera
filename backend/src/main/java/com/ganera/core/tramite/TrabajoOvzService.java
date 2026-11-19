@@ -7,6 +7,7 @@ import com.ganera.core.ovz.DatosPresentacionBaja;
 import com.ganera.core.ovz.DocumentoOvzInvalidoException;
 import com.ganera.core.ovz.DocumentoOvzService;
 import com.ganera.core.ovz.Justificante;
+import com.ganera.core.ovz.PresentacionAutomaticaProperties;
 import com.ganera.core.ovz.TipoDocumentoOvz;
 import com.ganera.core.ovz.ValidadorPdf;
 import com.ganera.core.shared.auditoria.AccionAuditoria;
@@ -63,12 +64,13 @@ public class TrabajoOvzService {
     private final AuditoriaService auditoriaService;
     private final Clock clock;
     /**
-     * Interruptor maestro de la presentacion automatica (T3). APAGADO por defecto: al aprobar NO se encola nada
-     * (via manual, HECHO_EN_OVZ), aunque el ganadero tenga credenciales. Solo afecta al encolado al aprobar
-     * ({@link #encolarSiProcede}); el reencolado manual de un trabajo ya existente ({@link #reencolar}) es una
-     * accion explicita del gestor y no depende de este interruptor.
+     * Interruptor de la presentacion automatica (T3 maestro + T6 por gestoria). Se encola al aprobar SOLO si el
+     * interruptor maestro esta activo Y la gestoria esta en la lista ({@code habilitadaParaGestoria}); por defecto
+     * esta apagado y la lista vacia, asi que no se encola nada (via manual, HECHO_EN_OVZ), aunque el ganadero tenga
+     * credenciales. Solo afecta al encolado al aprobar ({@link #encolarSiProcede}); el reencolado manual de un
+     * trabajo ya existente ({@link #reencolar}) es una accion explicita del gestor y no depende de este interruptor.
      */
-    private final boolean presentacionAutomaticaActiva;
+    private final PresentacionAutomaticaProperties presentacionAutomatica;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -80,8 +82,7 @@ public class TrabajoOvzService {
                              DocumentoOvzService documentoOvzService,
                              AuditoriaService auditoriaService,
                              Clock clock,
-                             @org.springframework.beans.factory.annotation.Value(
-                                     "${ganera.ovz.presentacion-automatica.activa:false}") boolean presentacionAutomaticaActiva) {
+                             PresentacionAutomaticaProperties presentacionAutomatica) {
         this.trabajoOvzRepository = trabajoOvzRepository;
         this.tramiteRepository = tramiteRepository;
         this.tramiteCrotalService = tramiteCrotalService;
@@ -89,7 +90,7 @@ public class TrabajoOvzService {
         this.documentoOvzService = documentoOvzService;
         this.auditoriaService = auditoriaService;
         this.clock = clock;
-        this.presentacionAutomaticaActiva = presentacionAutomaticaActiva;
+        this.presentacionAutomatica = presentacionAutomatica;
     }
 
     /**
@@ -99,8 +100,9 @@ public class TrabajoOvzService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void encolarSiProcede(Tramite tramite, Long gestoriaId, Long usuarioId) {
-        if (!presentacionAutomaticaActiva) {
-            // Interruptor apagado (T3): nada se encola al aprobar; la baja se tramita por la via manual.
+        if (!presentacionAutomatica.habilitadaParaGestoria(gestoriaId)) {
+            // Interruptor apagado o gestoria no habilitada (T3 maestro + T6 por gestoria): nada se encola al
+            // aprobar; la baja se tramita por la via manual.
             return;
         }
         if (tramite.getTipoTramite() != TipoTramite.BAJA_MUERTE) {
@@ -145,13 +147,15 @@ public class TrabajoOvzService {
 
     /**
      * Si al aprobar este trámite se encolaría una presentación automática (T5): misma condición que
-     * {@link #encolarSiProcede} (interruptor encendido, {@code BAJA_MUERTE}, con explotación y con credenciales
+     * {@link #encolarSiProcede} (interruptor habilitado para la gestoría, {@code BAJA_MUERTE}, con explotación y con credenciales
      * usuario+contraseña sin certificado, D4/D8), pero SIN tocar la cola. Lo usa el detalle para el botón «Aprobar y
      * presentar en OVZ» y para saber que la vía será la automática. Lee el ganadero por la explotación (dentro de la
      * petición, OSIV); no abre transacción.
      */
     public boolean sePresentaraAutomaticamente(Tramite tramite) {
-        if (!presentacionAutomaticaActiva || tramite.getTipoTramite() != TipoTramite.BAJA_MUERTE) {
+        Long gestoriaId = tramite.getGestoria() == null ? null : tramite.getGestoria().getId();
+        if (!presentacionAutomatica.habilitadaParaGestoria(gestoriaId)
+                || tramite.getTipoTramite() != TipoTramite.BAJA_MUERTE) {
             return false;
         }
         Explotacion explotacion = tramite.getExplotacion();

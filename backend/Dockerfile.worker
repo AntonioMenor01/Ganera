@@ -14,8 +14,12 @@ RUN mvn -q -B -DskipTests package
 # --- Etapa 2: ejecucion con Playwright + Chromium (imagen oficial de Playwright para Java 1.49.0) ---
 # La version de la imagen debe coincidir con <playwright.version> del pom.xml (1.49.0): si no, Playwright intenta
 # descargar otro Chromium en tiempo de ejecucion.
-# VERIFICAR EN T6: que esta imagen trae un JDK 21 (el jar se compila con --release 21). Si trajera otro, instalar
-# Temurin 21 en esta etapa antes de copiar el jar.
+# VERIFICADO EN T6 (2026-11-19): esta imagen trae JDK 21. El Dockerfile oficial de playwright-java v1.49.0
+# (utils/docker/Dockerfile.noble) instala `openjdk-21-jdk` y fija JAVA_HOME=/usr/lib/jvm/java-21-openjdk-*, asi que
+# el jar compilado con --release 21 arranca sin instalar otro JDK. (Si un bump de <playwright.version> cambiara la
+# base a una con otro JDK, habria que instalar Temurin 21 aqui antes de copiar el jar.)
+# Chromium arranca con --no-sandbox y --disable-dev-shm-usage (el worker corre como root en el contenedor): esos
+# flags se pasan en PlaywrightNavegadorOvz.abrir() (setArgs), no aqui, asi que no hace falta nada mas en la imagen.
 FROM mcr.microsoft.com/playwright/java:v1.49.0-noble
 WORKDIR /app
 COPY --from=builder /build/target/*.jar /app/app.jar

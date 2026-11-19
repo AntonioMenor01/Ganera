@@ -40,6 +40,7 @@ import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTest
 @AutoConfigureTestDatabase(replace = NONE)
 @Import({TramiteCrotalService.class, TramiteRevisionService.class, TrabajoOvzService.class, RelojConfig.class,
         com.ganera.core.ovz.DocumentoOvzService.class,
+        com.ganera.core.ovz.PresentacionAutomaticaConfig.class,
         com.ganera.core.shared.auditoria.AuditoriaService.class,
         com.ganera.core.whatsapp.WhatsappDetalleService.class})
 class TramiteControllerTest {

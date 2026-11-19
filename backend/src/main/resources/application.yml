@@ -108,10 +108,27 @@ ganera:
       url: ""
       intervalo: PT10S
     presentacion-automatica:
-      # Interruptor maestro de la presentacion automatica de la baja (escalon 2, plan 2026-11-17, T3). APAGADO por
-      # defecto: al aprobar un BAJA_MUERTE NO se encola ningun trabajo en trabajo_ovz, aunque el ganadero tenga
-      # credenciales (la via sigue siendo la manual, HECHO_EN_OVZ). Se encenderá cuando el worker (T4) este listo.
-      activa: false
+      # Interruptor de la presentacion automatica de la baja (escalon 2, plan 2026-11-17), con dos niveles. Se lee
+      # en el BACKEND al aprobar (encolar); el worker solo reclama trabajos ya encolados, asi que estas dos
+      # variables van en el BACKEND (api.ganera.es), no en el worker.
+      #
+      # 1) `activa` — interruptor MAESTRO. APAGADO por defecto: con el apagado NO se encola ningun trabajo en
+      #    trabajo_ovz al aprobar un BAJA_MUERTE, aunque el ganadero tenga credenciales (la via sigue siendo la
+      #    manual, HECHO_EN_OVZ), sea cual sea la lista de abajo.
+      #    Variable de entorno: GANERA_OVZ_PRESENTACION_AUTOMATICA_ACTIVA=true
+      #
+      # 2) `gestorias` — lista de ids de gestoria HABILITADAS, separadas por comas. VACIA por defecto (ninguna).
+      #    Con el maestro encendido, solo las gestorias de esta lista presentan automaticamente; una lista vacia
+      #    no habilita a ninguna. Fail-closed: se encola solo si (activa=true) Y (la gestoria esta en la lista).
+      #    Variable de entorno: GANERA_OVZ_PRESENTACION_AUTOMATICA_GESTORIAS=4,7
+      #
+      # Se usan placeholders ${...} con el nombre EXACTO de la variable (no binding relajado: el guion de
+      # `presentacion-automatica` haria que GANERA_OVZ_PRESENTACION_AUTOMATICA_* NO casara por binding relajado,
+      # que quita los guiones). Asi el despliegue a produccion no cambia nada hasta encender el maestro y anadir
+      # cada gestoria a la lista, una a una (rollout por gestoria, T6). El reencolado manual de un trabajo ya
+      # existente no depende de esto.
+      activa: ${GANERA_OVZ_PRESENTACION_AUTOMATICA_ACTIVA:false}
+      gestorias: ${GANERA_OVZ_PRESENTACION_AUTOMATICA_GESTORIAS:}
   retencion:
     # Job nocturno de retencion de mensajes de WhatsApp (B1, T3, D6), despues del de Stripe (03:00).
     activo: true

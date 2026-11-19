@@ -9,6 +9,7 @@ import com.ganera.core.facturacion.Suscripcion;
 import com.ganera.core.facturacion.SuscripcionRepository;
 import com.ganera.core.ganadero.Ganadero;
 import com.ganera.core.ganadero.GanaderoRepository;
+import com.ganera.core.ovz.PresentacionAutomaticaProperties;
 import com.ganera.core.gestoria.Gestoria;
 import com.ganera.core.gestoria.GestoriaRepository;
 import com.ganera.core.gestoria.Usuario;
@@ -45,8 +46,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * explícita y queda auditado. Cada acción deja su fila EXACTA en la gestoría del actor y ninguna en la otra.
  *
  * <p>El interruptor maestro {@code ganera.ovz.presentacion-automatica.activa} se enciende SOLO aquí
- * ({@code @TestPropertySource}, T3): el encolado al aprobar solo ocurre con el interruptor encendido. La posición
- * apagada (el valor por defecto) se prueba en {@code PresentacionOvzInterruptorApagadoEndToEndTest}.
+ * ({@code @TestPropertySource}, T3). Además (T6) el encolado exige que la gestoría esté en la lista
+ * {@code ganera.ovz.presentacion-automatica.gestorias}: el {@code @BeforeEach} mete la gestoría A en la lista (vía
+ * el bean de propiedades, porque los ids son dinámicos) y deja la B FUERA, así que A encola y B no (maestro
+ * encendido pero gestoría no habilitada). La posición apagada del maestro se prueba en
+ * {@code PresentacionOvzInterruptorApagadoEndToEndTest}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource(properties = "ganera.ovz.presentacion-automatica.activa=true")
@@ -64,10 +68,12 @@ class PresentacionOvzEndToEndTest {
     @Autowired private TramiteRepository tramiteRepository;
     @Autowired private TrabajoOvzRepository trabajoOvzRepository;
     @Autowired private SuscripcionRepository suscripcionRepository;
+    @Autowired private PresentacionAutomaticaProperties presentacionAutomatica;
 
     private Gestoria gestoriaA;
     private Gestoria gestoriaB;
     private String tokenA;
+    private String tokenB;
 
     @BeforeEach
     void preparar() {
@@ -76,13 +82,18 @@ class PresentacionOvzEndToEndTest {
         crearUsuario(gestoriaA, "presentacionA@test.com");
         crearUsuario(gestoriaB, "presentacionB@test.com");
         tokenA = login("presentacionA@test.com");
+        tokenB = login("presentacionB@test.com");
         suscripcion(gestoriaA);
         suscripcion(gestoriaB);
+        // T6: la gestoría A está en la lista de habilitadas (ids dinámicos → vía el bean); la B queda FUERA.
+        presentacionAutomatica.getGestorias().clear();
+        presentacionAutomatica.getGestorias().add(gestoriaA.getId());
         LimpiezaAuditoria.borrar(jdbcTemplate);
     }
 
     @AfterEach
     void limpiar() {
+        presentacionAutomatica.getGestorias().clear();
         LimpiezaAuditoria.borrar(jdbcTemplate);
         jdbcTemplate.update("delete from trabajo_ovz");
         jdbcTemplate.update("delete from tramite_crotal");
@@ -146,6 +157,24 @@ class PresentacionOvzEndToEndTest {
         assertThat(aprobar(tramite).getStatusCode().value()).isEqualTo(200);
 
         assertThat(trabajoOvzRepository.existsByTramiteId(tramite.getId())).isFalse();
+    }
+
+    @Test
+    void aprobarBajaMuerteDeUnaGestoriaFueraDeLaListaNoEncola() {
+        // T6: maestro ENCENDIDO (este contexto) pero la gestoría B NO está en la lista de habilitadas. Aunque el
+        // ganadero tiene credenciales válidas, al aprobar NO se encola (fail-closed: activa Y en la lista).
+        Explotacion explotacion = explotacionConGanadero(gestoriaB, "ES020000000050", true, false);
+        Tramite tramite = bajaMuertePendiente(gestoriaB, explotacion);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(tokenB);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        ResponseEntity<String> r = restTemplate.postForEntity("/tramites/" + tramite.getId() + "/aprobar",
+                new HttpEntity<>(Map.of("version", versionTramite(tramite.getId())), headers), String.class);
+
+        assertThat(r.getStatusCode().value()).isEqualTo(200);
+        assertThat(trabajoOvzRepository.existsByTramiteId(tramite.getId())).isFalse();
+        assertThat(acciones(gestoriaB)).contains("TRAMITE_APROBADO").doesNotContain("OVZ_TRABAJO_ENCOLADO");
     }
 
     // ==================== Detalle: se presentará automáticamente / estado del trabajo (T5) ====================

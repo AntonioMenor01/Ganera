@@ -10,7 +10,9 @@ endpoints) y solo ejecuta su planificador. T6 lo despliega; esto deja el contrat
   `FOR UPDATE SKIP LOCKED` reclama un trabajo a la vez; con más instancias habría varias sesiones OVZ simultáneas).
 - Dockerfile: `backend/Dockerfile.worker` (`APP_FOLDER=backend`, `CC_DOCKERFILE=Dockerfile.worker`, o el mecanismo
   equivalente de Clever). Base `mcr.microsoft.com/playwright/java:v1.49.0-noble` (Playwright 1.49.0 = el del `pom.xml`).
-  **Comprobar en T6 que la imagen trae un JDK 21.**
+  **Verificado en T6 (2026-11-19):** esa imagen instala `openjdk-21-jdk` (Dockerfile oficial de playwright-java
+  v1.49.0), así que el jar `--release 21` arranca sin instalar otro JDK. Chromium arranca con `--no-sandbox`
+  (lo pasa `PlaywrightNavegadorOvz`), necesario porque el worker corre como root en el contenedor.
 
 ## Variables de entorno
 
