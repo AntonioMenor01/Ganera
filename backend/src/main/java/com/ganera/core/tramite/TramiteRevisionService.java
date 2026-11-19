@@ -562,10 +562,16 @@ public class TramiteRevisionService {
                 .findFirstByTramiteIdAndGestoriaIdOrderByCreatedAtDesc(tramite.getId(), gestoriaId)
                 .map(MensajeCampo::getCuerpo)
                 .orElse(null);
+        // presentacionDe solo para BAJA_MUERTE (unico tipo con trabajo): evita una consulta en balde en el
+        // resto. En estos caminos (PATCH/descartar/deshacer) el tramite esta en PENDIENTE_REVISION y aun no
+        // hay trabajo, asi que normalmente es null de todas formas.
+        PresentacionOvzResponse presentacion = tramite.getTipoTramite() == TipoTramite.BAJA_MUERTE
+                ? trabajoOvzService.presentacionDe(tramite.getId(), gestoriaId).orElse(null)
+                : null;
         return TramiteDetalleResponse.from(tramite, mensajeOriginal, respuestas(filas),
                 whatsappDetalleService.bloque(tramite, gestoriaId), historialDescarte(tramite.getId(), gestoriaId),
                 trabajoOvzService.sePresentaraAutomaticamente(tramite),
-                trabajoOvzService.presentacionDe(tramite.getId(), gestoriaId).orElse(null));
+                presentacion);
     }
 
     /**

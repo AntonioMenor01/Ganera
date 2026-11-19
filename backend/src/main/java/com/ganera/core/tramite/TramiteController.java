@@ -167,12 +167,17 @@ public class TramiteController {
                 .findFirstByTramiteIdAndGestoriaIdOrderByCreatedAtDesc(id, principal.gestoriaId())
                 .map(MensajeCampo::getCuerpo)
                 .orElse(null);
+        // presentacionDe solo si el tipo puede tener trabajo (BAJA_MUERTE): evita una consulta en balde en
+        // la ruta caliente del detalle para el resto de tipos (nunca hay trabajo de otro tipo).
+        PresentacionOvzResponse presentacion = tramite.get().getTipoTramite() == TipoTramite.BAJA_MUERTE
+                ? trabajoOvzService.presentacionDe(id, principal.gestoriaId()).orElse(null)
+                : null;
         return ResponseEntity.ok(TramiteDetalleResponse.from(
                 tramite.get(), mensajeOriginal, crotalesDe(tramite.get(), principal.gestoriaId()),
                 whatsappDetalleService.bloque(tramite.get(), principal.gestoriaId()),
                 tramiteRevisionService.historialDescarte(id, principal.gestoriaId()),
                 trabajoOvzService.sePresentaraAutomaticamente(tramite.get()),
-                trabajoOvzService.presentacionDe(id, principal.gestoriaId()).orElse(null)));
+                presentacion));
     }
 
     /**

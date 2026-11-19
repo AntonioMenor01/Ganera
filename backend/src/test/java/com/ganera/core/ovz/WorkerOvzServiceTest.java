@@ -1,5 +1,9 @@
 package com.ganera.core.ovz;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.ganera.core.explotacion.Explotacion;
 import com.ganera.core.explotacion.ExplotacionRepository;
 import com.ganera.core.ganadero.DescifradoCredencialOvz;
@@ -24,6 +28,7 @@ import com.ganera.core.tramite.TramiteRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -156,6 +161,29 @@ class WorkerOvzServiceTest {
         worker("").procesarUno();
         assertThat(navegador.veces("pulsarAceptar")).isZero();
         assertThat(estadoTrabajo()).isEqualTo("ENSAYO_OK");
+    }
+
+    @Test
+    void enEnsayoRegistraPaso7SesionCerradaSinValoresSensibles() {
+        Logger log = (Logger) LoggerFactory.getLogger(WorkerOvzService.class);
+        ListAppender<ILoggingEvent> eventos = new ListAppender<>();
+        eventos.start();
+        log.addAppender(eventos);
+        try {
+            worker("ENSAYO").procesarUno();
+        } finally {
+            log.detachAppender(eventos);
+            eventos.stop();
+        }
+
+        // La sesión de OVZ se cierra también en ensayo (igual que en real) y queda constancia en el log.
+        assertThat(navegador.llamadas).contains("salir");
+        assertThat(eventos.list).anySatisfy(evento -> {
+            assertThat(evento.getLevel()).isEqualTo(Level.INFO);
+            assertThat(evento.getFormattedMessage()).contains("PASO 7 OK").contains("sesión de OVZ cerrada");
+        });
+        // La confirmación de cierre nunca lleva crotal, REGA ni la contraseña.
+        assertThat(eventos.list.toString()).doesNotContain(CROTAL).doesNotContain(REGA).doesNotContain(PASSWORD);
     }
 
     @Test

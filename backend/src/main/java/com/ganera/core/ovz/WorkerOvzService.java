@@ -135,11 +135,12 @@ public class WorkerOvzService {
             navegador.rellenarMer(datos.numeroMer());
 
             if (modo == ModoWorkerOvz.ENSAYO) {
-                // ENSAYO: hasta aquí y nada más. NUNCA se llega a pulsarAceptar.
+                // ENSAYO: hasta aquí y nada más. NUNCA se llega a pulsarAceptar. La sesión de OVZ SIEMPRE se cierra,
+                // igual que en real: dejarla abierta con las credenciales del ganadero sería una fuga.
                 navegador.salir();
                 cerrada = true;
+                log.info("PASO 7 OK: trabajo {} sesión de OVZ cerrada (ensayo, no se presentó nada)", trabajoId);
                 trabajoOvzService.finalizarEnsayo(trabajoId, gestoriaId);
-                log.info("Worker OVZ: trabajo {} ensayado (no se presentó nada)", trabajoId);
                 return;
             }
 
@@ -149,6 +150,7 @@ public class WorkerOvzService {
             Optional<Justificante> justificante = buscarJustificante(datos.crotal(), instanteClic).justificante();
             navegador.salir();
             cerrada = true;
+            log.info("PASO 7 OK: trabajo {} sesión de OVZ cerrada", trabajoId);
             registrarEjecutado(trabajoId, gestoriaId, justificante);
         } catch (AceptarException e) {
             // «Aceptar» no cuadró con lo esperado y NO se pulsó (la excepción se lanza antes del clic).

@@ -809,7 +809,7 @@ function PieReintentarOvz({
       )}
       <div className="flex flex-wrap items-center justify-end gap-2">
         <Button
-          onClick={() => onReintentar(incierto)}
+          onClick={() => onReintentar(confirmado)}
           disabled={!puedeReintentar || faltaConfirmar || enviando}
         >
           {enviando ? TEXTO_BOTON_REINTENTANDO : TEXTO_BOTON_REINTENTAR}

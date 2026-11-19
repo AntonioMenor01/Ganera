@@ -167,6 +167,20 @@ describe("FichaOvzPage: ficha copiable (APROBADO)", () => {
     expect(within(fila("Crotal")).getByText("escrito: 1234")).toBeInTheDocument();
   });
 
+  // Escalón 2 (T5, D10): una baja APROBADA pero en cola de presentación automática no se copia a mano.
+  it("en cola de presentación automática: dice que la presenta Ganera y no ofrece copiar ni «Ganera no envía nada»", async () => {
+    responderCon(() =>
+      HttpResponse.json(
+        detalle({ presentacionOvz: { estadoTrabajo: "PENDIENTE", claseError: null, actualizadoEn: null } }),
+      ),
+    );
+    montar();
+
+    expect(await screen.findByText("Se presentará en OVZ automáticamente")).toBeInTheDocument();
+    expect(screen.queryByText("Para copiar en OVZ. Ganera no envía nada.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Copiar/ })).not.toBeInTheDocument();
+  });
+
   it("un crotal que falta dice qué se escribió", async () => {
     responderCon(() =>
       HttpResponse.json(
