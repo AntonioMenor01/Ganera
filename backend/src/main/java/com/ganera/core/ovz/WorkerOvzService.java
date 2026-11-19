@@ -139,7 +139,8 @@ public class WorkerOvzService {
                 // igual que en real: dejarla abierta con las credenciales del ganadero sería una fuga.
                 navegador.salir();
                 cerrada = true;
-                log.info("PASO 7 OK: trabajo {} sesión de OVZ cerrada (ensayo, no se presentó nada)", trabajoId);
+                // ENSAYO: tras PASO 7 (MER) se sale sin pasar por «Aceptar» (PASO 8 en real) ni Documentos (PASO 9).
+                log.info("PASO 8 OK: trabajo {} sesión de OVZ cerrada (ensayo, no se presentó nada)", trabajoId);
                 trabajoOvzService.finalizarEnsayo(trabajoId, gestoriaId);
                 return;
             }
@@ -150,7 +151,8 @@ public class WorkerOvzService {
             Optional<Justificante> justificante = buscarJustificante(datos.crotal(), instanteClic).justificante();
             navegador.salir();
             cerrada = true;
-            log.info("PASO 7 OK: trabajo {} sesión de OVZ cerrada", trabajoId);
+            // REAL: «Aceptar» (PASO 8) y Documentos (PASO 9) ya han ocurrido; el cierre de sesión es el PASO 10.
+            log.info("PASO 10 OK: trabajo {} sesión de OVZ cerrada", trabajoId);
             registrarEjecutado(trabajoId, gestoriaId, justificante);
         } catch (AceptarException e) {
             // «Aceptar» no cuadró con lo esperado y NO se pulsó (la excepción se lanza antes del clic).

@@ -164,7 +164,7 @@ class WorkerOvzServiceTest {
     }
 
     @Test
-    void enEnsayoRegistraPaso7SesionCerradaSinValoresSensibles() {
+    void enEnsayoRegistraPaso8SesionCerradaSinValoresSensibles() {
         Logger log = (Logger) LoggerFactory.getLogger(WorkerOvzService.class);
         ListAppender<ILoggingEvent> eventos = new ListAppender<>();
         eventos.start();
@@ -180,7 +180,7 @@ class WorkerOvzServiceTest {
         assertThat(navegador.llamadas).contains("salir");
         assertThat(eventos.list).anySatisfy(evento -> {
             assertThat(evento.getLevel()).isEqualTo(Level.INFO);
-            assertThat(evento.getFormattedMessage()).contains("PASO 7 OK").contains("sesión de OVZ cerrada");
+            assertThat(evento.getFormattedMessage()).contains("PASO 8 OK").contains("sesión de OVZ cerrada");
         });
         // La confirmación de cierre nunca lleva crotal, REGA ni la contraseña.
         assertThat(eventos.list.toString()).doesNotContain(CROTAL).doesNotContain(REGA).doesNotContain(PASSWORD);

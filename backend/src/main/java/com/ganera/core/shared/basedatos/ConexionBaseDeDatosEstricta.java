@@ -36,7 +36,13 @@ public class ConexionBaseDeDatosEstricta implements EnvironmentPostProcessor, Or
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
+        // Si Flyway esta apagado (perfil worker: la BD la migra solo el backend), no se exigen sus variables:
+        // el worker conecta solo como la aplicacion (ganera_app), sin SUPABASE_FLYWAY_USER/_PASSWORD.
+        boolean flywayActivo = environment.getProperty("spring.flyway.enabled", Boolean.class, true);
         for (String propiedad : PROPIEDADES) {
+            if (!flywayActivo && propiedad.startsWith("spring.flyway.")) {
+                continue;
+            }
             if (!environment.containsProperty(propiedad)) {
                 continue;
             }

@@ -60,6 +60,9 @@ class PerfilWorkerTest {
         assertThat(String.valueOf(valor("application-worker.yml", "ganera.retencion.activo"))).isEqualTo("false");
         assertThat(String.valueOf(valor("application-worker.yml", "ganera.facturacion.sync.activo")))
                 .isEqualTo("false");
+        // El worker NO migra: Flyway apagado (la BD la migra solo el backend; el worker no necesita las
+        // credenciales de Flyway, solo las de la aplicacion).
+        assertThat(String.valueOf(valor("application-worker.yml", "spring.flyway.enabled"))).isEqualTo("false");
     }
 
     @Test
@@ -86,6 +89,10 @@ class PerfilWorkerTest {
                     .as("extraccion por IA apagada en el worker").isFalse();
             assertThat(contexto.containsBean("retencionMensajesScheduler"))
                     .as("retencion de WhatsApp apagada en el worker").isFalse();
+            // El worker no migra: con spring.flyway.enabled=false Boot no crea el bean Flyway. Asi el worker no
+            // necesita SUPABASE_FLYWAY_USER/_PASSWORD (ConexionBaseDeDatosEstricta tampoco las exige).
+            assertThat(contexto.getBeanNamesForType(org.flywaydb.core.Flyway.class))
+                    .as("Flyway apagado en el worker (migra solo el backend)").isEmpty();
         }
     }
 }

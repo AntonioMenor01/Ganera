@@ -18,12 +18,17 @@ endpoints) y solo ejecuta su planificador. T6 lo despliega; esto deja el contrat
 
 | Variable | Valor |
 |---|---|
-| `SPRING_PROFILES_ACTIVE` | `clever,worker` (clever aporta Supabase + TLS; worker quita el servidor web y activa el planificador) |
-| `SUPABASE_DB_HOST` / `_PORT` / `_NAME` / `_USER` / `_PASSWORD` / `SUPABASE_FLYWAY_USER` / `_PASSWORD` | las **mismas** que el backend |
+| `SPRING_PROFILES_ACTIVE` | `clever,worker` (clever aporta Supabase + TLS; worker quita el servidor web, apaga Flyway y activa el planificador) |
+| `SUPABASE_DB_HOST` / `_PORT` / `_NAME` / `_USER` / `_PASSWORD` | las **mismas** que el backend. El worker conecta **solo** como la aplicación (`ganera_app`) |
 | `ENCRYPTION_KEY` | la **MISMA** que el backend. Sin ella el worker no puede descifrar las contraseñas OVZ |
+| `JWT_SECRET` | un **valor aleatorio DISTINTO del backend**. El worker no emite ni valida tokens (no hay web), pero `JwtService` se construye igual y falla el arranque si está vacío; no comparte secreto con el backend |
 | `GANERA_OVZ_WORKER_MODO` | `ENSAYO` (por defecto) hasta validar; `REAL` solo cuando Antonio lo decida |
 | `GANERA_OVZ_WORKER_URL` | URL de entrada de OVZnet |
 | `TZ` | `UTC` |
+
+**El worker NO migra** (`spring.flyway.enabled=false` en el perfil `worker`): la base de datos la migra solo el
+backend, así que el worker **no** necesita `SUPABASE_FLYWAY_USER`/`_PASSWORD` (esas son de `ganera_propietario`).
+Nunca debe haber dos migradores concurrentes sobre el mismo esquema.
 
 `GANERA_OVZ_WORKER_MODO` vacío, ausente o con cualquier valor que no sea `REAL` se trata como `ENSAYO`.
 

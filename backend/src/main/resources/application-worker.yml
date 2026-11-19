@@ -18,6 +18,12 @@ spring:
     # endpoints que exponer. Spring Boot re-enlaza spring.main.* desde este yaml de perfil antes de crear el
     # contexto, asi que el tipo de aplicacion pasa a NONE aunque los servlets esten en el classpath.
     web-application-type: none
+  flyway:
+    # El worker NO migra: la base de datos la migra solo el backend. Asi el worker conecta unicamente como la
+    # aplicacion (ganera_app) y NO necesita SUPABASE_FLYWAY_USER/_PASSWORD (ganera_propietario). Con Flyway
+    # apagado, ConexionBaseDeDatosEstricta no exige las variables de Flyway (solo las de la app). Lo comprueba
+    # PerfilWorkerTest. Nunca debe haber dos migradores concurrentes sobre el mismo esquema.
+    enabled: false
 
 ganera:
   ovz:
