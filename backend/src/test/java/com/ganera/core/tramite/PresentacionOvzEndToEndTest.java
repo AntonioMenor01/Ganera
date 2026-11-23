@@ -151,12 +151,43 @@ class PresentacionOvzEndToEndTest {
 
     @Test
     void aprobarOtroTipoConCredencialesNoEncola() {
+        // Un tipo sin presentación automática (ni baja ni alta): nunca encola, aunque haya credenciales.
         Explotacion explotacion = explotacionConGanadero(gestoriaA, "ES010000000004", true, false);
-        Tramite tramite = tramitePendiente(gestoriaA, explotacion, TipoTramite.ALTA_NACIMIENTO);
+        Tramite tramite = tramitePendiente(gestoriaA, explotacion, TipoTramite.DECLARACION_CENSO);
 
         assertThat(aprobar(tramite).getStatusCode().value()).isEqualTo(200);
 
         assertThat(trabajoOvzRepository.existsByTramiteId(tramite.getId())).isFalse();
+    }
+
+    @Test
+    void aprobarAltaNacimientoConCredencialesEncola() {
+        // tramitePendiente(ALTA_NACIMIENTO) lleva raza RETINTA [14]: autopresentable (D1/D6).
+        Explotacion explotacion = explotacionConGanadero(gestoriaA, "ES010000000005", true, false);
+        Tramite tramite = tramitePendiente(gestoriaA, explotacion, TipoTramite.ALTA_NACIMIENTO);
+
+        assertThat(aprobar(tramite).getStatusCode().value()).isEqualTo(200);
+
+        TrabajoOvz trabajo = trabajoOvzRepository.findByTramiteIdAndGestoriaId(tramite.getId(), gestoriaA.getId())
+                .orElseThrow();
+        assertThat(trabajo.getEstado()).isEqualTo(EstadoTrabajoOvz.PENDIENTE);
+        assertThat(trabajo.getTipo()).isEqualTo(TipoTrabajoOvz.ALTA_NACIMIENTO);
+        assertThat(estadoTramite(tramite)).isEqualTo("APROBADO");
+        assertThat(acciones(gestoriaA)).contains("OVZ_TRABAJO_ENCOLADO");
+    }
+
+    @Test
+    void aprobarAltaDeLidiaNoEncola() {
+        // La raza LIDIA [5] va por vía manual, nunca se autopresenta (D6).
+        Explotacion explotacion = explotacionConGanadero(gestoriaA, "ES010000000006", true, false);
+        Tramite tramite = tramitePendiente(gestoriaA, explotacion, TipoTramite.ALTA_NACIMIENTO);
+        tramite.setRaza(com.ganera.core.ovz.ListasOvz.CODIGO_RAZA_LIDIA);
+        tramiteRepository.save(tramite);
+
+        assertThat(aprobar(tramite).getStatusCode().value()).isEqualTo(200);
+
+        assertThat(trabajoOvzRepository.existsByTramiteId(tramite.getId())).isFalse();
+        assertThat(acciones(gestoriaA)).doesNotContain("OVZ_TRABAJO_ENCOLADO");
     }
 
     @Test
