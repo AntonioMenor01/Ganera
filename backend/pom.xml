@@ -63,6 +63,13 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
+        <!-- Infraestructura de email (SMTP), APAGADA por defecto (ganera.email.activo=false). Aporta
+             JavaMailSender/JavaMailSenderImpl + jakarta.mail. Sin spring.mail.host la autoconfiguracion de
+             Boot (MailSenderAutoConfiguration) se abstiene: la app arranca igual con el email en blanco. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.postgresql</groupId>
