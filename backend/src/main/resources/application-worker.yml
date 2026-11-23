@@ -24,6 +24,14 @@ spring:
     # apagado, ConexionBaseDeDatosEstricta no exige las variables de Flyway (solo las de la app). Lo comprueba
     # PerfilWorkerTest. Nunca debe haber dos migradores concurrentes sobre el mismo esquema.
     enabled: false
+  jpa:
+    # Dialecto Postgres EXPLICITO, SOLO en el worker. Aunque ddl-auto es none, Hibernate abre una conexion en el
+    # arranque para autodetectar el dialecto por los metadatos JDBC; si Supabase (Free) esta pausada/en frio en ese
+    # momento, el EntityManagerFactory no se construye y el contexto falla de forma intermitente con «Unable to
+    # determine Dialect without JDBC metadata». Con el dialecto fijado, el EntityManagerFactory se construye SIN
+    # conexion viva; la primera conexion la hace perezosamente el planificador del worker en su primera consulta.
+    # No se toca el backend: este yaml solo aplica con el perfil `worker`.
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
 
 ganera:
   ovz:

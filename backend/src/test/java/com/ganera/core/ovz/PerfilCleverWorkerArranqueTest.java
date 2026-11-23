@@ -61,6 +61,11 @@ class PerfilCleverWorkerArranqueTest {
             // El contexto arranca (antes del arreglo, fallaba al crear corsConfigurationSource por FRONTEND_ORIGEN).
             assertThat(contexto.isActive()).isTrue();
 
+            // El dialecto Postgres EXPLICITO del perfil worker esta aplicado (evita que Hibernate abra una conexion
+            // al arrancar para autodetectarlo).
+            assertThat(contexto.getEnvironment().getProperty("spring.jpa.database-platform"))
+                    .isEqualTo("org.hibernate.dialect.PostgreSQLDialect");
+
             // Sigue siendo un worker sin web: ni contexto web, ni DispatcherServlet, ni Tomcat.
             assertThat(contexto).isNotInstanceOf(WebApplicationContext.class);
             assertThat(contexto.getBeanNamesForType(DispatcherServlet.class)).isEmpty();
@@ -76,5 +81,43 @@ class PerfilCleverWorkerArranqueTest {
                     .as("el planificador del worker si se carga").isTrue();
             assertThat(contexto.getBean(ServidorSaludWorker.class).puerto()).isGreaterThan(0);
         }
+    }
+
+    /**
+     * El worker arranca aunque la base de datos NO responda en el arranque (Supabase Free pausada/en frio): con el
+     * dialecto Postgres EXPLICITO del perfil worker, Hibernate construye el {@code EntityManagerFactory} SIN abrir
+     * conexion para autodetectar el dialecto por los metadatos JDBC. Aqui el datasource apunta a un Postgres
+     * INALCANZABLE (puerto 1, conexion rechazada al instante); si el arranque abriera una conexion, el contexto no
+     * levantaria. La primera conexion la haria perezosamente el planificador en su primera consulta (que aqui no
+     * corre). Antes del arreglo esto fallaba de forma intermitente con «Unable to determine Dialect without JDBC
+     * metadata».
+     */
+    @Test
+    void elWorkerArrancaConDialectoExplicitoAunqueLaBaseDeDatosNoResponda() {
+        try (ConfigurableApplicationContext contexto =
+                     worker().run(argumentosPostgresInalcanzable())) {
+
+            assertThat(contexto.isActive())
+                    .as("el contexto del worker arranca sin conexion viva a la base de datos").isTrue();
+            assertThat(contexto.getEnvironment().getProperty("spring.jpa.database-platform"))
+                    .isEqualTo("org.hibernate.dialect.PostgreSQLDialect");
+            // Se cargo el grafo del worker aunque la BD no responde: la conexion es perezosa.
+            assertThat(contexto.containsBean("workerOvzScheduler")).isTrue();
+        }
+    }
+
+    private static String[] argumentosPostgresInalcanzable() {
+        return new String[] {
+                // Postgres INALCANZABLE a proposito (puerto 1 -> conexion rechazada al instante). Literal sin
+                // placeholders, asi que ConexionBaseDeDatosEstricta no exige SUPABASE_*. Si el arranque intentara
+                // conectar, fallaria aqui; que el contexto quede activo prueba que NO hay conexion viva al arrancar.
+                "--spring.datasource.url=jdbc:postgresql://localhost:1/ganera_worker_frio",
+                "--spring.datasource.driver-class-name=org.postgresql.Driver",
+                "--spring.datasource.username=ganera_app",
+                "--spring.datasource.password=irrelevante",
+                "--spring.datasource.hikari.pool-name=worker_frio",
+                "--spring.jmx.enabled=false",
+                "--PORT=0"
+        };
     }
 }
