@@ -81,4 +81,15 @@ public class AltaPendiente {
     /** Cuando el alta automatica proceso esta fila (Instant del Clock), o null si todavia no. */
     @Column(name = "procesada_en")
     private Instant procesadaEn;
+
+    /**
+     * Idempotencia de emails del alta automatica (migracion V41). Cuando se envio con exito el email de
+     * bienvenida al cliente, o null si todavia no (el planificador reintenta mientras sea null).
+     */
+    @Column(name = "email_bienvenida_enviado_en")
+    private Instant emailBienvenidaEnviadoEn;
+
+    /** Cuando se envio con exito el aviso al equipo, o null (no se envio o no hay direccion configurada). */
+    @Column(name = "email_equipo_enviado_en")
+    private Instant emailEquipoEnviadoEn;
 }

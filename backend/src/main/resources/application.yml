@@ -44,18 +44,18 @@ ganera:
   alta:
     automatica:
       # Alta automatica de cuentas desde los pagos de la landing (fila alta_pendiente PENDIENTE): crea sola
-      # Gestoria + Usuario + Suscripcion y enlaza la Subscription de Stripe. APAGADA por defecto: con el flag
-      # en false el planificador no hace nada y el alta sigue siendo manual (POST /internal/onboarding/gestoria).
-      # Encenderla NO cambia nada hasta definir GANERA_ALTA_AUTOMATICA_ACTIVA=true. Los emails de activacion
-      # son una fase posterior (feat/alta-automatica-emails); de momento solo se registra un log con ids.
+      # Gestoria + Usuario + Suscripcion, enlaza la Subscription de Stripe y envia los emails de bienvenida y
+      # aviso al equipo (si EmailService esta activo). APAGADA por defecto: con el flag en false el planificador
+      # no hace nada y el alta sigue siendo manual (POST /internal/onboarding/gestoria). Encenderla NO cambia
+      # nada hasta definir GANERA_ALTA_AUTOMATICA_ACTIVA=true.
       activa: ${GANERA_ALTA_AUTOMATICA_ACTIVA:false}
       # Intervalo del planificador (fixedDelay). Solo cuenta cuando activa=true.
       intervalo: ${GANERA_ALTA_AUTOMATICA_INTERVALO:PT30S}
   email:
-    # Infraestructura de email (SMTP), APAGADA por defecto. Pieza reutilizable (ya en main por #43). Fail-closed:
-    # con `activo=false` (el valor por defecto) o si falta la config SMTP (host o from en blanco), EmailService
-    # NO envia: registra un WARN y vuelve sin error, nunca lanza y nunca rompe al que lo llame. Los valores
-    # reales van en las variables de entorno de Clever, nunca en el repo.
+    # Infraestructura de email (SMTP). APAGADA por defecto. Fail-closed: con `activo=false` (el valor por
+    # defecto) o si falta la config SMTP (host o from en blanco), EmailService NO envia: registra un WARN y
+    # vuelve sin error, nunca lanza y nunca rompe al que lo llame. La usa el alta automatica (bienvenida +
+    # aviso al equipo). Los valores reales van en las variables de entorno de Clever, nunca en el repo.
     activo: ${EMAIL_ACTIVO:false}
     host: ${EMAIL_HOST:}
     puerto: ${EMAIL_PUERTO:587}
@@ -63,6 +63,11 @@ ganera:
     password: ${EMAIL_PASSWORD:}
     # Remitente (p. ej. "Ganera <no-responder@ganera.es>"). En blanco -> no se envia (fail-closed).
     from: ${EMAIL_FROM:}
+  notificaciones:
+    # Direccion interna a la que el alta automatica avisa de cada nueva alta (nombre, email, nif, plan; nunca
+    # datos de tarjeta). EN BLANCO por defecto: si esta vacia, NO se envia el email de aviso al equipo (el de
+    # bienvenida al cliente si se envia). Sin secretos; es una direccion de correo.
+    equipo-email: ${GANERA_NOTIFICACIONES_EQUIPO_EMAIL:}
   frontend:
     origen: ${FRONTEND_ORIGEN:http://localhost:5173}
   seguridad:

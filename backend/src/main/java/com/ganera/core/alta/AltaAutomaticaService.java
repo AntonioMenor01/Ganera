@@ -16,8 +16,12 @@ import com.ganera.core.shared.auditoria.AuditoriaService;
 import com.ganera.core.shared.auditoria.Clave;
 import com.ganera.core.shared.auditoria.DatosAuditoria;
 import com.ganera.core.shared.auditoria.EntidadAuditada;
+import com.ganera.core.shared.email.EmailService;
 import com.stripe.exception.StripeException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -47,13 +51,29 @@ import java.util.Optional;
  * {@link Usuario} con ese email. Cada alta se procesa en su propia transaccion ({@link TransactionTemplate}):
  * un fallo de una fila no aborta el resto del lote.
  *
- * <p><b>Contrasena.</b> Se genera una temporal aleatoria y se guarda SOLO hasheada (PasswordEncoder). Se
- * devuelve en claro UNICAMENTE en memoria dentro de {@link CuentaCreada}, para el futuro email de activacion
- * (Prompt 3). Nunca se escribe en logs ni en auditoria. De momento no hay email: al crear una cuenta solo se
- * registra un log con ids.
+ * <p><b>Contrasena.</b> Se genera una temporal aleatoria y se guarda SOLO hasheada (PasswordEncoder). Se usa
+ * en el momento para el email de bienvenida y se devuelve en claro UNICAMENTE en memoria dentro de
+ * {@link CuentaCreada}. Nunca se escribe en logs ni en auditoria ni se persiste en claro.
+ *
+ * <p><b>Emails</b> (via {@link EmailService}, que esta fail-closed: si el email esta apagado no se envia nada
+ * y se reintenta cuando se active). Tras crear la cuenta se envian dos correos, cada uno idempotente por su
+ * columna {@code email_*_enviado_en} de {@code alta_pendiente}: no se reenvia si ya consta.
+ * <ul>
+ *   <li><b>Bienvenida</b> al cliente (al email del alta): enlace a la app ({@code ganera.frontend.origen}),
+ *       email de acceso, contrasena temporal, aviso de cambiarla y los 15 dias de prueba.</li>
+ *   <li><b>Aviso al equipo</b> a {@code ganera.notificaciones.equipo-email} (nombre, email, NIF, plan; NUNCA
+ *       datos de tarjeta). Si esa direccion esta en blanco, no se envia.</li>
+ * </ul>
+ * Un fallo de email NO revierte la cuenta ya creada ni bloquea el planificador: se registra (sin datos
+ * personales) y se reintenta en la siguiente pasada. En el reintento de la bienvenida, como la contrasena en
+ * claro ya no existe (solo se guardo hasheada), se regenera una nueva y se actualiza el hash del Usuario.
  */
+// Solo en el backend web (como SecurityConfig): el alta automatica usa ganera.frontend.origen (que en el perfil
+// clever no tiene default, es FRONTEND_ORIGEN) y Stripe/email, variables del backend. El worker de OVZ arranca sin
+// esas variables, asi que este bean no debe crearse alli (PerfilCleverWorkerArranqueTest).
 @Slf4j
 @Service
+@ConditionalOnWebApplication(type = Type.SERVLET)
 public class AltaAutomaticaService {
 
     private static final SecureRandom RNG = new SecureRandom();
@@ -66,8 +86,11 @@ public class AltaAutomaticaService {
     private final EnlaceStripeService enlaceStripeService;
     private final PasswordEncoder passwordEncoder;
     private final AuditoriaService auditoriaService;
+    private final EmailService emailService;
     private final Clock reloj;
     private final TransactionTemplate transaccion;
+    private final String urlApp;
+    private final String equipoEmail;
 
     public AltaAutomaticaService(
             AltaPendienteRepository altaPendienteRepository,
@@ -77,8 +100,11 @@ public class AltaAutomaticaService {
             EnlaceStripeService enlaceStripeService,
             PasswordEncoder passwordEncoder,
             AuditoriaService auditoriaService,
+            EmailService emailService,
             Clock reloj,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager,
+            @Value("${ganera.frontend.origen:}") String urlApp,
+            @Value("${ganera.notificaciones.equipo-email:}") String equipoEmail) {
         this.altaPendienteRepository = altaPendienteRepository;
         this.gestoriaRepository = gestoriaRepository;
         this.usuarioRepository = usuarioRepository;
@@ -86,8 +112,11 @@ public class AltaAutomaticaService {
         this.enlaceStripeService = enlaceStripeService;
         this.passwordEncoder = passwordEncoder;
         this.auditoriaService = auditoriaService;
+        this.emailService = emailService;
         this.reloj = reloj;
         this.transaccion = new TransactionTemplate(transactionManager);
+        this.urlApp = urlApp;
+        this.equipoEmail = equipoEmail;
     }
 
     /**
@@ -101,6 +130,7 @@ public class AltaAutomaticaService {
             return List.of();
         }
         List<CuentaCreada> creadas = new ArrayList<>();
+        // 1. Crear cuentas de las altas PENDIENTE y mandarles los emails con la contrasena recien generada.
         for (AltaPendiente alta : altaPendienteRepository.findByEstadoOrderByIdAsc(EstadoAltaPendiente.PENDIENTE)) {
             Long altaId = alta.getId();
             try {
@@ -110,13 +140,121 @@ public class AltaAutomaticaService {
                     // Solo ids: nunca email, nombre, nif ni la contrasena.
                     log.info("Cuenta creada automaticamente desde pago de la landing: altaId={}, gestoriaId={}, "
                             + "usuarioId={}", creada.altaId(), creada.gestoriaId(), creada.usuarioId());
+                    // Emails FUERA de la transaccion de creacion: un fallo de email no revierte la cuenta.
+                    enviarEmailsSiFaltan(altaId, creada.passwordTemporal());
                 }
             } catch (RuntimeException e) {
                 // Un fallo de una alta no aborta el lote. Solo la clase de la excepcion (sin datos personales).
                 log.error("Fallo procesando el alta automatica altaId={}: excepcion={}", altaId, claseRaiz(e));
             }
         }
+        // 2. Reintentar los emails pendientes de altas ya creadas por el alta automatica (SMTP caido antes, o
+        //    equipo-email configurado despues). La bienvenida se regenera (ya no existe la contrasena en claro).
+        for (AltaPendiente alta : altaPendienteRepository.findByEstadoAndProcesadaEnIsNotNullOrderByIdAsc(
+                EstadoAltaPendiente.ENLAZADA)) {
+            if (!tieneEmailPendiente(alta)) {
+                continue;
+            }
+            Long altaId = alta.getId();
+            try {
+                enviarEmailsSiFaltan(altaId, null);
+            } catch (RuntimeException e) {
+                log.error("Fallo reintentando los emails del alta automatica altaId={}: excepcion={}",
+                        altaId, claseRaiz(e));
+            }
+        }
         return creadas;
+    }
+
+    /** true si a esta alta le falta al menos un email que proceda enviar (bienvenida, o equipo si esta configurado). */
+    private boolean tieneEmailPendiente(AltaPendiente alta) {
+        boolean bienvenidaPendiente = alta.getEmailBienvenidaEnviadoEn() == null;
+        boolean equipoPendiente = equipoConfigurado() && alta.getEmailEquipoEnviadoEn() == null;
+        return bienvenidaPendiente || equipoPendiente;
+    }
+
+    /**
+     * Envia los emails que todavia falten para esta alta (idempotente por las columnas email_*_enviado_en). Si
+     * el email esta apagado/sin configurar no hace nada (se reintentara al activarlo). Un fallo de un envio se
+     * registra y deja la columna en null para reintentar; nunca lanza al llamante.
+     *
+     * @param passwordRecienCreada contrasena en claro si la cuenta se acaba de crear en esta pasada; null en un
+     *                             reintento, en cuyo caso la bienvenida regenera una contrasena nueva.
+     */
+    private void enviarEmailsSiFaltan(Long altaId, String passwordRecienCreada) {
+        if (!emailService.configurado()) {
+            // Ni spam por alta ni regeneracion inutil: se reintentara cuando el email este activo.
+            log.info("Email no activo/configurado; no se envian los emails del alta automatica (se reintentara)");
+            return;
+        }
+        AltaPendiente alta = altaPendienteRepository.findById(altaId).orElse(null);
+        if (alta == null) {
+            return;
+        }
+        if (alta.getEmailBienvenidaEnviadoEn() == null) {
+            String password = passwordRecienCreada != null ? passwordRecienCreada : regenerarPassword(alta.getEmail());
+            if (password != null) {
+                PlantillasEmailAlta.Email email = PlantillasEmailAlta.bienvenida(
+                        alta.getNombre(), alta.getEmail(), password, urlApp);
+                if (emailService.enviarHtml(alta.getEmail(), email.asunto(), email.cuerpoHtml())) {
+                    marcarEnviado(altaId, true);
+                } else {
+                    log.warn("No se pudo enviar el email de bienvenida: altaId={}", altaId);
+                }
+            }
+        }
+        if (equipoConfigurado() && alta.getEmailEquipoEnviadoEn() == null) {
+            PlantillasEmailAlta.Email email = PlantillasEmailAlta.equipo(
+                    alta.getNombre(), alta.getEmail(), alta.getNif(), alta.getPlan());
+            if (emailService.enviarHtml(equipoEmail, email.asunto(), email.cuerpoHtml())) {
+                marcarEnviado(altaId, false);
+            } else {
+                log.warn("No se pudo enviar el email de aviso al equipo: altaId={}", altaId);
+            }
+        }
+    }
+
+    private boolean equipoConfigurado() {
+        return equipoEmail != null && !equipoEmail.isBlank();
+    }
+
+    /**
+     * Reintento de la bienvenida: la contrasena en claro no se guarda, asi que se genera una nueva y se
+     * actualiza el hash del Usuario (buscado por su email, que es el del alta). Devuelve la nueva en claro, o
+     * null si no se encuentra el Usuario.
+     */
+    private String regenerarPassword(String emailUsuario) {
+        String email = limpio(emailUsuario);
+        if (email == null) {
+            return null;
+        }
+        return transaccion.execute(status -> {
+            Usuario usuario = usuarioRepository.findByEmail(email).orElse(null);
+            if (usuario == null) {
+                log.warn("Reintento de bienvenida sin Usuario para ese email; no se regenera contrasena");
+                return null;
+            }
+            String nueva = generarPasswordTemporal();
+            usuario.setPasswordHash(passwordEncoder.encode(nueva));
+            usuarioRepository.save(usuario);
+            return nueva;
+        });
+    }
+
+    /** Marca en su propia transaccion la columna de email enviado (bienvenida o equipo). */
+    private void marcarEnviado(Long altaId, boolean bienvenida) {
+        transaccion.executeWithoutResult(status -> {
+            AltaPendiente alta = altaPendienteRepository.findById(altaId).orElse(null);
+            if (alta == null) {
+                return;
+            }
+            if (bienvenida) {
+                alta.setEmailBienvenidaEnviadoEn(reloj.instant());
+            } else {
+                alta.setEmailEquipoEnviadoEn(reloj.instant());
+            }
+            altaPendienteRepository.save(alta);
+        });
     }
 
     /** Crea (o no, por idempotencia) la cuenta de una alta, dentro de la transaccion abierta por el llamante. */
@@ -238,8 +376,8 @@ public class AltaAutomaticaService {
     }
 
     /**
-     * Cuenta recien creada por el alta automatica. {@code passwordTemporal} va en CLARO y SOLO en memoria (para
-     * el email de activacion del Prompt 3); no se persiste en claro ni se registra en logs/auditoria.
+     * Cuenta recien creada por el alta automatica. {@code passwordTemporal} va en CLARO y SOLO en memoria (se
+     * usa en el acto para el email de bienvenida); no se persiste en claro ni se registra en logs/auditoria.
      */
     public record CuentaCreada(Long altaId, Long gestoriaId, Long usuarioId, String passwordTemporal) {
     }

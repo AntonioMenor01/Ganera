@@ -2,6 +2,8 @@ package com.ganera.core.alta;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -19,8 +21,11 @@ import org.springframework.stereotype.Component;
  * <p>Job cross-tenant sin peticion HTTP, como los demas planificadores: el gestoriaFilter nunca esta activo
  * aqui; el servicio trabaja con los ids explicitos de cada fila.
  */
+// Solo en el backend web (como AltaAutomaticaService): el worker de OVZ no hace alta automatica ni tiene las
+// variables del backend. Igual que SecurityConfig/RegistroConfig con @ConditionalOnWebApplication.
 @Slf4j
 @Component
+@ConditionalOnWebApplication(type = Type.SERVLET)
 class AltaAutomaticaScheduler {
 
     private final AltaAutomaticaService servicio;
