@@ -116,6 +116,9 @@ export interface TramiteDetalle {
   consignatario: string | null;
   aptitudMovimiento: string | null;
   fechaIdentificacion: string | null;
+  /** Alta por nacimiento: código de la raza del catálogo OVZ (nunca el texto). Obligatoria para
+   * aprobar un ALTA_NACIMIENTO; el backend valida el código y devuelve el motivo si no vale. */
+  raza: string | null;
   /** Escalón 2 (T5): true si al aprobar esta BAJA_MUERTE Ganera la presentaría sola en OVZ (hay
    * credenciales sin certificado y el interruptor está encendido). El botón pasa a «Aprobar y
    * presentar en OVZ» y se enseña la vista previa de lo que se va a presentar. Solo en el detalle. */

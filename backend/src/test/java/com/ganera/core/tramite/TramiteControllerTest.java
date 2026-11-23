@@ -118,6 +118,7 @@ class TramiteControllerTest {
         Tramite tramite = guardarTramite(gestoria, contacto, EstadoTramite.PENDIENTE_REVISION);
         tramite.setExplotacion(nuevaExplotacion(gestoria, "ES700000000020", "Finca aprobar"));
         tramite.setTipoTramite(TipoTramite.ALTA_NACIMIENTO);
+        tramite.setRaza("14"); // RETINTA: el alta por nacimiento exige raza para aprobar (D1)
         tramiteRepository.save(tramite);
 
         TramiteController controller = nuevoController();

@@ -1429,6 +1429,10 @@ class TramiteRevisionEndToEndTest {
         tramite.setExplotacion(explotacion);
         tramite.setTipoTramite(tipo);
         tramite.setEstado(estado);
+        // El alta por nacimiento exige raza para aprobar (D1): un alta de prueba la lleva (RETINTA [14]).
+        if (tipo == TipoTramite.ALTA_NACIMIENTO) {
+            tramite.setRaza("14");
+        }
         return tramiteRepository.save(tramite);
     }
 

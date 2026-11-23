@@ -158,4 +158,9 @@ public class Tramite extends GestoriaScopedEntity {
 
     @Column(name = "fecha_identificacion")
     private LocalDate fechaIdentificacion;
+
+    /** Raza del animal para el alta por nacimiento: CÓDIGO del catálogo OVZ ({@code ListasOvz.RAZAS}),
+     * nunca el texto. Null si no aplica o aún no se sabe; obligatoria para aprobar un ALTA_NACIMIENTO. */
+    @Column(name = "raza", length = 10)
+    private String raza;
 }

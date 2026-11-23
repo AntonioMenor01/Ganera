@@ -138,6 +138,9 @@ public class TramiteAltaService {
         if (request.aptitudMovimiento() != null) {
             tramite.setAptitudMovimiento(textoONull(request.aptitudMovimiento(), 80));
         }
+        if (request.raza() != null) {
+            tramite.setRaza(textoONull(request.raza(), 10));
+        }
         if (request.crotalMadreIndicado() != null) {
             String crudo = request.crotalMadreIndicado().trim();
             if (crudo.isEmpty()) {

@@ -656,6 +656,37 @@ class TramiteRevisionServiceTest {
         assertThat(rechazado.version()).isEqualTo(vr + 1);
     }
 
+    /** D1: un ALTA_NACIMIENTO sin raza no se puede aprobar; con un codigo invalido tampoco; con uno valido, si. */
+    @Test
+    void aprobarUnAltaExigeRazaValida() {
+        Tramite sinRaza = nuevoTramite(explotacionA1, TipoTramite.ALTA_NACIMIENTO, EstadoTramite.PENDIENTE_REVISION);
+        sinRaza.setRaza(null);
+        tramiteRepository.saveAndFlush(sinRaza);
+        long v0 = version(sinRaza);
+        assertThatThrownBy(() -> servicio.aprobar(gestoriaA.getId(), sinRaza.getId(), v0))
+                .isInstanceOf(TramiteConflictoException.class)
+                .hasMessageContaining(TramiteRevisionService.MOTIVO_FALTA_RAZA);
+
+        sinRaza.setRaza("9999");
+        tramiteRepository.saveAndFlush(sinRaza);
+        assertThatThrownBy(() -> servicio.aprobar(gestoriaA.getId(), sinRaza.getId(), version(sinRaza)))
+                .isInstanceOf(TramiteConflictoException.class)
+                .hasMessageContaining(TramiteRevisionService.MOTIVO_RAZA_INVALIDA);
+
+        sinRaza.setRaza("14"); // RETINTA
+        tramiteRepository.saveAndFlush(sinRaza);
+        TramiteResponse aprobado = servicio.aprobar(gestoriaA.getId(), sinRaza.getId(), version(sinRaza));
+        assertThat(aprobado.estado()).isEqualTo("APROBADO");
+    }
+
+    /** La raza solo es obligatoria para el alta: otros tipos se aprueban sin ella. */
+    @Test
+    void aprobarUnTipoQueNoEsAltaNoExigeRaza() {
+        Tramite baja = nuevoTramite(explotacionA1, TipoTramite.BAJA_MUERTE, EstadoTramite.PENDIENTE_REVISION);
+        TramiteResponse aprobado = servicio.aprobar(gestoriaA.getId(), baja.getId(), version(baja));
+        assertThat(aprobado.estado()).isEqualTo("APROBADO");
+    }
+
     /** La re-resolucion al aprobar solo toca tramite_crotal: aun asi incrementa la version. */
     @Test
     void laReResolucionAlAprobarIncrementaLaVersionYLaVersionAntiguaYaNoVale() {
@@ -1262,6 +1293,10 @@ class TramiteRevisionServiceTest {
         tramite.setExplotacion(explotacion);
         tramite.setTipoTramite(tipo);
         tramite.setEstado(estado);
+        // El alta por nacimiento exige raza para aprobar (D1): un alta "aprobable" de prueba la lleva (RETINTA [14]).
+        if (tipo == TipoTramite.ALTA_NACIMIENTO) {
+            tramite.setRaza("14");
+        }
         return tramiteRepository.save(tramite);
     }
 

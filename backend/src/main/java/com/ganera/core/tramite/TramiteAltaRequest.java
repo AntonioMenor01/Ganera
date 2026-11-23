@@ -23,5 +23,6 @@ public record TramiteAltaRequest(
         String destinoTexto,
         String consignatario,
         String aptitudMovimiento,
-        LocalDate fechaIdentificacion) {
+        LocalDate fechaIdentificacion,
+        String raza) {
 }

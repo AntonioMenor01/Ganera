@@ -356,6 +356,9 @@ class PresentacionOvzEndToEndTest {
         tramite.setExplotacion(explotacion);
         tramite.setEstado(EstadoTramite.PENDIENTE_REVISION);
         tramite.setTipoTramite(tipo);
+        if (tipo == TipoTramite.ALTA_NACIMIENTO) {
+            tramite.setRaza("14"); // RETINTA: el alta exige raza para aprobar (D1)
+        }
         return tramiteRepository.save(tramite);
     }
 

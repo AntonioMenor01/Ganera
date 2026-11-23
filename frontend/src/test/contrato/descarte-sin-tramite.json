@@ -67,6 +67,7 @@
     "consignatario": null,
     "aptitudMovimiento": null,
     "fechaIdentificacion": null,
+    "raza": null,
     "sePresentaraAutomaticamente": false,
     "presentacionOvz": null
   },
@@ -118,6 +119,7 @@
     "consignatario": null,
     "aptitudMovimiento": null,
     "fechaIdentificacion": null,
+    "raza": null,
     "sePresentaraAutomaticamente": false,
     "presentacionOvz": null
   },
@@ -174,6 +176,7 @@
     "consignatario": null,
     "aptitudMovimiento": null,
     "fechaIdentificacion": null,
+    "raza": null,
     "sePresentaraAutomaticamente": false,
     "presentacionOvz": null
   }

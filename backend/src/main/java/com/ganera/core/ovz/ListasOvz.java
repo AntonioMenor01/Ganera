@@ -139,6 +139,17 @@ public final class ListasOvz {
             o("Barrosa", "1212"), o("Dansk Holstein", "1217"), o("Prim Holstein", "1256"),
             o("Mantequera leonesa", "1319"), o("Braunvieh", "1321"), o("PARDA DE MONTAÑA", "1322"));
 
+    /** Código de la raza LIDIA en {@link #RAZAS}: un alta de lidia va por vía manual, no se autopresenta (D6). */
+    public static final String CODIGO_RAZA_LIDIA = "5";
+
+    /** {@code true} si {@code codigo} es un código de raza válido del catálogo (se mapea por valor, no por texto). */
+    public static boolean esRazaValida(String codigo) {
+        if (codigo == null || codigo.isBlank()) {
+            return false;
+        }
+        return RAZAS.stream().anyMatch(r -> r.valor().equals(codigo));
+    }
+
     public record ListaOvz(String id, String etiqueta, boolean provisional, List<OpcionOvz> valores) {
     }
 

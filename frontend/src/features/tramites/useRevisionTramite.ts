@@ -251,6 +251,7 @@ const FORMULARIO_VACIO: FormularioRevision = {
   destinoTexto: null,
   consignatario: null,
   aptitudMovimiento: null,
+  raza: null,
 };
 
 function estadoInicial(tramiteId: number | null): Estado {

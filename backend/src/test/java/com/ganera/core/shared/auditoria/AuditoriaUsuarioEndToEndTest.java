@@ -165,6 +165,7 @@ class AuditoriaUsuarioEndToEndTest {
     void aprobarDejaUnaFilaTramiteAprobado() throws IOException {
         Tramite tramite = nuevoTramite(gestoriaA, EstadoTramite.PENDIENTE_REVISION, TipoTramite.ALTA_NACIMIENTO);
         tramite.setExplotacion(explotacionA);
+        tramite.setRaza("14"); // RETINTA: el alta por nacimiento exige raza para aprobar (D1)
         tramiteRepository.save(tramite);
 
         ResponseEntity<String> r = post("/tramites/" + tramite.getId() + "/aprobar", version(tramite));

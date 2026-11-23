@@ -5,6 +5,7 @@ import com.ganera.core.explotacion.Explotacion;
 import com.ganera.core.explotacion.ExplotacionRepository;
 import com.ganera.core.gestoria.Usuario;
 import com.ganera.core.gestoria.UsuarioRepository;
+import com.ganera.core.ovz.ListasOvz;
 import com.ganera.core.shared.auditoria.AccionAuditoria;
 import com.ganera.core.shared.auditoria.Actor;
 import com.ganera.core.shared.auditoria.AuditoriaService;
@@ -66,6 +67,10 @@ public class TramiteRevisionService {
     static final String MOTIVO_RECHAZAR_SOLO_PENDIENTE = "Solo se puede rechazar un trámite pendiente de revisión.";
     static final String MOTIVO_FALTA_EXPLOTACION = "Falta asignar la explotación.";
     static final String MOTIVO_FALTA_TIPO = "Falta el tipo de trámite.";
+    // Alta por nacimiento (plan 2026-11-23, D1): la raza es obligatoria para aprobar y debe ser un código
+    // válido del catálogo OVZ (ListasOvz.RAZAS). El gestor la elige en Ganera, no a mano en OVZ.
+    static final String MOTIVO_FALTA_RAZA = "Falta la raza del animal (obligatoria en el alta por nacimiento).";
+    static final String MOTIVO_RAZA_INVALIDA = "La raza indicada no es válida.";
     static final String MOTIVO_VERSION_DESFASADA =
             "El trámite ha cambiado desde que lo abriste. Vuelve a cargarlo y revísalo antes de continuar.";
     // «Hecho en OVZ» (2026-10-07): la persona es siempre el sujeto; Ganera no hace nada en OVZ.
@@ -298,6 +303,14 @@ public class TramiteRevisionService {
         }
         if (tramite.getTipoTramite() == null) {
             motivos.add(MOTIVO_FALTA_TIPO);
+        }
+        if (tramite.getTipoTramite() == TipoTramite.ALTA_NACIMIENTO) {
+            String raza = tramite.getRaza();
+            if (raza == null || raza.isBlank()) {
+                motivos.add(MOTIVO_FALTA_RAZA);
+            } else if (!ListasOvz.esRazaValida(raza)) {
+                motivos.add(MOTIVO_RAZA_INVALIDA);
+            }
         }
         for (TramiteCrotal fila : filas) {
             motivoCrotalNoAprobable(fila).ifPresent(motivos::add);
@@ -532,6 +545,10 @@ public class TramiteRevisionService {
         }
         if (request.aptitudMovimiento() != null) {
             tramite.setAptitudMovimiento(textoONull(request.aptitudMovimiento(), 80));
+        }
+        if (request.raza() != null) {
+            // Se guarda el CÓDIGO del catálogo OVZ tal cual (en blanco -> null); la validez se exige al aprobar.
+            tramite.setRaza(textoONull(request.raza(), 10));
         }
         if (request.crotalMadreIndicado() != null) {
             String crudo = request.crotalMadreIndicado().trim();

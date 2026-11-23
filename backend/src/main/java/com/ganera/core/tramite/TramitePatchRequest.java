@@ -26,11 +26,12 @@ public record TramitePatchRequest(
         String destinoTexto,
         String consignatario,
         String aptitudMovimiento,
-        LocalDate fechaIdentificacion) {
+        LocalDate fechaIdentificacion,
+        String raza) {
 
     /** Compatibilidad con tests y clientes que solo mandan version/explotacion/tipo/crotales. */
     public TramitePatchRequest(Long version, Long explotacionId, String tipoTramite, List<String> crotales) {
         this(version, explotacionId, tipoTramite, crotales,
-                null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null);
     }
 }

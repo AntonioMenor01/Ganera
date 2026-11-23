@@ -30,6 +30,7 @@ export interface AltaTramite {
   destinoTexto?: string;
   consignatario?: string;
   aptitudMovimiento?: string;
+  raza?: string;
 }
 
 /** Crea un trámite a mano (origen MANUAL, PENDIENTE_REVISION). No toca OVZ. */
@@ -67,6 +68,7 @@ export interface ActualizacionTramite {
   destinoTexto?: string;
   consignatario?: string;
   aptitudMovimiento?: string;
+  raza?: string;
 }
 
 /** Guarda los cambios de la revisión. Devuelve el detalle actualizado (`version + 1`). */
@@ -93,6 +95,7 @@ export async function actualizarTramite(
   if (cambios.destinoTexto !== undefined) cuerpo.destinoTexto = cambios.destinoTexto;
   if (cambios.consignatario !== undefined) cuerpo.consignatario = cambios.consignatario;
   if (cambios.aptitudMovimiento !== undefined) cuerpo.aptitudMovimiento = cambios.aptitudMovimiento;
+  if (cambios.raza !== undefined) cuerpo.raza = cambios.raza;
   const { data } = await httpClient.patch<TramiteDetalle>(`/tramites/${id}`, cuerpo);
   return data;
 }
