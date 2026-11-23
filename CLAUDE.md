@@ -1040,6 +1040,26 @@ approval step before anything is written to OVZ.net.
   no capturar dentro de ella; (b) `CifradorAesGcm.descifrar` es público: que `DescifradoCredencialOvz` sea el único
   que descifra es cierto hoy, pero **no está vigilado** por ningún test (cualquier bean podría inyectar el cifrador
   y descifrar sin fila de auditoría).
+- **Email infrastructure (SMTP), off by default — reusable piece, not wired to any flow yet**
+  (2026-11-23, branch `feat/email-servicio`, Álvaro; `backend/**` touched additively, warned in the
+  PR). `shared/email`: `EmailService` (interface — `enviarHtml`/`enviarTexto`/`configurado`) and
+  `SmtpEmailService` (the `@Service`, on `JavaMailSender`). **Fail-closed, and merging it changes
+  nothing until it's turned on:** `ganera.email.activo` defaults to `false`, so with the config blank
+  (host or `from` empty) nothing is sent — a WARN is logged and the call returns `false`, **never
+  throws** (a caller's flow can't break because of email); an SMTP send failure is caught the same
+  way (WARN with the exception class only — never recipient, subject or body). Config under
+  `ganera.email.*` (`activo`, `host`, `puerto`=587, `usuario`, `password`, `from`) from `EMAIL_*`
+  env vars, all blank by default (documented commented in `.env.example`; real values only in
+  Clever, never in the repo). `EmailConfig` builds the `JavaMailSender` from `ganera.email.*` (not
+  `spring.mail.*`, to keep all config under `ganera.*`) and is `@ConditionalOnMissingBean`, so Boot's
+  own mail autoconfiguration — which backs off anyway with no `spring.mail.host` — would win if ever
+  configured. `spring-boot-starter-mail` added to `pom.xml` (additive; with no host,
+  `MailSenderAutoConfiguration` abstains and the app starts exactly as before). Covered by
+  `SmtpEmailServiceTest` (off/unconfigured never touches `JavaMailSender`; active+configured builds
+  and sends the `MimeMessage` with the right recipient/subject/from and HTML vs text; a send error
+  returns `false` without throwing). **Still pending:** wiring it to a flow — e.g. the activation
+  email of the landing-payment "automatic phase" (see the Stripe landing-payment bullet's "Still
+  pending — automatic phase").
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)
