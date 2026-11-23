@@ -228,7 +228,7 @@ public class TrabajoOvzService {
             trabajo.setClaseError(TipoErrorOvz.SEGURO);
             trabajo.setMotivoError(MOTIVO_NO_APROBADO);
             trabajo.setActualizadoEn(ahora);
-            auditoriaService.registrar(AccionAuditoria.OVZ_BAJA_ERROR, trabajo.getGestoria().getId(), Actor.sistema(),
+            auditoriaService.registrar(accionError(trabajo.getTipo()), trabajo.getGestoria().getId(), Actor.sistema(),
                     EntidadAuditada.TRABAJO_OVZ, trabajo.getId(),
                     DatosAuditoria.con(Clave.ESTADO, EstadoTrabajoOvz.PENDIENTE),
                     DatosAuditoria.con(Clave.ESTADO, EstadoTrabajoOvz.ERROR));
@@ -383,6 +383,11 @@ public class TrabajoOvzService {
         if (!ListasOvz.esRazaValida(raza)) {
             throw new DatosPresentacionInvalidosException("El trámite no tiene una raza válida para el alta.");
         }
+        // H3 (doble guarda, D6): raza=LIDIA va por vía manual; encolarSiProcede ya lo filtra, pero si por otra vía
+        // llegara aquí un alta de LIDIA, no se presenta automáticamente (error SEGURO sin abrir OVZ).
+        if (ListasOvz.CODIGO_RAZA_LIDIA.equals(raza)) {
+            throw new DatosPresentacionInvalidosException("El alta de raza de lidia se tramita a mano, no por Ganera.");
+        }
         PreferenciaOvz preferencia = preferenciaOvzRepository.findByGestoriaId(gestoriaId).orElse(null);
         String emision = ListasOvz.codigoEmisionDi(preferencia == null ? null : preferencia.getEmisionDi());
         if (emision == null) {
@@ -409,7 +414,7 @@ public class TrabajoOvzService {
         trabajo.setEstado(EstadoTrabajoOvz.ENSAYO_OK);
         trabajo.setActualizadoEn(ahora());
         tramite.setEstado(EstadoTramite.APROBADO);
-        auditar(AccionAuditoria.OVZ_BAJA_ENSAYO, gestoriaId, trabajo, EstadoTrabajoOvz.ENSAYO_OK);
+        auditar(accionEnsayo(trabajo.getTipo()), gestoriaId, trabajo, EstadoTrabajoOvz.ENSAYO_OK);
     }
 
     /**
@@ -428,10 +433,11 @@ public class TrabajoOvzService {
         trabajo.setActualizadoEn(ahora());
         tramite.setEstado(EstadoTramite.EJECUTADO_OVZ);
         tramite.setMotivoError(null);
-        auditar(AccionAuditoria.OVZ_BAJA_PRESENTADA, gestoriaId, trabajo, EstadoTrabajoOvz.EJECUTADO);
+        auditar(accionPresentada(trabajo.getTipo()), gestoriaId, trabajo, EstadoTrabajoOvz.EJECUTADO);
         if (justificante.isPresent() && pdfValido(justificante.get().contenido())) {
             documentoOvzService.guardar(tramite, trabajo.getGanadero(), tramite.getExplotacion(),
-                    TipoDocumentoOvz.BAJA_ANIMAL, "Baja Animal.pdf", justificante.get().contenido(), Actor.sistema());
+                    tipoDocumento(trabajo.getTipo()), nombreJustificante(trabajo.getTipo()),
+                    justificante.get().contenido(), Actor.sistema());
         }
     }
 
@@ -451,7 +457,29 @@ public class TrabajoOvzService {
         trabajo.setActualizadoEn(ahora());
         tramite.setEstado(EstadoTramite.ERROR_OVZ);
         tramite.setMotivoError(texto);
-        auditar(AccionAuditoria.OVZ_BAJA_ERROR, gestoriaId, trabajo, EstadoTrabajoOvz.ERROR);
+        auditar(accionError(trabajo.getTipo()), gestoriaId, trabajo, EstadoTrabajoOvz.ERROR);
+    }
+
+    // Acciones de auditoría y documento según el tipo de trabajo (baja/alta); paralelas, nunca renombran las de baja (D7).
+    private static AccionAuditoria accionEnsayo(TipoTrabajoOvz tipo) {
+        return tipo == TipoTrabajoOvz.ALTA_NACIMIENTO ? AccionAuditoria.OVZ_ALTA_ENSAYO : AccionAuditoria.OVZ_BAJA_ENSAYO;
+    }
+
+    private static AccionAuditoria accionPresentada(TipoTrabajoOvz tipo) {
+        return tipo == TipoTrabajoOvz.ALTA_NACIMIENTO
+                ? AccionAuditoria.OVZ_ALTA_PRESENTADA : AccionAuditoria.OVZ_BAJA_PRESENTADA;
+    }
+
+    private static AccionAuditoria accionError(TipoTrabajoOvz tipo) {
+        return tipo == TipoTrabajoOvz.ALTA_NACIMIENTO ? AccionAuditoria.OVZ_ALTA_ERROR : AccionAuditoria.OVZ_BAJA_ERROR;
+    }
+
+    private static TipoDocumentoOvz tipoDocumento(TipoTrabajoOvz tipo) {
+        return tipo == TipoTrabajoOvz.ALTA_NACIMIENTO ? TipoDocumentoOvz.ALTA_BOVINO : TipoDocumentoOvz.BAJA_ANIMAL;
+    }
+
+    private static String nombreJustificante(TipoTrabajoOvz tipo) {
+        return tipo == TipoTrabajoOvz.ALTA_NACIMIENTO ? "Alta Bovino.pdf" : "Baja Animal.pdf";
     }
 
     private TrabajoOvz cargarTrabajo(Long trabajoId, Long gestoriaId) {

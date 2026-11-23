@@ -105,5 +105,10 @@ public enum AccionAuditoria {
     // «Aceptar» sin presentar nada.
     OVZ_BAJA_PRESENTADA,
     OVZ_BAJA_ERROR,
-    OVZ_BAJA_ENSAYO
+    OVZ_BAJA_ENSAYO,
+    // Worker de OVZ para el alta por nacimiento (plan 2026-11-23), paralelas a las de la baja. Mismo criterio:
+    // solo estados y codigos; nunca crotal, REGA ni credenciales.
+    OVZ_ALTA_PRESENTADA,
+    OVZ_ALTA_ERROR,
+    OVZ_ALTA_ENSAYO
 }

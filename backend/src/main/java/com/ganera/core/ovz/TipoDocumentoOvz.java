@@ -1,9 +1,10 @@
 package com.ganera.core.ovz;
 
 /**
- * Tipo de justificante OVZ guardado (escalon 2, T3). Por ahora solo la baja: el justificante de «Baja Animal» que
- * Ganera descarga de Documentos tras presentar la baja. Se guarda como {@code name()} en {@code documento_ovz.tipo}.
+ * Tipo de justificante OVZ guardado (escalon 2). El de «Baja Animal» (plan 2026-11-17) y el de «Alta Bovino»
+ * (plan 2026-11-23, el DI del alta por nacimiento). Se guarda como {@code name()} en {@code documento_ovz.tipo}.
  */
 public enum TipoDocumentoOvz {
-    BAJA_ANIMAL
+    BAJA_ANIMAL,
+    ALTA_BOVINO
 }
