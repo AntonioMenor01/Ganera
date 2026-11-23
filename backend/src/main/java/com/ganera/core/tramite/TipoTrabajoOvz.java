@@ -1,9 +1,10 @@
 package com.ganera.core.tramite;
 
 /**
- * Tipo del trabajo de presentación automática en OVZ (escalón 2, T2). De momento solo la baja por muerte
- * (único trámite con presentación automática, plan 2026-11-17); otros tipos se añadirán si se automatizan.
+ * Tipo del trabajo de presentación automática en OVZ (escalón 2). La baja por muerte (plan 2026-11-17) y,
+ * desde el plan 2026-11-23, el alta por nacimiento. Otros tipos se añadirán si se automatizan.
  */
 public enum TipoTrabajoOvz {
-    BAJA_MUERTE
+    BAJA_MUERTE,
+    ALTA_NACIMIENTO
 }

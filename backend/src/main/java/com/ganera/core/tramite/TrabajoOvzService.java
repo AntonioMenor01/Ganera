@@ -3,10 +3,14 @@ package com.ganera.core.tramite;
 import com.ganera.core.contacto.RecursoNoEncontradoException;
 import com.ganera.core.explotacion.Explotacion;
 import com.ganera.core.ganadero.Ganadero;
+import com.ganera.core.ovz.DatosPresentacionAlta;
 import com.ganera.core.ovz.DatosPresentacionBaja;
 import com.ganera.core.ovz.DocumentoOvzInvalidoException;
 import com.ganera.core.ovz.DocumentoOvzService;
 import com.ganera.core.ovz.Justificante;
+import com.ganera.core.ovz.ListasOvz;
+import com.ganera.core.ovz.PreferenciaOvz;
+import com.ganera.core.ovz.PreferenciaOvzRepository;
 import com.ganera.core.ovz.PresentacionAutomaticaProperties;
 import com.ganera.core.ovz.TipoDocumentoOvz;
 import com.ganera.core.ovz.ValidadorPdf;
@@ -61,6 +65,7 @@ public class TrabajoOvzService {
     private final TramiteCrotalService tramiteCrotalService;
     private final TramiteCrotalRepository tramiteCrotalRepository;
     private final DocumentoOvzService documentoOvzService;
+    private final PreferenciaOvzRepository preferenciaOvzRepository;
     private final AuditoriaService auditoriaService;
     private final Clock clock;
     /**
@@ -80,6 +85,7 @@ public class TrabajoOvzService {
                              TramiteCrotalService tramiteCrotalService,
                              TramiteCrotalRepository tramiteCrotalRepository,
                              DocumentoOvzService documentoOvzService,
+                             PreferenciaOvzRepository preferenciaOvzRepository,
                              AuditoriaService auditoriaService,
                              Clock clock,
                              PresentacionAutomaticaProperties presentacionAutomatica) {
@@ -88,6 +94,7 @@ public class TrabajoOvzService {
         this.tramiteCrotalService = tramiteCrotalService;
         this.tramiteCrotalRepository = tramiteCrotalRepository;
         this.documentoOvzService = documentoOvzService;
+        this.preferenciaOvzRepository = preferenciaOvzRepository;
         this.auditoriaService = auditoriaService;
         this.clock = clock;
         this.presentacionAutomatica = presentacionAutomatica;
@@ -102,18 +109,11 @@ public class TrabajoOvzService {
     public void encolarSiProcede(Tramite tramite, Long gestoriaId, Long usuarioId) {
         if (!presentacionAutomatica.habilitadaParaGestoria(gestoriaId)) {
             // Interruptor apagado o gestoria no habilitada (T3 maestro + T6 por gestoria): nada se encola al
-            // aprobar; la baja se tramita por la via manual.
+            // aprobar; el tramite se tramita por la via manual.
             return;
         }
-        if (tramite.getTipoTramite() != TipoTramite.BAJA_MUERTE) {
-            return;
-        }
-        Explotacion explotacion = tramite.getExplotacion();
-        if (explotacion == null) {
-            return;
-        }
-        Ganadero ganadero = explotacion.getGanadero();
-        if (!tieneCredencialesParaAutomatico(ganadero)) {
+        TipoTrabajoOvz tipoTrabajo = tipoTrabajoAutopresentable(tramite);
+        if (tipoTrabajo == null) {
             return;
         }
         if (trabajoOvzRepository.existsByTramiteId(tramite.getId())) {
@@ -125,8 +125,8 @@ public class TrabajoOvzService {
         TrabajoOvz trabajo = new TrabajoOvz();
         trabajo.setGestoria(tramite.getGestoria());
         trabajo.setTramite(tramite);
-        trabajo.setGanadero(ganadero);
-        trabajo.setTipo(TipoTrabajoOvz.BAJA_MUERTE);
+        trabajo.setGanadero(tramite.getExplotacion().getGanadero());
+        trabajo.setTipo(tipoTrabajo);
         trabajo.setEstado(EstadoTrabajoOvz.PENDIENTE);
         trabajo.setCreatedAt(ahora);
         trabajo.setActualizadoEn(ahora);
@@ -134,7 +134,39 @@ public class TrabajoOvzService {
         auditoriaService.registrar(AccionAuditoria.OVZ_TRABAJO_ENCOLADO, gestoriaId, Actor.usuario(usuarioId),
                 EntidadAuditada.TRABAJO_OVZ, trabajo.getId(), null,
                 DatosAuditoria.con(Clave.ESTADO, EstadoTrabajoOvz.PENDIENTE)
-                        .y(Clave.TIPO_TRAMITE, TipoTramite.BAJA_MUERTE));
+                        .y(Clave.TIPO_TRAMITE, tramite.getTipoTramite()));
+    }
+
+    /**
+     * El {@link TipoTrabajoOvz} con el que se autopresentaría este trámite, o {@code null} si no procede (vía
+     * manual). Exige explotación y credenciales usuario+contraseña sin certificado (D4/D8). Por tipo:
+     * <ul>
+     *   <li>{@code BAJA_MUERTE}: siempre (plan 2026-11-17).</li>
+     *   <li>{@code ALTA_NACIMIENTO}: solo con raza válida y distinta de LIDIA (D6; la raza es obligatoria al
+     *       aprobar, T1). El resto de obligatorios se exigen al preparar los datos ({@link #datosPresentacionAlta}).
+     *       Trashumante iría por vía manual (D6), pero aún no se modela.</li>
+     * </ul>
+     * No toca la cola; lo usan {@link #encolarSiProcede} y {@link #sePresentaraAutomaticamente}.
+     */
+    private TipoTrabajoOvz tipoTrabajoAutopresentable(Tramite tramite) {
+        Explotacion explotacion = tramite.getExplotacion();
+        if (explotacion == null || !tieneCredencialesParaAutomatico(explotacion.getGanadero())) {
+            return null;
+        }
+        TipoTramite tipo = tramite.getTipoTramite();
+        if (tipo == TipoTramite.BAJA_MUERTE) {
+            return TipoTrabajoOvz.BAJA_MUERTE;
+        }
+        if (tipo == TipoTramite.ALTA_NACIMIENTO && altaAutopresentable(tramite)) {
+            return TipoTrabajoOvz.ALTA_NACIMIENTO;
+        }
+        return null;
+    }
+
+    /** El alta se autopresenta solo con raza válida y distinta de LIDIA (D6). */
+    private static boolean altaAutopresentable(Tramite tramite) {
+        String raza = tramite.getRaza();
+        return ListasOvz.esRazaValida(raza) && !ListasOvz.CODIGO_RAZA_LIDIA.equals(raza);
     }
 
     /** Automático solo con credenciales usuario+contraseña y sin certificado (D4/D8). */
@@ -147,19 +179,16 @@ public class TrabajoOvzService {
 
     /**
      * Si al aprobar este trámite se encolaría una presentación automática (T5): misma condición que
-     * {@link #encolarSiProcede} (interruptor habilitado para la gestoría, {@code BAJA_MUERTE}, con explotación y con credenciales
-     * usuario+contraseña sin certificado, D4/D8), pero SIN tocar la cola. Lo usa el detalle para el botón «Aprobar y
-     * presentar en OVZ» y para saber que la vía será la automática. Lee el ganadero por la explotación (dentro de la
-     * petición, OSIV); no abre transacción.
+     * {@link #encolarSiProcede} (interruptor habilitado para la gestoría y {@link #tipoTrabajoAutopresentable} no
+     * nulo: BAJA_MUERTE, o ALTA_NACIMIENTO con raza válida no LIDIA, con explotación y credenciales
+     * usuario+contraseña sin certificado, D4/D8/D6), pero SIN tocar la cola. Lo usa el detalle para el botón
+     * «Aprobar y presentar en OVZ» y para saber que la vía será la automática. Lee el ganadero por la explotación
+     * (dentro de la petición, OSIV); no abre transacción.
      */
     public boolean sePresentaraAutomaticamente(Tramite tramite) {
         Long gestoriaId = tramite.getGestoria() == null ? null : tramite.getGestoria().getId();
-        if (!presentacionAutomatica.habilitadaParaGestoria(gestoriaId)
-                || tramite.getTipoTramite() != TipoTramite.BAJA_MUERTE) {
-            return false;
-        }
-        Explotacion explotacion = tramite.getExplotacion();
-        return explotacion != null && tieneCredencialesParaAutomatico(explotacion.getGanadero());
+        return presentacionAutomatica.habilitadaParaGestoria(gestoriaId)
+                && tipoTrabajoAutopresentable(tramite) != null;
     }
 
     /**
@@ -199,7 +228,7 @@ public class TrabajoOvzService {
             trabajo.setClaseError(TipoErrorOvz.SEGURO);
             trabajo.setMotivoError(MOTIVO_NO_APROBADO);
             trabajo.setActualizadoEn(ahora);
-            auditoriaService.registrar(AccionAuditoria.OVZ_BAJA_ERROR, trabajo.getGestoria().getId(), Actor.sistema(),
+            auditoriaService.registrar(accionError(trabajo.getTipo()), trabajo.getGestoria().getId(), Actor.sistema(),
                     EntidadAuditada.TRABAJO_OVZ, trabajo.getId(),
                     DatosAuditoria.con(Clave.ESTADO, EstadoTrabajoOvz.PENDIENTE),
                     DatosAuditoria.con(Clave.ESTADO, EstadoTrabajoOvz.ERROR));
@@ -309,6 +338,72 @@ public class TrabajoOvzService {
     }
 
     /**
+     * Datos para presentar el alta por nacimiento, en una transacción corta con el {@code gestoriaId} explícito
+     * (plan 2026-11-23, T2). Obligatorios (si faltan → {@link DatosPresentacionInvalidosException}, que el worker
+     * trata como error SEGURO sin abrir OVZ, D2/D5): REGA, exactamente UN crotal completo (el ternero), crotal de
+     * la madre completo, fecha de nacimiento, sexo reconocible, raza válida y fecha de identificación. El tipo de
+     * identificador es el único del catálogo (Crotal Electrónico, 04). La emisión del DI sale de las preferencias
+     * (texto o código); si no está, por defecto imprimir desde «Animales sin DI» (sin tasas); la oficina solo
+     * cuenta si la emisión es en la OVZ (D5). La raza LIDIA no llega aquí: va por vía manual (D6, filtrada al encolar).
+     */
+    @Transactional(readOnly = true)
+    public DatosPresentacionAlta datosPresentacionAlta(Long trabajoId, Long gestoriaId) {
+        TrabajoOvz trabajo = trabajoOvzRepository.findByIdAndGestoriaId(trabajoId, gestoriaId)
+                .orElseThrow(() -> new DatosPresentacionInvalidosException("No se encontró el trabajo de OVZ."));
+        Tramite tramite = trabajo.getTramite();
+        Explotacion explotacion = tramite.getExplotacion();
+        if (explotacion == null || explotacion.getCodigoRega() == null || explotacion.getCodigoRega().isBlank()) {
+            throw new DatosPresentacionInvalidosException("El trámite no tiene explotación (REGA) para presentarlo en OVZ.");
+        }
+        List<TramiteCrotal> crotales = tramiteCrotalRepository
+                .findByTramiteIdAndGestoriaIdOrderByIdAsc(tramite.getId(), gestoriaId);
+        if (crotales.size() != 1) {
+            throw new DatosPresentacionInvalidosException(
+                    "La presentación automática del alta exige exactamente un crotal (el ternero) en el trámite.");
+        }
+        String crotalTernero = crotales.get(0).getCrotal();
+        if (crotalTernero == null || crotalTernero.isBlank()) {
+            throw new DatosPresentacionInvalidosException("El crotal del ternero no está completo.");
+        }
+        String crotalMadre = tramite.getCrotalMadre();
+        if (crotalMadre == null || crotalMadre.isBlank()) {
+            throw new DatosPresentacionInvalidosException("El trámite no tiene el crotal de la madre para el alta.");
+        }
+        if (tramite.getFechaNacimiento() == null) {
+            throw new DatosPresentacionInvalidosException("El trámite no tiene fecha de nacimiento para el alta.");
+        }
+        if (tramite.getFechaIdentificacion() == null) {
+            throw new DatosPresentacionInvalidosException("El trámite no tiene fecha de identificación para el alta.");
+        }
+        String sexo = ListasOvz.codigoSexo(tramite.getSexo());
+        if (sexo == null) {
+            throw new DatosPresentacionInvalidosException("El trámite no tiene un sexo reconocible para el alta.");
+        }
+        String raza = tramite.getRaza();
+        if (!ListasOvz.esRazaValida(raza)) {
+            throw new DatosPresentacionInvalidosException("El trámite no tiene una raza válida para el alta.");
+        }
+        // H3 (doble guarda, D6): raza=LIDIA va por vía manual; encolarSiProcede ya lo filtra, pero si por otra vía
+        // llegara aquí un alta de LIDIA, no se presenta automáticamente (error SEGURO sin abrir OVZ).
+        if (ListasOvz.CODIGO_RAZA_LIDIA.equals(raza)) {
+            throw new DatosPresentacionInvalidosException("El alta de raza de lidia se tramita a mano, no por Ganera.");
+        }
+        PreferenciaOvz preferencia = preferenciaOvzRepository.findByGestoriaId(gestoriaId).orElse(null);
+        String emision = ListasOvz.codigoEmisionDi(preferencia == null ? null : preferencia.getEmisionDi());
+        if (emision == null) {
+            emision = ListasOvz.CODIGO_EMISION_DI_IMPRIME;
+        }
+        String oficina = ListasOvz.CODIGO_EMISION_DI_OVZ.equals(emision) && preferencia != null
+                ? preferencia.getOficinaDi() : null;
+        Ganadero ganadero = trabajo.getGanadero();
+        return new DatosPresentacionAlta(tramite.getId(), ganadero.getId(), crotalTernero, crotalMadre,
+                explotacion.getCodigoRega(), tramite.getFechaNacimiento().format(FORMATO_FECHA_OVZ), sexo, raza,
+                ListasOvz.CODIGO_TIPO_IDENTIFICADOR_DEFECTO,
+                tramite.getFechaIdentificacion().format(FORMATO_FECHA_OVZ), emision, oficina,
+                ganadero.getOvzUsuario(), ganadero.isUsaCertificado());
+    }
+
+    /**
      * Fin del ENSAYO (T4): el worker llegó hasta antes de «Aceptar» sin presentar nada. El trabajo queda en
      * {@code ENSAYO_OK} (terminal) y el trámite vuelve a {@code APROBADO}.
      */
@@ -319,7 +414,7 @@ public class TrabajoOvzService {
         trabajo.setEstado(EstadoTrabajoOvz.ENSAYO_OK);
         trabajo.setActualizadoEn(ahora());
         tramite.setEstado(EstadoTramite.APROBADO);
-        auditar(AccionAuditoria.OVZ_BAJA_ENSAYO, gestoriaId, trabajo, EstadoTrabajoOvz.ENSAYO_OK);
+        auditar(accionEnsayo(trabajo.getTipo()), gestoriaId, trabajo, EstadoTrabajoOvz.ENSAYO_OK);
     }
 
     /**
@@ -338,10 +433,11 @@ public class TrabajoOvzService {
         trabajo.setActualizadoEn(ahora());
         tramite.setEstado(EstadoTramite.EJECUTADO_OVZ);
         tramite.setMotivoError(null);
-        auditar(AccionAuditoria.OVZ_BAJA_PRESENTADA, gestoriaId, trabajo, EstadoTrabajoOvz.EJECUTADO);
+        auditar(accionPresentada(trabajo.getTipo()), gestoriaId, trabajo, EstadoTrabajoOvz.EJECUTADO);
         if (justificante.isPresent() && pdfValido(justificante.get().contenido())) {
             documentoOvzService.guardar(tramite, trabajo.getGanadero(), tramite.getExplotacion(),
-                    TipoDocumentoOvz.BAJA_ANIMAL, "Baja Animal.pdf", justificante.get().contenido(), Actor.sistema());
+                    tipoDocumento(trabajo.getTipo()), nombreJustificante(trabajo.getTipo()),
+                    justificante.get().contenido(), Actor.sistema());
         }
     }
 
@@ -361,7 +457,29 @@ public class TrabajoOvzService {
         trabajo.setActualizadoEn(ahora());
         tramite.setEstado(EstadoTramite.ERROR_OVZ);
         tramite.setMotivoError(texto);
-        auditar(AccionAuditoria.OVZ_BAJA_ERROR, gestoriaId, trabajo, EstadoTrabajoOvz.ERROR);
+        auditar(accionError(trabajo.getTipo()), gestoriaId, trabajo, EstadoTrabajoOvz.ERROR);
+    }
+
+    // Acciones de auditoría y documento según el tipo de trabajo (baja/alta); paralelas, nunca renombran las de baja (D7).
+    private static AccionAuditoria accionEnsayo(TipoTrabajoOvz tipo) {
+        return tipo == TipoTrabajoOvz.ALTA_NACIMIENTO ? AccionAuditoria.OVZ_ALTA_ENSAYO : AccionAuditoria.OVZ_BAJA_ENSAYO;
+    }
+
+    private static AccionAuditoria accionPresentada(TipoTrabajoOvz tipo) {
+        return tipo == TipoTrabajoOvz.ALTA_NACIMIENTO
+                ? AccionAuditoria.OVZ_ALTA_PRESENTADA : AccionAuditoria.OVZ_BAJA_PRESENTADA;
+    }
+
+    private static AccionAuditoria accionError(TipoTrabajoOvz tipo) {
+        return tipo == TipoTrabajoOvz.ALTA_NACIMIENTO ? AccionAuditoria.OVZ_ALTA_ERROR : AccionAuditoria.OVZ_BAJA_ERROR;
+    }
+
+    private static TipoDocumentoOvz tipoDocumento(TipoTrabajoOvz tipo) {
+        return tipo == TipoTrabajoOvz.ALTA_NACIMIENTO ? TipoDocumentoOvz.ALTA_BOVINO : TipoDocumentoOvz.BAJA_ANIMAL;
+    }
+
+    private static String nombreJustificante(TipoTrabajoOvz tipo) {
+        return tipo == TipoTrabajoOvz.ALTA_NACIMIENTO ? "Alta Bovino.pdf" : "Baja Animal.pdf";
     }
 
     private TrabajoOvz cargarTrabajo(Long trabajoId, Long gestoriaId) {

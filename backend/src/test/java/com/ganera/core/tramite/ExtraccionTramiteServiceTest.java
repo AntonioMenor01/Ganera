@@ -610,6 +610,10 @@ class ExtraccionTramiteServiceTest {
     @Test
     void unExitoSobreUnTramiteAprobadoMientrasLaIaRespondiaSeDescarta() {
         Tramite tramite = tramitePendiente(gestoriaA, contactoA, explotacionA, TEXTO);
+        // La raza es obligatoria para aprobar un ALTA_NACIMIENTO (regla T1); "14" = RETINTA, valida.
+        // Se fija antes del primer procesarPendientes(), asi que versionTrasFallo ya la incluye.
+        tramite.setRaza("14");
+        tramiteRepository.save(tramite);
         ia.lanzar(new ExtraccionFallidaException("caida"));
         servicio.procesarPendientes();
         long versionTrasFallo = recargar(tramite).getVersion();

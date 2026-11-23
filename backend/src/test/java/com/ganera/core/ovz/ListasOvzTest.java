@@ -77,6 +77,40 @@ class ListasOvzTest {
     }
 
     @Test
+    void esRazaValidaCompruebaElCodigoYLidiaTieneSuConstante() {
+        assertThat(ListasOvz.esRazaValida("14")).isTrue();   // RETINTA
+        assertThat(ListasOvz.esRazaValida("1322")).isTrue(); // PARDA DE MONTAÑA
+        assertThat(ListasOvz.esRazaValida("RETINTA")).isFalse(); // es el texto, no el código
+        assertThat(ListasOvz.esRazaValida("9999")).isFalse();
+        assertThat(ListasOvz.esRazaValida(null)).isFalse();
+        assertThat(ListasOvz.esRazaValida("  ")).isFalse();
+        assertThat(ListasOvz.CODIGO_RAZA_LIDIA).isEqualTo("5");
+        assertThat(ListasOvz.esRazaValida(ListasOvz.CODIGO_RAZA_LIDIA)).isTrue();
+    }
+
+    @Test
+    void codigoSexoAceptaCodigoOTextoSinDistinguirMayusculas() {
+        assertThat(ListasOvz.codigoSexo("H")).isEqualTo("H");
+        assertThat(ListasOvz.codigoSexo("m")).isEqualTo("M");
+        assertThat(ListasOvz.codigoSexo("Hembra")).isEqualTo("H");
+        assertThat(ListasOvz.codigoSexo(" macho ")).isEqualTo("M");
+        assertThat(ListasOvz.codigoSexo("desconocido")).isNull();
+        assertThat(ListasOvz.codigoSexo(null)).isNull();
+    }
+
+    @Test
+    void codigoEmisionDiMapeaTextoOCodigoYConstantes() {
+        assertThat(ListasOvz.CODIGO_EMISION_DI_OVZ).isEqualTo("OVZ");
+        assertThat(ListasOvz.CODIGO_EMISION_DI_IMPRIME).isEqualTo("OVZNET");
+        assertThat(ListasOvz.codigoEmisionDi("OVZ")).isEqualTo("OVZ");
+        assertThat(ListasOvz.codigoEmisionDi("ovznet")).isEqualTo("OVZNET");
+        assertThat(ListasOvz.codigoEmisionDi("Prefiero que mis DI's sean emitidos en la OVZ")).isEqualTo("OVZ");
+        assertThat(ListasOvz.codigoEmisionDi("otra cosa")).isNull();
+        assertThat(ListasOvz.codigoEmisionDi(null)).isNull();
+        assertThat(ListasOvz.CODIGO_TIPO_IDENTIFICADOR_DEFECTO).isEqualTo("04");
+    }
+
+    @Test
     void soloLaCategoriaDeCensoSigueProvisional() {
         ListasOvz.ListaOvz censo = lista("categoria_censo");
         assertThat(censo.provisional()).isTrue();

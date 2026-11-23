@@ -139,6 +139,66 @@ public final class ListasOvz {
             o("Barrosa", "1212"), o("Dansk Holstein", "1217"), o("Prim Holstein", "1256"),
             o("Mantequera leonesa", "1319"), o("Braunvieh", "1321"), o("PARDA DE MONTAÑA", "1322"));
 
+    /** Código de la raza LIDIA en {@link #RAZAS}: un alta de lidia va por vía manual, no se autopresenta (D6). */
+    public static final String CODIGO_RAZA_LIDIA = "5";
+
+    /** Emisión del DI en la OVZ (con tasas); la oficina solo cuenta con este valor (alta, D5). */
+    public static final String CODIGO_EMISION_DI_OVZ = "OVZ";
+
+    /** Emisión del DI imprimiéndolo el ganadero desde «Animales sin DI» (sin tasas): por defecto si no hay preferencia (D5). */
+    public static final String CODIGO_EMISION_DI_IMPRIME = "OVZNET";
+
+    /** Único tipo de identificador del catálogo de OVZ: «Crotal Electrónico» [04]. */
+    public static final String CODIGO_TIPO_IDENTIFICADOR_DEFECTO = "04";
+
+    /**
+     * Mapea una emisión del DI guardada en preferencias (texto visible o código) a su CÓDIGO de OVZ
+     * ({@code OVZ}/{@code OVZNET}), sin distinguir mayúsculas. {@code null} si está en blanco o no se reconoce
+     * (el llamador aplica el valor por defecto, D5).
+     */
+    public static String codigoEmisionDi(String valor) {
+        if (valor == null) {
+            return null;
+        }
+        String v = valor.trim();
+        for (OpcionOvz o : EMISIONES_DI) {
+            if (o.valor().equalsIgnoreCase(v) || o.texto().equalsIgnoreCase(v)) {
+                return o.valor();
+            }
+        }
+        return null;
+    }
+
+    /** {@code true} si {@code codigo} es un código de raza válido del catálogo (se mapea por valor, no por texto). */
+    public static boolean esRazaValida(String codigo) {
+        return esCodigoDe(RAZAS, codigo);
+    }
+
+    /** {@code true} si {@code codigo} es un código válido de una de las opciones de {@code lista}. */
+    static boolean esCodigoDe(List<OpcionOvz> lista, String codigo) {
+        if (codigo == null || codigo.isBlank()) {
+            return false;
+        }
+        return lista.stream().anyMatch(o -> o.valor().equals(codigo));
+    }
+
+    /**
+     * Mapea un sexo escrito a su CÓDIGO de OVZ ({@code H}/{@code M}), aceptando el propio código o el texto
+     * ({@code Hembra}/{@code Macho}), sin distinguir mayúsculas ni espacios. {@code null} si no se reconoce.
+     */
+    public static String codigoSexo(String valor) {
+        if (valor == null) {
+            return null;
+        }
+        String v = valor.trim();
+        for (OpcionOvz o : SEXO) {
+            if (o.valor().equalsIgnoreCase(v) || o.texto().equalsIgnoreCase(v)) {
+                return o.valor();
+            }
+        }
+        return null;
+    }
+
     public record ListaOvz(String id, String etiqueta, boolean provisional, List<OpcionOvz> valores) {
     }
 

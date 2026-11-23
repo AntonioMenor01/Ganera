@@ -9,6 +9,7 @@ import com.ganera.core.ganadero.GanaderoRepository;
 import com.ganera.core.tramite.DatosPresentacionInvalidosException;
 import com.ganera.core.tramite.ModoWorkerOvz;
 import com.ganera.core.tramite.TipoErrorOvz;
+import com.ganera.core.tramite.TipoTrabajoOvz;
 import com.ganera.core.tramite.TrabajoOvz;
 import com.ganera.core.tramite.TrabajoOvzService;
 import lombok.extern.slf4j.Slf4j;
@@ -19,7 +20,9 @@ import org.springframework.stereotype.Component;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * Orquestador del worker de OVZ (escalón 2, T4; plan 2026-11-17): presenta UNA baja por muerte cada vez. Solo existe
@@ -45,11 +48,26 @@ public class WorkerOvzService {
 
     static final String MOTIVO_FALTAN_CREDENCIALES = "Faltan las credenciales de OVZ del ganadero.";
     static final String MOTIVO_CREDENCIAL_ILEGIBLE = "No se pudieron descifrar las credenciales de OVZ del ganadero.";
-    static final String MOTIVO_GENERICO = "Error al presentar la baja en OVZ.";
-    static final String MOTIVO_INCIERTO =
-            "La baja pudo presentarse en OVZ pero no se pudo confirmar. Comprueba en OVZ si está presentada antes de reencolar.";
-    static final String MOTIVO_NO_REGISTRADA =
-            "La baja se presentó en OVZ pero no se pudo registrar el resultado. Comprueba el estado en OVZ.";
+
+    // Motivos de cara al gestor, POR TIPO de trámite (H1): un alta nunca debe decir «la baja». «el alta»/«la baja»
+    // ("el alta": sustantivo femenino con artículo «el» por empezar por /a/ tónica).
+    static String motivoGenerico(TipoTrabajoOvz tipo) {
+        return "Error al presentar " + nombreTramite(tipo) + " en OVZ.";
+    }
+
+    static String motivoIncierto(TipoTrabajoOvz tipo) {
+        return (tipo == TipoTrabajoOvz.ALTA_NACIMIENTO ? "El alta" : "La baja")
+                + " pudo presentarse en OVZ pero no se pudo confirmar. Comprueba en OVZ si está presentada antes de reencolar.";
+    }
+
+    static String motivoNoRegistrada(TipoTrabajoOvz tipo) {
+        return (tipo == TipoTrabajoOvz.ALTA_NACIMIENTO ? "El alta" : "La baja")
+                + " se presentó en OVZ pero no se pudo registrar el resultado. Comprueba el estado en OVZ.";
+    }
+
+    private static String nombreTramite(TipoTrabajoOvz tipo) {
+        return tipo == TipoTrabajoOvz.ALTA_NACIMIENTO ? "el alta" : "la baja";
+    }
 
     /** Tolerancia por si el reloj de OVZ y el nuestro no coinciden al filtrar los documentos creados tras el clic. */
     private static final Duration TOLERANCIA_RELOJ = Duration.ofMinutes(2);
@@ -85,7 +103,7 @@ public class WorkerOvzService {
         log.info("Worker OVZ iniciado en modo {}", this.modo);
     }
 
-    /** Procesa como mucho un trabajo PENDIENTE. Sin trabajo, no hace nada. */
+    /** Procesa como mucho un trabajo PENDIENTE. Sin trabajo, no hace nada. Despacha por tipo (baja/alta). */
     public void procesarUno() {
         Optional<TrabajoOvz> reclamado = trabajoOvzService.reclamarSiguiente();
         if (reclamado.isEmpty()) {
@@ -93,8 +111,16 @@ public class WorkerOvzService {
         }
         Long trabajoId = reclamado.get().getId();
         Long gestoriaId = reclamado.get().getGestoria().getId();
-        log.info("Worker OVZ: trabajo {} reclamado", trabajoId);
+        TipoTrabajoOvz tipo = reclamado.get().getTipo();
+        log.info("Worker OVZ: trabajo {} reclamado ({})", trabajoId, tipo);
+        if (tipo == TipoTrabajoOvz.ALTA_NACIMIENTO) {
+            presentarAlta(trabajoId, gestoriaId);
+        } else {
+            presentarBaja(trabajoId, gestoriaId);
+        }
+    }
 
+    private void presentarBaja(Long trabajoId, Long gestoriaId) {
         // 1) Datos y credenciales: todo ANTES de abrir OVZ; cualquier fallo aquí es SEGURO (no se tocó OVZ).
         DatosPresentacionBaja datos;
         try {
@@ -107,14 +133,14 @@ public class WorkerOvzService {
             // Fallo técnico inesperado (BD, lazy-init...): su mensaje podría ser técnico; se usa el genérico.
             log.warn("Worker OVZ: trabajo {} no se pudieron preparar los datos ({})", trabajoId,
                     e.getClass().getSimpleName());
-            errorSeguro(trabajoId, gestoriaId, MOTIVO_GENERICO);
+            errorSeguro(trabajoId, gestoriaId, motivoGenerico(TipoTrabajoOvz.BAJA_MUERTE));
             return;
         }
         if (datos.usaCertificado()) {
             errorSeguro(trabajoId, gestoriaId, new LoginCertificadoException().getMessage());
             return;
         }
-        CredencialOvzEnClaro clave = descifrar(datos, trabajoId, gestoriaId);
+        CredencialOvzEnClaro clave = descifrar(datos.ganaderoId(), datos.usuarioOvz(), trabajoId, gestoriaId);
         if (clave == null) {
             return;
         }
@@ -148,12 +174,13 @@ public class WorkerOvzService {
             aceptarPulsado = true;
             instanteClic = clock.instant().minus(TOLERANCIA_RELOJ);
             navegador.pulsarAceptar();
-            Optional<Justificante> justificante = buscarJustificante(datos.crotal(), instanteClic).justificante();
+            Optional<Justificante> justificante =
+                    buscarJustificante(navegador::listarDocumentosBajaAnimal, datos.crotal(), instanteClic).justificante();
             navegador.salir();
             cerrada = true;
             // REAL: «Aceptar» (PASO 8) y Documentos (PASO 9) ya han ocurrido; el cierre de sesión es el PASO 10.
             log.info("PASO 10 OK: trabajo {} sesión de OVZ cerrada", trabajoId);
-            registrarEjecutado(trabajoId, gestoriaId, justificante);
+            registrarEjecutado(trabajoId, gestoriaId, TipoTrabajoOvz.BAJA_MUERTE, justificante);
         } catch (AceptarException e) {
             // «Aceptar» no cuadró con lo esperado y NO se pulsó (la excepción se lanza antes del clic).
             cerrarSinFallar();
@@ -165,10 +192,11 @@ public class WorkerOvzService {
                 // ANTES de «Aceptar»: no se presentó nada.
                 cerrarSinFallar();
                 cerrada = true;
-                errorSeguro(trabajoId, gestoriaId, motivoDe(e));
+                errorSeguro(trabajoId, gestoriaId, motivoDe(e, TipoTrabajoOvz.BAJA_MUERTE));
             } else {
                 // DESDE «Aceptar»: la presentación NO se reintenta. Se consulta Documentos para saber si ocurrió.
-                resolverIncierto(trabajoId, gestoriaId, datos.crotal(), instanteClic);
+                resolverIncierto(trabajoId, gestoriaId, TipoTrabajoOvz.BAJA_MUERTE,
+                        navegador::listarDocumentosBajaAnimal, datos.crotal(), instanteClic);
                 cerrada = true;
             }
         } finally {
@@ -178,40 +206,130 @@ public class WorkerOvzService {
         }
     }
 
-    private void registrarEjecutado(Long trabajoId, Long gestoriaId, Optional<Justificante> justificante) {
+    /**
+     * Presenta UN alta por nacimiento (plan 2026-11-23, T4). Mismo esqueleto que la baja: datos y credenciales
+     * ANTES de abrir OVZ (fallo aquí = SEGURO); sesión fuera de toda transacción; ENSAYO por defecto (recorre hasta
+     * ANTES de «Aceptar» y sale); REAL pulsa «Aceptar» una sola vez y NO reintenta ante respuesta incierta. El
+     * justificante «Alta Bovino» es best-effort: su ausencia NO marca el alta como fallida (D3).
+     */
+    private void presentarAlta(Long trabajoId, Long gestoriaId) {
+        DatosPresentacionAlta datos;
+        try {
+            datos = trabajoOvzService.datosPresentacionAlta(trabajoId, gestoriaId);
+        } catch (DatosPresentacionInvalidosException e) {
+            errorSeguro(trabajoId, gestoriaId, e.getMessage());
+            return;
+        } catch (RuntimeException e) {
+            log.warn("Worker OVZ: trabajo {} no se pudieron preparar los datos del alta ({})", trabajoId,
+                    e.getClass().getSimpleName());
+            errorSeguro(trabajoId, gestoriaId, motivoGenerico(TipoTrabajoOvz.ALTA_NACIMIENTO));
+            return;
+        }
+        if (datos.usaCertificado()) {
+            errorSeguro(trabajoId, gestoriaId, new LoginCertificadoException().getMessage());
+            return;
+        }
+        CredencialOvzEnClaro clave = descifrar(datos.ganaderoId(), datos.usuarioOvz(), trabajoId, gestoriaId);
+        if (clave == null) {
+            return;
+        }
+
+        boolean aceptarPulsado = false;
+        boolean cerrada = false;
+        Instant instanteClic = null;
+        try {
+            navegador.iniciarSesion(urlOvz, datos.usuarioOvz(), clave);
+            // prepararAlta localiza el crotal del ternero «Libre» en la tabla de repartidos y lo pulsa; si no está o
+            // no está libre lanza NavegacionOvzException (SEGURO, no se presentó nada).
+            navegador.prepararAlta(datos.crotalTernero());
+            ResultadoVerificacion verificacion =
+                    VerificacionAlta.verificar(navegador.leerCrotalSeleccionado(), datos.crotalTernero());
+            if (!verificacion.ok()) {
+                throw new NavegacionOvzException(verificacion.motivo());
+            }
+            navegador.rellenarFormularioAlta(new DatosFormularioAlta(datos.crotalMadre(),
+                    datos.fechaNacimientoDdMmAaaa(), datos.sexoCodigo(), datos.tipoIdentificadorCodigo(),
+                    datos.fechaIdentificacionDdMmAaaa(), datos.razaCodigo(), datos.emisionDiCodigo(),
+                    datos.oficinaDiCodigo()));
+
+            if (modo == ModoWorkerOvz.ENSAYO) {
+                // ENSAYO: hasta aquí y nada más. NUNCA se pulsa el «Aceptar» del alta. La sesión siempre se cierra.
+                navegador.salir();
+                cerrada = true;
+                log.info("Worker OVZ: trabajo {} sesión cerrada (ensayo del alta, no se presentó nada)", trabajoId);
+                trabajoOvzService.finalizarEnsayo(trabajoId, gestoriaId);
+                return;
+            }
+
+            aceptarPulsado = true;
+            instanteClic = clock.instant().minus(TOLERANCIA_RELOJ);
+            navegador.pulsarAceptarAlta();
+            Optional<Justificante> justificante =
+                    buscarJustificante(navegador::listarDocumentosAltaBovino, datos.crotalTernero(), instanteClic)
+                            .justificante();
+            navegador.salir();
+            cerrada = true;
+            log.info("Worker OVZ: trabajo {} alta presentada, sesión cerrada", trabajoId);
+            registrarEjecutado(trabajoId, gestoriaId, TipoTrabajoOvz.ALTA_NACIMIENTO, justificante);
+        } catch (AceptarException e) {
+            cerrarSinFallar();
+            cerrada = true;
+            errorSeguro(trabajoId, gestoriaId, e.getMessage());
+        } catch (RuntimeException e) {
+            log.warn("Worker OVZ: trabajo {} (alta) falló ({})", trabajoId, e.getClass().getSimpleName());
+            if (!aceptarPulsado) {
+                cerrarSinFallar();
+                cerrada = true;
+                errorSeguro(trabajoId, gestoriaId, motivoDe(e, TipoTrabajoOvz.ALTA_NACIMIENTO));
+            } else {
+                resolverIncierto(trabajoId, gestoriaId, TipoTrabajoOvz.ALTA_NACIMIENTO,
+                        navegador::listarDocumentosAltaBovino, datos.crotalTernero(), instanteClic);
+                cerrada = true;
+            }
+        } finally {
+            if (!cerrada) {
+                cerrarSinFallar();
+            }
+        }
+    }
+
+    private void registrarEjecutado(Long trabajoId, Long gestoriaId, TipoTrabajoOvz tipo,
+                                    Optional<Justificante> justificante) {
         try {
             trabajoOvzService.finalizarEjecutado(trabajoId, gestoriaId, justificante);
             log.info("Worker OVZ: trabajo {} presentado", trabajoId);
         } catch (RuntimeException e) {
-            // OVZ ya presentó la baja pero no pudimos guardarlo: nunca se reintenta; se deja INCIERTO si se puede.
+            // OVZ ya presentó el trámite pero no pudimos guardarlo: nunca se reintenta; se deja INCIERTO si se puede.
             log.error("Worker OVZ: trabajo {} presentado pero no se pudo registrar ({})", trabajoId,
                     e.getClass().getSimpleName());
-            intentarFinalizarError(trabajoId, gestoriaId, TipoErrorOvz.INCIERTO, MOTIVO_NO_REGISTRADA);
+            intentarFinalizarError(trabajoId, gestoriaId, TipoErrorOvz.INCIERTO, motivoNoRegistrada(tipo));
         }
     }
 
-    /** Tras un fallo posterior al clic: ¿está la baja en Documentos? Sí -> EJECUTADO; no (o no se sabe) -> INCIERTO. */
-    private void resolverIncierto(Long trabajoId, Long gestoriaId, String crotal, Instant instanteClic) {
+    /** Tras un fallo posterior al clic: ¿está el trámite en Documentos? Sí -> EJECUTADO; no (o no se sabe) -> INCIERTO. */
+    private void resolverIncierto(Long trabajoId, Long gestoriaId, TipoTrabajoOvz tipo,
+                                  Supplier<List<DocumentoCandidato>> listarDocumentos, String crotal, Instant instanteClic) {
         IdentificadorJustificante.Resultado r = null;
         try {
-            r = buscarJustificante(crotal, instanteClic);
+            r = buscarJustificante(listarDocumentos, crotal, instanteClic);
         } catch (RuntimeException e) {
             log.warn("Worker OVZ: trabajo {} no pudo consultar Documentos ({})", trabajoId, e.getClass().getSimpleName());
         } finally {
             cerrarSinFallar();
         }
         if (r != null && r.resultado() == ResultadoBusquedaJustificante.ENCONTRADO) {
-            registrarEjecutado(trabajoId, gestoriaId, r.justificante());
+            registrarEjecutado(trabajoId, gestoriaId, tipo, r.justificante());
         } else {
-            intentarFinalizarError(trabajoId, gestoriaId, TipoErrorOvz.INCIERTO, MOTIVO_INCIERTO);
+            intentarFinalizarError(trabajoId, gestoriaId, TipoErrorOvz.INCIERTO, motivoIncierto(tipo));
         }
     }
 
-    /** Lista Documentos y busca el justificante; reintenta SOLO la consulta (nunca la presentación). */
-    private IdentificadorJustificante.Resultado buscarJustificante(String crotal, Instant instanteClic) {
+    /** Lista Documentos (del tipo que toque) y busca el justificante; reintenta SOLO la consulta (nunca la presentación). */
+    private IdentificadorJustificante.Resultado buscarJustificante(Supplier<List<DocumentoCandidato>> listarDocumentos,
+                                                                    String crotal, Instant instanteClic) {
         IdentificadorJustificante.Resultado resultado = null;
         for (int intento = 1; intento <= intentosDescarga; intento++) {
-            resultado = IdentificadorJustificante.identificar(navegador.listarDocumentosBajaAnimal(), instanteClic,
+            resultado = IdentificadorJustificante.identificar(listarDocumentos.get(), instanteClic,
                     crotal, navegador::descargarDocumento);
             if (resultado.resultado() != ResultadoBusquedaJustificante.NO_ENCONTRADO) {
                 return resultado;
@@ -223,10 +341,10 @@ public class WorkerOvzService {
         return resultado;
     }
 
-    private CredencialOvzEnClaro descifrar(DatosPresentacionBaja datos, Long trabajoId, Long gestoriaId) {
-        Ganadero ganadero = ganaderoRepository.findByIdAndGestoriaId(datos.ganaderoId(), gestoriaId).orElse(null);
-        if (ganadero == null || ganadero.isUsaCertificado() || datos.usuarioOvz() == null
-                || datos.usuarioOvz().isBlank() || ganadero.getOvzPasswordCifrada() == null) {
+    private CredencialOvzEnClaro descifrar(Long ganaderoId, String usuarioOvz, Long trabajoId, Long gestoriaId) {
+        Ganadero ganadero = ganaderoRepository.findByIdAndGestoriaId(ganaderoId, gestoriaId).orElse(null);
+        if (ganadero == null || ganadero.isUsaCertificado() || usuarioOvz == null
+                || usuarioOvz.isBlank() || ganadero.getOvzPasswordCifrada() == null) {
             errorSeguro(trabajoId, gestoriaId, MOTIVO_FALTAN_CREDENCIALES);
             return null;
         }
@@ -255,12 +373,12 @@ public class WorkerOvzService {
     }
 
     /** Solo los motivos pensados para el gestor (excepciones del navegador OVZ) se muestran; el resto, genérico. */
-    private static String motivoDe(RuntimeException e) {
+    private static String motivoDe(RuntimeException e, TipoTrabajoOvz tipo) {
         if (e instanceof LoginCertificadoException || e instanceof CredencialesOvzInvalidasException
                 || e instanceof SesionCaducadaException || e instanceof NavegacionOvzException) {
             return e.getMessage();
         }
-        return MOTIVO_GENERICO;
+        return motivoGenerico(tipo);
     }
 
     private void cerrarSinFallar() {

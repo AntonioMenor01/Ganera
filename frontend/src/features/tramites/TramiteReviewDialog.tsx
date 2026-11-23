@@ -1038,6 +1038,7 @@ const CAMPOS_OVZ_UI: { campo: CampoOvz; etiqueta: string; tipo: "date" | "text";
   { campo: "fechaHecho", etiqueta: "Fecha del hecho", tipo: "date", pista: "Muerte, nacimiento, salida…" },
   { campo: "fechaNacimiento", etiqueta: "Fecha de nacimiento", tipo: "date" },
           { campo: "sexo", etiqueta: "Sexo", tipo: "text", pista: "Lista provisional hasta el mapeo" },
+  { campo: "raza", etiqueta: "Raza", tipo: "text", pista: "Código OVZ de la raza (obligatoria para aprobar el alta)" },
   { campo: "crotalMadreIndicado", etiqueta: "Crotal de la madre", tipo: "text" },
   { campo: "fechaIdentificacion", etiqueta: "Fecha de identificación", tipo: "date" },
   { campo: "numeroMer", etiqueta: "Número MER", tipo: "text" },

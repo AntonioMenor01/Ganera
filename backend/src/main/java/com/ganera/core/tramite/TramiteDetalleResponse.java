@@ -61,6 +61,7 @@ public record TramiteDetalleResponse(
         String consignatario,
         String aptitudMovimiento,
         LocalDate fechaIdentificacion,
+        String raza,
         boolean sePresentaraAutomaticamente,
         PresentacionOvzResponse presentacionOvz) {
 
@@ -104,6 +105,7 @@ public record TramiteDetalleResponse(
                 tramite.getConsignatario(),
                 tramite.getAptitudMovimiento(),
                 tramite.getFechaIdentificacion(),
+                tramite.getRaza(),
                 sePresentaraAutomaticamente,
                 presentacionOvz);
     }

@@ -22,6 +22,10 @@ class NavegadorOvzFalso implements NavegadorOvz {
     Map<String, byte[]> pdfs = Map.of();
     /** Lo último que recibió iniciarSesion (para comprobar que llega la contraseña descifrada). */
     String ultimaClave;
+    /** Alta: crotal que muestra la pantalla 2 ({@code P_lblcrotal}) y los datos del formulario que recibió. */
+    String crotalSeleccionado;
+    DatosFormularioAlta datosAlta;
+    List<DocumentoCandidato> documentosAlta = List.of();
 
     private void paso(String nombre) {
         llamadas.add(nombre);
@@ -88,5 +92,35 @@ class NavegadorOvzFalso implements NavegadorOvz {
     @Override
     public void salir() {
         llamadas.add("salir");
+    }
+
+    // ---- alta por nacimiento ----
+
+    @Override
+    public void prepararAlta(String crotalTernero) {
+        paso("prepararAlta");
+    }
+
+    @Override
+    public String leerCrotalSeleccionado() {
+        paso("leerCrotalSeleccionado");
+        return crotalSeleccionado;
+    }
+
+    @Override
+    public void rellenarFormularioAlta(DatosFormularioAlta datos) {
+        datosAlta = datos;
+        paso("rellenarFormularioAlta");
+    }
+
+    @Override
+    public void pulsarAceptarAlta() {
+        paso("pulsarAceptarAlta");
+    }
+
+    @Override
+    public List<DocumentoCandidato> listarDocumentosAltaBovino() {
+        paso("listarDocumentosAltaBovino");
+        return documentosAlta;
     }
 }

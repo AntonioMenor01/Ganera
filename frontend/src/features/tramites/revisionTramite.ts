@@ -22,7 +22,8 @@ export type CampoOvz =
   | "destinoRega"
   | "destinoTexto"
   | "consignatario"
-  | "aptitudMovimiento";
+  | "aptitudMovimiento"
+  | "raza";
 
 const CAMPOS_OVZ: readonly CampoOvz[] = [
   "fechaHecho",
@@ -35,6 +36,7 @@ const CAMPOS_OVZ: readonly CampoOvz[] = [
   "destinoTexto",
   "consignatario",
   "aptitudMovimiento",
+  "raza",
 ] as const;
 
 const CAMPOS_FECHA: ReadonlySet<CampoOvz> = new Set([
@@ -60,6 +62,7 @@ export interface FormularioRevision {
   destinoTexto: string | null;
   consignatario: string | null;
   aptitudMovimiento: string | null;
+  raza: string | null;
 }
 
 /** Decisión 7: solo un trámite en PENDIENTE_REVISION se edita, aprueba o rechaza. */
@@ -84,6 +87,7 @@ export function formularioDesdeDetalle(detalle: TramiteDetalle): FormularioRevis
     destinoTexto: detalle.destinoTexto,
     consignatario: detalle.consignatario,
     aptitudMovimiento: detalle.aptitudMovimiento,
+    raza: detalle.raza,
   };
 }
 

@@ -39,4 +39,29 @@ public interface NavegadorOvz {
 
     /** Click en Salir y cierre del navegador. Best-effort: nunca lanza. */
     void salir();
+
+    // ---------------------------------------------------------------- alta por nacimiento (plan 2026-11-23, T4)
+
+    /**
+     * Explotación bovina, menú Trámites, Bóvidos, pestaña «Alta Individual» (prefijo {@code ctl02_}): localiza el
+     * crotal del ternero en la tabla de crotales repartidos, comprueba que está «Libre» y lo pulsa para entrar en el
+     * formulario (pantalla 2). Si el crotal no aparece o no está «Libre» lanza {@link NavegacionOvzException} (SEGURO:
+     * no se ha presentado nada).
+     */
+    void prepararAlta(String crotalTernero);
+
+    /** Lee el crotal seleccionado que muestra la pantalla 2 ({@code P_lblcrotal}). */
+    String leerCrotalSeleccionado();
+
+    /** Rellena los campos obligatorios de la pantalla 2 del alta (madre, fechas, sexo, raza, identificador, DI). */
+    void rellenarFormularioAlta(DatosFormularioAlta datos);
+
+    /**
+     * SOLO modo REAL. Resuelve el botón «Aceptar» del alta (sufijo {@code _btnAceptar}), comprueba su id Y su
+     * texto/valor «Aceptar» ANTES de pulsar; lanza {@link AceptarException} (sin pulsar) si no cuadra.
+     */
+    void pulsarAceptarAlta();
+
+    /** Documentos, tipo «Alta Bovino», Buscar: todas las filas (con paginación). */
+    List<DocumentoCandidato> listarDocumentosAltaBovino();
 }

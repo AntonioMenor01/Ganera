@@ -51,6 +51,11 @@ public class PlaywrightNavegadorOvz implements NavegadorOvz {
     private static final String SUFIJO_ACEPTAR = "_btn_Aceptar";
     private static final String SELECTOR_ACEPTAR = "[id*='_ctl05_'][id$='" + SUFIJO_ACEPTAR + "']";
     private static final String VALOR_BAJA_ANIMAL = "3";
+    // Alta por nacimiento (plan 2026-11-23): pestaña «Alta Individual», prefijo ctl02. Su «Aceptar» es P_btnAceptar
+    // (sufijo _btnAceptar, distinto del _btn_Aceptar de la baja). «Alta Bovino» es el tipo [1] en Documentos.
+    private static final String SUFIJO_ACEPTAR_ALTA = "_btnAceptar";
+    private static final String SELECTOR_ACEPTAR_ALTA = "[id*='_ctl02_'][id$='" + SUFIJO_ACEPTAR_ALTA + "']";
+    private static final String VALOR_ALTA_BOVINO = "1";
     private static final ZoneId MADRID = ZoneId.of("Europe/Madrid");
 
     private Playwright playwright;
@@ -286,6 +291,191 @@ public class PlaywrightNavegadorOvz implements NavegadorOvz {
             cerrarNavegador();
         }
     }
+
+    // ------------------------------------------------------------------ alta por nacimiento (plan 2026-11-23, T5)
+    // Selectores del mapa (sección B, prefijo ctl02). NO validados en vivo todavía: el modo REAL del alta queda
+    // pendiente de una sesión con credenciales, como lo estuvo la baja. En ENSAYO el worker recorre hasta antes de
+    // «Aceptar».
+
+    @Override
+    public void prepararAlta(String crotalTernero) {
+        try {
+            elegirExplotacionBovina();
+            pulsar("a[href*='wgTramites.aspx']");
+            pulsarPorTexto("Bóvidos");
+            pulsarPorTexto("Alta Individual");
+            frameCon("[id*='_ctl02_'][id$='_gvCrotalesRepartidos']");
+            paso(4, "pestaña Alta Individual");
+
+            // El crotal del ternero debe figurar «Libre» en la tabla de repartidos; si no, SEGURO (no se presenta).
+            Frame fTabla = frameCon("[id*='_ctl02_'][id$='_gvCrotalesRepartidos']");
+            Object estado = fTabla.evaluate("(objetivo) => { " + JS_CROTAL_REPARTIDO + " return seleccionar(objetivo); }",
+                    normaliza(crotalTernero));
+            if ("NO_ENCONTRADO".equals(String.valueOf(estado))) {
+                throw new NavegacionOvzException("El crotal del ternero no está entre los crotales repartidos en OVZ.");
+            }
+            if ("NO_LIBRE".equals(String.valueOf(estado))) {
+                throw new NavegacionOvzException("El crotal del ternero no está «Libre» en OVZ; no se puede dar el alta.");
+            }
+            esperarQuietud();
+            try {
+                frameCon("[id*='_ctl02_'][id$='_lblcrotal']");
+            } catch (RuntimeException e) {
+                throw new NavegacionOvzException("OVZ no cargó el formulario del alta tras elegir el crotal.");
+            }
+            paso(5, "crotal del ternero elegido; pantalla 2 cargada");
+        } catch (RuntimeException e) {
+            pasoFallo(5, e);
+            throw e;
+        }
+    }
+
+    @Override
+    public String leerCrotalSeleccionado() {
+        return leer("[id*='_ctl02_'][id$='_lblcrotal']");
+    }
+
+    @Override
+    public void rellenarFormularioAlta(DatosFormularioAlta datos) {
+        escribir("[id*='_ctl02_'][id$='_TxtMadre']", datos.crotalMadre());
+        escribir("[id*='_ctl02_'][id$='_TxtFNac']", datos.fechaNacimientoDdMmAaaa());
+        seleccionarValor(frameCon("[id*='_ctl02_'][id$='_DDLSexo']"), "[id*='_ctl02_'][id$='_DDLSexo']",
+                datos.sexoCodigo());
+        seleccionarValor(frameCon("[id*='_ctl02_'][id$='_DDLTipoIdentificador']"),
+                "[id*='_ctl02_'][id$='_DDLTipoIdentificador']", datos.tipoIdentificadorCodigo());
+        escribir("[id*='_ctl02_'][id$='_TxtFId']", datos.fechaIdentificacionDdMmAaaa());
+        seleccionarValor(frameCon("[id*='_ctl02_'][id$='_DDLRazas']"), "[id*='_ctl02_'][id$='_DDLRazas']",
+                datos.razaCodigo());
+        // Emisión del DI (radios P_rblImpDI_0 = OVZ, P_rblImpDI_1 = OVZNET). La oficina solo si la emisión es en la OVZ.
+        if (ListasOvz.CODIGO_EMISION_DI_OVZ.equals(datos.emisionDiCodigo())) {
+            pulsar("[id*='_ctl02_'][id$='_rblImpDI_0']");
+            if (datos.oficinaDiCodigo() != null && !datos.oficinaDiCodigo().isBlank()) {
+                seleccionarValor(frameCon("[id*='_ctl02_'][id$='_DDLOVZ']"), "[id*='_ctl02_'][id$='_DDLOVZ']",
+                        datos.oficinaDiCodigo());
+            }
+        } else {
+            pulsar("[id*='_ctl02_'][id$='_rblImpDI_1']");
+        }
+        paso(6, "formulario del alta rellenado");
+    }
+
+    @Override
+    public void pulsarAceptarAlta() {
+        Object descripcion;
+        try {
+            Frame f = frameCon(SELECTOR_ACEPTAR_ALTA);
+            descripcion = f.evaluate("(sel) => { const e = document.querySelector(sel); if (!e) return null;"
+                    + " const t = (e.tagName === 'INPUT') ? (e.getAttribute('value') || '') : (e.textContent || '');"
+                    + " return { id: e.id || '', texto: t.trim() }; }", SELECTOR_ACEPTAR_ALTA);
+        } catch (RuntimeException e) {
+            throw new AceptarException();
+        }
+        if (!(descripcion instanceof Map<?, ?> d)) {
+            throw new AceptarException();
+        }
+        String id = String.valueOf(d.get("id"));
+        String texto = String.valueOf(d.get("texto"));
+        if (!id.endsWith(SUFIJO_ACEPTAR_ALTA) || !normaliza(texto).equals("aceptar")) {
+            throw new AceptarException();
+        }
+        Frame f = frameCon("[id='" + id + "']");
+        f.evaluate("(id) => { const e = document.getElementById(id); e.click(); }", id);
+        esperarQuietud();
+        paso(8, "«Aceptar» del alta pulsado");
+        comprobarSesion();
+    }
+
+    @Override
+    public List<DocumentoCandidato> listarDocumentosAltaBovino() {
+        return listarDocumentos(VALOR_ALTA_BOVINO);
+    }
+
+    /** Elige la única explotación bovina del desplegable (como la baja); lanza si hay varias o ninguna. */
+    private void elegirExplotacionBovina() {
+        Frame fSel = frameCon("#ctl00_ucMenu1_ddlDelegado");
+        Object opcionesDelegado = fSel.evaluate(JS_OPCIONES_DELEGADO);
+        if (!(opcionesDelegado instanceof List<?> opciones)) {
+            throw new NavegacionOvzException("OVZ no devolvió la lista de explotaciones.");
+        }
+        List<String> bovinas = new ArrayList<>();
+        for (Object o : opciones) {
+            Map<?, ?> m = (Map<?, ?>) o;
+            if (normaliza(String.valueOf(m.get("especie"))).endsWith("bovidos")) {
+                bovinas.add(String.valueOf(m.get("value")));
+            }
+        }
+        if (bovinas.size() > 1) {
+            throw new NavegacionOvzException("La cuenta de OVZ tiene varias explotaciones bovinas; el alta se hace a mano.");
+        }
+        if (bovinas.isEmpty()) {
+            throw new NavegacionOvzException("La cuenta de OVZ no tiene explotación bovina.");
+        }
+        seleccionarValor(fSel, "#ctl00_ucMenu1_ddlDelegado", bovinas.get(0));
+        frameCon("a[href*='wgTramites.aspx']");
+        paso(3, "explotación bovina elegida");
+    }
+
+    /** Documentos › Documentos, filtra por el tipo dado y lee todas las filas (con paginación). Compartido baja/alta. */
+    private List<DocumentoCandidato> listarDocumentos(String valorTipoTramite) {
+        try {
+            if (existeEnAlgunFrame("a[href*='wgDocumentos.aspx']", 5_000)) {
+                pulsar("a[href*='wgDocumentos.aspx']");
+            } else {
+                throw new NavegacionOvzException("No se encontró el menú Documentos de OVZ.");
+            }
+            Frame fTipo = frameCon("[id$='_DDLTipoTramite']");
+            seleccionarValor(fTipo, "[id$='_DDLTipoTramite']", valorTipoTramite);
+            pulsar("[id$='_btnLinkBuscar']");
+            try {
+                frameCon("[id$='_GVDocumentos']");
+            } catch (RuntimeException e) {
+                paso(9, "Documentos sin tabla");
+                paginaDocumentos = 1;
+                return List.of();
+            }
+            paginaDocumentos = 1;
+            List<DocumentoCandidato> todos = new ArrayList<>();
+            for (int pagina = 1; pagina <= MAX_PAGINAS_DOCUMENTOS; pagina++) {
+                if (pagina > 1 && !irAPagina(pagina)) {
+                    break;
+                }
+                todos.addAll(leerFilasPagina(pagina));
+            }
+            paso(9, "Documentos listados");
+            return todos;
+        } catch (RuntimeException e) {
+            pasoFallo(9, e);
+            throw e;
+        }
+    }
+
+    /**
+     * JS de la tabla de crotales repartidos (pantalla 1 del alta): busca la fila cuyo crotal (1ª celda, normalizado)
+     * es el objetivo; si su estado (2ª celda) contiene «libre», pulsa su enlace y devuelve «OK»; si no, «NO_LIBRE»;
+     * si no está, «NO_ENCONTRADO».
+     */
+    private static final String JS_CROTAL_REPARTIDO = """
+            const norm = (s) => (s || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')
+              .replace(/\\s+/g, '').toUpperCase();
+            const seleccionar = (objetivo) => {
+              const tabla = document.querySelector("[id*='_ctl02_'][id$='_gvCrotalesRepartidos']");
+              if (!tabla) return 'NO_ENCONTRADO';
+              const filas = Array.from(tabla.querySelectorAll('tr'));
+              for (const tr of filas) {
+                const celdas = Array.from(tr.children).filter(c => c.tagName === 'TD');
+                if (celdas.length < 2) continue;
+                if (norm(celdas[0].textContent) === objetivo) {
+                  const estado = norm(celdas[1].textContent);
+                  if (estado.indexOf('LIBRE') < 0) return 'NO_LIBRE';
+                  const enlace = celdas[0].querySelector('a') || tr.querySelector('a');
+                  if (!enlace) return 'NO_ENCONTRADO';
+                  enlace.click();
+                  return 'OK';
+                }
+              }
+              return 'NO_ENCONTRADO';
+            };
+            """;
 
     // ------------------------------------------------------------------ mecanismo cross-frame (de los spikes)
 

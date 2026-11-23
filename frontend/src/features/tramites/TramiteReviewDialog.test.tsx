@@ -49,6 +49,7 @@ const DETALLE = {
   consignatario: null,
   aptitudMovimiento: null,
   fechaIdentificacion: null,
+  raza: null,
   sePresentaraAutomaticamente: false,
   presentacionOvz: null as PresentacionOvz | null,
 }
@@ -2305,6 +2306,7 @@ describe("TramiteReviewDialog: presentación automática — aprobar y vista pre
         HttpResponse.json(
           detalle({
             tipoTramite: "BAJA_MUERTE",
+            raza: null,
             sePresentaraAutomaticamente: true,
             crotales: [CROTAL_BAJA],
             fechaHecho: "2026-10-07",
