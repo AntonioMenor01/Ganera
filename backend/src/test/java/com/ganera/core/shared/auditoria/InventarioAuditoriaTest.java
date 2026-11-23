@@ -114,6 +114,8 @@ class InventarioAuditoriaTest {
                 Cobertura.auditada("ovz.WorkerOvzServiceTest"));
         PLANIFICADORES.put("RetencionMensajesScheduler.aplicarRetencion",
                 Cobertura.auditada("whatsapp.RetencionMensajesServiceTest"));
+        PLANIFICADORES.put("AltaAutomaticaScheduler.procesarAltasPendientes",
+                Cobertura.auditada("alta.AltaAutomaticaServiceTest"));
 
         // --- @Modifying ---
         MODIFYING.put("MensajeCampoRepository.borrarSinTramiteDeGestoriaAntesDe",

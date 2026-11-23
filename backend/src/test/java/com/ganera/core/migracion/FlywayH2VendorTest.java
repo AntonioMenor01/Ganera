@@ -49,15 +49,16 @@ class FlywayH2VendorTest {
                     .containsExactlyInAnyOrder("classpath:db/migration", "classpath:db/h2");
 
             MigrationInfo[] aplicadas = flyway.info().applied();
-            // En H2 no se aplica db/postgresql (V26), asi que queda el hueco de V26: V1-V25, V27-V34 = 33.
+            // En H2 no se aplica db/postgresql (V26), asi que queda el hueco de V26: V1-V25, V27-V34, V40 = 34
+            // (V40 es vendor-neutral, en db/migration; deja el hueco V35-V39 reservado a Antonio, que Flyway acepta).
             assertThat(Arrays.stream(aplicadas).map(m -> m.getVersion().getVersion()).toList())
                     .containsExactlyElementsOf(Stream.concat(
                             IntStream.rangeClosed(1, 25).mapToObj(String::valueOf),
-                            Stream.of("27", "28", "29", "30", "31", "32", "33", "34")).toList());
+                            Stream.of("27", "28", "29", "30", "31", "32", "33", "34", "40")).toList());
             assertThat(aplicadas).allSatisfy(m -> assertThat(m.getState()).isEqualTo(MigrationState.SUCCESS));
 
             // Comprobacion de que de verdad se ha capturado el log de Flyway; si no, la siguiente no probaria nada.
-            assertThat(salida.getAll()).contains("Successfully applied 33 migrations");
+            assertThat(salida.getAll()).contains("Successfully applied 34 migrations");
             assertThat(salida.getAll()).contains("classpath:db/h2");
             // («Unable to resolve location classpath:db/callback.» sale siempre en DEBUG: es la ubicacion de callbacks
             // por defecto de Flyway y no la usamos.)

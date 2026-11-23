@@ -69,4 +69,16 @@ public class AltaPendiente {
 
     @Column(name = "creado_en", nullable = false)
     private Instant creadoEn;
+
+    /**
+     * Trazabilidad del alta automatica (rama feat/alta-automatica, migracion V40). id de la Gestoria creada a
+     * partir de esta alta, o null mientras la fila no se ha procesado. Columna aditiva y nullable; es un BIGINT
+     * simple sin FK (alta_pendiente es pre-tenant), solo traza.
+     */
+    @Column(name = "gestoria_id")
+    private Long gestoriaId;
+
+    /** Cuando el alta automatica proceso esta fila (Instant del Clock), o null si todavia no. */
+    @Column(name = "procesada_en")
+    private Instant procesadaEn;
 }

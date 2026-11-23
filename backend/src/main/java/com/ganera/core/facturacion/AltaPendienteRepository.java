@@ -2,6 +2,7 @@ package com.ganera.core.facturacion;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -15,4 +16,11 @@ public interface AltaPendienteRepository extends JpaRepository<AltaPendiente, Lo
 
     /** Para marcarla ENLAZADA al dar de alta la Gestoria con ese stripeSubscriptionId. */
     Optional<AltaPendiente> findBySubscriptionId(String subscriptionId);
+
+    /**
+     * Altas en un estado dado, mas antiguas primero. Lo usa el alta automatica (rama feat/alta-automatica)
+     * para recorrer las PENDIENTE. Tabla NO multi-tenant, sin scope por gestoria (igual que el resto de este
+     * repositorio): las altas existen antes de que exista la Gestoria.
+     */
+    List<AltaPendiente> findByEstadoOrderByIdAsc(EstadoAltaPendiente estado);
 }
