@@ -376,6 +376,32 @@ approval step before anything is written to OVZ.net.
      `TRIAL` — with full approval rights — indefinitely. Needs a design decision (e.g. don't grant
      `TRIAL` until `checkout.session.completed`, or a local trial-expiry check) before fixing. — historia en [docs/historia/decisiones-tecnicas-historico.md](docs/historia/decisiones-tecnicas-historico.md).
 - **Landing payment linking (`alta_pendiente` + onboarding link, 2026-10-26):** cobro desde la landing con precio fijo por plan; `alta_pendiente` (V24) + enlace en el onboarding; API-version mismatch resuelto por JSON crudo. **Guard anti-doble-cargo:** cuando `Suscripcion.plan != null` (plan fijo de la landing), `SuscripcionSyncScheduler.calcularAjustes` **excluye** esa suscripción de la reconciliación nocturna de cantidad (si no, empujaría cantidad = nº de Explotaciones a un precio fijo y multiplicaría el cargo); `plan == null` mantiene el comportamiento por-Explotación. Historico completo en [docs/historia/decisiones-tecnicas-historico.md](docs/historia/decisiones-tecnicas-historico.md).
+- **Alta automática de cuentas desde la landing — detrás de un flag, APAGADA por defecto** (2026-11-23,
+  rama `feat/alta-automatica`, Álvaro; `backend/**` tocado de forma ADITIVA, avisado en la PR). Es la
+  **fase automática** que anunciaba `V24`: cuando llega un pago de la landing (fila `alta_pendiente` en
+  `PENDIENTE`) se crea sola la cuenta, **sin tocar `OnboardingController` ni `StripeWebhookService`**.
+  - **`ganera.alta.automatica.activa` (default `false`, env `GANERA_ALTA_AUTOMATICA_ACTIVA`).** Apagado,
+    el planificador `AltaAutomaticaScheduler` **no hace nada** y el alta sigue siendo manual
+    (`POST /internal/onboarding/gestoria`): **fusionar esta rama no cambia el comportamiento actual**.
+    Encendido, cada `ganera.alta.automatica.intervalo` (default `PT30S`) procesa las `alta_pendiente`
+    `PENDIENTE`. Sin `stripe.api-key` no hace nada (las altas llevan una Subscription que hay que enlazar).
+  - **`AltaAutomaticaService`** (paquete nuevo `alta`) crea `Gestoria` + `Usuario` + `Suscripcion`
+    **reutilizando** `GestoriaRepository`/`UsuarioRepository`/`SuscripcionRepository` y
+    `EnlaceStripeService.enlazar` (enlaza la Subscription por su `subscription_id` y recalcula el estado
+    desde Stripe), duplicando la secuencia mínima del onboarding en vez de refactorizarlo. Cada alta en su
+    propia transacción (`TransactionTemplate`): un fallo de una fila no aborta el lote. Escribe las mismas
+    filas de auditoría que el onboarding (`GESTORIA_CREADA`/`USUARIO_CREADO`/`SUSCRIPCION_CREADA`, actor
+    `PLANIFICADOR`), por eso la guardia DML lo acepta y está en el inventario (`InventarioAuditoriaTest`).
+  - **Contraseña temporal** aleatoria (`SecureRandom`), guardada **solo hasheada** (`PasswordEncoder`); se
+    devuelve en claro **solo en memoria** (`CuentaCreada`) para el futuro email de activación (Prompt 3) y
+    **nunca** se escribe en logs ni auditoría. De momento **no se envían emails**: al crear una cuenta solo
+    se registra un log con ids (el email es el Prompt 3; la promesa de "te hemos enviado un correo" sigue sin
+    cumplirse hasta entonces, igual que en el alta manual).
+  - **Idempotencia** (las re-entregas de Stripe no duplican cuentas): no crea nada si la alta ya está
+    `ENLAZADA`, si ya existe una `Suscripcion` con ese `subscription_id`, o si ya existe un `Usuario` con ese
+    email; en esos casos marca la alta `ENLAZADA` sin crear. **Migración `V40`** (rango de Álvaro) añade a
+    `alta_pendiente` dos columnas ADITIVAS y NULL (`gestoria_id` BIGINT sin FK, `procesada_en` TIMESTAMP),
+    solo para trazabilidad; no cambia el enum de estado (reutiliza `PENDIENTE` → `ENLAZADA`).
 - **Public self-registration** (`registro` package) — **closed by default since C mínimo**:
   `ganera.registro.abierto` is `false` in `application.yml` and only
   `RegistroGestoriaEndToEndTest` opens it; while closed, `RegistroCerradoFilter` answers `404` with no

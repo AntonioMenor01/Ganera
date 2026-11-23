@@ -41,6 +41,16 @@ ganera:
     key: ${ENCRYPTION_KEY:}
   onboarding:
     secret: ${ONBOARDING_SECRET:}
+  alta:
+    automatica:
+      # Alta automatica de cuentas desde los pagos de la landing (fila alta_pendiente PENDIENTE): crea sola
+      # Gestoria + Usuario + Suscripcion y enlaza la Subscription de Stripe. APAGADA por defecto: con el flag
+      # en false el planificador no hace nada y el alta sigue siendo manual (POST /internal/onboarding/gestoria).
+      # Encenderla NO cambia nada hasta definir GANERA_ALTA_AUTOMATICA_ACTIVA=true. Los emails de activacion
+      # son una fase posterior (Prompt 3); de momento solo se registra un log con ids al crear una cuenta.
+      activa: ${GANERA_ALTA_AUTOMATICA_ACTIVA:false}
+      # Intervalo del planificador (fixedDelay). Solo cuenta cuando activa=true.
+      intervalo: ${GANERA_ALTA_AUTOMATICA_INTERVALO:PT30S}
   frontend:
     origen: ${FRONTEND_ORIGEN:http://localhost:5173}
   seguridad:
