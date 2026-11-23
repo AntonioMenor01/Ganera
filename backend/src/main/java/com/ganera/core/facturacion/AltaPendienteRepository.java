@@ -23,4 +23,11 @@ public interface AltaPendienteRepository extends JpaRepository<AltaPendiente, Lo
      * repositorio): las altas existen antes de que exista la Gestoria.
      */
     List<AltaPendiente> findByEstadoOrderByIdAsc(EstadoAltaPendiente estado);
+
+    /**
+     * Altas ya enlazadas por el alta automatica ({@code procesada_en} no nulo), para reintentar sus emails
+     * pendientes. {@code procesada_en} no nulo distingue las creadas por el alta automatica de las enlazadas a
+     * mano en el onboarding (esas no tienen {@code procesada_en} y no deben recibir estos emails).
+     */
+    List<AltaPendiente> findByEstadoAndProcesadaEnIsNotNullOrderByIdAsc(EstadoAltaPendiente estado);
 }

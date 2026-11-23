@@ -392,11 +392,23 @@ approval step before anything is written to OVZ.net.
     propia transacción (`TransactionTemplate`): un fallo de una fila no aborta el lote. Escribe las mismas
     filas de auditoría que el onboarding (`GESTORIA_CREADA`/`USUARIO_CREADO`/`SUSCRIPCION_CREADA`, actor
     `PLANIFICADOR`), por eso la guardia DML lo acepta y está en el inventario (`InventarioAuditoriaTest`).
-  - **Contraseña temporal** aleatoria (`SecureRandom`), guardada **solo hasheada** (`PasswordEncoder`); se
-    devuelve en claro **solo en memoria** (`CuentaCreada`) para el futuro email de activación (Prompt 3) y
-    **nunca** se escribe en logs ni auditoría. De momento **no se envían emails**: al crear una cuenta solo
-    se registra un log con ids (el email es el Prompt 3; la promesa de "te hemos enviado un correo" sigue sin
-    cumplirse hasta entonces, igual que en el alta manual).
+  - **Contraseña temporal** aleatoria (`SecureRandom`), guardada **solo hasheada** (`PasswordEncoder`); se usa
+    en el acto para el email de bienvenida y se devuelve en claro **solo en memoria** (`CuentaCreada`),
+    **nunca** en logs, auditoría ni persistida en claro.
+  - **Emails (rama `feat/alta-automatica-emails`, 2026-11-23; cableados a `EmailService`, ver su bullet).**
+    Tras crear la cuenta se envían dos correos, cada uno **idempotente** por su columna `email_*_enviado_en`
+    de `alta_pendiente` (migración `V41`): no se reenvía si ya consta.
+    - **Bienvenida** al cliente (al email del alta): enlace a la app (`ganera.frontend.origen`), email de
+      acceso, contraseña temporal, aviso de cambiarla y los 15 días de prueba (`PlantillasEmailAlta`, en
+      español).
+    - **Aviso al equipo** a `ganera.notificaciones.equipo-email` (nombre, email, NIF, plan; **nunca** datos
+      de tarjeta). Si esa dirección está **en blanco** (el default), no se envía el del equipo.
+    Un fallo de email **no revierte la cuenta ya creada ni bloquea el planificador**: se registra (sin datos
+    personales) y se **reintenta** en la siguiente pasada (altas con `procesada_en` no nulo y algún
+    `email_*_enviado_en` null). Como la contraseña en claro no se persiste, el reintento de la bienvenida
+    **regenera** una nueva y actualiza el hash del `Usuario` (buscado por su email). Si `EmailService` está
+    apagado/sin configurar no se envía nada y se reintentará al activarlo. (La regeneración de contraseña en
+    el reintento escribe en `usuario` sin fila de auditoría — mecanismo interno; aceptado.)
   - **Idempotencia** (las re-entregas de Stripe no duplican cuentas): no crea nada si la alta ya está
     `ENLAZADA`, si ya existe una `Suscripcion` con ese `subscription_id`, o si ya existe un `Usuario` con ese
     email; en esos casos marca la alta `ENLAZADA` sin crear. **Migración `V40`** (rango de Álvaro) añade a
@@ -1040,9 +1052,10 @@ approval step before anything is written to OVZ.net.
   no capturar dentro de ella; (b) `CifradorAesGcm.descifrar` es público: que `DescifradoCredencialOvz` sea el único
   que descifra es cierto hoy, pero **no está vigilado** por ningún test (cualquier bean podría inyectar el cifrador
   y descifrar sin fila de auditoría).
-- **Email infrastructure (SMTP), off by default — reusable piece, not wired to any flow yet**
-  (2026-11-23, branch `feat/email-servicio`, Álvaro; `backend/**` touched additively, warned in the
-  PR). `shared/email`: `EmailService` (interface — `enviarHtml`/`enviarTexto`/`configurado`) and
+- **Email infrastructure (SMTP), off by default** (2026-11-23, branch `feat/email-servicio`, Álvaro;
+  `backend/**` touched additively, warned in the PR). Reusable piece; its first consumer is the
+  automatic alta (welcome + team emails, branch `feat/alta-automatica-emails`). `shared/email`:
+  `EmailService` (interface — `enviarHtml`/`enviarTexto`/`configurado`) and
   `SmtpEmailService` (the `@Service`, on `JavaMailSender`). **Fail-closed, and merging it changes
   nothing until it's turned on:** `ganera.email.activo` defaults to `false`, so with the config blank
   (host or `from` empty) nothing is sent — a WARN is logged and the call returns `false`, **never
@@ -1057,9 +1070,8 @@ approval step before anything is written to OVZ.net.
   `MailSenderAutoConfiguration` abstains and the app starts exactly as before). Covered by
   `SmtpEmailServiceTest` (off/unconfigured never touches `JavaMailSender`; active+configured builds
   and sends the `MimeMessage` with the right recipient/subject/from and HTML vs text; a send error
-  returns `false` without throwing). **Still pending:** wiring it to a flow — e.g. the activation
-  email of the landing-payment "automatic phase" (see the Stripe landing-payment bullet's "Still
-  pending — automatic phase").
+  returns `false` without throwing). **Consumer:** the automatic alta sends the welcome and team
+  emails through it (see the "Alta automática de cuentas desde la landing" bullet → Emails).
 - **Backend build tool**: Maven (not Gradle).
 
 ## Architecture notes (backend)

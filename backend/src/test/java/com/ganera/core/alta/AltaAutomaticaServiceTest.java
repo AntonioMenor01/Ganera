@@ -69,9 +69,12 @@ class AltaAutomaticaServiceTest {
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     private AltaAutomaticaService servicio(EnlaceStripeService enlace) {
+        // Estos tests se centran en la creacion de cuentas; con el email APAGADO (configurado=false) no se
+        // envia ni se regenera nada, asi que el comportamiento de creacion queda aislado. Los emails tienen su
+        // propio test (AltaAutomaticaEmailsTest).
         return new AltaAutomaticaService(altaPendienteRepository, gestoriaRepository, usuarioRepository,
-                suscripcionRepository, enlace, passwordEncoder, auditoriaService,
-                Clock.fixed(AHORA, ZoneOffset.UTC), transactionManager);
+                suscripcionRepository, enlace, passwordEncoder, auditoriaService, new EmailServiceFalso(false),
+                Clock.fixed(AHORA, ZoneOffset.UTC), transactionManager, "https://app.ganera.es", "");
     }
 
     private EnlaceStripeService enlaceStripe(String status) {
