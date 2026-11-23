@@ -41,6 +41,19 @@ ganera:
     key: ${ENCRYPTION_KEY:}
   onboarding:
     secret: ${ONBOARDING_SECRET:}
+  email:
+    # Infraestructura de email (SMTP), APAGADA por defecto. Pieza reutilizable; aun NO esta cableada a ningun
+    # flujo. Fail-closed: con `activo=false` (el valor por defecto) o si falta la config SMTP (host o from en
+    # blanco), EmailService NO envia: registra un WARN y vuelve sin error, nunca lanza y nunca rompe al que lo
+    # llame. Los valores reales van en las variables de entorno de Clever, nunca en el repo. Fusionar esto no
+    # cambia nada hasta definir EMAIL_ACTIVO=true + host/from.
+    activo: ${EMAIL_ACTIVO:false}
+    host: ${EMAIL_HOST:}
+    puerto: ${EMAIL_PUERTO:587}
+    usuario: ${EMAIL_USUARIO:}
+    password: ${EMAIL_PASSWORD:}
+    # Remitente (p. ej. "Ganera <no-responder@ganera.es>"). En blanco -> no se envia (fail-closed).
+    from: ${EMAIL_FROM:}
   frontend:
     origen: ${FRONTEND_ORIGEN:http://localhost:5173}
   seguridad:
