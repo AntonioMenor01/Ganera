@@ -44,6 +44,28 @@ public interface TramiteRepository extends JpaRepository<Tramite, Long> {
     /** Conteo de trámites de una explotación en un estado (ficha), con gestoriaId explícito. */
     long countByExplotacionIdAndGestoriaIdAndEstado(Long explotacionId, Long gestoriaId, EstadoTramite estado);
 
+    /**
+     * Nº de trámites de la gestoría cuyo estado está en {@code estados} (dashboard, GET /resumen). Es un
+     * SELECT count(*): no trae filas. gestoriaId explícito, nunca el filtro ambiente.
+     */
+    long countByGestoriaIdAndEstadoIn(Long gestoriaId, Collection<EstadoTramite> estados);
+
+    /**
+     * Previa corta de la cola de revisión del dashboard (GET /resumen): los trámites de la gestoría en
+     * {@code estado}, del más antiguo al más reciente, limitados por el {@link Pageable}. UNA sola consulta
+     * con left join a explotación y ganadero (constructor expression {@link ColaResumenItem}): nunca una
+     * consulta por fila. left join porque un trámite de la cola puede no tener explotación todavía (ambiguo),
+     * y entonces explotación/ganadero salen null sin perder la fila. gestoriaId es parámetro real de la query.
+     */
+    @Query("select new com.ganera.core.tramite.ColaResumenItem("
+            + "t.id, t.tipoTramite, t.estado, t.createdAt, e.codigoRega, e.nombre, g.nombre) "
+            + "from Tramite t left join t.explotacion e left join e.ganadero g "
+            + "where t.gestoria.id = :gestoriaId and t.estado = :estado "
+            + "order by t.createdAt asc, t.id asc")
+    List<ColaResumenItem> previaCola(@Param("gestoriaId") Long gestoriaId,
+                                     @Param("estado") EstadoTramite estado,
+                                     Pageable pagina);
+
     /** Conteos de pendientes de revisión por explotación (detalle ganadero), gestoriaId explícito. */
     @Query("select new com.ganera.core.tramite.ConteoTramitesPorExplotacion(t.explotacion.id, count(t)) "
             + "from Tramite t where t.gestoria.id = :gestoriaId and t.estado = :estado "
