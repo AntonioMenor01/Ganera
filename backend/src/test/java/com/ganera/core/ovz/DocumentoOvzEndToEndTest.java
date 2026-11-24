@@ -59,6 +59,7 @@ class DocumentoOvzEndToEndTest {
     private Gestoria gestoriaB;
     private String tokenA;
     private long ganaderoAId;
+    private long ganaderoA2Id;
     private long ganaderoBId;
     private long documentoAId;
     private long documentoBId;
@@ -76,6 +77,10 @@ class DocumentoOvzEndToEndTest {
         long[] a = sembrarDocumento(gestoriaA, "ES010000000001", "Baja Animal A.pdf", pdfA);
         ganaderoAId = a[0];
         documentoAId = a[1];
+        // Segundo ganadero en la MISMA gestoría A, con su propio documento: el listado de ganaderoAId NO debe traerlo.
+        long[] a2 = sembrarDocumento(gestoriaA, "ES010000000002", "Baja Animal A2.pdf",
+                PdfDePrueba.conLineas("Justificante de baja A2", "Crotal: ES010000008888"));
+        ganaderoA2Id = a2[0];
         byte[] pdfB = PdfDePrueba.conLineas("Justificante de baja B", "Crotal: ES020000009999");
         long[] b = sembrarDocumento(gestoriaB, "ES020000000001", "Baja Animal B.pdf", pdfB);
         ganaderoBId = b[0];
@@ -104,6 +109,23 @@ class DocumentoOvzEndToEndTest {
                 .contains("application/pdf");
         // Ninguna fila de lectura: el listado de metadatos no se audita (solo la descarga).
         assertThat(acciones(gestoriaA)).isEmpty();
+    }
+
+    @Test
+    void listarDocumentosDeUnGanaderoPropioSoloTraeLosDeEseGanadero() {
+        // Contenido, no solo la puerta 404: listarDeGanadero consulta por ganaderoId Y gestoriaId. El listado del
+        // ganadero de A trae SU documento y NUNCA el de otro ganadero de la misma gestoría (guard real del scoping
+        // por ganaderoId: si se cayera ese filtro, el PDF A2 asomaría y el test iría en rojo) ni el de otra gestoría.
+        ResponseEntity<String> r = get("/ganaderos/" + ganaderoAId + "/documentos");
+        assertThat(r.getStatusCode().value()).isEqualTo(200);
+        assertThat(r.getBody()).contains("Baja Animal A.pdf");
+        assertThat(r.getBody()).doesNotContain("Baja Animal A2.pdf");
+        assertThat(r.getBody()).doesNotContain("Baja Animal B.pdf");
+        // Y el listado del segundo ganadero de A trae solo el suyo, nunca el del primero.
+        ResponseEntity<String> r2 = get("/ganaderos/" + ganaderoA2Id + "/documentos");
+        assertThat(r2.getStatusCode().value()).isEqualTo(200);
+        assertThat(r2.getBody()).contains("Baja Animal A2.pdf");
+        assertThat(r2.getBody()).doesNotContain("Baja Animal A.pdf");
     }
 
     @Test
