@@ -28,4 +28,7 @@ public interface GanaderoRepository extends JpaRepository<Ganadero, Long>, JpaSp
 
     /** Listado paginado con gestoriaId explicito, sin depender del gestoriaFilter ambiente. */
     Page<Ganadero> findByGestoriaId(Long gestoriaId, Pageable pageable);
+
+    /** Nº de ganaderos de la gestoría (dashboard, GET /resumen). count(*) con gestoriaId explícito, sin filas. */
+    long countByGestoriaId(Long gestoriaId);
 }
