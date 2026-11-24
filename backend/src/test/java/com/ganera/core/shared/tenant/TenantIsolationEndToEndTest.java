@@ -295,6 +295,33 @@ class TenantIsolationEndToEndTest {
         assertThat(respuestaB.getBody()).contains("\"totalElements\":0");
     }
 
+    @Test
+    void dosGestoriasPuedenImportarElMismoCodigoRegaYCadaUnaVeSoloElSuyo() throws IOException {
+        Gestoria gestoriaA = gestoriaRepository.save(new Gestoria("Gestoria REGA comun A"));
+        Gestoria gestoriaB = gestoriaRepository.save(new Gestoria("Gestoria REGA comun B"));
+        crearUsuario(gestoriaA, "regaA@test.com");
+        crearUsuario(gestoriaB, "regaB@test.com");
+
+        String tokenA = login("regaA@test.com");
+        String tokenB = login("regaB@test.com");
+
+        // El MISMO codigo_rega real, importado por las dos gestorias: tras V43 ambas lo crean.
+        ResponseEntity<String> importA = importarExcel(tokenA,
+                construirExcelConRega("ES920000000001", "92000001A", "Finca de A"));
+        ResponseEntity<String> importB = importarExcel(tokenB,
+                construirExcelConRega("ES920000000001", "92000002B", "Finca de B"));
+        assertThat(importA.getStatusCode().value()).isEqualTo(200);
+        assertThat(importB.getStatusCode().value()).isEqualTo(200);
+        assertThat(importA.getBody()).contains("\"creadas\":1");
+        assertThat(importB.getBody()).contains("\"creadas\":1");
+
+        // Cada gestoria ve su explotacion con ese REGA y su propio nombre; nunca la de la otra.
+        ResponseEntity<String> listaA = get("/explotaciones?q=ES920000000001", tokenA);
+        ResponseEntity<String> listaB = get("/explotaciones?q=ES920000000001", tokenB);
+        assertThat(listaA.getBody()).contains("ES920000000001").contains("Finca de A").doesNotContain("Finca de B");
+        assertThat(listaB.getBody()).contains("ES920000000001").contains("Finca de B").doesNotContain("Finca de A");
+    }
+
     private void suscripcionActiva(Gestoria gestoria) {
         Suscripcion suscripcion = new Suscripcion();
         suscripcion.setGestoria(gestoria);
@@ -378,6 +405,31 @@ class TenantIsolationEndToEndTest {
             }
             Row filaExplotacion = workbook.getSheet("Explotaciones").createRow(1);
             String[] valoresExplotacion = {"ES910000000001", "Finca Import E2E", "99999999R", "Ganadero Import E2E"};
+            for (int c = 0; c < valoresExplotacion.length; c++) {
+                filaExplotacion.createCell(c).setCellValue(valoresExplotacion[c]);
+            }
+
+            Row cabeceraAnimales = workbook.createSheet("Animales").createRow(0);
+            String[] columnasAnimales = {"crotal", "especie", "codigo_rega_explotacion"};
+            for (int c = 0; c < columnasAnimales.length; c++) {
+                cabeceraAnimales.createCell(c).setCellValue(columnasAnimales[c]);
+            }
+
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private static byte[] construirExcelConRega(String codigoRega, String nif, String nombreFinca) throws IOException {
+        try (XSSFWorkbook workbook = new XSSFWorkbook()) {
+            Row cabeceraExplotaciones = workbook.createSheet("Explotaciones").createRow(0);
+            String[] columnasExplotaciones = {"codigo_rega", "nombre", "nif_ganadero", "nombre_ganadero"};
+            for (int c = 0; c < columnasExplotaciones.length; c++) {
+                cabeceraExplotaciones.createCell(c).setCellValue(columnasExplotaciones[c]);
+            }
+            Row filaExplotacion = workbook.getSheet("Explotaciones").createRow(1);
+            String[] valoresExplotacion = {codigoRega, nombreFinca, nif, "Ganadero " + nif};
             for (int c = 0; c < valoresExplotacion.length; c++) {
                 filaExplotacion.createCell(c).setCellValue(valoresExplotacion[c]);
             }

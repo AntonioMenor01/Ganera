@@ -337,11 +337,11 @@ public class ExplotacionImportService {
     }
 
     /**
-     * Decision 17: una violacion de constraint en Explotaciones/Animales es, en la practica, un
-     * codigo_rega, NIF o crotal que ya existe (UNIQUE global) -- normalmente en OTRA Gestoria, porque
-     * los de la propia se actualizan. El mensaje es neutro a proposito: no menciona otra Gestoria
-     * ni "duplicado". La unicidad global sigue permitiendo deducirlo (limitacion inherente, igual
-     * que el telefono de la decision 1).
+     * Decision 17: mensaje NEUTRO (no menciona otra Gestoria ni "duplicado") para una violacion de
+     * constraint en Explotaciones/Animales. Desde V43, codigo_rega/NIF/crotal son UNIQUE(gestoria_id,
+     * col) y coexisten entre gestorias, asi que este motivo ya no salta por un identificador de otra
+     * Gestoria: queda como defensa ante una carrera real dentro de la MISMA gestoria u otro fallo de
+     * integridad. Se mantiene el texto (clave de negocio generica, no revela nada).
      */
     static final String MOTIVO_IDENTIFICADOR_NO_DISPONIBLE =
             "No se ha podido guardar la fila: alguno de sus identificadores (código REGA, NIF o crotal) no está disponible.";

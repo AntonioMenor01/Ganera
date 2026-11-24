@@ -9,6 +9,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -18,14 +19,15 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "explotacion")
+@Table(name = "explotacion", uniqueConstraints = @UniqueConstraint(
+        name = "uq_explotacion_gestoria_codigo_rega", columnNames = {"gestoria_id", "codigo_rega"}))
 public class Explotacion extends GestoriaScopedEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "ganadero_id", nullable = false)
     private Ganadero ganadero;
 
-    @Column(name = "codigo_rega", nullable = false, unique = true)
+    @Column(name = "codigo_rega", nullable = false)
     private String codigoRega;
 
     @Column(nullable = false)

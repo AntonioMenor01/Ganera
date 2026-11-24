@@ -172,58 +172,17 @@ class ExplotacionImportServiceTest {
     }
 
     /**
-     * Una Explotacion de OTRA Gestoria ya tiene el codigo_rega que trae la fila 2 del fichero.
-     * ExplotacionImportFilaService reactiva el filtro de tenant dentro de su propia transaccion
-     * REQUIRES_NEW usando el gestoriaId recibido, asi que no la ve (esta "oculta" por el filtro)
-     * y el import intenta crearla -> viola la UNIQUE global real de codigo_rega en saveAndFlush.
-     * Esto comprueba que esa violacion real, dentro de su propia transaccion aislada, no deja
-     * inutilizable la sesion usada para procesar las filas POSTERIORES del mismo fichero.
+     * El aislamiento REQUIRES_NEW ante una violacion real de constraint a mitad de fichero (una fila
+     * falla sin dejar inutilizable la sesion de las filas posteriores) lo cubre ahora el test de la
+     * hoja Contactos {@code telefonoDeOtraGestoriaAMitadDeLaHojaEsErrorGenericoYLasSiguientesFilasSeProcesan}:
+     * tras V43, codigo_rega/crotal/nif ya no chocan entre gestorias (coexisten), y dentro de la misma
+     * gestoria el importador hace upsert (nunca choca consigo mismo), asi que el unico identificador
+     * que sigue siendo UNIQUE global -- y por tanto el unico disparador real de colision en el
+     * importador -- es contacto.telefono.
      */
-    @Test
-    void unaColisionRealDeConstraintAMitadDelFicheroNoImpideProcesarLasFilasPosteriores() throws IOException {
-        Gestoria gestoriaAjena = gestoriaRepository.save(new Gestoria("Gestoria ajena"));
-        Ganadero ganaderoAjeno = new Ganadero();
-        ganaderoAjeno.setGestoria(gestoriaAjena);
-        ganaderoAjeno.setNombre("Ganadero ajeno");
-        ganaderoRepository.save(ganaderoAjeno);
-        Explotacion explotacionAjena = new Explotacion();
-        explotacionAjena.setGestoria(gestoriaAjena);
-        explotacionAjena.setGanadero(ganaderoAjeno);
-        explotacionAjena.setCodigoRega("ES500000000001");
-        explotacionAjena.setNombre("Finca ajena");
-        explotacionRepository.save(explotacionAjena);
-
-        Gestoria gestoria = gestoriaRepository.save(new Gestoria("Gestoria propia colision"));
-        comprometerSetup();
-
-        MockMultipartFile archivo = construirExcel(
-                new String[]{"codigo_rega", "nombre", "nif_ganadero", "nombre_ganadero"},
-                List.<String[]>of(
-                        new String[]{"ES500000000010", "Finca antes", "10000001A", "Ganadero Antes"},
-                        new String[]{"ES500000000001", "Finca colisionando", "10000002B", "Ganadero Colision"},
-                        new String[]{"ES500000000011", "Finca despues", "10000003C", "Ganadero Despues"}),
-                new String[]{"crotal", "especie", "codigo_rega_explotacion"},
-                List.of());
-
-        ImportResumenResponse resumen = explotacionImportService.importar(archivo, gestoria);
-
-        TestTransaction.start();
-
-        assertThat(resumen.errores()).hasSize(1);
-        assertThat(resumen.errores().get(0).fila()).isEqualTo(3);
-
-        assertThat(explotacionRepository.findByCodigoRegaAndGestoriaId("ES500000000010", gestoria.getId()))
-                .as("la fila anterior a la colision debe haberse creado")
-                .isPresent();
-        assertThat(explotacionRepository.findByCodigoRegaAndGestoriaId("ES500000000011", gestoria.getId()))
-                .as("la fila POSTERIOR a la colision debe seguir procesandose con normalidad")
-                .isPresent();
-        assertThat(resumen.explotaciones().creadas()).isEqualTo(2);
-        assertThat(resumen.explotaciones().filasProcesadas()).isEqualTo(3);
-    }
 
     /**
-     * Caso distinto del anterior: aqui NO hay otra Gestoria de por medio, es la MISMA gestoria con
+     * Caso distinto: aqui NO hay otra Gestoria de por medio, es la MISMA gestoria con
      * una fila duplicada por error humano en el propio Excel (mismo codigo_rega dos veces). Cada
      * fila corre en su propia transaccion REQUIRES_NEW que hace COMMIT real al terminar (no solo
      * flush) -- para cuando la fila 2 arranca su propia transaccion (conexion distinta), el commit
@@ -300,18 +259,16 @@ class ExplotacionImportServiceTest {
                 "select nombre_busqueda from ganadero where nif = ?", String.class, nif);
     }
 
-    // --- Decision 17 (I-pre1): identificadores de OTRA Gestoria -> error de fila neutro ---
-
-    private static final String MOTIVO_IDENTIFICADOR_NO_DISPONIBLE =
-            "No se ha podido guardar la fila: alguno de sus identificadores (código REGA, NIF o crotal) no está disponible.";
+    // --- V43: codigo_rega, nif y crotal son UNIQUE(gestoria_id, col): coexisten entre gestorias ---
 
     /**
-     * Otra Gestoria ya tiene un codigo_rega, un NIF y un crotal que trae este fichero. Cada una de
-     * esas filas es un error con un mensaje NEUTRO (no dice nada de otra Gestoria) y las filas
-     * siguientes se procesan con normalidad. Nada de la otra Gestoria se toca.
+     * Otra Gestoria ya tiene un codigo_rega, un NIF y un crotal que tambien trae este fichero. Tras
+     * V43 los tres son UNIQUE por gestoria, asi que las tres filas se CREAN para esta gestoria y
+     * COEXISTEN con las de la ajena, cada una aislada por gestoria_id. Nada de la otra Gestoria se
+     * toca (su ganadero conserva nombre y explotaciones; su animal sigue en su explotacion).
      */
     @Test
-    void identificadoresDeOtraGestoriaSonErrorDeFilaNeutroYLasSiguientesSeProcesan() throws IOException {
+    void identificadoresDeOtraGestoriaCoexistenAisladosYNoTocanLaAjena() throws IOException {
         Gestoria gestoriaAjena = gestoriaRepository.save(new Gestoria("Gestoria ajena identificadores"));
         Ganadero ganaderoAjeno = new Ganadero();
         ganaderoAjeno.setGestoria(gestoriaAjena);
@@ -342,42 +299,136 @@ class ExplotacionImportServiceTest {
                 CABECERA_ANIMALES,
                 List.<String[]>of(
                         new String[]{"ES510000000099", "", "ES510000000003"},
-                        // El mismo crotal ajeno escrito con separadores: tras normalizar (decision
-                        // 22) choca igual y debe dar el mismo error neutro.
-                        new String[]{"es-5100 0000.0099", "", "ES510000000003"},
                         new String[]{"ES510000000100", "", "ES510000000003"}));
 
         ImportResumenResponse resumen = explotacionImportService.importar(archivo, gestoria);
 
         TestTransaction.start();
 
-        assertThat(resumen.errores()).extracting(ImportErrorDto::hoja, ImportErrorDto::fila).containsExactly(
-                org.assertj.core.groups.Tuple.tuple(ExplotacionImportService.HOJA_EXPLOTACIONES, 2),
-                org.assertj.core.groups.Tuple.tuple(ExplotacionImportService.HOJA_EXPLOTACIONES, 3),
-                org.assertj.core.groups.Tuple.tuple(ExplotacionImportService.HOJA_ANIMALES, 2),
-                org.assertj.core.groups.Tuple.tuple(ExplotacionImportService.HOJA_ANIMALES, 3));
-        assertThat(resumen.errores()).allSatisfy(e -> {
-            assertThat(e.motivo()).isEqualTo(MOTIVO_IDENTIFICADOR_NO_DISPONIBLE);
-            assertThat(e.motivo().toLowerCase()).doesNotContain("gestori").doesNotContain("duplicad");
-        });
-        // El Ganadero ajeno (mismo NIF) no se ha tocado ni ha ganado Explotaciones de esta Gestoria.
+        // Todo coexiste: ninguna fila es error, las tres explotaciones y los dos animales se crean.
+        assertThat(resumen.errores()).isEmpty();
+        assertThat(resumen.explotaciones().filasProcesadas()).isEqualTo(3);
+        assertThat(resumen.explotaciones().creadas()).isEqualTo(3);
+        assertThat(resumen.animales().filasProcesadas()).isEqualTo(2);
+        assertThat(resumen.animales().creadas()).isEqualTo(2);
+
+        // El mismo REGA existe ahora en las DOS gestorias, con filas distintas.
+        Explotacion regaPropio = explotacionRepository
+                .findByCodigoRegaAndGestoriaId("ES510000000001", gestoria.getId()).orElseThrow();
+        assertThat(regaPropio.getNombre()).isEqualTo("Finca con REGA ajeno");
+        assertThat(regaPropio.getId()).isNotEqualTo(explotacionAjena.getId());
+
+        // El mismo NIF existe en las dos gestorias, con ganaderos distintos.
+        Ganadero nifPropio = ganaderoRepository.findByNifAndGestoriaId("51000001X", gestoria.getId()).orElseThrow();
+        assertThat(nifPropio.getId()).isNotEqualTo(ganaderoAjeno.getId());
+        assertThat(nifPropio.getNombre()).isEqualTo("Ganadero Con NIF Ajeno");
+        assertThat(explotacionRepository.findByGanaderoIdAndGestoriaIdOrderByCodigoRegaAsc(
+                nifPropio.getId(), gestoria.getId())).extracting(Explotacion::getCodigoRega)
+                .containsExactly("ES510000000002");
+
+        // El mismo crotal existe en las dos gestorias, con animales distintos.
+        Animal crotalPropio = animalRepository.findByCrotalAndGestoriaId("ES510000000099", gestoria.getId()).orElseThrow();
+        assertThat(crotalPropio.getId()).isNotEqualTo(animalAjeno.getId());
+        assertThat(crotalPropio.getExplotacion().getCodigoRega()).isEqualTo("ES510000000003");
+
+        // La otra Gestoria sigue intacta: ganadero con su nombre y su unica explotacion, animal en su sitio.
         Ganadero ganaderoAjenoDespues = ganaderoRepository.findByNifAndGestoriaId("51000001X", gestoriaAjena.getId())
                 .orElseThrow();
+        assertThat(ganaderoAjenoDespues.getId()).isEqualTo(ganaderoAjeno.getId());
         assertThat(ganaderoAjenoDespues.getNombre()).isEqualTo("Ganadero ajeno");
         assertThat(explotacionRepository.findByGanaderoIdAndGestoriaIdOrderByCodigoRegaAsc(
-                ganaderoAjenoDespues.getId(), gestoria.getId())).isEmpty();
-        assertThat(animalRepository.count()).isEqualTo(2);
-        assertThat(resumen.explotaciones().creadas()).isEqualTo(1);
-        assertThat(resumen.animales().creadas()).isEqualTo(1);
-        assertThat(explotacionRepository.findByCodigoRegaAndGestoriaId("ES510000000003", gestoria.getId())).isPresent();
-        assertThat(animalRepository.findByCrotalAndGestoriaId("ES510000000100", gestoria.getId())).isPresent();
-        // Lo de la otra Gestoria sigue intacto y en su sitio.
+                ganaderoAjenoDespues.getId(), gestoriaAjena.getId())).extracting(Explotacion::getCodigoRega)
+                .containsExactly("ES510000000001");
         Explotacion ajena = explotacionRepository.findByCodigoRegaAndGestoriaId("ES510000000001", gestoriaAjena.getId())
                 .orElseThrow();
         assertThat(ajena.getNombre()).isEqualTo("Finca ajena");
         assertThat(animalRepository.findByCrotalAndGestoriaId("ES510000000099", gestoriaAjena.getId()).orElseThrow()
                 .getExplotacion().getId()).isEqualTo(ajena.getId());
-        assertThat(explotacionRepository.findByCodigoRegaAndGestoriaId("ES510000000001", gestoria.getId())).isEmpty();
+
+        // Recuentos totales: 1 ajena + 3 propias explotaciones, 1 + 3 ganaderos, 1 + 2 animales.
+        assertThat(explotacionRepository.count()).isEqualTo(4);
+        assertThat(ganaderoRepository.count()).isEqualTo(4);
+        assertThat(animalRepository.count()).isEqualTo(3);
+    }
+
+    @Test
+    void mismoCodigoRegaEnDosGestoriasCoexisteAislado() throws IOException {
+        Gestoria gestoriaA = gestoriaRepository.save(new Gestoria("Gestoria REGA A"));
+        Gestoria gestoriaB = gestoriaRepository.save(new Gestoria("Gestoria REGA B"));
+        comprometerSetup();
+
+        MockMultipartFile excelA = construirExcel(CABECERA_EXPLOTACIONES,
+                List.<String[]>of(new String[]{"ES520000000001", "Finca A", "52000001A", "Ganadero A"}),
+                CABECERA_ANIMALES, List.of());
+        MockMultipartFile excelB = construirExcel(CABECERA_EXPLOTACIONES,
+                List.<String[]>of(new String[]{"ES520000000001", "Finca B", "52000002B", "Ganadero B"}),
+                CABECERA_ANIMALES, List.of());
+
+        ImportResumenResponse resumenA = explotacionImportService.importar(excelA, gestoriaA);
+        ImportResumenResponse resumenB = explotacionImportService.importar(excelB, gestoriaB);
+
+        TestTransaction.start();
+        assertThat(resumenA.errores()).isEmpty();
+        assertThat(resumenB.errores()).isEmpty();
+        assertThat(resumenA.explotaciones().creadas()).isEqualTo(1);
+        assertThat(resumenB.explotaciones().creadas()).isEqualTo(1);
+        Explotacion enA = explotacionRepository.findByCodigoRegaAndGestoriaId("ES520000000001", gestoriaA.getId()).orElseThrow();
+        Explotacion enB = explotacionRepository.findByCodigoRegaAndGestoriaId("ES520000000001", gestoriaB.getId()).orElseThrow();
+        assertThat(enA.getId()).isNotEqualTo(enB.getId());
+        assertThat(enA.getNombre()).isEqualTo("Finca A");
+        assertThat(enB.getNombre()).isEqualTo("Finca B");
+    }
+
+    @Test
+    void mismoNifEnDosGestoriasCoexisteAislado() throws IOException {
+        Gestoria gestoriaA = gestoriaRepository.save(new Gestoria("Gestoria NIF A"));
+        Gestoria gestoriaB = gestoriaRepository.save(new Gestoria("Gestoria NIF B"));
+        comprometerSetup();
+
+        MockMultipartFile excelA = construirExcel(CABECERA_EXPLOTACIONES,
+                List.<String[]>of(new String[]{"ES530000000001", "Finca A", "53000001A", "Ganadero Compartido"}),
+                CABECERA_ANIMALES, List.of());
+        MockMultipartFile excelB = construirExcel(CABECERA_EXPLOTACIONES,
+                List.<String[]>of(new String[]{"ES530000000002", "Finca B", "53000001A", "Ganadero Compartido"}),
+                CABECERA_ANIMALES, List.of());
+
+        ImportResumenResponse resumenA = explotacionImportService.importar(excelA, gestoriaA);
+        ImportResumenResponse resumenB = explotacionImportService.importar(excelB, gestoriaB);
+
+        TestTransaction.start();
+        assertThat(resumenA.errores()).isEmpty();
+        assertThat(resumenB.errores()).isEmpty();
+        Ganadero enA = ganaderoRepository.findByNifAndGestoriaId("53000001A", gestoriaA.getId()).orElseThrow();
+        Ganadero enB = ganaderoRepository.findByNifAndGestoriaId("53000001A", gestoriaB.getId()).orElseThrow();
+        assertThat(enA.getId()).isNotEqualTo(enB.getId());
+        assertThat(ganaderoRepository.count()).isEqualTo(2);
+    }
+
+    @Test
+    void mismoCrotalEnDosGestoriasCoexisteAislado() throws IOException {
+        Gestoria gestoriaA = gestoriaRepository.save(new Gestoria("Gestoria crotal A"));
+        Gestoria gestoriaB = gestoriaRepository.save(new Gestoria("Gestoria crotal B"));
+        comprometerSetup();
+
+        MockMultipartFile excelA = construirExcel(CABECERA_EXPLOTACIONES,
+                List.<String[]>of(new String[]{"ES540000000001", "Finca A", "54000001A", "Ganadero A"}),
+                CABECERA_ANIMALES, List.<String[]>of(new String[]{"ES540000000099", "", "ES540000000001"}));
+        MockMultipartFile excelB = construirExcel(CABECERA_EXPLOTACIONES,
+                List.<String[]>of(new String[]{"ES540000000002", "Finca B", "54000002B", "Ganadero B"}),
+                CABECERA_ANIMALES, List.<String[]>of(new String[]{"ES540000000099", "", "ES540000000002"}));
+
+        ImportResumenResponse resumenA = explotacionImportService.importar(excelA, gestoriaA);
+        ImportResumenResponse resumenB = explotacionImportService.importar(excelB, gestoriaB);
+
+        TestTransaction.start();
+        assertThat(resumenA.errores()).isEmpty();
+        assertThat(resumenB.errores()).isEmpty();
+        Animal enA = animalRepository.findByCrotalAndGestoriaId("ES540000000099", gestoriaA.getId()).orElseThrow();
+        Animal enB = animalRepository.findByCrotalAndGestoriaId("ES540000000099", gestoriaB.getId()).orElseThrow();
+        assertThat(enA.getId()).isNotEqualTo(enB.getId());
+        assertThat(enA.getExplotacion().getCodigoRega()).isEqualTo("ES540000000001");
+        assertThat(enB.getExplotacion().getCodigoRega()).isEqualTo("ES540000000002");
+        assertThat(animalRepository.count()).isEqualTo(2);
     }
 
     // --- Decision 22: el crotal del Animal se normaliza con CrotalNormalizador ---
