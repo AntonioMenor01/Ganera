@@ -23,9 +23,10 @@ public class GanaderoAltaService {
 
     /** Ya hay un ganadero con ese NIF en ESTA gestoría: se puede decir con claridad. */
     static final String MOTIVO_NIF_DUPLICADO_PROPIO = "Ya tienes un ganadero con ese NIF.";
-    /** El NIF choca con el UNIQUE global (normalmente de otra gestoría): no se revela de quién. Mismo
-     * criterio que el importador Excel («identificador no disponible»), para no permitir enumerar
-     * NIF de otras gestorías. */
+    /** Defensa ante una carrera: dos altas simultáneas del MISMO NIF en ESTA gestoría (el pre-check pasó
+     * en ambas y el UNIQUE(gestoria_id, nif) de V43 salta al guardar la segunda). Desde V43 un NIF de
+     * OTRA gestoría ya NO choca (coexiste), así que este motivo solo cubre la carrera intra-gestoría. Se
+     * mantiene el texto neutro. */
     static final String MOTIVO_NIF_NO_DISPONIBLE = "Ese NIF no está disponible.";
 
     private final GanaderoRepository ganaderoRepository;
@@ -50,8 +51,8 @@ public class GanaderoAltaService {
      * lanza antes o durante el {@code saveAndFlush}: la transacción se deshace y NO queda fila de
      * auditoría.
      *
-     * @throws GanaderoDuplicadoException si el NIF ya existe (en esta gestoría o, por el UNIQUE
-     *         global, en otra).
+     * @throws GanaderoDuplicadoException si el NIF ya existe en ESTA gestoría (desde V43 el UNIQUE es
+     *         por gestoría; un NIF de otra gestoría coexiste y no es duplicado).
      */
     @Transactional
     public GanaderoResumenResponse crear(Long gestoriaId, Long usuarioId, String nombre, String nif,
@@ -72,8 +73,9 @@ public class GanaderoAltaService {
         try {
             guardado = ganaderoRepository.saveAndFlush(ganadero);
         } catch (DataIntegrityViolationException e) {
-            // Una comprobación previa pasó pero el UNIQUE global saltó al guardar (NIF de otra
-            // gestoría, o un alta simultánea). No se revela nada de la otra gestoría.
+            // La comprobación previa pasó pero el UNIQUE(gestoria_id, nif) saltó al guardar: una carrera
+            // de dos altas simultáneas del mismo NIF en ESTA gestoría (desde V43 un NIF de otra gestoría
+            // ya no choca). No se revela nada.
             throw new GanaderoDuplicadoException(MOTIVO_NIF_NO_DISPONIBLE);
         }
         auditoriaService.registrar(AccionAuditoria.GANADERO_CREADO, gestoriaId, Actor.usuario(usuarioId),

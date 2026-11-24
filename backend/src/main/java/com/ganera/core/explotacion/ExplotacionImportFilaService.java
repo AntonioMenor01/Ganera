@@ -33,8 +33,9 @@ import java.util.Optional;
  * (REQUIRES_NEW), en un bean separado de ExplotacionImportService a proposito: el proxy de
  * @Transactional de Spring solo intercepta llamadas que entran desde fuera del bean -- una
  * auto-invocacion (this.metodo()) lo ignora en silencio. Sin este aislamiento, una violacion real
- * de constraint en saveAndFlush() (p.ej. un codigo_rega que ya existe en OTRA Gestoria, invisible
- * para el filtro de tenant) deja la sesion de Hibernate en un estado invalido -- "don't flush the
+ * de constraint en saveAndFlush() (desde V43, en estas hojas solo el telefono UNIQUE global de otra
+ * Gestoria en la hoja Contactos; codigo_rega/crotal/nif ya son UNIQUE por gestoria y coexisten)
+ * deja la sesion de Hibernate en un estado invalido -- "don't flush the
  * Session after an exception occurs" -- que rompe el procesado de las filas SIGUIENTES del mismo
  * fichero aunque esas filas no tengan ningun problema propio. Con REQUIRES_NEW, esa fila hace
  * rollback de su propia transaccion (con su propia conexion) sin tocar la del resto del import.
@@ -117,9 +118,10 @@ class ExplotacionImportFilaService {
 
     /**
      * Decision 17: Ganadero y Explotacion se buscan con el gestoriaId explicito (nunca
-     * findByNif/findByCodigoRega a secas, que dependerian solo del filtro reactivado). Un NIF o
-     * codigo_rega que ya es de OTRA Gestoria no se ve aqui: se intenta crear, choca con el UNIQUE
-     * global en saveAndFlush y ExplotacionImportService lo convierte en un error de fila NEUTRO.
+     * findByNif/findByCodigoRega a secas, que dependerian solo del filtro reactivado). Desde V43 el
+     * NIF y el codigo_rega son UNIQUE(gestoria_id, col): un NIF o codigo_rega que ya es de OTRA
+     * Gestoria no se ve aqui, asi que se crea una fila PROPIA que COEXISTE con la ajena (objetivo de
+     * V43: que una segunda gestoria gestione al mismo ganadero/explotacion reales).
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     ImportFilaResultado procesarExplotacion(Long gestoriaId, Long usuarioId, String codigoRega, String nombre,
@@ -165,7 +167,8 @@ class ExplotacionImportFilaService {
      * {@code crotal} llega YA normalizado con CrotalNormalizador (decision 22, lo hace
      * ExplotacionImportService antes de llamar aqui), asi que crotal_ultimos_digitos se deriva del
      * crotal normalizado. Explotacion y Animal se buscan con el gestoriaId explicito (decision 17):
-     * un crotal de OTRA Gestoria no se ve, choca con el UNIQUE global y acaba en error neutro.
+     * desde V43 el crotal es UNIQUE(gestoria_id, crotal), asi que un crotal que ya es de OTRA Gestoria
+     * no se ve aqui y se crea un Animal PROPIO que COEXISTE con el ajeno.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     ImportFilaResultado procesarAnimal(Long gestoriaId, Long usuarioId, String crotal, String codigoRegaExplotacion) {

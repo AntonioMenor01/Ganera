@@ -216,18 +216,22 @@ class GanaderoAltaEndToEndTest {
     }
 
     @Test
-    void nifDeOtraGestoriaChocaConElUniqueGlobalPeroNoRevelaNadaNiLoCrea() throws Exception {
+    void mismoNifEnDosGestoriasCoexisteCadaUnaVeElSuyo() throws Exception {
         assertThat(crear(tokenA, "De A", NIF_VALIDO).getStatusCode().value()).isEqualTo(201);
 
-        ResponseEntity<String> desdeB = crear(tokenB, "Intento de B", NIF_VALIDO);
-        assertThat(desdeB.getStatusCode().value()).isEqualTo(409);
-        // Motivo que no revela que el NIF es de otra gestoría.
-        assertThat(motivo(desdeB)).isEqualTo(GanaderoAltaService.MOTIVO_NIF_NO_DISPONIBLE);
-        // No se ha creado nada en B.
-        assertThat(nifsDe(tokenB)).doesNotContain(NIF_VALIDO);
-        // El 409 por UNIQUE global (rollback) no deja NINGUNA fila de auditoría en B; A tiene la suya.
-        assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaIdB)).isEmpty();
+        // Tras V43 el NIF es UNIQUE(gestoria_id, nif): B puede dar de alta al mismo ganadero real,
+        // aislado del de A. Es el objetivo (una segunda gestoría gestiona al mismo ganadero).
+        ResponseEntity<String> desdeB = crear(tokenB, "De B", NIF_VALIDO);
+        assertThat(desdeB.getStatusCode().value()).isEqualTo(201);
+
+        // Cada gestoría ve SOLO su propio ganadero con ese NIF.
+        assertThat(nifsDe(tokenA)).containsExactly(NIF_VALIDO);
+        assertThat(nifsDe(tokenB)).containsExactly(NIF_VALIDO);
+        // Cada alta deja su propia fila de auditoría en su gestoría.
         assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaIdA))
+                .extracting(Auditoria::getAccion)
+                .containsExactly(AccionAuditoria.GANADERO_CREADO);
+        assertThat(auditoriaRepository.findByGestoriaIdOrderByIdAsc(gestoriaIdB))
                 .extracting(Auditoria::getAccion)
                 .containsExactly(AccionAuditoria.GANADERO_CREADO);
     }

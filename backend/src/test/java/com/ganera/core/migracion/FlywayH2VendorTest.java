@@ -49,17 +49,17 @@ class FlywayH2VendorTest {
                     .containsExactlyInAnyOrder("classpath:db/migration", "classpath:db/h2");
 
             MigrationInfo[] aplicadas = flyway.info().applied();
-            // En H2 no se aplica db/postgresql (V26), asi que queda el hueco de V26: V1-V25, V27-V34, V40, V41, V42 =
-            // 36 (V40/V41/V42 son vendor-neutral, en db/migration; dejan el hueco V35-V39 reservado a Antonio, que
+            // En H2 no se aplica db/postgresql (V26), asi que queda el hueco de V26: V1-V25, V27-V34, V40, V41, V42,
+            // V43 = 37 (V40-V43 son vendor-neutral, en db/migration; dejan el hueco V35-V39 reservado a Antonio, que
             // Flyway acepta).
             assertThat(Arrays.stream(aplicadas).map(m -> m.getVersion().getVersion()).toList())
                     .containsExactlyElementsOf(Stream.concat(
                             IntStream.rangeClosed(1, 25).mapToObj(String::valueOf),
-                            Stream.of("27", "28", "29", "30", "31", "32", "33", "34", "40", "41", "42")).toList());
+                            Stream.of("27", "28", "29", "30", "31", "32", "33", "34", "40", "41", "42", "43")).toList());
             assertThat(aplicadas).allSatisfy(m -> assertThat(m.getState()).isEqualTo(MigrationState.SUCCESS));
 
             // Comprobacion de que de verdad se ha capturado el log de Flyway; si no, la siguiente no probaria nada.
-            assertThat(salida.getAll()).contains("Successfully applied 36 migrations");
+            assertThat(salida.getAll()).contains("Successfully applied 37 migrations");
             assertThat(salida.getAll()).contains("classpath:db/h2");
             // («Unable to resolve location classpath:db/callback.» sale siempre en DEBUG: es la ubicacion de callbacks
             // por defecto de Flyway y no la usamos.)

@@ -7,6 +7,7 @@ import com.ganera.core.shared.texto.NormalizadorBusqueda;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -17,7 +18,8 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "ganadero")
+@Table(name = "ganadero", uniqueConstraints = @UniqueConstraint(
+        name = "uq_ganadero_gestoria_nif", columnNames = {"gestoria_id", "nif"}))
 public class Ganadero extends GestoriaScopedEntity {
 
     @Column(nullable = false)
@@ -33,8 +35,9 @@ public class Ganadero extends GestoriaScopedEntity {
     @Column(name = "nombre_busqueda", nullable = false)
     private String nombreBusqueda;
 
-    /** NIF/CIF, clave de negocio real del Ganadero -- usada como clave de upsert por el importador Excel. */
-    @Column(name = "nif", unique = true)
+    /** NIF/CIF, clave de negocio real del Ganadero -- usada como clave de upsert por el importador Excel.
+     * UNIQUE(gestoria_id, nif): el mismo ganadero real puede ser cliente de varias gestorias (V43). */
+    @Column(name = "nif")
     private String nif;
 
     /**

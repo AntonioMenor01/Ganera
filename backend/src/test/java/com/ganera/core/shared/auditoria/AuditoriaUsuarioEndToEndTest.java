@@ -373,21 +373,45 @@ class AuditoriaUsuarioEndToEndTest {
         assertThat(despues.get(despues.size() - 1).getAccion()).isEqualTo(AccionAuditoria.IMPORTACION_EXCEL);
     }
 
-    /** Una fila de Excel que falla (su REQUIRES_NEW hace rollback) no deja su fila de auditoria, pero el
-     * resumen si (D9). La explotacion del Excel choca con el codigo_rega global de B: procesarExplotacion
-     * crea el ganadero (con su GANADERO_CREADO) y al guardar la explotacion choca con el UNIQUE global, asi
-     * que la transaccion de la fila revierte la fila ENTERA y su auditoria con ella; Animales y Contactos
-     * referencian esa explotacion que en A no existe y tambien fallan. Solo queda IMPORTACION_EXCEL. */
+    /** Una fila de Excel que falla (su REQUIRES_NEW hace rollback) no deja su fila de auditoria, pero la fila
+     * POSTERIOR del mismo fichero si se procesa y deja la suya (aislamiento REQUIRES_NEW), mas el resumen (D9).
+     * Desde V43 el codigo_rega ya no choca entre gestorias (coexiste), asi que para forzar una violacion real
+     * de constraint a mitad de la hoja se usa una fila 2 con un codigo_rega mas largo que VARCHAR(50):
+     * procesarExplotacion crea su ganadero (GANADERO_CREADO) y al guardar la explotacion choca con el limite de
+     * longitud, asi que esa transaccion revierte la fila ENTERA y su auditoria con ella. La fila 3, valida, se
+     * procesa con normalidad: queda EXACTAMENTE un GANADERO_CREADO + un EXPLOTACION_CREADA (los de la 3, no los
+     * de la 2 revertida) y, al final, IMPORTACION_EXCEL. */
     @Test
-    void unaFilaDeExcelQueFallaNoDejaSuAuditoriaPeroSiElResumen() throws IOException {
-        nuevaExplotacion(gestoriaB, "ES960000000001");
-
-        ResponseEntity<String> r = importar(excelConUnaFilaPorHoja());
+    void unaFilaQueFallaNoDejaSuAuditoriaPeroLaPosteriorSeProcesaYElResumenQueda() throws IOException {
+        ResponseEntity<String> r = importar(excelFilaMalaLuegoBuena());
         assertThat(r.getStatusCode().value()).isEqualTo(200);
 
-        assertThat(filas(gestoriaA)).extracting(Auditoria::getAccion)
-                .containsExactly(AccionAuditoria.IMPORTACION_EXCEL);
+        // La fila 2 (rega demasiado largo) revierte su ganadero; solo quedan el ganadero/explotacion de la
+        // fila 3 y el resumen. containsExactly garantiza que NO hay un segundo GANADERO_CREADO (el revertido).
+        assertThat(filas(gestoriaA)).extracting(Auditoria::getAccion).containsExactly(
+                AccionAuditoria.GANADERO_CREADO, AccionAuditoria.EXPLOTACION_CREADA, AccionAuditoria.IMPORTACION_EXCEL);
+        // Lo creado es la explotacion de la fila POSTERIOR; la fila mala no dejo nada.
+        assertThat(explotacionRepository.findByCodigoRegaAndGestoriaId("ES960000000002", gestoriaA.getId())).isPresent();
         assertThat(filas(gestoriaB)).isEmpty();
+    }
+
+    /** Excel con la hoja Explotaciones en dos filas: la 2 con un codigo_rega > VARCHAR(50) (crea su ganadero y
+     * falla al guardar la explotacion -> rollback de la fila y su auditoria) y la 3 valida (se crea entera). */
+    private byte[] excelFilaMalaLuegoBuena() throws IOException {
+        String regaLargo = "ES" + "9".repeat(60);
+        try (XSSFWorkbook wb = new XSSFWorkbook()) {
+            Sheet expl = wb.createSheet("Explotaciones");
+            fila(expl, 0, "codigo_rega", "nombre", "nif_ganadero", "nombre_ganadero");
+            fila(expl, 1, regaLargo, "Finca mala", "12345678U", "Ganadero malo");
+            fila(expl, 2, "ES960000000002", "Finca buena", "99999999R", "Ganadero bueno");
+            Sheet ani = wb.createSheet("Animales");
+            fila(ani, 0, "crotal", "especie", "codigo_rega_explotacion");
+            Sheet con = wb.createSheet("Contactos");
+            fila(con, 0, "telefono", "nombre", "codigo_explotacion", "rol");
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            wb.write(out);
+            return out.toByteArray();
+        }
     }
 
     // --------------------------------------------------------------- helpers
