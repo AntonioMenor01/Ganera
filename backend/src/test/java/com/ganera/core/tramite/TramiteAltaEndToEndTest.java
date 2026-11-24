@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ganera.core.auth.LoginRequest;
 import com.ganera.core.auth.LoginResponse;
+import com.ganera.core.contacto.Contacto;
+import com.ganera.core.contacto.ContactoRepository;
 import com.ganera.core.explotacion.Explotacion;
 import com.ganera.core.explotacion.ExplotacionRepository;
 import com.ganera.core.facturacion.SuscripcionRepository;
@@ -62,6 +64,8 @@ class TramiteAltaEndToEndTest {
     @Autowired
     private ExplotacionRepository explotacionRepository;
     @Autowired
+    private ContactoRepository contactoRepository;
+    @Autowired
     private GanaderoRepository ganaderoRepository;
     @Autowired
     private SuscripcionRepository suscripcionRepository;
@@ -80,6 +84,7 @@ class TramiteAltaEndToEndTest {
     private Long usuarioIdA;
     private Long explotacionA;
     private Long explotacionB;
+    private Long contactoB;
 
     @BeforeEach
     void preparar() {
@@ -94,6 +99,7 @@ class TramiteAltaEndToEndTest {
         Gestoria gestoriaB = usuarioRepository.findByEmail("tramiteAltaB@test.com").orElseThrow().getGestoria();
         explotacionA = crearExplotacion(gestoriaA, "Ganadero Alta A", "11111111H", "ES880000000001", "Finca Alta A").getId();
         explotacionB = crearExplotacion(gestoriaB, "Ganadero Alta B", "22222222J", "ES880000000002", "Finca Alta B").getId();
+        contactoB = crearContacto(gestoriaB, "+34600880002", "Contacto Alta B").getId();
         LimpiezaAuditoria.borrar(jdbcTemplate);
     }
 
@@ -102,6 +108,7 @@ class TramiteAltaEndToEndTest {
         LimpiezaAuditoria.borrar(jdbcTemplate);
         tramiteCrotalRepository.deleteAll();
         tramiteRepository.deleteAll();
+        contactoRepository.deleteAll();
         explotacionRepository.deleteAll();
         ganaderoRepository.deleteAll();
         suscripcionRepository.deleteAll();
@@ -159,6 +166,20 @@ class TramiteAltaEndToEndTest {
     }
 
     @Test
+    void altaConExplotacionPropiaPeroContactoDeOtraGestoriaDevuelve404SinCuerpo() {
+        // Explotación propia de A (pasa el primer chequeo de acceso), pero el contactoId es de B:
+        // el alta debe ser 404 sin cuerpo y no crear ningún trámite. Si el servicio no validara el
+        // contacto contra la gestoría del JWT, enlazaría un contacto ajeno y el test iría en rojo.
+        ResponseEntity<String> respuesta = crear(tokenA, Map.of(
+                "tipoTramite", "BAJA_MUERTE",
+                "explotacionId", explotacionA,
+                "contactoId", contactoB));
+        assertThat(respuesta.getStatusCode().value()).isEqualTo(404);
+        assertThat(respuesta.getBody()).isNullOrEmpty();
+        assertThat(tramiteRepository.findAll()).isEmpty();
+    }
+
+    @Test
     void sinJwtDevuelve401() {
         ResponseEntity<String> respuesta = restTemplate.postForEntity("/tramites",
                 new HttpEntity<>(Map.of("tipoTramite", "BAJA_MUERTE", "explotacionId", explotacionA),
@@ -203,6 +224,14 @@ class TramiteAltaEndToEndTest {
         explotacion.setCodigoRega(codigoRega);
         explotacion.setNombre(nombreExplotacion);
         return explotacionRepository.save(explotacion);
+    }
+
+    private Contacto crearContacto(Gestoria gestoria, String telefono, String nombre) {
+        Contacto contacto = new Contacto();
+        contacto.setGestoria(gestoria);
+        contacto.setTelefono(telefono);
+        contacto.setNombre(nombre);
+        return contactoRepository.save(contacto);
     }
 
     private void onboarding(String nombreGestoria, String email) {
