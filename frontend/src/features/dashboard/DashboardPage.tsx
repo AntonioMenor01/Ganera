@@ -5,6 +5,7 @@ import {
   ChevronRightIcon,
   CircleAlertIcon,
   ClockIcon,
+  CompassIcon,
   MessageCircleIcon,
   UserPlusIcon,
   UsersIcon,
@@ -23,6 +24,7 @@ import { IconoTramite } from "@/features/tramites/IconoTramite";
 import type { Tramite } from "@/features/tramites/types";
 import { AltaGanaderoDialog } from "@/features/ganaderos/AltaGanaderoDialog";
 import { listarAlertas, type Alerta } from "@/features/alertas/api";
+import { abrirPrimerosPasos } from "@/features/onboarding/primerosPasos";
 import { cargarColaPendiente, contarGanaderos } from "./api";
 import { fechaLargaMadrid, nombrePila, saludo } from "./saludo";
 
@@ -96,6 +98,15 @@ export function DashboardPage() {
           </h1>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-10 gap-2 px-3 text-enlace"
+            onClick={abrirPrimerosPasos}
+          >
+            <CompassIcon aria-hidden="true" className="size-4" />
+            Primeros pasos
+          </Button>
           <Button
             type="button"
             variant="outline"
