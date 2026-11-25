@@ -16,6 +16,7 @@ const USUARIO = {
   nombre: "Ana",
   gestoriaId: 3,
   activo: true,
+  debeCambiarPassword: false,
 }
 const AVISO_CADUCADA = "Tu sesión ha caducado. Vuelve a iniciar sesión."
 const CLAVE = "ganera.token"

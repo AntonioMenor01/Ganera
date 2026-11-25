@@ -66,6 +66,9 @@ public enum AccionAuditoria {
     LOGIN_CORRECTO,
     LOGIN_FALLIDO,
 
+    // Cambio de la contrasena por el propio usuario (POST /auth/cambiar-password). Nunca guarda la contrasena.
+    USUARIO_CAMBIO_PASSWORD,
+
     // Lecturas sensibles (D4) y accesos a recursos de otra gestoria (D3)
     LECTURA_TRAMITE,
     LECTURA_GANADERO,

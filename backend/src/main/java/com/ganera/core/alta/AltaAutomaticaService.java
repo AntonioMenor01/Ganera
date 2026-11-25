@@ -236,6 +236,8 @@ public class AltaAutomaticaService {
             }
             String nueva = generarPasswordTemporal();
             usuario.setPasswordHash(passwordEncoder.encode(nueva));
+            // Nueva contrasena temporal (va por email): hay que cambiarla igual que la primera.
+            usuario.setDebeCambiarPassword(true);
             usuarioRepository.save(usuario);
             return nueva;
         });
@@ -303,6 +305,8 @@ public class AltaAutomaticaService {
         usuario.setPasswordHash(passwordEncoder.encode(passwordTemporal));
         usuario.setNombre(limpio(alta.getNombre()) != null ? alta.getNombre().trim() : email);
         usuario.setActivo(true);
+        // Contrasena temporal: el usuario DEBE cambiarla en el primer login (el correo de bienvenida lo pide).
+        usuario.setDebeCambiarPassword(true);
         usuarioRepository.save(usuario);
 
         Suscripcion suscripcion = new Suscripcion();
