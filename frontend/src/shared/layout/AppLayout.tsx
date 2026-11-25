@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/shared/auth/AuthContext";
 import { LogoGanera } from "@/shared/brand/LogoGanera";
 import { BuscadorGlobal } from "@/features/search/BuscadorGlobal";
+import { PrimerosPasosRoot } from "@/features/onboarding/PrimerosPasosRoot";
 import { SuscripcionBanner } from "@/features/facturacion/SuscripcionBanner";
 import {
   useSuscripcionEstado,
@@ -210,6 +211,9 @@ export function AppLayout() {
       <main className="flex-1 p-6 lg:p-8">
         <Outlet />
       </main>
+      {/* Guía de primeros pasos: se abre sola la primera vez de cada usuario y se puede reabrir
+          desde el botón «Primeros pasos» del inicio. Overlay propio, por eso va al final del shell. */}
+      <PrimerosPasosRoot />
     </div>
   );
 }
