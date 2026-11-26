@@ -14,6 +14,7 @@ export interface EstadoRedireccionLogin {
 export function RequireAuth() {
   const {
     estado,
+    usuario,
     errorComprobacion,
     motivoCierre,
     reintentarComprobacion,
@@ -64,6 +65,12 @@ export function RequireAuth() {
         ? undefined
         : { from: `${location.pathname}${location.search}${location.hash}` };
     return <Navigate to="/login" replace state={state} />;
+  }
+
+  // Contraseña temporal del alta: hay que cambiarla antes de usar nada más. El propio
+  // /cambiar-password se deja pasar (si no, bucle); al bajar el flag, deja de redirigir.
+  if (usuario?.debeCambiarPassword === true && location.pathname !== "/cambiar-password") {
+    return <Navigate to="/cambiar-password" replace />;
   }
 
   return <Outlet />;

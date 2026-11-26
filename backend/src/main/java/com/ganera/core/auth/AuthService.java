@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
@@ -75,5 +76,36 @@ public class AuthService {
         auditoriaService.registrarAparte(AccionAuditoria.LOGIN_FALLIDO, usuario.getGestoria().getId(),
                 Actor.usuario(usuario.getId()), EntidadAuditada.USUARIO, usuario.getId(),
                 null, DatosAuditoria.con(Clave.MOTIVO, motivo));
+    }
+
+    /**
+     * Cambia la contrasena del propio usuario del JWT (el {@code usuarioId} nunca es atacable: viene del token,
+     * no de la peticion). Carga con {@code findByIdAndGestoriaId} (nunca findById a secas sobre una
+     * GestoriaScopedEntity), comprueba la contrasena actual, guarda el nuevo hash, baja el flag
+     * {@code debeCambiarPassword} y deja fila de auditoria {@code USUARIO_CAMBIO_PASSWORD} dentro de la misma
+     * transaccion (registrar, MANDATORY). La contrasena NUNCA va a auditoria ni a logs (antes/despues null). La
+     * validacion de formato de la contrasena nueva la hace el controlador antes de llegar aqui.
+     */
+    @Transactional
+    public Usuario cambiarPassword(GaneraUserPrincipal principal, String passwordActual, String passwordNueva) {
+        Usuario usuario = usuarioRepository.findByIdAndGestoriaId(principal.usuarioId(), principal.gestoriaId())
+                .orElseThrow(UsuarioNoEncontradoException::new);
+        if (passwordActual == null || !passwordEncoder.matches(passwordActual, usuario.getPasswordHash())) {
+            throw new PasswordActualIncorrectaException();
+        }
+        usuario.setPasswordHash(passwordEncoder.encode(passwordNueva));
+        usuario.setDebeCambiarPassword(false);
+        usuarioRepository.save(usuario);
+        auditoriaService.registrar(AccionAuditoria.USUARIO_CAMBIO_PASSWORD, usuario.getGestoria().getId(),
+                Actor.usuario(usuario.getId()), EntidadAuditada.USUARIO, usuario.getId(), null, null);
+        return usuario;
+    }
+
+    /** La contrasena actual no coincide: el controlador la mapea a 400 {motivo} (no es enumeracion: es tu cuenta). */
+    public static class PasswordActualIncorrectaException extends RuntimeException {
+    }
+
+    /** No existe el usuario del JWT en su gestoria (practicamente imposible con un token valido): 404 sin cuerpo. */
+    public static class UsuarioNoEncontradoException extends RuntimeException {
     }
 }

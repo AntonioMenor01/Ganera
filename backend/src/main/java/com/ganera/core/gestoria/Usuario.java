@@ -27,4 +27,12 @@ public class Usuario extends GestoriaScopedEntity {
 
     @Column(nullable = false)
     private boolean activo = true;
+
+    /**
+     * true obliga a cambiar la contrasena en el primer login (contrasena temporal del alta automatica). El
+     * frontend bloquea el resto de la app hasta cambiarla y POST /auth/cambiar-password lo pone a false. Los
+     * usuarios creados por el onboarding manual nacen en false (su contrasena ya es la que eligieron).
+     */
+    @Column(name = "debe_cambiar_password", nullable = false)
+    private boolean debeCambiarPassword = false;
 }
