@@ -25,6 +25,7 @@ import type { Tramite } from "@/features/tramites/types";
 import { AltaGanaderoDialog } from "@/features/ganaderos/AltaGanaderoDialog";
 import { listarAlertas, type Alerta } from "@/features/alertas/api";
 import { abrirPrimerosPasos } from "@/features/onboarding/primerosPasos";
+import { usePrimerosPasos } from "@/features/onboarding/PrimerosPasosContexto";
 import { cargarColaPendiente, contarGanaderos } from "./api";
 import { fechaLargaMadrid, nombrePila, saludo } from "./saludo";
 
@@ -35,6 +36,7 @@ import { fechaLargaMadrid, nombrePila, saludo } from "./saludo";
 export function DashboardPage() {
   const { usuario } = useAuth();
   const navigate = useNavigate();
+  const onboarding = usePrimerosPasos();
   const [cola, setCola] = useState<Pagina<Tramite> | null>(null);
   const [errorCola, setErrorCola] = useState<ErrorApi | null>(null);
   const [ganaderos, setGanaderos] = useState<number | null>(null);
@@ -106,6 +108,11 @@ export function DashboardPage() {
           >
             <CompassIcon aria-hidden="true" className="size-4" />
             Primeros pasos
+            {onboarding.activo && (
+              <span className="tabular-nums text-muted-foreground">
+                · {onboarding.hechos}/{onboarding.total}
+              </span>
+            )}
           </Button>
           <Button
             type="button"

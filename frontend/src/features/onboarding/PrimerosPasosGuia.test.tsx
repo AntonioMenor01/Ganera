@@ -1,74 +1,151 @@
-import { render, screen } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, expect, it, vi } from "vitest"
+import { http, HttpResponse } from "msw"
+import { MemoryRouter, Route, Routes } from "react-router-dom"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { AuthProvider } from "@/shared/auth/AuthContext"
+import { apiUrl } from "@/test/apiBaseUrl"
+import { server } from "@/test/server"
+import { PrimerosPasosProvider } from "./PrimerosPasosContexto"
 import { PrimerosPasosGuia } from "./PrimerosPasosGuia"
-import { PASOS_GUIA } from "./primerosPasos"
+import { PillContinuar } from "./PillContinuar"
+import { CoachmarkPaso } from "./CoachmarkPaso"
+import { configurarAutoAperturaPrimerosPasos, guardarProgreso } from "./primerosPasos"
 
-const TOTAL = PASOS_GUIA.length
-const PRIMER_TITULO = PASOS_GUIA[0].titulo
-const SEGUNDO_TITULO = PASOS_GUIA[1].titulo
-const ULTIMO_TITULO = PASOS_GUIA[TOTAL - 1].titulo
+const USUARIO = { id: 42, email: "nuevo@gestoria.es", nombre: "Nuevo", gestoriaId: 3, activo: true }
 
-function montar(props: Partial<Parameters<typeof PrimerosPasosGuia>[0]> = {}) {
-  const onClose = vi.fn()
-  const onIr = vi.fn()
-  render(<PrimerosPasosGuia open onClose={onClose} onIr={onIr} {...props} />)
-  return { onClose, onIr }
+function prefs(ovzHecho: boolean) {
+  const base = {
+    oficinaDi: null,
+    oficinaMer: null,
+    emisionDi: null,
+    tipoIdentificador: null,
+    telefonoMovimiento: null,
+    medioTransporte: null,
+    matricula: null,
+    transportistaSirentra: null,
+    tipoResponsable: null,
+  }
+  return ovzHecho ? { ...base, oficinaDi: "DI-01", tipoResponsable: "TITULAR" } : base
 }
 
-describe("PrimerosPasosGuia", () => {
-  it("cerrada no renderiza nada", () => {
-    render(<PrimerosPasosGuia open={false} onClose={vi.fn()} onIr={vi.fn()} />)
+function paginaCount(n: number) {
+  return HttpResponse.json({ content: [], totalElements: n, totalPages: n > 0 ? 1 : 0, number: 0, size: 1 })
+}
+
+function mockDeteccion({ ovz = false, ganaderos = 0, explotaciones = 0 } = {}) {
+  server.use(
+    http.get(apiUrl("/configuracion/preferencias-ovz"), () => HttpResponse.json(prefs(ovz))),
+    http.get(apiUrl("/ganaderos"), () => paginaCount(ganaderos)),
+    http.get(apiUrl("/explotaciones"), () => paginaCount(explotaciones)),
+  )
+}
+
+function montar(url = "/") {
+  return render(
+    <AuthProvider>
+      <MemoryRouter initialEntries={[url]}>
+        <PrimerosPasosProvider>
+          <PrimerosPasosGuia />
+          <PillContinuar />
+          <Routes>
+            <Route path="/" element={<h1>INICIO</h1>} />
+            <Route
+              path="/configuracion"
+              element={
+                <>
+                  <h1>CONFIG</h1>
+                  <CoachmarkPaso pantalla="/configuracion" />
+                </>
+              }
+            />
+            <Route path="/ganaderos" element={<h1>GANADEROS</h1>} />
+          </Routes>
+        </PrimerosPasosProvider>
+      </MemoryRouter>
+    </AuthProvider>,
+  )
+}
+
+beforeEach(() => {
+  sessionStorage.setItem("ganera.token", "tok")
+  server.use(http.get(apiUrl("/auth/me"), () => HttpResponse.json(USUARIO)))
+})
+
+afterEach(() => {
+  sessionStorage.clear()
+})
+
+describe("Onboarding guiado", () => {
+  it("se autoabre la primera vez y refleja el progreso detectado de datos reales", async () => {
+    configurarAutoAperturaPrimerosPasos(true)
+    mockDeteccion({ ovz: true, ganaderos: 1, explotaciones: 0 })
+    montar()
+    // Autoapertura tras cargar la sesión.
+    expect(await screen.findByRole("dialog")).toBeInTheDocument()
+    // ovz + ganadero detectados hechos = 2 de 8.
+    await waitFor(() => expect(screen.getByText(/2 de 8 hechos/)).toBeInTheDocument())
+  })
+
+  it("la CTA de un paso navega a la pantalla y NO termina: queda la píldora para continuar", async () => {
+    configurarAutoAperturaPrimerosPasos(true)
+    mockDeteccion({ ovz: false })
+    montar()
+    await screen.findByRole("dialog")
+
+    // Paso 1 (bienvenida) → Siguiente → paso ovz, que muestra su CTA.
+    await userEvent.click(screen.getByRole("button", { name: /Siguiente/ }))
+    await userEvent.click(await screen.findByRole("button", { name: /Ir a Configuración/ }))
+
+    // Navegó a Configuración, la guía se cerró y aparece la píldora para continuar.
+    expect(await screen.findByRole("heading", { name: "CONFIG" })).toBeInTheDocument()
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: /Continuar configuración/ })).toBeInTheDocument()
   })
 
-  it("abierta muestra el primer paso y el contador «Paso 1 de N»", () => {
+  it("sin OVZ no deja terminar: «Empezar» deshabilitado y aviso", async () => {
+    configurarAutoAperturaPrimerosPasos(true)
+    mockDeteccion({ ovz: false, ganaderos: 1, explotaciones: 1 })
     montar()
-    expect(screen.getByRole("heading", { name: PRIMER_TITULO })).toBeInTheDocument()
-    expect(screen.getByText(`Paso 1 de ${TOTAL}`)).toBeInTheDocument()
-    // En el primer paso no hay botón «Atrás».
-    expect(screen.queryByRole("button", { name: "Atrás" })).not.toBeInTheDocument()
+    await screen.findByRole("dialog")
+    // Avanzar hasta el último paso (7 «Siguiente»).
+    for (let i = 0; i < 7; i++) await userEvent.click(screen.getByRole("button", { name: /Siguiente/ }))
+    expect(screen.getByText(/Falta configurar tus datos de OVZ/)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Empezar" })).toBeDisabled()
   })
 
-  it("«Siguiente» avanza y «Atrás» retrocede", async () => {
+  it("con OVZ hecho, «Empezar» se habilita", async () => {
+    configurarAutoAperturaPrimerosPasos(true)
+    mockDeteccion({ ovz: true, ganaderos: 1, explotaciones: 1 })
     montar()
-    await userEvent.click(screen.getByRole("button", { name: /Siguiente/ }))
-    expect(screen.getByRole("heading", { name: SEGUNDO_TITULO })).toBeInTheDocument()
-    expect(screen.getByText(`Paso 2 de ${TOTAL}`)).toBeInTheDocument()
-    await userEvent.click(screen.getByRole("button", { name: "Atrás" }))
-    expect(screen.getByRole("heading", { name: PRIMER_TITULO })).toBeInTheDocument()
+    await screen.findByRole("dialog")
+    for (let i = 0; i < 7; i++) await userEvent.click(screen.getByRole("button", { name: /Siguiente/ }))
+    expect(await screen.findByRole("button", { name: "Empezar" })).toBeEnabled()
   })
 
-  it("«Omitir por ahora» cierra", async () => {
-    const { onClose } = montar()
-    await userEvent.click(screen.getByRole("button", { name: "Omitir por ahora" }))
-    expect(onClose).toHaveBeenCalledTimes(1)
+  it("el coachmark sale en su pantalla mientras el paso no esté hecho y se puede descartar", async () => {
+    // Sin autoapertura (para no tapar con el overlay), pero con progreso → onboarding en curso.
+    configurarAutoAperturaPrimerosPasos(false)
+    guardarProgreso(USUARIO.id, { confirmados: [], coachDescartados: [], terminada: false })
+    mockDeteccion({ ovz: false })
+    montar("/configuracion")
+
+    const coach = await screen.findByRole("complementary", { name: "Ayuda de primeros pasos" })
+    expect(coach).toHaveTextContent("Datos de OVZ")
+    await userEvent.click(within(coach).getByRole("button", { name: "Descartar esta ayuda" }))
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Ayuda de primeros pasos" })).not.toBeInTheDocument(),
+    )
   })
 
-  it("en el último paso el botón es «Empezar» y cierra; ya no hay «Omitir»", async () => {
-    const { onClose } = montar()
-    // Avanzar hasta el final.
-    for (let i = 0; i < TOTAL - 1; i++) {
-      await userEvent.click(screen.getByRole("button", { name: /Siguiente|Empezar/ }))
-    }
-    expect(screen.getByRole("heading", { name: ULTIMO_TITULO })).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Omitir por ahora" })).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole("button", { name: "Empezar" }))
-    expect(onClose).toHaveBeenCalledTimes(1)
-  })
+  it("la píldora reabre la guía por donde iba", async () => {
+    configurarAutoAperturaPrimerosPasos(false)
+    guardarProgreso(USUARIO.id, { confirmados: [], coachDescartados: [], terminada: false })
+    mockDeteccion({ ovz: false })
+    montar("/")
 
-  it("una CTA de paso llama a onIr con su ruta", async () => {
-    // El segundo paso (OVZ) tiene CTA a /configuracion.
-    const cta = PASOS_GUIA[1].cta!
-    const { onIr } = montar()
-    await userEvent.click(screen.getByRole("button", { name: /Siguiente/ }))
-    await userEvent.click(screen.getByRole("button", { name: new RegExp(cta.label) }))
-    expect(onIr).toHaveBeenCalledWith(cta.to)
-  })
-
-  it("Escape cierra", async () => {
-    const { onClose } = montar()
-    await userEvent.keyboard("{Escape}")
-    expect(onClose).toHaveBeenCalledTimes(1)
+    const pill = await screen.findByRole("button", { name: /Continuar configuración/ })
+    await userEvent.click(pill)
+    expect(await screen.findByRole("dialog")).toBeInTheDocument()
   })
 })

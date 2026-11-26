@@ -16,7 +16,9 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/shared/auth/AuthContext";
 import { LogoGanera } from "@/shared/brand/LogoGanera";
 import { BuscadorGlobal } from "@/features/search/BuscadorGlobal";
-import { PrimerosPasosRoot } from "@/features/onboarding/PrimerosPasosRoot";
+import { PrimerosPasosProvider } from "@/features/onboarding/PrimerosPasosContexto";
+import { PrimerosPasosGuia } from "@/features/onboarding/PrimerosPasosGuia";
+import { PillContinuar } from "@/features/onboarding/PillContinuar";
 import { SuscripcionBanner } from "@/features/facturacion/SuscripcionBanner";
 import {
   useSuscripcionEstado,
@@ -111,6 +113,7 @@ export function AppLayout() {
   }, [pathname]);
 
   return (
+    <PrimerosPasosProvider>
     <div className="flex min-h-screen flex-col bg-background text-foreground lg:pl-60">
       <header className="border-b-2 border-divisor bg-sidebar px-4 pt-3 pb-1 text-sidebar-foreground md:px-6 md:py-4 lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-60 lg:flex-col lg:border-r-2 lg:border-b-0 lg:p-0">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 md:flex md:gap-6 lg:min-h-0 lg:flex-1 lg:flex-col lg:items-stretch lg:gap-0">
@@ -211,9 +214,12 @@ export function AppLayout() {
       <main className="flex-1 p-6 lg:p-8">
         <Outlet />
       </main>
-      {/* Guía de primeros pasos: se abre sola la primera vez de cada usuario y se puede reabrir
-          desde el botón «Primeros pasos» del inicio. Overlay propio, por eso va al final del shell. */}
-      <PrimerosPasosRoot />
+      {/* Guía de primeros pasos (overlay) + píldora flotante para continuar. Toda la lógica vive en
+          PrimerosPasosProvider, que envuelve el shell para que las páginas (coachmarks) y el inicio
+          lean el progreso. Se abre sola la primera vez y se reabre desde «Primeros pasos». */}
+      <PrimerosPasosGuia />
+      <PillContinuar />
     </div>
+    </PrimerosPasosProvider>
   );
 }
