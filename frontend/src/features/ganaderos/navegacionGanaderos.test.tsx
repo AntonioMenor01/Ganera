@@ -44,6 +44,7 @@ describe("navegación: Ganaderos", () => {
       "Inicio",
       "Bandeja",
       "Trámites",
+      "Control",
       "Ganaderos",
       "Explotaciones",
       "Calendario",
