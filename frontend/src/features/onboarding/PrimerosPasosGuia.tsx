@@ -1,56 +1,50 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowLeftIcon, ArrowRightIcon, XIcon } from "lucide-react";
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LogoGanera } from "@/shared/brand/LogoGanera";
-import { PASOS_GUIA } from "./primerosPasos";
-
-interface Props {
-  open: boolean;
-  /** Cerrar la guía (botón X, «Omitir» o «Empezar»). El contenedor marca «vista» aquí. */
-  onClose: () => void;
-  /** Ir a una pantalla real (una CTA de un paso). El contenedor navega y cierra. */
-  onIr: (to: string) => void;
-}
+import { usePrimerosPasos } from "./PrimerosPasosContexto";
 
 /**
- * Guía visual de primeros pasos (overlay a pantalla completa), inspirada en el onboarding del mock
- * «Ganera App v2». Es presentacional: no sabe de auth, almacenamiento ni routing; el contenedor
- * ({@link PrimerosPasosRoot}) decide cuándo abrirla, la marca como vista y navega. Pasos en
- * {@link PASOS_GUIA}. Accesible: role dialog, Esc cierra, el foco entra en el título al abrir.
+ * Guía visual de primeros pasos (overlay a pantalla completa). Lee todo del contexto
+ * ({@link usePrimerosPasos}): qué pasos hay, cuáles están hechos, por dónde va y el requisito de
+ * OVZ. Al pulsar la CTA de un paso lleva a la pantalla real SIN terminar el onboarding (se puede
+ * volver a continuar). No se puede «Empezar» (terminar) sin el paso de OVZ hecho.
  */
-export function PrimerosPasosGuia({ open, onClose, onIr }: Props) {
+export function PrimerosPasosGuia() {
+  const { abierta, pasos, indiceActivo, hechos, total, ovzHecho, cerrar, confirmarPaso, irAPantalla, terminar } =
+    usePrimerosPasos();
   const [indice, setIndice] = useState(0);
   const tituloId = useId();
   const tituloRef = useRef<HTMLHeadingElement>(null);
 
-  // Al abrir, siempre desde el primer paso, y el foco al título (lector de pantalla lo anuncia).
+  // Al ABRIR (transición cerrada→abierta), empieza por el primer paso no hecho. No se reposiciona
+  // si `indiceActivo` cambia con la guía ya abierta (la detección reordena al confirmar pasos): eso
+  // se pelearía con la navegación manual (Siguiente/Atrás).
+  const estabaAbierta = useRef(false);
   useEffect(() => {
-    if (open) {
-      setIndice(0);
-    }
-  }, [open]);
+    if (abierta && !estabaAbierta.current) setIndice(indiceActivo);
+    estabaAbierta.current = abierta;
+  }, [abierta, indiceActivo]);
 
   useEffect(() => {
-    if (open) tituloRef.current?.focus();
-  }, [open, indice]);
+    if (abierta) tituloRef.current?.focus();
+  }, [abierta, indice]);
 
-  if (!open) return null;
+  if (!abierta) return null;
 
-  const total = PASOS_GUIA.length;
-  const paso = PASOS_GUIA[indice];
+  const actual = pasos[Math.min(indice, pasos.length - 1)];
+  const { paso, completado } = actual;
   const esPrimero = indice === 0;
   const esUltimo = indice === total - 1;
   const Icono = paso.Icono;
+  const esExplicativo = !paso.deteccion && !esUltimo;
 
   function atras() {
     setIndice((i) => Math.max(0, i - 1));
   }
   function siguiente() {
-    if (esUltimo) {
-      onClose();
-    } else {
-      setIndice((i) => Math.min(total - 1, i + 1));
-    }
+    if (esExplicativo) confirmarPaso(paso.id);
+    setIndice((i) => Math.min(total - 1, i + 1));
   }
 
   return (
@@ -59,7 +53,7 @@ export function PrimerosPasosGuia({ open, onClose, onIr }: Props) {
       aria-modal="true"
       aria-labelledby={tituloId}
       onKeyDown={(e) => {
-        if (e.key === "Escape") onClose();
+        if (e.key === "Escape") cerrar();
       }}
       className="fixed inset-0 z-50 flex flex-col bg-background"
     >
@@ -67,66 +61,70 @@ export function PrimerosPasosGuia({ open, onClose, onIr }: Props) {
         <LogoGanera decorativo className="size-[22px] text-marca" />
         <span className="font-bold tracking-wide">GANERA</span>
         <span aria-hidden="true" className="hidden h-5 w-px bg-border sm:block" />
-        <span className="hidden text-sm font-medium text-muted-foreground sm:block">
-          Configuración inicial
-        </span>
+        <span className="hidden text-sm font-medium text-muted-foreground sm:block">Configuración inicial</span>
         <span className="ml-auto text-sm tabular-nums text-muted-foreground">
-          Paso {indice + 1} de {total}
+          Paso {indice + 1} de {total} · {hechos} de {total} hechos
         </span>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          aria-label="Cerrar la guía"
-          className="shrink-0"
-        >
+        <Button type="button" variant="ghost" size="icon" onClick={cerrar} aria-label="Cerrar la guía" className="shrink-0">
           <XIcon className="size-5" />
         </Button>
       </header>
 
-      {/* Barra de progreso: un segmento por paso, los ya pasados y el actual en color de acción. */}
+      {/* Progreso por paso: hecho = acción; el actual, tintado; el resto, neutro. */}
       <div
         className="grid flex-none gap-1 px-5 pt-4 sm:px-8"
         style={{ gridTemplateColumns: `repeat(${total}, minmax(0, 1fr))` }}
         aria-hidden="true"
       >
-        {PASOS_GUIA.map((p, i) => (
+        {pasos.map((p) => (
           <span
-            key={p.id}
-            className={`h-1 ${i <= indice ? "bg-primary" : "bg-muted"}`}
+            key={p.paso.id}
+            className={`h-1 ${p.completado ? "bg-primary" : p.indice === indice ? "bg-primary/40" : "bg-muted"}`}
           />
         ))}
       </div>
 
       <main className="flex-1 overflow-auto">
         <div className="mx-auto flex max-w-[620px] flex-col gap-6 px-5 py-12 sm:px-8 sm:py-14">
-          <span className="grid size-12 place-items-center bg-muted text-foreground">
-            <Icono aria-hidden="true" className="size-6" />
+          <span
+            className={`grid size-12 place-items-center ${completado ? "bg-success text-success-foreground" : "bg-muted text-foreground"}`}
+          >
+            {completado ? <CheckIcon aria-hidden="true" className="size-6" /> : <Icono aria-hidden="true" className="size-6" />}
           </span>
           <div className="flex flex-col gap-2">
-            <h1
-              id={tituloId}
-              ref={tituloRef}
-              tabIndex={-1}
-              className="text-[28px] leading-tight font-bold tracking-[-0.02em] outline-none"
-            >
+            <h1 id={tituloId} ref={tituloRef} tabIndex={-1} className="text-[28px] leading-tight font-bold tracking-[-0.02em] outline-none">
               {paso.titulo}
             </h1>
-            <p className="text-[15px] leading-relaxed text-pretty text-muted-foreground">
-              {paso.cuerpo}
-            </p>
+            {completado && (
+              <p className="text-sm font-medium text-success-foreground">✓ Hecho</p>
+            )}
+            <p className="text-[15px] leading-relaxed text-pretty text-muted-foreground">{paso.cuerpo}</p>
           </div>
-          {paso.cta && (
+          {paso.cta && !completado && (
             <div>
+              <Button type="button" variant="outline" className="h-11 gap-2 bg-card px-4" onClick={() => irAPantalla(paso.cta!.to)}>
+                {paso.cta.label}
+                <ArrowRightIcon aria-hidden="true" className="size-[18px]" />
+              </Button>
+              {paso.deteccion && (
+                <p className="mt-2 text-[13px] text-muted-foreground">
+                  Lo marcaremos como hecho en cuanto lo tengas listo; vuelve aquí para continuar.
+                </p>
+              )}
+            </div>
+          )}
+          {/* Último paso: no se puede terminar sin OVZ (requisito). */}
+          {esUltimo && !ovzHecho && (
+            <div className="border border-border bg-warning px-4 py-3 text-[13px] text-warning-foreground">
+              <p className="font-medium">Falta configurar tus datos de OVZ para terminar.</p>
               <Button
                 type="button"
                 variant="outline"
-                className="h-11 gap-2 bg-card px-4"
-                onClick={() => onIr(paso.cta!.to)}
+                className="mt-2 h-9 gap-2 bg-card px-3"
+                onClick={() => irAPantalla("/configuracion")}
               >
-                {paso.cta.label}
-                <ArrowRightIcon aria-hidden="true" className="size-[18px]" />
+                Configurar OVZ ahora
+                <ArrowRightIcon aria-hidden="true" className="size-4" />
               </Button>
             </div>
           )}
@@ -142,18 +140,30 @@ export function PrimerosPasosGuia({ open, onClose, onIr }: Props) {
         )}
         <span className="flex-1" />
         {!esUltimo && (
-          <Button type="button" variant="ghost" className="h-11 px-4 text-enlace" onClick={onClose}>
+          <Button type="button" variant="ghost" className="h-11 px-4 text-enlace" onClick={cerrar}>
             Omitir por ahora
           </Button>
         )}
-        <Button
-          type="button"
-          onClick={siguiente}
-          className="h-11 min-w-[180px] justify-between px-4 text-[15px] font-medium"
-        >
-          {esUltimo ? "Empezar" : "Siguiente"}
-          <ArrowRightIcon aria-hidden="true" className="size-[18px]" />
-        </Button>
+        {esUltimo ? (
+          <Button
+            type="button"
+            onClick={terminar}
+            disabled={!ovzHecho}
+            className="h-11 min-w-[180px] justify-between px-4 text-[15px] font-medium"
+          >
+            Empezar
+            <ArrowRightIcon aria-hidden="true" className="size-[18px]" />
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            onClick={siguiente}
+            className="h-11 min-w-[180px] justify-between px-4 text-[15px] font-medium"
+          >
+            Siguiente
+            <ArrowRightIcon aria-hidden="true" className="size-[18px]" />
+          </Button>
+        )}
       </footer>
     </div>
   );

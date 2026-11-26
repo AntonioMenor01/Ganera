@@ -1,3 +1,100 @@
+# Frontend — sesión 2026-11-26 (Control de trámites + Onboarding guiado)
+
+# Mejoras de frontend — resumen para revisión (Antonio / Álvaro)
+
+Dos mejoras de frontend, en **dos ramas / dos PRs**, **sin fusionar y sin desplegar**. Todo contra
+`main` al día. Solo frontend; sin backend nuevo. Suite Vitest en verde con
+`npx vitest run --no-file-parallelism`, más `npm run build` y `npm run lint`.
+
+---
+
+## Parte A — «Control de trámites» (rama `feat/control-tramites`, PR #53)
+
+**Qué es:** una pantalla nueva y complementaria a la cola (`/tramites`) que enseña **todos los
+trámites agrupados por estado**, para ver de un vistazo en qué punto está cada uno.
+
+**Grupos** (sobre los estados REALES de `features/tramites/etiquetas.ts`, sin inventar):
+Entrando (`PENDIENTE_EXTRACCION`) · Por revisar (`PENDIENTE_REVISION`) · Revisado · solo falta OVZ
+(`APROBADO`) · Presentándose/presentado (`EN_PROCESO`, `EJECUTADO_OVZ`) · Hecho (`HECHO_EN_OVZ`) ·
+Con incidencia/rechazados (`ERROR_OVZ`, `RECHAZADO`; un `RECHAZADO`+`SIN_TRAMITE` sale «Descartado»
+vía `presentacionEstadoTramite`).
+
+**Cómo:** se compone en el frontend con `GET /tramites?estado=&size=` (una petición por estado;
+`totalElements` para el contador y `content` para la muestra). Sin backend nuevo. Multi-tenant
+seguro (el backend filtra por `gestoriaId` del JWT). Cada fila abre la revisión existente
+(`TramiteReviewDialog`). Carga/erro­r-por-grupo/vacío honesto. Responsive como `TramitesPage`.
+Navegación: ruta `/control-tramites` + enlace «Control» tras «Trámites».
+
+**Decisiones a confirmar:**
+- «Control» es un ítem de navegación propio (tras «Trámites»). Si se prefiere como pestaña dentro de
+  Trámites, es fácil de mover. Se ajustaron los tests de posición/conteo de la tira de navegación.
+- La muestra por grupo es de 4 filas + «Ver los N en Trámites», que lleva a `/tramites` (la cola no
+  filtra por URL hoy). Deep-link al filtro quedaría para otra iteración (tocaría `TramitesPage`).
+
+---
+
+## Parte B — Onboarding guiado de verdad (rama `feat/onboarding-guiado`)
+
+Evoluciona el onboarding de 8 pasos (que **ya estaba en `main`**, no en una rama suelta) de un simple
+booleano «visto» a un **onboarding con progreso real**.
+
+**Qué hace ahora:**
+1. **Progreso por paso y por usuario** (`localStorage`): qué pasos explicativos se han confirmado,
+   qué coachmarks se han descartado y si se dio por terminado. Modelo en `primerosPasos.ts`.
+2. **Detección de «paso hecho» con datos reales** (endpoints existentes, multi-tenant-safe), en
+   `deteccionPasos.ts`:
+   - `ovz` → `GET /configuracion/preferencias-ovz` con los campos mínimos rellenos (ver abajo).
+   - `ganadero` → `GET /ganaderos?size=1`, `totalElements > 0`.
+   - `inventario` → `GET /explotaciones?size=1`, `totalElements > 0`.
+   Los pasos explicativos (bienvenida, bandeja, aprobar, whatsapp, listo) se marcan al confirmarlos.
+3. **La CTA de un paso lleva a la pantalla real pero NO termina el onboarding**; el usuario vuelve a
+   continuar. Mientras esté incompleto, hay una **píldora flotante** «Continuar configuración · paso
+   X de 8» (`PillContinuar`) que reabre la guía, y el botón «Primeros pasos» del inicio muestra el
+   progreso (`N/8`).
+4. **Coachmarks contextuales** (`CoachmarkPaso`): en Configuración, Ganaderos y Explotaciones sale un
+   aviso breve y descartable, del **mismo modelo de pasos** (no textos sueltos), con el «ya
+   descartado» recordado por usuario+paso. Ligeros, no bloquean (no son modales). Sin backend.
+5. **OVZ es requisito**: no se puede «Empezar» (terminar) sin el paso `ovz` hecho; se avisa y se
+   ofrece ir a configurarlo. **No** se bloquea el resto de la app por no tener OVZ, solo terminar el
+   onboarding. Las credenciales de login de OVZ (usuario/contraseña) **no se tocan** (aplazadas,
+   escalón 2): «rellenar OVZ» = las **Preferencias para OVZ**.
+6. Se mantienen la **autoapertura la primera vez** y la **reapertura manual**; tests ampliados.
+
+**Arquitectura:** `PrimerosPasosContexto.tsx` (provider + hook `usePrimerosPasos`) envuelve el shell
+en `AppLayout`, así las páginas (coachmarks) y el inicio leen el progreso. El provider tiene un valor
+por defecto **inactivo**, de modo que una pantalla montada sin él (tests de páginas sueltas) no pide
+datos ni pinta nada. La detección solo corre cuando el onboarding está **en curso**.
+
+### ⚠️ Decisión de producto a confirmar: campos OVZ mínimos
+`ovzConfigurado(prefs)` (en `primerosPasos.ts`) considera el paso OVZ hecho cuando están rellenos los
+campos de **`CAMPOS_OVZ_MINIMOS`**, hoy **`["oficinaDi", "tipoResponsable"]`**. Es una elección
+provisional: la ficha de OVZ (`features/tramites/fichaOvz.ts`) consume más campos
+(`oficinaMer`, `emisionDi`, `tipoIdentificador`, `telefonoMovimiento`, `medioTransporte`,
+`matricula`, `transportistaSirentra`), pero muchos son situacionales (p. ej. transporte, solo para
+movimientos). **Hay que confirmar el conjunto exacto** que debe exigirse para dar OVZ por configurado
+— cambiar solo esa constante.
+
+El helper `ovzConfigurado` queda **reutilizable**: hoy lo usa el onboarding; se puede usar también en
+el flujo de la ficha para saber si ya hay datos de OVZ con los que trabajar (lo dejé **sin** cablear
+en `fichaOvz.ts` para no cambiar su comportamiento ni sus tests sin tu visto bueno).
+
+### Otras decisiones / supuestos
+- El progreso vive en `localStorage` por usuario (como el «visto» anterior). No se guarda en backend
+  (no se pidió y no hay endpoint). Si se quiere progreso entre dispositivos, haría falta backend.
+- Usuarios con la marca «visto» del onboarding v1 **no** ven la autoapertura otra vez.
+- `PrimerosPasosContexto.tsx` añade **un** warning `only-export-components` (provider + hook en el
+  mismo fichero, igual patrón que `AuthContext.tsx`, ya aceptado). Es un aviso de fast-refresh, no un
+  error; `lint` y `build` pasan.
+
+### Preguntas abiertas para vosotros
+- ¿El onboarding debería bloquear **más** (p. ej. no dejar aprobar trámites sin OVZ) o **menos**?
+  Ahora solo condiciona **terminar el onboarding**, nunca el uso de la app.
+- ¿Campos OVZ mínimos exactos? (ver arriba).
+- ¿«Control de trámites» como ítem de navegación o como pestaña dentro de Trámites?
+
+
+---
+
 # Frontend pendiente — estado tras la sesión autónoma (2026-10-30)
 
 Este documento recoge, con honestidad, qué se construyó, qué quedó sin empezar, los bloqueos y las

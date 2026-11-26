@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { CoachmarkPaso } from "@/features/onboarding/CoachmarkPaso";
 import { Link } from "react-router-dom";
 import { ChevronDown, CircleAlertIcon, FileSpreadsheetIcon, SearchIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -127,6 +128,7 @@ export function ExplotacionesPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1360px] min-w-0 flex-col gap-5">
+      <CoachmarkPaso pantalla="/explotaciones" />
       <div className="flex flex-wrap items-end justify-between gap-3 border-b-2 border-divisor pb-5">
         <div className="min-w-0">
           <p className="mb-1.5 text-[13px] font-medium text-muted-foreground tabular-nums">

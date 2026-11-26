@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
+import { CoachmarkPaso } from "@/features/onboarding/CoachmarkPaso";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ArrowDown,
@@ -137,6 +138,7 @@ export function GanaderosPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1360px] min-w-0 flex-col gap-5">
+      <CoachmarkPaso pantalla="/ganaderos" />
       <div className="flex flex-wrap items-end justify-between gap-3 border-b-2 border-divisor pb-5">
         <div className="min-w-0">
           <p className="mb-1.5 text-[13px] font-medium text-muted-foreground tabular-nums">

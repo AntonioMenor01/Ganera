@@ -36,6 +36,7 @@ import {
   type ListaOvz,
   type PreferenciaOvz,
 } from "@/features/configuracion/preferenciasOvzApi";
+import { CoachmarkPaso } from "@/features/onboarding/CoachmarkPaso";
 
 const TAMANIO = 50;
 
@@ -167,6 +168,7 @@ export function ConfiguracionPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1360px] min-w-0 flex-col gap-6">
+      <CoachmarkPaso pantalla="/configuracion" />
       <div className="border-b-2 border-divisor pb-5">
         <h1 className="text-[28px] leading-tight font-bold tracking-[-0.02em]">Configuración</h1>
       </div>
