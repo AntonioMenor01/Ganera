@@ -23,6 +23,8 @@ export interface UsuarioActual {
   nombre: string;
   gestoriaId: number;
   activo: boolean;
+  /** true mientras la contraseña sea la temporal del alta: obliga a cambiarla antes de usar la app. */
+  debeCambiarPassword: boolean;
 }
 
 /**
@@ -55,6 +57,11 @@ interface AuthContextValue {
   errorComprobacion: ErrorApi | null;
   motivoCierre: MotivoCierre;
   login: (email: string, password: string) => Promise<void>;
+  /**
+   * Cambia la contraseña del usuario autenticado y actualiza `usuario` con la respuesta (baja
+   * `debeCambiarPassword`). Deja propagar el ErrorApi para que la pantalla muestre el motivo.
+   */
+  cambiarPassword: (passwordActual: string, passwordNueva: string) => Promise<void>;
   logout: () => void;
   reintentarComprobacion: () => void;
   /** LoginPage lo llama tras leer el motivo, para que el aviso no se repita. */
@@ -196,6 +203,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [cerrarSesion],
   );
 
+  const cambiarPassword = useCallback(
+    async (passwordActual: string, passwordNueva: string) => {
+      const { data } = await httpClient.post<UsuarioActual>("/auth/cambiar-password", {
+        passwordActual,
+        passwordNueva,
+      });
+      setUsuario(data);
+    },
+    [],
+  );
+
   const olvidarMotivoCierre = useCallback(() => setMotivoCierre(null), []);
 
   const value = useMemo(
@@ -206,6 +224,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       errorComprobacion,
       motivoCierre,
       login,
+      cambiarPassword,
       logout,
       reintentarComprobacion,
       olvidarMotivoCierre,
@@ -218,6 +237,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       errorComprobacion,
       motivoCierre,
       login,
+      cambiarPassword,
       logout,
       reintentarComprobacion,
       olvidarMotivoCierre,

@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate, type RouteObject } from "react-router-do
 import { AppLayout } from "@/shared/layout/AppLayout";
 import { RequireAuth } from "@/shared/auth/RequireAuth";
 import { LoginPage } from "@/features/auth/LoginPage";
+import { CambiarPasswordPage } from "@/features/auth/CambiarPasswordPage";
 import { ExplotacionesPage } from "@/features/explotaciones/ExplotacionesPage";
 import { ExplotacionDetallePage } from "@/features/explotaciones/ExplotacionDetallePage";
 import { TramitesPage } from "@/features/tramites/TramitesPage";
@@ -24,6 +25,9 @@ export const routes: RouteObject[] = [
   {
     element: <RequireAuth />,
     children: [
+      // Cambio obligatorio de la contraseña temporal del alta, sin la barra de la app (es previo a
+      // usarla). RequireAuth manda aquí mientras debeCambiarPassword esté activo.
+      { path: "/cambiar-password", element: <CambiarPasswordPage /> },
       // Ficha para OVZ: ventana auxiliar junto a OVZ, sin la barra de la app (fuera de AppLayout).
       // Sin sesión (abierta sin heredarla), RequireAuth manda al login y este vuelve aquí (D3).
       { path: "/tramites/:id/ovz", element: <FichaOvzPage /> },

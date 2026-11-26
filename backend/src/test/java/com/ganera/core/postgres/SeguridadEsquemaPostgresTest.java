@@ -43,7 +43,7 @@ class SeguridadEsquemaPostgresTest {
         // + V43 identificadores por gestoria).
         assertThat(jdbc.queryForObject("select count(*) from ganera.flyway_schema_history "
                 + "where success and installed_by = 'ganera_propietario' and version is not null", Integer.class))
-                .isEqualTo(38);
+                .isEqualTo(39);
         assertThat(problemas(baseDeDatos)).isEmpty();
     }
 
@@ -428,7 +428,7 @@ class SeguridadEsquemaPostgresTest {
     private static String migrarComoPropietario() {
         String baseDeDatos = PostgresEmbebido.nuevaBaseDeDatos();
         assertThat(PostgresEmbebido.flywayPropietario(baseDeDatos).load().migrate().migrationsExecuted)
-                .isEqualTo(38);
+                .isEqualTo(39);
         return baseDeDatos;
     }
 

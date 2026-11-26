@@ -159,6 +159,7 @@ const TEXTO_GENERICO = "Ha ocurrido un error inesperado. Inténtalo de nuevo.";
  */
 export type ContextoError =
   | "login"
+  | "cambiar-password"
   | "comprobar-sesion"
   | "suscripcion"
   | "importar-excel"
@@ -202,6 +203,11 @@ const TEXTOS: Record<ContextoError, TextosContexto> = {
     generico: "No se ha podido iniciar sesión. Inténtalo de nuevo.",
     // Siempre el mismo, sea cual sea la causa (CLAUDE.md: el login no revela por qué falla).
     noAutorizado: "Email o contraseña incorrectos.",
+  },
+  // POST /auth/cambiar-password. Sus 400 (contraseña actual incorrecta, nueva demasiado corta) traen
+  // `{motivo}`, que es lo que se enseña; esto es la reserva para red/5xx/sin motivo.
+  "cambiar-password": {
+    generico: "No se ha podido cambiar la contraseña. Inténtalo de nuevo.",
   },
   // GET /auth/me al arrancar con un token guardado. Su 401 no llega aquí (cierra la sesión); aquí
   // solo llegan red, servidor y lo inesperado, que no deben desloguear.

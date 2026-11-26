@@ -67,6 +67,7 @@ class InventarioAuditoriaTest {
     static {
         // --- Rutas de escritura ---
         RUTAS.put("POST /auth/login", Cobertura.auditada("shared.auditoria.AuditoriaLoginEndToEndTest"));
+        RUTAS.put("POST /auth/cambiar-password", Cobertura.auditada("auth.CambioPasswordEndToEndTest"));
         RUTAS.put("POST /contactos", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
         RUTAS.put("PUT /contactos/{id}", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
         RUTAS.put("DELETE /contactos/{id}", Cobertura.auditada("shared.auditoria.AuditoriaUsuarioEndToEndTest"));
