@@ -13,7 +13,6 @@ const ENLACES_ESPERADOS = [
   "Inicio",
   "Bandeja",
   "Trámites",
-  "Control",
   "Ganaderos",
   "Explotaciones",
   "Calendario",
@@ -25,7 +24,6 @@ const HREFS_ESPERADOS = [
   "/",
   "/bandeja",
   "/tramites",
-  "/control-tramites",
   "/ganaderos",
   "/explotaciones",
   "/calendario",
@@ -45,7 +43,6 @@ function montarLayout(url: string) {
           { index: true, element: relleno("pantalla inicio") },
           { path: "bandeja", element: relleno("pantalla bandeja") },
           { path: "tramites", element: relleno("pantalla tramites") },
-          { path: "control-tramites", element: relleno("pantalla control") },
           { path: "ganaderos", element: relleno("pantalla ganaderos") },
           { path: "explotaciones", element: relleno("pantalla explotaciones") },
           { path: "calendario", element: relleno("pantalla calendario") },
@@ -142,7 +139,7 @@ afterEach(() => {
 })
 
 describe("AppLayout: barra de navegación", () => {
-  it("hay un solo nav Principal con los 9 enlaces del mock (sin Facturación)", async () => {
+  it("hay un solo nav Principal con los 8 enlaces del mock (sin Facturación ni Control)", async () => {
     montarLayout("/tramites")
     await screen.findByText("pantalla tramites")
 
@@ -217,12 +214,11 @@ describe("AppLayout: barra de navegación", () => {
     expect(clases[0]).toContain("lucide-layout-dashboard")
     expect(clases[1]).toContain("lucide-message-circle")
     expect(clases[2]).toContain("lucide-clipboard-list")
-    expect(clases[3]).toContain("lucide-layout-list")
-    expect(clases[4]).toContain("lucide-users")
-    expect(clases[5]).toContain("lucide-warehouse")
-    expect(clases[6]).toContain("lucide-calendar-clock")
-    expect(clases[7]).toContain("lucide-chart-column")
-    expect(clases[8]).toContain("lucide-settings")
+    expect(clases[3]).toContain("lucide-users")
+    expect(clases[4]).toContain("lucide-warehouse")
+    expect(clases[5]).toContain("lucide-calendar-clock")
+    expect(clases[6]).toContain("lucide-chart-column")
+    expect(clases[7]).toContain("lucide-settings")
   })
 
   it("la tira es la referencia de offsetLeft de sus enlaces (relative) y se desplaza por dentro", async () => {
@@ -246,22 +242,23 @@ describe("AppLayout: barra de navegación", () => {
     const router = montarLayout("/tramites")
     const nav = await screen.findByRole("navigation", { name: "Principal" })
 
-    // Índices mock: Inicio 0, Bandeja 1, Trámites 2, Control 3, Ganaderos 4, Explotaciones 5 (16+i*84).
+    // Índices mock (8 enlaces, sin Control): Inicio 0, Bandeja 1, Trámites 2, Ganaderos 3,
+    // Explotaciones 4, Calendario 5 (inicio = 16+i*84, ancho 80).
     const medidas = simularMedidas(nav, 375)
     const scrollLeftActual = medidas.scrollLeft
 
-    // Ganaderos (352–432) se corta a la derecha con 375 → scroll 432-375+16 = 73.
-    await act(() => router.navigate("/ganaderos"))
+    // Explotaciones (352–432) se corta a la derecha con 375 → scroll 432-375+16 = 73.
+    await act(() => router.navigate("/explotaciones"))
     expect(scrollLeftActual()).toBe(73)
 
-    // Explotaciones (436–516) se corta a la derecha (S=73) → 516-375+16 = 157.
-    await act(() => router.navigate("/explotaciones"))
+    // Calendario (436–516) se corta a la derecha (S=73) → 516-375+16 = 157.
+    await act(() => router.navigate("/calendario"))
     expect(scrollLeftActual()).toBe(157)
 
     // Tira más estrecha (220): hay que salir de la ruta para que el efecto se re-dispare.
-    await act(() => router.navigate("/ganaderos"))
-    Object.defineProperty(nav, "clientWidth", { configurable: true, value: 220 })
     await act(() => router.navigate("/explotaciones"))
+    Object.defineProperty(nav, "clientWidth", { configurable: true, value: 220 })
+    await act(() => router.navigate("/calendario"))
     expect(scrollLeftActual()).toBe(312)
 
     // De vuelta a Trámites (184–264), fuera por la izquierda: 184-16 = 168.
@@ -277,19 +274,19 @@ describe("AppLayout: barra de navegación", () => {
     montarLayout("/explotaciones")
     const nav = await screen.findByRole("navigation", { name: "Principal" })
     const medidas = simularMedidas(nav, 220)
-    // Como tras cargar /explotaciones en tira estrecha (índice 5 → 516-220+16 = 312).
-    nav.scrollLeft = 312
+    // Como tras cargar /explotaciones (índice 4 → 432-220+16 = 228) en tira estrecha.
+    nav.scrollLeft = 228
 
     // Trámites (184–264) cortado por la izquierda → 184-16 = 168.
     act(() => within(nav).getByRole("link", { name: "Trámites" }).focus())
     expect(medidas.scrollLeft()).toBe(168)
 
-    // Control (268–348) ya cabe con scroll 168 y ancho 220: no mueve.
-    act(() => within(nav).getByRole("link", { name: "Control" }).focus())
+    // Ganaderos (268–348) ya cabe con scroll 168 y ancho 220: no mueve.
+    act(() => within(nav).getByRole("link", { name: "Ganaderos" }).focus())
     expect(medidas.scrollLeft()).toBe(168)
 
-    // Explotaciones (436–516) cortado a la derecha → 516-220+16 = 312.
-    act(() => within(nav).getByRole("link", { name: "Explotaciones" }).focus())
+    // Calendario (436–516) cortado a la derecha → 516-220+16 = 312.
+    act(() => within(nav).getByRole("link", { name: "Calendario" }).focus())
     expect(medidas.scrollLeft()).toBe(312)
 
     expect(scrollIntoView).not.toHaveBeenCalled()
@@ -313,10 +310,10 @@ describe("AppLayout: barra de navegación", () => {
     act(() => observador.disparar())
     expect(medidas.scrollLeft()).toBe(0)
 
-    // Tira a 220 px: Explotaciones cortada → 516-220+16 = 312.
+    // Tira a 220 px: Explotaciones (352–432) cortada → 432-220+16 = 228.
     Object.defineProperty(nav, "clientWidth", { configurable: true, value: 220 })
     act(() => observador.disparar())
-    expect(medidas.scrollLeft()).toBe(312)
+    expect(medidas.scrollLeft()).toBe(228)
     expect(scrollIntoView).not.toHaveBeenCalled()
   })
 
