@@ -27,6 +27,7 @@ import { listarAlertas, type Alerta } from "@/features/alertas/api";
 import { abrirPrimerosPasos } from "@/features/onboarding/primerosPasos";
 import { usePrimerosPasos } from "@/features/onboarding/PrimerosPasosContexto";
 import { cargarColaPendiente, contarGanaderos } from "./api";
+import { ResumenValor } from "./ResumenValor";
 import { fechaLargaMadrid, nombrePila, saludo } from "./saludo";
 
 /**
@@ -192,6 +193,8 @@ export function DashboardPage() {
           error={errorGanaderos}
         />
       </section>
+
+      <ResumenValor />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <ColaDeTrabajo cola={cola} error={errorCola} cargando={cargando} onReintentar={recargar} />
