@@ -154,7 +154,7 @@ export function CalendarioPage() {
             >
               <ChevronLeftIcon aria-hidden="true" className="size-4" />
             </Button>
-            <span className="min-w-[9.5rem] text-center text-sm font-bold capitalize">{tituloMes}</span>
+            <span className="min-w-[9.5rem] text-center text-sm font-bold">{tituloMes}</span>
             <Button
               type="button"
               variant="outline"
@@ -300,7 +300,7 @@ export function CalendarioPage() {
                 {gruposLista.map((gr) => (
                   <div key={gr.clave}>
                     <div className="mb-2 flex items-baseline gap-2 border-b-2 border-divisor pb-2">
-                      <h2 className="text-lg font-bold capitalize">{gr.etiqueta}</h2>
+                      <h2 className="text-lg font-bold">{gr.etiqueta}</h2>
                       <span className="text-[13px] text-muted-foreground">{gr.n}</span>
                     </div>
                     <ul>
@@ -534,8 +534,16 @@ function sumarMeses(d: Date, n: number): Date {
   return new Date(d.getFullYear(), d.getMonth() + n, 1);
 }
 
+/** Mayúscula SOLO en la primera letra (es-ES deja mes/día de la semana en minúscula). No se usa la
+ * clase CSS `capitalize`, que pondría mayúscula a cada palabra («Noviembre De 2026», MEJ-02). */
+function mayusculaInicial(texto: string): string {
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+}
+
 function etiquetaMes(d: Date): string {
-  return new Intl.DateTimeFormat("es-ES", { month: "long", year: "numeric" }).format(d);
+  return mayusculaInicial(
+    new Intl.DateTimeFormat("es-ES", { month: "long", year: "numeric" }).format(d),
+  );
 }
 
 function claveDiaMadrid(d: Date): string {
@@ -550,10 +558,12 @@ function claveDiaMadrid(d: Date): string {
 function etiquetaDiaLargo(clave: string): string {
   const [y, m, day] = clave.split("-").map(Number);
   const d = new Date(y, m - 1, day, 12);
-  return new Intl.DateTimeFormat("es-ES", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  }).format(d);
+  return mayusculaInicial(
+    new Intl.DateTimeFormat("es-ES", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }).format(d),
+  );
 }

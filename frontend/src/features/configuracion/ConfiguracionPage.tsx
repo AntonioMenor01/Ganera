@@ -200,20 +200,17 @@ export function ConfiguracionPage() {
           {seccion === "gestoria" && (
             <>
               <Panel titulo="Datos de la gestoría">
-                <p className="mb-4 text-sm text-muted-foreground">
-                  La ficha de la gestoría aún no se edita desde la app. El inventario se carga en{" "}
+                {/* MEJ-04: se quitaron los campos Nombre/CIF/Dirección en «—» (no editables y sin
+                    dato real que mostrar: /auth/me no trae la ficha de la gestoría). Volverán cuando
+                    exista el endpoint para leerlos y editarlos; mientras, no se enseñan campos muertos. */}
+                <p className="text-sm text-muted-foreground">
+                  La ficha de la gestoría (nombre, CIF, dirección) se editará desde aquí más adelante.
+                  El inventario de ganaderos y explotaciones se carga en{" "}
                   <Link to="/explotaciones" className={CLASE_ENLACE}>
                     Explotaciones
                   </Link>
                   .
                 </p>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <CampoSoloLectura etiqueta="Nombre o razón social" valor="—" />
-                  <CampoSoloLectura etiqueta="CIF" valor="—" />
-                  <div className="sm:col-span-2">
-                    <CampoSoloLectura etiqueta="Dirección" valor="—" />
-                  </div>
-                </div>
               </Panel>
               <PreferenciasOvzPanel />
             </>
@@ -221,8 +218,11 @@ export function ConfiguracionPage() {
 
           {seccion === "equipo" && (
             <Panel titulo="Equipo">
+              {/* MEJ-03: se quitó el botón «Invitar compañero» (deshabilitado, sin endpoint). Cuando
+                  exista el alta de empleados con roles (MEJ-08), vuelve con su funcionalidad. */}
               <p className="mb-4 text-sm text-muted-foreground">
-                Invitaciones y roles de empleados aún no tienen endpoint. Hoy solo hay tu usuario.
+                Hoy la gestoría trabaja con un único usuario. Invitar compañeros con sus propios
+                accesos y roles llegará pronto.
               </p>
               <ul className="divide-y divide-border border border-border">
                 <li className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
@@ -240,9 +240,6 @@ export function ConfiguracionPage() {
                   </span>
                 </li>
               </ul>
-              <Button type="button" variant="outline" className="mt-4 h-10 bg-card" disabled>
-                Invitar compañero
-              </Button>
             </Panel>
           )}
 
@@ -456,17 +453,6 @@ function iniciales(nombre: string | undefined): string {
   if (!nombre?.trim()) return "?";
   const partes = nombre.trim().split(/\s+/).slice(0, 2);
   return partes.map((p) => p[0]?.toUpperCase() ?? "").join("");
-}
-
-function CampoSoloLectura({ etiqueta, valor }: { etiqueta: string; valor: string }) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-[13px] font-medium">{etiqueta}</span>
-      <div className="flex min-h-10 items-center border border-input bg-muted/40 px-2.5 text-sm text-muted-foreground">
-        {valor}
-      </div>
-    </div>
-  );
 }
 
 function Panel({ titulo, children }: { titulo: string; children: ReactNode }) {

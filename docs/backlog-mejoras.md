@@ -19,17 +19,22 @@ despliega Antonio (Clever); los de frontend van a Vercel por `main`.
 - **P3 — Pulido y mejoras menores.**
 - **BLOQUEADO — depende de algo externo** (p. ej. la sesión de mapeo de OVZ).
 
+> **Estado del bloque P0 — HECHO (2026-11-27).** MEJ-01…MEJ-06 implementados y verificados (suite
+> 1191 verde, `tsc`/`lint`/`build` limpios, QA en navegador sin errores de consola). MEJ-07 revisado:
+> los botones PDF/Excel ya estaban honestamente `disabled` con tooltip → sin cambio. Siguiente bloque:
+> P1.
+
 ## Índice
 
 | ID | Prioridad | Tipo | Resumen | Tamaño |
 |----|-----------|------|---------|--------|
-| MEJ-01 | P0 | Placeholder que engaña | Informes: el filtro de periodo no filtra | S–M |
-| MEJ-02 | P0 | Errata | Calendario: «Noviembre De 2026» (capitaliza cada palabra) | S |
-| MEJ-03 | P0 | Placeholder | Config → Equipo: «Invitar compañero» muerto | S |
-| MEJ-04 | P0 | Placeholder | Config → Datos de la gestoría: campos «—» no editables | S–M |
-| MEJ-05 | P0 | Incoherencia | Onboarding: «6/8» vs «paso 2 de 8» | S |
-| MEJ-06 | P0 | UX intrusiva | Píldora «Continuar configuración» tapa contenido | S |
-| MEJ-07 | P0 | A verificar | Informes: ¿PDF/Excel exportan de verdad? | S |
+| MEJ-01 | P0 ✅ | Placeholder que engaña | Informes: el filtro de periodo no filtra → quitado | S–M |
+| MEJ-02 | P0 ✅ | Errata | Calendario: «Noviembre De 2026» → «Noviembre de 2026» | S |
+| MEJ-03 | P0 ✅ | Placeholder | Config → Equipo: «Invitar compañero» muerto → quitado | S |
+| MEJ-04 | P0 ✅ | Placeholder | Config → Datos de la gestoría: campos «—» → quitados | S–M |
+| MEJ-05 | P0 ✅ | Incoherencia | Onboarding: píldora ahora muestra «N/8» (como el Inicio) | S |
+| MEJ-06 | P0 ✅ | UX intrusiva | Píldora «Continuar configuración» → descartable con «×» | S |
+| MEJ-07 | P0 ✅ | Verificado | Informes PDF/Excel ya honestos (`disabled` + tooltip) | S |
 | MEJ-08 | P1 | Add (valor) | Multiusuario / equipo real (da sentido a la auditoría) | L |
 | MEJ-09 | P1 | Add | Nombre del ganadero en la tarjeta de trámite | M |
 | MEJ-10 | P1 | Add | Avisos proactivos por email (plazos / trámites atascados) | M–L |
