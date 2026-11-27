@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  CalendarIcon,
   ChartColumnIcon,
   CheckCircle2Icon,
   ClipboardListIcon,
@@ -26,8 +25,6 @@ import {
   ESTADOS_INFORME,
 } from "./api";
 
-type Periodo = "mes" | "trimestre" | "ano" | "custom";
-
 type Resumen = {
   porEstado: Record<EstadoTramite, number>;
   totalTramites: number;
@@ -35,27 +32,15 @@ type Resumen = {
   explotaciones: number;
 };
 
-const PERIODOS: { id: Periodo; label: string }[] = [
-  { id: "mes", label: "Este mes" },
-  { id: "trimestre", label: "Trimestre" },
-  { id: "ano", label: "Año" },
-  { id: "custom", label: "Personalizado" },
-];
-
-const SUB_PERIODO: Record<Periodo, string> = {
-  mes: "Totales actuales (sin filtro por mes todavía)",
-  trimestre: "Totales actuales (sin filtro por trimestre todavía)",
-  ano: "Totales actuales (sin filtro por año todavía)",
-  custom: "Totales actuales (rango personalizado aún no disponible)",
-};
-
-/** Informes al look del mock v2: cabecera con export, segmentos, KPIs y paneles. Solo conteos reales. */
+/** Informes: KPIs y paneles con conteos REALES de toda la gestoría. El filtro por periodo se quitó
+ * (MEJ-01): los segmentos salían activos pero no filtraban (el backend aún no agrega por fechas), y
+ * un control que parece funcionar y no hace nada rompe la confianza. Volverá cuando exista un
+ * `GET /resumen?desde=&hasta=`. Mientras, el subtítulo deja claro que son totales de la gestoría. */
 export function InformesPage() {
   const [resumen, setResumen] = useState<Resumen | null>(null);
   const [error, setError] = useState<ErrorApi | null>(null);
   const [cargando, setCargando] = useState(true);
   const [version, setVersion] = useState(0);
-  const [periodo, setPeriodo] = useState<Periodo>("trimestre");
   const recargar = useCallback(() => setVersion((v) => v + 1), []);
 
   useEffect(() => {
@@ -144,7 +129,7 @@ export function InformesPage() {
       <div className="flex flex-wrap items-end justify-between gap-4 border-b-2 border-divisor pb-5">
         <div className="min-w-0">
           <p className="mb-1.5 text-[13px] font-medium text-muted-foreground">
-            {SUB_PERIODO[periodo]}
+            Totales de tu gestoría
           </p>
           <h1 className="text-[28px] leading-tight font-bold tracking-[-0.02em]">Informes</h1>
         </div>
@@ -170,38 +155,6 @@ export function InformesPage() {
             Excel
           </Button>
         </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <CalendarIcon aria-hidden="true" className="size-4 text-muted-foreground" />
-        <div role="tablist" aria-label="Periodo" className="flex border border-input">
-          {PERIODOS.map((p, i) => {
-            const activo = periodo === p.id;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                role="tab"
-                aria-selected={activo}
-                onClick={() => setPeriodo(p.id)}
-                className={cn(
-                  "h-9 px-3.5 text-[13px] font-medium outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring",
-                  i > 0 && "border-l border-input",
-                  activo
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-card text-foreground hover:bg-gris-200",
-                )}
-              >
-                {p.label}
-              </button>
-            );
-          })}
-        </div>
-        {periodo === "custom" && (
-          <p className="text-[13px] text-muted-foreground">
-            El rango de fechas personalizado llegará con el histórico.
-          </p>
-        )}
       </div>
 
       {error && (
