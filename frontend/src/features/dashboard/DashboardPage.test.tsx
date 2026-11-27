@@ -192,7 +192,13 @@ describe("DashboardPage: cola de trabajo", () => {
     let intentos = 0;
     server.use(
       http.get(apiUrl("/ganaderos"), () => HttpResponse.json(paginaGanaderos(42))),
-      http.get(apiUrl("/tramites"), () => {
+      http.get(apiUrl("/tramites"), ({ request }) => {
+        // Solo cuenta/falla la petición de la COLA (estado PENDIENTE_REVISION); las otras llamadas a
+        // /tramites (ResumenValor: HECHO_EN_OVZ y totales) devuelven algo benigno sin afectar al test.
+        const estado = new URL(request.url).searchParams.get("estado");
+        if (estado !== "PENDIENTE_REVISION") {
+          return HttpResponse.json(paginaTramites([], 0));
+        }
         intentos += 1;
         return intentos === 1
           ? new HttpResponse(null, { status: 500 })
