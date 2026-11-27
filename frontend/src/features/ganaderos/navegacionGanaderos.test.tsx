@@ -43,7 +43,7 @@ describe("navegación: Ganaderos", () => {
     expect(enlaces.map((e) => e.textContent)).toEqual([
       "Inicio",
       "Bandeja",
-      "Trámites",
+      "Control",
       "Ganaderos",
       "Explotaciones",
       "Calendario",
@@ -53,7 +53,7 @@ describe("navegación: Ganaderos", () => {
     const ganaderos = within(barra).getByRole("link", { name: "Ganaderos" })
     expect(ganaderos).toHaveAttribute("href", "/ganaderos")
     expect(ganaderos).toHaveAttribute("aria-current", "page")
-    expect(within(barra).getByRole("link", { name: "Trámites" })).not.toHaveAttribute("aria-current")
+    expect(within(barra).getByRole("link", { name: "Control" })).not.toHaveAttribute("aria-current")
   })
 
   it("/ganaderos es la pantalla real del listado, no un marcador", async () => {
