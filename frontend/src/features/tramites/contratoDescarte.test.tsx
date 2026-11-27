@@ -49,11 +49,14 @@ describe("contrato SIN_TRAMITE con el backend", () => {
     expect(deshecho.historialDescarte.map((e) => e.tipo)).toEqual(["DESCARTADO", "DESCARTE_DESHECHO"])
   })
 
-  it("la cola, con la fila real de la lista, enseña el aviso y ningún botón de descartar", async () => {
+  it("el tablero, con la tarjeta real de la lista, enseña el aviso y ningún botón de descartar", async () => {
+    // El tablero pide una página por estado; esta fila solo sale en el de su estado (PENDIENTE_REVISION).
     server.use(
-      http.get(apiUrl("/tramites"), () =>
-        HttpResponse.json({ content: [contrato.itemLista], totalElements: 1, totalPages: 1, number: 0, size: 20 }),
-      ),
+      http.get(apiUrl("/tramites"), ({ request }) => {
+        const estado = new URL(request.url).searchParams.get("estado")
+        const content = estado === contrato.itemLista.estado ? [contrato.itemLista] : []
+        return HttpResponse.json({ content, totalElements: content.length, totalPages: 1, number: 0, size: 50 })
+      }),
     )
     render(
       <MemoryRouter>
@@ -61,9 +64,12 @@ describe("contrato SIN_TRAMITE con el backend", () => {
       </MemoryRouter>,
     )
 
-    const fila = (await screen.findByText("Parece un mensaje sin trámite")).closest("tr") as HTMLElement
-    expect(fila).not.toBeNull()
-    expect(within(fila).queryByRole("button", { name: "Descartar" })).not.toBeInTheDocument()
+    // La tarjeta es un botón «Revisar trámite #N» que incluye el aviso; descartar es solo del modal.
+    const aviso = await screen.findByText("Parece un mensaje sin trámite")
+    const tarjeta = aviso.closest("button") as HTMLElement
+    expect(tarjeta).not.toBeNull()
+    expect(tarjeta).toHaveAttribute("aria-label", `Revisar trámite #${ID}`)
+    expect(screen.queryByRole("button", { name: "Descartar" })).not.toBeInTheDocument()
   })
 
   it("el modal, con los detalles reales: Descartar → banda e historial → Deshacer → vuelve a pendiente", async () => {

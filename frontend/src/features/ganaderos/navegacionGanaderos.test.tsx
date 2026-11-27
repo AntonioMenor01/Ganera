@@ -40,12 +40,13 @@ describe("navegación: Ganaderos", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Pedro Sanz" })).toBeInTheDocument()
     const barra = within(screen.getByRole("banner")).getByRole("navigation")
     const enlaces = within(barra).getAllByRole("link")
+    // «Explotaciones» ya no es una entrada de la barra: se unificó con «Ganaderos» (una sección, dos
+    // vistas con la subnav de la cartera).
     expect(enlaces.map((e) => e.textContent)).toEqual([
       "Inicio",
       "Bandeja",
       "Control",
       "Ganaderos",
-      "Explotaciones",
       "Calendario",
       "Informes",
       "Configuración",

@@ -37,6 +37,7 @@ import {
   type OrdenGanaderos,
 } from "./ordenGanaderos";
 import { CLASE_ENLACE, CLASE_ENLACE_TABLA } from "@/shared/ui/enlace";
+import { SubnavCartera } from "@/shared/layout/SubnavCartera";
 
 const TAMANIO_PAGINA = 20;
 const COLUMNAS = 3;
@@ -161,6 +162,8 @@ export function GanaderosPage() {
           </Button>
         </div>
       </div>
+
+      <SubnavCartera />
 
       <label className="relative max-w-[420px]">
         <span className="sr-only">Buscar en esta página</span>

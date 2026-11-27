@@ -238,7 +238,10 @@ describe("GanaderosPage: navegación al detalle", () => {
     montar()
     await screen.findByRole("link", { name: "Ana Ruiz" })
 
-    // Tab: Importar Excel, Añadir ganadero, búsqueda, Nombre, NIF, enlace del primer ganadero.
+    // Tab: Importar Excel, Añadir ganadero, pestañas Ganaderos y Explotaciones (subnav de la
+    // cartera), búsqueda, Nombre, NIF, enlace del primer ganadero.
+    await user.tab()
+    await user.tab()
     await user.tab()
     await user.tab()
     await user.tab()

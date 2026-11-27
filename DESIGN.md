@@ -552,14 +552,25 @@ in the UI. The favicon is `favicon-64.png`.
   bar, bottom edge for the top bar). The brand mark (Rojo Ganera, decorative) is followed by the
   "GANERA" logotype in 700, `tracking-wide`, in Tinta: red as text would fall short (3.47:1), so the
   red stays in the mark.
-- **Links, in working order:** Trámites, Ganaderos, Explotaciones. That is, the daily queue, then
-  who it belongs to (a Ganadero, then their explotaciones). There is no Facturación link: payment
-  is not handled in the app, and `/facturacion` or any unknown route redirects to Trámites. A section
-  stays active on its sub-routes (`/ganaderos/:id` marks Ganaderos).
+- **Links, in working order:** Inicio, Bandeja, **Control**, Ganaderos, Calendario, Informes,
+  Configuración (7 entries). «Control» is the single trámites screen (the old «Trámites»/«Control»
+  duplication is gone) and reads as a **board of the whole flow**: four phase columns — «Por revisar»,
+  «Aprobado · falta OVZ», «Hecho en OVZ», «Rechazados y descartados» — that cover all eight estados,
+  each card opening the review in place (no filter tabs, no table). The Inicio is the board of the
+  **day** (only the actionable columns). **Ganaderos and Explotaciones are unified:** a ganadero owns
+  its explotaciones, so they share **one** nav entry («Ganaderos») and you switch between the two
+  views with the cartera subnav (`SubnavCartera`, a two-tab segmented control at the top of both
+  screens). The `/explotaciones` route stays (the subnav and internal links use it); it just has no
+  nav entry of its own, and the «Ganaderos» entry stays active on `/explotaciones` and
+  `/explotaciones/:id` too. There is no Facturación link: payment is not handled in the app, and
+  `/facturacion` or any unknown route redirects to Inicio. A section stays active on its sub-routes
+  (`/ganaderos/:id` marks Ganaderos).
 - **Link style:** square, 14px/500, Tinta, each with a decorative lucide icon on the left
-  (`clipboard-list`, `users`, `warehouse`; 16px, 18px from `lg`; the accessible name is only the
-  text). Inactive links fill with Gris Borde on hover; the active link is a solid Rojo Acción block
-  with white text. Transitions are color-only.
+  (`layout-dashboard`, `message-circle`, `clipboard-list`, `users`, `calendar-clock`, `chart-column`,
+  `settings`; 16px, 18px from `lg`; the accessible name is only the text). Inactive links fill with
+  Gris Borde on hover; the active link is a solid Rojo Acción block with white text. Transitions are
+  color-only. The cartera subnav uses the same active/inactive colours, in a bordered two-segment
+  row.
 - **Side bar (from `lg`):** a 64px brand zone at the top with a 2px divisor under it (22px mark,
   16px logotype); the links as a column of 40px full-width rows with 12px padding around the list
   (which scrolls vertically if it ever has to); and, pinned to the bottom above a 2px divisor, the

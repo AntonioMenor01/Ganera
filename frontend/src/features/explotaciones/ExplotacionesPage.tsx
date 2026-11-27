@@ -22,6 +22,7 @@ import { ImportarExcelSection } from "./ImportarExcelSection";
 import { AnimalesDeExplotacion } from "./AnimalesDeExplotacion";
 import { useDesdeSm } from "./useDesdeSm";
 import { CLASE_ENLACE_TABLA } from "@/shared/ui/enlace";
+import { SubnavCartera } from "@/shared/layout/SubnavCartera";
 
 const TAMANIO_PAGINA = 20;
 /** Espera antes de mandar `q` al backend (evita un GET por tecla). */
@@ -144,6 +145,8 @@ export function ExplotacionesPage() {
           Importar Excel
         </Button>
       </div>
+
+      <SubnavCartera />
 
         <ImportarExcelSection
         onImportado={() => {
