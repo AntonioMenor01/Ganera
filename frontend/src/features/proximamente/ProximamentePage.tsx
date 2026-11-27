@@ -25,7 +25,7 @@ export function ProximamentePage({ titulo, descripcion }: Props) {
         </Link>
         ,{" "}
         <Link to="/tramites" className={CLASE_ENLACE}>
-          Trámites
+          Control
         </Link>{" "}
         y{" "}
         <Link to="/ganaderos" className={CLASE_ENLACE}>

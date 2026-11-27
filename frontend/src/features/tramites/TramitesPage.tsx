@@ -214,7 +214,10 @@ export function TramitesPage() {
       <header className="flex flex-wrap items-end justify-between gap-3 border-b-2 border-divisor pb-5">
         <div className="min-w-0">
           <p className="mb-1.5 text-[13px] font-medium text-muted-foreground">{subtitulo}</p>
-          <h1 className="text-[28px] leading-tight font-bold tracking-[-0.02em]">Trámites</h1>
+          <h1 className="text-[28px] leading-tight font-bold tracking-[-0.02em]">Control</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Controla y gestiona todos los trámites: revísalos, apruébalos y haz seguimiento por estado.
+          </p>
         </div>
         <Button type="button" onClick={() => setAltaAbierta(true)}>
           <PlusIcon aria-hidden="true" className="size-4" />

@@ -17,7 +17,7 @@ describe("ProximamentePage", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Bandeja" })).toBeInTheDocument()
     expect(screen.getByText(/mensajes de WhatsApp/i)).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Inicio" })).toHaveAttribute("href", "/")
-    expect(screen.getByRole("link", { name: "Trámites" })).toHaveAttribute("href", "/tramites")
+    expect(screen.getByRole("link", { name: "Control" })).toHaveAttribute("href", "/tramites")
     expect(screen.getByRole("link", { name: "Ganaderos" })).toHaveAttribute("href", "/ganaderos")
   })
 })

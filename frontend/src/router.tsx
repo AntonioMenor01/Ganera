@@ -36,9 +36,11 @@ export const routes: RouteObject[] = [
           // Compuestas con GET /tramites (origen WHATSAPP / hechoEnOvzEn / conteos): no hay APIs
           // dedicadas de bandeja, calendario ni informes.
           { path: "bandeja", element: <BandejaPage /> },
+          // «Control»: la única pantalla de trámites (controla y gestiona todos). La ruta interna
+          // es /tramites (estable: enlaces, destino de login, ficha OVZ, estado de navegación);
+          // /control y /control-tramites redirigen aquí para marcadores y para quien teclee /control.
           { path: "tramites", element: <TramitesPage /> },
-          // «Control» se fundió en Trámites: la vista por estado vive en el Inicio y la cola de
-          // trabajo es una sola pantalla. Se conserva la ruta como redirección para marcadores.
+          { path: "control", element: <Navigate to="/tramites" replace /> },
           { path: "control-tramites", element: <Navigate to="/tramites" replace /> },
           { path: "ganaderos", element: <GanaderosPage /> },
           { path: "ganaderos/:id", element: <GanaderoDetallePage /> },

@@ -43,17 +43,18 @@ function etiquetaSuscripcion(hook: SuscripcionEstadoHook): string | null {
   return mapa[hook.estado.estado];
 }
 
-// Orden del mock «Ganera App v2»: Inicio → Bandeja → Trámites → Ganaderos → Explotaciones →
+// Orden del mock «Ganera App v2»: Inicio → Bandeja → Control → Ganaderos → Explotaciones →
 // Calendario → Informes → Configuración. Sin Facturación (el cobro va en la landing).
-// Trámites unifica la antigua «Control» (vista por estado): la vista de conjunto por estado vive
-// ahora en el Inicio (panel de mando) y la cola de trabajo es una sola pantalla. /control-tramites
-// se mantiene como redirección a /tramites para marcadores antiguos.
+// «Control» es la ÚNICA pantalla de trámites (antes había «Trámites» y «Control», nomenclatura
+// duplicada tipo OVZ): controla y gestiona todos los trámites. El Inicio es el tablero del día.
+// La ruta interna sigue siendo /tramites (y /control la redirige), para no romper enlaces, el
+// destino de login ni la ficha OVZ; el cliente solo ve «Control».
 // /ganaderos/:id también marca "Ganaderos" (NavLink sin `end`). Inicio usa `end` para no
 // activarse en el resto de rutas. Icono decorativo (aria-hidden): el nombre accesible es el texto.
 const ENLACES: { to: string; label: string; Icono: LucideIcon; end?: boolean }[] = [
   { to: "/", label: "Inicio", Icono: LayoutDashboardIcon, end: true },
   { to: "/bandeja", label: "Bandeja", Icono: MessageCircleIcon },
-  { to: "/tramites", label: "Trámites", Icono: ClipboardListIcon },
+  { to: "/tramites", label: "Control", Icono: ClipboardListIcon },
   { to: "/ganaderos", label: "Ganaderos", Icono: UsersIcon },
   { to: "/explotaciones", label: "Explotaciones", Icono: WarehouseIcon },
   { to: "/calendario", label: "Calendario", Icono: CalendarClockIcon },

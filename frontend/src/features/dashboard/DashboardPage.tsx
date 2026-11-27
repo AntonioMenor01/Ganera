@@ -1,111 +1,124 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  BellRingIcon,
   CheckIcon,
   ChevronRightIcon,
   CircleAlertIcon,
-  CircleCheckBigIcon,
-  ClockIcon,
   CompassIcon,
   EyeIcon,
-  MessageCircleIcon,
   PlusIcon,
-  TriangleAlertIcon,
-  UserPlusIcon,
-  UsersIcon,
+  XIcon,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { aErrorApi, mensajeDeError, type ErrorApi } from "@/shared/api/errores";
-import type { Pagina } from "@/shared/api/types";
 import { useAuth } from "@/shared/auth/AuthContext";
 import { etiquetaTipoTramite, iconoTipoTramite, type EstadoTramite } from "@/features/tramites/etiquetas";
 import { BadgeEstadoTramite } from "@/features/tramites/BadgesTramite";
 import { IconoTramite } from "@/features/tramites/IconoTramite";
 import { TramiteReviewDialog } from "@/features/tramites/TramiteReviewDialog";
 import { AltaTramiteDialog } from "@/features/tramites/AltaTramiteDialog";
-import { contarTramitesPorEstado } from "@/features/informes/api";
+import { listarTramites } from "@/features/tramites/api";
 import type { Tramite } from "@/features/tramites/types";
-import { AltaGanaderoDialog } from "@/features/ganaderos/AltaGanaderoDialog";
-import { listarAlertas, type Alerta } from "@/features/alertas/api";
 import { abrirPrimerosPasos } from "@/features/onboarding/primerosPasos";
 import { usePrimerosPasos } from "@/features/onboarding/PrimerosPasosContexto";
-import { cargarColaPendiente, contarGanaderos } from "./api";
-import { ResumenValor } from "./ResumenValor";
 import { fechaLargaMadrid, nombrePila, saludo } from "./saludo";
 
+/** Cuántos trámites se previsualizan por columna del tablero (el contador real sale del totalElements). */
+const TAMANIO_COLUMNA = 8;
+
+type Tono = "warning" | "danger";
+
+interface ColumnaDef {
+  estado: EstadoTramite;
+  titulo: string;
+  descripcion: string;
+  vacio: string;
+  icono: LucideIcon;
+  tono: Tono;
+}
+
 /**
- * Inicio = panel de mando. Tras la reunión con la gestoría (2026-11-27): al entrar, el grueso del
- * trabajo del día tiene que estar a la vista sin cambiar de pantalla. Por eso esta pantalla reúne
- * —en widgets grandes— lo que el gestor necesita para saber qué hacer y, además, hacerlo aquí mismo:
- *   · franja de KPIs (pulso del día): por revisar, mensajes, alertas, ganaderos;
- *   · «Trámites por revisar»: la cola, y cada trámite se abre y se revisa EN ESTA pantalla (el mismo
- *     modal que en Trámites), sin desplazarse;
- *   · «Estado de los trámites»: el embudo (por revisar → aprobado·falta OVZ → hecho), que absorbe la
- *     antigua pantalla «Control»; cada bloque entra en Trámites ya filtrado;
- *   · «Alertas y plazos»: vencimientos y trámites atascados, que también se abren aquí;
- *   · «Tu actividad en Ganera» (ResumenValor), con datos reales.
- * Todo con datos reales de GET /tramites, /ganaderos y /alertas; nunca se inventa nada.
+ * Inicio = tablero del día (lo que hay que gestionar), no un panel de métricas. La auditoría de OVZ
+ * (docs: «Auditoría OVZ») señala que su mayor carencia es no tener una bandeja de tareas pendientes:
+ * el usuario tiene que acordarse de los trámites de dos pasos (p. ej. aprobar → meter en OVZ) sin
+ * ninguna ayuda. Ganera lo resuelve poniendo en la primera pantalla, en un tablero grande, lo único
+ * que de verdad importa al gestor: los trámites por revisar, los aprobados que aún faltan por pasar a
+ * OVZ, y los rechazados/descartados. Cada trámite se revisa aquí mismo (sin cambiar de pantalla). No
+ * se muestran métricas de vanidad (ganaderos, total gestionado): no ayudan al trabajo del día.
  */
+const COLUMNAS: readonly ColumnaDef[] = [
+  {
+    estado: "PENDIENTE_REVISION",
+    titulo: "Por revisar",
+    descripcion: "Esperan tu revisión y aprobación.",
+    vacio: "No hay trámites por revisar. Llegarán aquí en cuanto entren por WhatsApp.",
+    icono: EyeIcon,
+    tono: "warning",
+  },
+  {
+    estado: "APROBADO",
+    titulo: "Aprobado · falta OVZ",
+    descripcion: "Aprobados en Ganera; falta meterlos en OVZ.net.",
+    vacio: "Nada pendiente de pasar a OVZ.",
+    icono: CheckIcon,
+    tono: "warning",
+  },
+  {
+    estado: "RECHAZADO",
+    titulo: "Rechazados y descartados",
+    descripcion: "Rechazados o descartados como mensaje sin trámite.",
+    vacio: "Sin trámites rechazados ni descartados.",
+    icono: XIcon,
+    tono: "danger",
+  },
+];
+
+type CargaColumna =
+  | { estado: "cargando" }
+  | { estado: "error"; error: ErrorApi }
+  | { estado: "ok"; total: number; muestra: Tramite[] };
+
+type MapaCarga = Record<string, CargaColumna>;
+
+function inicial(): MapaCarga {
+  const mapa: MapaCarga = {};
+  for (const c of COLUMNAS) mapa[c.estado] = { estado: "cargando" };
+  return mapa;
+}
+
 export function DashboardPage() {
   const { usuario } = useAuth();
   const navigate = useNavigate();
   const onboarding = usePrimerosPasos();
-  const [cola, setCola] = useState<Pagina<Tramite> | null>(null);
-  const [errorCola, setErrorCola] = useState<ErrorApi | null>(null);
-  const [ganaderos, setGanaderos] = useState<number | null>(null);
-  const [errorGanaderos, setErrorGanaderos] = useState(false);
-  const [aprobados, setAprobados] = useState<number | null>(null);
-  const [hechos, setHechos] = useState<number | null>(null);
-  const [alertas, setAlertas] = useState<Alerta[] | null>(null);
-  const [errorAlertas, setErrorAlertas] = useState(false);
-  const [cargando, setCargando] = useState(true);
+  const [datos, setDatos] = useState<MapaCarga>(inicial);
   const [version, setVersion] = useState(0);
-  const [altaGanaderoAbierta, setAltaGanaderoAbierta] = useState(false);
-  const [altaTramiteAbierta, setAltaTramiteAbierta] = useState(false);
+  const [altaAbierta, setAltaAbierta] = useState(false);
   const [tramiteSeleccionado, setTramiteSeleccionado] = useState<number | null>(null);
 
-  const recargar = useCallback(() => setVersion((v) => v + 1), []);
+  const recargar = useCallback(() => {
+    setDatos(inicial());
+    setVersion((v) => v + 1);
+  }, []);
 
   useEffect(() => {
     let cancelado = false;
-    setCargando(true);
-    setErrorCola(null);
-    setErrorGanaderos(false);
-    setErrorAlertas(false);
-    Promise.allSettled([
-      cargarColaPendiente(),
-      contarGanaderos(),
-      listarAlertas(),
-      contarTramitesPorEstado("APROBADO"),
-      contarTramitesPorEstado("HECHO_EN_OVZ"),
-    ]).then(([colaRes, ganaderosRes, alertasRes, aprobadosRes, hechosRes]) => {
-      if (cancelado) return;
-      if (colaRes.status === "fulfilled") {
-        setCola(colaRes.value);
-      } else {
-        setCola(null);
-        setErrorCola(aErrorApi(colaRes.reason));
-      }
-      if (ganaderosRes.status === "fulfilled") {
-        setGanaderos(ganaderosRes.value);
-      } else {
-        setGanaderos(null);
-        setErrorGanaderos(true);
-      }
-      if (alertasRes.status === "fulfilled") {
-        setAlertas(alertasRes.value);
-      } else {
-        setAlertas(null);
-        setErrorAlertas(true);
-      }
-      setAprobados(aprobadosRes.status === "fulfilled" ? aprobadosRes.value : null);
-      setHechos(hechosRes.status === "fulfilled" ? hechosRes.value : null);
-      setCargando(false);
-    });
+    for (const { estado } of COLUMNAS) {
+      listarTramites(0, TAMANIO_COLUMNA, estado)
+        .then((pagina) => {
+          if (cancelado) return;
+          setDatos((prev) => ({
+            ...prev,
+            [estado]: { estado: "ok", total: pagina.totalElements, muestra: pagina.content },
+          }));
+        })
+        .catch((err: unknown) => {
+          if (cancelado) return;
+          setDatos((prev) => ({ ...prev, [estado]: { estado: "error", error: aErrorApi(err) } }));
+        });
+    }
     return () => {
       cancelado = true;
     };
@@ -113,24 +126,22 @@ export function DashboardPage() {
 
   const nombre = nombrePila(usuario?.nombre);
   const fecha = fechaLargaMadrid();
-  const pendientes = cola?.totalElements;
-  const mensajesWhatsapp =
-    cola == null ? undefined : cola.content.filter((t) => t.origen === "WHATSAPP").length;
 
-  // Entra en Trámites ya filtrado por un estado (fusión de la antigua «Control»).
-  const irATramites = useCallback(
-    (filtroEstado: EstadoTramite | "TODOS") => navigate("/tramites", { state: { filtroEstado } }),
+  // Abre Control ya filtrado por ese estado (misma pantalla que gestiona todos los trámites).
+  const verEnControl = useCallback(
+    (filtroEstado: EstadoTramite) => navigate("/tramites", { state: { filtroEstado } }),
     [navigate],
   );
 
   return (
-    <div className="mx-auto flex w-full max-w-[1360px] flex-col gap-6">
+    <div className="mx-auto flex min-h-[calc(100vh-10rem)] w-full max-w-[1500px] flex-col gap-5">
       <header className="flex flex-col gap-4 border-b-2 border-divisor pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           {fecha && <p className="mb-1.5 text-[13px] font-medium text-muted-foreground">{fecha}</p>}
           <h1 className="text-[28px] leading-tight font-bold tracking-[-0.02em]">
             {nombre ? `${saludo()}, ${nombre}` : saludo()}
           </h1>
+          <p className="mt-1 text-sm text-muted-foreground">Esto es lo que tienes que gestionar hoy.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -147,16 +158,7 @@ export function DashboardPage() {
               </span>
             )}
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="h-10 gap-2 bg-card px-3"
-            onClick={() => setAltaGanaderoAbierta(true)}
-          >
-            <UserPlusIcon aria-hidden="true" className="size-4" />
-            Añadir ganadero
-          </Button>
-          <Button type="button" className="h-10 gap-2 px-3" onClick={() => setAltaTramiteAbierta(true)}>
+          <Button type="button" className="h-10 gap-2 px-3" onClick={() => setAltaAbierta(true)}>
             <PlusIcon aria-hidden="true" className="size-4" />
             Nuevo trámite
           </Button>
@@ -164,104 +166,31 @@ export function DashboardPage() {
       </header>
 
       <section
-        aria-label="Resumen del día"
-        className="grid grid-cols-1 overflow-hidden border border-border bg-card sm:grid-cols-2 lg:grid-cols-4"
+        aria-label="Trámites por gestionar"
+        className="grid flex-1 grid-cols-1 gap-5 lg:grid-cols-3"
       >
-        <CeldaKpi
-          onClick={() => irATramites("PENDIENTE_REVISION")}
-          icono={ClockIcon}
-          etiqueta="Trámites por revisar"
-          pie={cargando ? "…" : pendientes === 0 ? "Nada por revisar" : "Pendientes de ti"}
-          valor={pendientes}
-          cargando={cargando}
-          error={errorCola != null}
-          acento={!!pendientes && pendientes > 0}
-        />
-        <CeldaKpi
-          onClick={() => navigate("/bandeja")}
-          icono={MessageCircleIcon}
-          etiqueta="Mensajes nuevos"
-          pie={cargando ? "…" : mensajesWhatsapp === 0 ? "Bandeja al día" : "En la cola pendiente"}
-          valor={mensajesWhatsapp}
-          cargando={cargando}
-          error={errorCola != null}
-        />
-        <CeldaKpi
-          onClick={() => navigate("/calendario")}
-          icono={BellRingIcon}
-          etiqueta="Alertas activas"
-          pie={
-            errorAlertas
-              ? "No se han podido cargar"
-              : (alertas?.length ?? 0) === 0
-                ? "Sin plazos cercanos"
-                : "Plazos y cola"
-          }
-          valor={alertas?.length ?? undefined}
-          cargando={cargando}
-          error={errorAlertas}
-          acento={!!alertas && alertas.length > 0}
-        />
-        <CeldaKpi
-          onClick={() => navigate("/ganaderos")}
-          icono={UsersIcon}
-          etiqueta="Ganaderos"
-          pie="Clientes de la gestoría"
-          valor={ganaderos ?? undefined}
-          cargando={cargando}
-          error={errorGanaderos}
-        />
-      </section>
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div className="flex min-w-0 flex-col gap-6">
-          <PendientesPorRevisar
-            cola={cola}
-            error={errorCola}
-            cargando={cargando}
+        {COLUMNAS.map((columna) => (
+          <ColumnaTablero
+            key={columna.estado}
+            columna={columna}
+            carga={datos[columna.estado]}
             onRevisar={setTramiteSeleccionado}
-            onVerTodos={() => irATramites("PENDIENTE_REVISION")}
             onReintentar={recargar}
+            onVerTodos={() => verEnControl(columna.estado)}
           />
-          <EstadoDeLosTramites
-            porRevisar={pendientes ?? null}
-            aprobados={aprobados}
-            hechos={hechos}
-            cargando={cargando}
-            onIr={irATramites}
-          />
-        </div>
-
-        <aside className="flex min-w-0 flex-col gap-6">
-          <AlertasYPlazos
-            alertas={alertas}
-            error={errorAlertas}
-            cargando={cargando}
-            onRevisar={setTramiteSeleccionado}
-            onVerCalendario={() => navigate("/calendario")}
-          />
-          <ResumenValor />
-        </aside>
-      </div>
+        ))}
+      </section>
 
       <TramiteReviewDialog
         tramiteId={tramiteSeleccionado}
         onClose={() => setTramiteSeleccionado(null)}
         onCambiado={recargar}
       />
-      <AltaGanaderoDialog
-        open={altaGanaderoAbierta}
-        onOpenChange={setAltaGanaderoAbierta}
-        onCreado={(ganadero) => {
-          setAltaGanaderoAbierta(false);
-          navigate(`/ganaderos/${ganadero.id}`);
-        }}
-      />
       <AltaTramiteDialog
-        open={altaTramiteAbierta}
-        onOpenChange={setAltaTramiteAbierta}
+        open={altaAbierta}
+        onOpenChange={setAltaAbierta}
         onCreado={(creado) => {
-          setAltaTramiteAbierta(false);
+          setAltaAbierta(false);
           recargar();
           setTramiteSeleccionado(creado.id);
         }}
@@ -270,142 +199,101 @@ export function DashboardPage() {
   );
 }
 
-function CeldaKpi({
-  onClick,
-  icono: Icono,
-  etiqueta,
-  pie,
-  valor,
-  cargando,
-  error,
-  acento = false,
-}: {
-  onClick: () => void;
-  icono: LucideIcon;
-  etiqueta: string;
-  pie: string;
-  valor: number | undefined;
-  cargando: boolean;
-  error: boolean;
-  acento?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group/kpi flex flex-col gap-3 border-b border-border p-5 text-left outline-none last:border-b-0 sm:border-r sm:odd:border-b sm:even:border-b sm:[&:nth-child(2)]:border-r-0 lg:border-b-0 lg:border-r lg:last:border-r-0 lg:[&:nth-child(2)]:border-r focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring"
-    >
-      <span className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-        <Icono aria-hidden="true" className="size-4 shrink-0" />
-        {etiqueta}
-        <ChevronRightIcon
-          aria-hidden="true"
-          className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform group-hover/kpi:translate-x-0.5 motion-reduce:transition-none"
-        />
-      </span>
-      <span
-        className={cn(
-          "text-[38px] leading-none font-bold tabular-nums tracking-tight",
-          acento && "text-primary",
-        )}
-        aria-live="polite"
-      >
-        {cargando ? (
-          <span aria-hidden="true" className="inline-block h-9 w-14 animate-pulse bg-muted align-middle" />
-        ) : error || valor === undefined ? (
-          <span title="No disponible ahora mismo">—</span>
-        ) : (
-          valor
-        )}
-      </span>
-      <span className="text-[13px] text-muted-foreground">{pie}</span>
-    </button>
-  );
-}
-
-/** Widget grande: la cola de trámites por revisar. Cada fila ABRE el modal de revisión en esta misma
- * pantalla (no navega), para que el gestor trabaje sin salir del Inicio. */
-function PendientesPorRevisar({
-  cola,
-  error,
-  cargando,
+function ColumnaTablero({
+  columna,
+  carga,
   onRevisar,
-  onVerTodos,
   onReintentar,
+  onVerTodos,
 }: {
-  cola: Pagina<Tramite> | null;
-  error: ErrorApi | null;
-  cargando: boolean;
+  columna: ColumnaDef;
+  carga: CargaColumna;
   onRevisar: (id: number) => void;
-  onVerTodos: () => void;
   onReintentar: () => void;
+  onVerTodos: () => void;
 }) {
-  const total = cola?.totalElements ?? 0;
+  const { icono: Icono, tono } = columna;
+  const total = carga.estado === "ok" ? carga.total : null;
   return (
     <section
-      aria-labelledby="pendientes-titulo"
-      className="flex min-w-0 flex-col border border-border bg-card"
+      aria-labelledby={`col-${columna.estado}`}
+      className="flex min-h-[20rem] min-w-0 flex-col border border-border bg-card"
     >
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border px-5 py-4">
-        <div className="flex items-baseline gap-2">
-          <h2 id="pendientes-titulo" className="text-base font-bold">
-            Trámites por revisar
-          </h2>
-          {!cargando && !error && (
-            <span className="text-sm text-muted-foreground tabular-nums">
-              {total === 0 ? "sin pendientes" : `${total} por revisar`}
-            </span>
+      <div className="flex items-start gap-3 border-b border-border px-5 py-4">
+        <span
+          className={cn(
+            "mt-0.5 grid size-8 shrink-0 place-items-center",
+            tono === "danger"
+              ? "bg-danger/10 text-danger"
+              : "bg-warning-foreground/10 text-warning-foreground",
           )}
+        >
+          <Icono aria-hidden="true" className="size-[18px]" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 id={`col-${columna.estado}`} className="flex items-center gap-2 text-base font-bold">
+            {columna.titulo}
+            {total !== null && (
+              <span className="inline-grid min-w-6 place-items-center bg-muted px-1.5 text-sm font-semibold tabular-nums text-foreground">
+                {total}
+              </span>
+            )}
+          </h2>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">{columna.descripcion}</p>
         </div>
-        <button type="button" onClick={onVerTodos} className="text-sm font-medium text-enlace outline-none hover:underline focus-visible:underline focus-visible:ring-3 focus-visible:ring-ring">
-          {total > 0 ? `Ver los ${total} pendientes` : "Ver todos los trámites"}
-        </button>
       </div>
 
-      {error ? (
-        <div className="p-5">
-          <Alert variant="destructive">
-            <CircleAlertIcon />
-            <AlertTitle>No se ha podido cargar la cola</AlertTitle>
-            <AlertDescription>
-              <p>{mensajeDeError(error, "listar-tramites")}</p>
-              <Button variant="outline" size="sm" onClick={onReintentar} className="mt-2">
-                Reintentar
-              </Button>
-            </AlertDescription>
-          </Alert>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {carga.estado === "error" ? (
+          <div className="p-5">
+            <Alert variant="destructive">
+              <CircleAlertIcon />
+              <AlertTitle>No se ha podido cargar</AlertTitle>
+              <AlertDescription>
+                <p>{mensajeDeError(carga.error, "listar-tramites")}</p>
+                <Button variant="outline" size="sm" onClick={onReintentar} className="mt-2">
+                  Reintentar
+                </Button>
+              </AlertDescription>
+            </Alert>
+          </div>
+        ) : carga.estado === "cargando" ? (
+          <div className="flex flex-col" aria-hidden="true">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-[72px] animate-pulse border-b border-border bg-muted/40 last:border-b-0" />
+            ))}
+          </div>
+        ) : carga.muestra.length === 0 ? (
+          <p className="px-5 py-8 text-center text-sm text-muted-foreground">{columna.vacio}</p>
+        ) : (
+          <ul className="flex flex-col">
+            {carga.muestra.map((tramite) => (
+              <li key={tramite.id} className="border-b border-border last:border-b-0">
+                <TarjetaTramite tramite={tramite} onRevisar={onRevisar} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {total !== null && total > 0 && (
+        <div className="border-t border-border px-5 py-3">
+          <button
+            type="button"
+            onClick={onVerTodos}
+            className="text-[13px] font-medium text-enlace outline-none hover:underline focus-visible:underline focus-visible:ring-3 focus-visible:ring-ring"
+          >
+            {carga.estado === "ok" && total > carga.muestra.length
+              ? `Ver los ${total} en Control`
+              : "Ver en Control"}
+          </button>
         </div>
-      ) : cargando ? (
-        <div className="flex flex-col gap-0" aria-hidden="true">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="h-16 animate-pulse border-b border-border bg-muted/40 last:border-b-0" />
-          ))}
-        </div>
-      ) : total === 0 ? (
-        <div className="flex flex-col items-center gap-2 px-5 py-10 text-center">
-          <span className="grid size-10 place-items-center bg-success text-success-foreground">
-            <CircleCheckBigIcon aria-hidden="true" className="size-5" />
-          </span>
-          <p className="text-sm font-medium">Todo revisado</p>
-          <p className="max-w-sm text-[13px] text-muted-foreground">
-            No hay trámites pendientes de revisión. En cuanto llegue un mensaje de WhatsApp y la IA lo
-            procese, aparecerá aquí para que lo revises.
-          </p>
-        </div>
-      ) : (
-        <ul className="flex flex-col">
-          {cola?.content.map((tramite) => (
-            <li key={tramite.id} className="border-b border-border last:border-b-0">
-              <FilaPendiente tramite={tramite} onRevisar={onRevisar} />
-            </li>
-          ))}
-        </ul>
       )}
     </section>
   );
 }
 
-function FilaPendiente({ tramite, onRevisar }: { tramite: Tramite; onRevisar: (id: number) => void }) {
+function TarjetaTramite({ tramite, onRevisar }: { tramite: Tramite; onRevisar: (id: number) => void }) {
   const icono = iconoTipoTramite(tramite.tipoTramite);
   const nombreExplotacion = tramite.explotacionNombre?.trim() || undefined;
   const crotales = tramite.crotales.length;
@@ -439,192 +327,11 @@ function FilaPendiente({ tramite, onRevisar }: { tramite: Tramite; onRevisar: (i
             </>
           )}
         </span>
+        <span className="mt-0.5">
+          <BadgeEstadoTramite estado={tramite.estado} motivoRechazo={tramite.motivoRechazo} />
+        </span>
       </span>
-      <BadgeEstadoTramite estado={tramite.estado} motivoRechazo={tramite.motivoRechazo} />
-      <span className="hidden text-sm font-medium text-enlace sm:inline">Revisar</span>
       <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
     </button>
   );
-}
-
-/** El embudo de trámites (absorbe la antigua pantalla «Control»): por revisar → aprobado·falta OVZ →
- * hecho. Cada bloque entra en Trámites ya filtrado por ese estado. */
-function EstadoDeLosTramites({
-  porRevisar,
-  aprobados,
-  hechos,
-  cargando,
-  onIr,
-}: {
-  porRevisar: number | null;
-  aprobados: number | null;
-  hechos: number | null;
-  cargando: boolean;
-  onIr: (estado: EstadoTramite) => void;
-}) {
-  return (
-    <section aria-labelledby="estado-tramites-titulo" className="border border-border bg-card">
-      <div className="border-b border-border px-5 py-4">
-        <h2 id="estado-tramites-titulo" className="text-base font-bold">
-          Estado de los trámites
-        </h2>
-        <p className="mt-0.5 text-[13px] text-muted-foreground">
-          En qué punto está cada trámite. Entra en cada bloque para trabajarlo.
-        </p>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3">
-        <CeldaEmbudo
-          icono={EyeIcon}
-          etiqueta="Por revisar"
-          valor={porRevisar}
-          tono="warning"
-          cargando={cargando}
-          onClick={() => onIr("PENDIENTE_REVISION")}
-        />
-        <CeldaEmbudo
-          icono={CheckIcon}
-          etiqueta="Aprobado · falta OVZ"
-          valor={aprobados}
-          tono="warning"
-          cargando={cargando}
-          onClick={() => onIr("APROBADO")}
-        />
-        <CeldaEmbudo
-          icono={CircleCheckBigIcon}
-          etiqueta="Hecho en OVZ"
-          valor={hechos}
-          tono="success"
-          cargando={cargando}
-          onClick={() => onIr("HECHO_EN_OVZ")}
-        />
-      </div>
-    </section>
-  );
-}
-
-function CeldaEmbudo({
-  icono: Icono,
-  etiqueta,
-  valor,
-  tono,
-  cargando,
-  onClick,
-}: {
-  icono: LucideIcon;
-  etiqueta: string;
-  valor: number | null;
-  tono: "warning" | "success";
-  cargando: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group/embudo flex flex-col gap-2 border-b border-border p-5 text-left outline-none last:border-b-0 sm:border-r sm:border-b-0 sm:last:border-r-0 focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring"
-    >
-      <span className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
-        <Icono
-          aria-hidden="true"
-          className={cn("size-4 shrink-0", tono === "success" ? "text-success-foreground" : "text-warning-foreground")}
-        />
-        {etiqueta}
-      </span>
-      <span className="text-[30px] leading-none font-bold tabular-nums tracking-tight" aria-live="polite">
-        {cargando ? (
-          <span aria-hidden="true" className="inline-block h-7 w-10 animate-pulse bg-muted align-middle" />
-        ) : valor === null ? (
-          <span title="No disponible ahora mismo">—</span>
-        ) : (
-          valor
-        )}
-      </span>
-    </button>
-  );
-}
-
-/** Alertas y plazos (vencimientos y trámites atascados). Una alerta ligada a un trámite se abre y se
- * revisa aquí mismo; las demás solo informan. La cabecera lleva al calendario. */
-function AlertasYPlazos({
-  alertas,
-  error,
-  cargando,
-  onRevisar,
-  onVerCalendario,
-}: {
-  alertas: Alerta[] | null;
-  error: boolean;
-  cargando: boolean;
-  onRevisar: (id: number) => void;
-  onVerCalendario: () => void;
-}) {
-  return (
-    <section aria-labelledby="alertas-proximas-titulo" className="border border-border bg-card">
-      <div className="flex items-center justify-between gap-2 border-b border-border px-5 py-4">
-        <h2 id="alertas-proximas-titulo" className="text-base font-bold">
-          Alertas y plazos
-        </h2>
-        <button
-          type="button"
-          onClick={onVerCalendario}
-          className="text-[13px] font-medium text-enlace outline-none hover:underline focus-visible:underline focus-visible:ring-3 focus-visible:ring-ring"
-        >
-          Calendario
-        </button>
-      </div>
-      {error ? (
-        <p className="px-5 py-4 text-sm text-muted-foreground">No se han podido cargar las alertas.</p>
-      ) : cargando ? (
-        <div className="flex flex-col gap-0" aria-hidden="true">
-          {[0, 1].map((i) => (
-            <div key={i} className="h-14 animate-pulse border-b border-border bg-muted/40 last:border-b-0" />
-          ))}
-        </div>
-      ) : !alertas || alertas.length === 0 ? (
-        <p className="px-5 py-6 text-sm text-muted-foreground">
-          Sin plazos cercanos ni trámites atascados.
-        </p>
-      ) : (
-        <ul className="divide-y divide-border">
-          {alertas.slice(0, 6).map((a) => (
-            <li key={a.id}>
-              <FilaAlerta alerta={a} onRevisar={onRevisar} />
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-function FilaAlerta({ alerta, onRevisar }: { alerta: Alerta; onRevisar: (id: number) => void }) {
-  const critica = alerta.severidad === "critical";
-  const contenido = (
-    <>
-      <span
-        aria-hidden="true"
-        className={cn("mt-0.5 shrink-0", critica ? "text-danger" : "text-warning-foreground")}
-      >
-        <TriangleAlertIcon className="size-4" />
-      </span>
-      <span className="flex min-w-0 flex-col">
-        <span className="text-sm font-medium">{alerta.titulo}</span>
-        <span className="text-[13px] text-muted-foreground">{alerta.detalle}</span>
-      </span>
-    </>
-  );
-  if (alerta.tramiteId != null) {
-    const id = alerta.tramiteId;
-    return (
-      <button
-        type="button"
-        onClick={() => onRevisar(id)}
-        className="flex w-full items-start gap-2.5 px-5 py-3 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring"
-      >
-        {contenido}
-        <ChevronRightIcon aria-hidden="true" className="mt-0.5 ml-auto size-4 shrink-0 text-muted-foreground" />
-      </button>
-    );
-  }
-  return <div className="flex items-start gap-2.5 px-5 py-3">{contenido}</div>;
 }

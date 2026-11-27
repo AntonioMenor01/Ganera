@@ -12,7 +12,7 @@ const EMAIL_LARGO = "administracion.gestoria.ejemplo@agroservicios-castilla.es"
 const ENLACES_ESPERADOS = [
   "Inicio",
   "Bandeja",
-  "Trámites",
+  "Control",
   "Ganaderos",
   "Explotaciones",
   "Calendario",
@@ -154,7 +154,7 @@ describe("AppLayout: barra de navegación", () => {
   it.each([
     ["/", "Inicio"],
     ["/bandeja", "Bandeja"],
-    ["/tramites", "Trámites"],
+    ["/tramites", "Control"],
     ["/ganaderos", "Ganaderos"],
     ["/explotaciones", "Explotaciones"],
     ["/calendario", "Calendario"],
@@ -277,8 +277,8 @@ describe("AppLayout: barra de navegación", () => {
     // Como tras cargar /explotaciones (índice 4 → 432-220+16 = 228) en tira estrecha.
     nav.scrollLeft = 228
 
-    // Trámites (184–264) cortado por la izquierda → 184-16 = 168.
-    act(() => within(nav).getByRole("link", { name: "Trámites" }).focus())
+    // Control (184–264, antes «Trámites») cortado por la izquierda → 184-16 = 168.
+    act(() => within(nav).getByRole("link", { name: "Control" }).focus())
     expect(medidas.scrollLeft()).toBe(168)
 
     // Ganaderos (268–348) ya cabe con scroll 168 y ancho 220: no mueve.
