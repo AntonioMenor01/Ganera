@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   BellRingIcon,
+  CheckIcon,
   ChevronRightIcon,
   CircleAlertIcon,
+  CircleCheckBigIcon,
   ClockIcon,
   CompassIcon,
+  EyeIcon,
   MessageCircleIcon,
+  PlusIcon,
+  TriangleAlertIcon,
   UserPlusIcon,
   UsersIcon,
   type LucideIcon,
@@ -14,13 +19,15 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { CLASE_ENLACE } from "@/shared/ui/enlace";
 import { aErrorApi, mensajeDeError, type ErrorApi } from "@/shared/api/errores";
 import type { Pagina } from "@/shared/api/types";
 import { useAuth } from "@/shared/auth/AuthContext";
-import { etiquetaTipoTramite, iconoTipoTramite } from "@/features/tramites/etiquetas";
+import { etiquetaTipoTramite, iconoTipoTramite, type EstadoTramite } from "@/features/tramites/etiquetas";
 import { BadgeEstadoTramite } from "@/features/tramites/BadgesTramite";
 import { IconoTramite } from "@/features/tramites/IconoTramite";
+import { TramiteReviewDialog } from "@/features/tramites/TramiteReviewDialog";
+import { AltaTramiteDialog } from "@/features/tramites/AltaTramiteDialog";
+import { contarTramitesPorEstado } from "@/features/informes/api";
 import type { Tramite } from "@/features/tramites/types";
 import { AltaGanaderoDialog } from "@/features/ganaderos/AltaGanaderoDialog";
 import { listarAlertas, type Alerta } from "@/features/alertas/api";
@@ -31,8 +38,17 @@ import { ResumenValor } from "./ResumenValor";
 import { fechaLargaMadrid, nombrePila, saludo } from "./saludo";
 
 /**
- * Inicio alineado al mock «Ganera App v2»: cabecera con CTAs, franja de 4 KPIs y cola + panel
- * de alertas. Datos reales de GET /tramites, /ganaderos y /alertas.
+ * Inicio = panel de mando. Tras la reunión con la gestoría (2026-11-27): al entrar, el grueso del
+ * trabajo del día tiene que estar a la vista sin cambiar de pantalla. Por eso esta pantalla reúne
+ * —en widgets grandes— lo que el gestor necesita para saber qué hacer y, además, hacerlo aquí mismo:
+ *   · franja de KPIs (pulso del día): por revisar, mensajes, alertas, ganaderos;
+ *   · «Trámites por revisar»: la cola, y cada trámite se abre y se revisa EN ESTA pantalla (el mismo
+ *     modal que en Trámites), sin desplazarse;
+ *   · «Estado de los trámites»: el embudo (por revisar → aprobado·falta OVZ → hecho), que absorbe la
+ *     antigua pantalla «Control»; cada bloque entra en Trámites ya filtrado;
+ *   · «Alertas y plazos»: vencimientos y trámites atascados, que también se abren aquí;
+ *   · «Tu actividad en Ganera» (ResumenValor), con datos reales.
+ * Todo con datos reales de GET /tramites, /ganaderos y /alertas; nunca se inventa nada.
  */
 export function DashboardPage() {
   const { usuario } = useAuth();
@@ -42,11 +58,15 @@ export function DashboardPage() {
   const [errorCola, setErrorCola] = useState<ErrorApi | null>(null);
   const [ganaderos, setGanaderos] = useState<number | null>(null);
   const [errorGanaderos, setErrorGanaderos] = useState(false);
+  const [aprobados, setAprobados] = useState<number | null>(null);
+  const [hechos, setHechos] = useState<number | null>(null);
   const [alertas, setAlertas] = useState<Alerta[] | null>(null);
   const [errorAlertas, setErrorAlertas] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [version, setVersion] = useState(0);
-  const [altaAbierta, setAltaAbierta] = useState(false);
+  const [altaGanaderoAbierta, setAltaGanaderoAbierta] = useState(false);
+  const [altaTramiteAbierta, setAltaTramiteAbierta] = useState(false);
+  const [tramiteSeleccionado, setTramiteSeleccionado] = useState<number | null>(null);
 
   const recargar = useCallback(() => setVersion((v) => v + 1), []);
 
@@ -56,30 +76,36 @@ export function DashboardPage() {
     setErrorCola(null);
     setErrorGanaderos(false);
     setErrorAlertas(false);
-    Promise.allSettled([cargarColaPendiente(), contarGanaderos(), listarAlertas()]).then(
-      ([colaRes, ganaderosRes, alertasRes]) => {
-        if (cancelado) return;
-        if (colaRes.status === "fulfilled") {
-          setCola(colaRes.value);
-        } else {
-          setCola(null);
-          setErrorCola(aErrorApi(colaRes.reason));
-        }
-        if (ganaderosRes.status === "fulfilled") {
-          setGanaderos(ganaderosRes.value);
-        } else {
-          setGanaderos(null);
-          setErrorGanaderos(true);
-        }
-        if (alertasRes.status === "fulfilled") {
-          setAlertas(alertasRes.value);
-        } else {
-          setAlertas(null);
-          setErrorAlertas(true);
-        }
-        setCargando(false);
-      },
-    );
+    Promise.allSettled([
+      cargarColaPendiente(),
+      contarGanaderos(),
+      listarAlertas(),
+      contarTramitesPorEstado("APROBADO"),
+      contarTramitesPorEstado("HECHO_EN_OVZ"),
+    ]).then(([colaRes, ganaderosRes, alertasRes, aprobadosRes, hechosRes]) => {
+      if (cancelado) return;
+      if (colaRes.status === "fulfilled") {
+        setCola(colaRes.value);
+      } else {
+        setCola(null);
+        setErrorCola(aErrorApi(colaRes.reason));
+      }
+      if (ganaderosRes.status === "fulfilled") {
+        setGanaderos(ganaderosRes.value);
+      } else {
+        setGanaderos(null);
+        setErrorGanaderos(true);
+      }
+      if (alertasRes.status === "fulfilled") {
+        setAlertas(alertasRes.value);
+      } else {
+        setAlertas(null);
+        setErrorAlertas(true);
+      }
+      setAprobados(aprobadosRes.status === "fulfilled" ? aprobadosRes.value : null);
+      setHechos(hechosRes.status === "fulfilled" ? hechosRes.value : null);
+      setCargando(false);
+    });
     return () => {
       cancelado = true;
     };
@@ -90,6 +116,12 @@ export function DashboardPage() {
   const pendientes = cola?.totalElements;
   const mensajesWhatsapp =
     cola == null ? undefined : cola.content.filter((t) => t.origen === "WHATSAPP").length;
+
+  // Entra en Trámites ya filtrado por un estado (fusión de la antigua «Control»).
+  const irATramites = useCallback(
+    (filtroEstado: EstadoTramite | "TODOS") => navigate("/tramites", { state: { filtroEstado } }),
+    [navigate],
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-[1360px] flex-col gap-6">
@@ -119,56 +151,43 @@ export function DashboardPage() {
             type="button"
             variant="outline"
             className="h-10 gap-2 bg-card px-3"
-            onClick={() => setAltaAbierta(true)}
+            onClick={() => setAltaGanaderoAbierta(true)}
           >
             <UserPlusIcon aria-hidden="true" className="size-4" />
             Añadir ganadero
           </Button>
-          <Button
-            type="button"
-            className="h-10 gap-2 px-3"
-            onClick={() => navigate("/bandeja")}
-          >
-            <MessageCircleIcon aria-hidden="true" className="size-4" />
-            Abrir bandeja
+          <Button type="button" className="h-10 gap-2 px-3" onClick={() => setAltaTramiteAbierta(true)}>
+            <PlusIcon aria-hidden="true" className="size-4" />
+            Nuevo trámite
           </Button>
         </div>
       </header>
 
-      <section aria-label="Resumen" className="grid grid-cols-1 overflow-hidden border border-border bg-card sm:grid-cols-2 lg:grid-cols-4">
+      <section
+        aria-label="Resumen del día"
+        className="grid grid-cols-1 overflow-hidden border border-border bg-card sm:grid-cols-2 lg:grid-cols-4"
+      >
         <CeldaKpi
-          to="/tramites"
+          onClick={() => irATramites("PENDIENTE_REVISION")}
           icono={ClockIcon}
-          etiqueta="Trámites pendientes"
-          pie={
-            cargando
-              ? "…"
-              : pendientes === 0
-                ? "Nada por revisar"
-                : "Por revisar"
-          }
+          etiqueta="Trámites por revisar"
+          pie={cargando ? "…" : pendientes === 0 ? "Nada por revisar" : "Pendientes de ti"}
           valor={pendientes}
           cargando={cargando}
           error={errorCola != null}
           acento={!!pendientes && pendientes > 0}
         />
         <CeldaKpi
-          to="/bandeja"
+          onClick={() => navigate("/bandeja")}
           icono={MessageCircleIcon}
           etiqueta="Mensajes nuevos"
-          pie={
-            cargando
-              ? "…"
-              : mensajesWhatsapp === 0
-                ? "Bandeja al día"
-                : "En la cola pendiente"
-          }
+          pie={cargando ? "…" : mensajesWhatsapp === 0 ? "Bandeja al día" : "En la cola pendiente"}
           valor={mensajesWhatsapp}
           cargando={cargando}
           error={errorCola != null}
         />
         <CeldaKpi
-          to="/calendario"
+          onClick={() => navigate("/calendario")}
           icono={BellRingIcon}
           etiqueta="Alertas activas"
           pie={
@@ -184,7 +203,7 @@ export function DashboardPage() {
           acento={!!alertas && alertas.length > 0}
         />
         <CeldaKpi
-          to="/ganaderos"
+          onClick={() => navigate("/ganaderos")}
           icono={UsersIcon}
           etiqueta="Ganaderos"
           pie="Clientes de la gestoría"
@@ -194,58 +213,57 @@ export function DashboardPage() {
         />
       </section>
 
-      <ResumenValor />
-
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <ColaDeTrabajo cola={cola} error={errorCola} cargando={cargando} onReintentar={recargar} />
-        <aside className="flex flex-col gap-6">
-          <section
-            aria-labelledby="alertas-proximas-titulo"
-            className="border border-border bg-card"
-          >
-            <div className="flex items-center justify-between gap-2 border-b border-border px-5 py-4">
-              <h2 id="alertas-proximas-titulo" className="text-sm font-bold">
-                Alertas próximas
-              </h2>
-              <Link
-                to="/calendario"
-                className={cn(CLASE_ENLACE, "text-[13px] font-medium")}
-              >
-                Calendario
-              </Link>
-            </div>
-            {errorAlertas ? (
-              <p className="px-5 py-4 text-sm text-muted-foreground">No se han podido cargar las alertas.</p>
-            ) : !alertas || alertas.length === 0 ? (
-              <p className="px-5 py-4 text-sm text-muted-foreground">
-                Sin plazos cercanos ni trámites atascados.
-              </p>
-            ) : (
-              <ul className="divide-y divide-border">
-                {alertas.slice(0, 5).map((a) => (
-                  <li key={a.id} className="px-5 py-3 text-sm">
-                    {a.tramiteId != null ? (
-                      <Link to={`/tramites?abrir=${a.tramiteId}`} className={cn(CLASE_ENLACE, "font-medium")}>
-                        {a.titulo}
-                      </Link>
-                    ) : (
-                      <p className="font-medium">{a.titulo}</p>
-                    )}
-                    <p className="text-muted-foreground">{a.detalle}</p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+        <div className="flex min-w-0 flex-col gap-6">
+          <PendientesPorRevisar
+            cola={cola}
+            error={errorCola}
+            cargando={cargando}
+            onRevisar={setTramiteSeleccionado}
+            onVerTodos={() => irATramites("PENDIENTE_REVISION")}
+            onReintentar={recargar}
+          />
+          <EstadoDeLosTramites
+            porRevisar={pendientes ?? null}
+            aprobados={aprobados}
+            hechos={hechos}
+            cargando={cargando}
+            onIr={irATramites}
+          />
+        </div>
+
+        <aside className="flex min-w-0 flex-col gap-6">
+          <AlertasYPlazos
+            alertas={alertas}
+            error={errorAlertas}
+            cargando={cargando}
+            onRevisar={setTramiteSeleccionado}
+            onVerCalendario={() => navigate("/calendario")}
+          />
+          <ResumenValor />
         </aside>
       </div>
 
+      <TramiteReviewDialog
+        tramiteId={tramiteSeleccionado}
+        onClose={() => setTramiteSeleccionado(null)}
+        onCambiado={recargar}
+      />
       <AltaGanaderoDialog
-        open={altaAbierta}
-        onOpenChange={setAltaAbierta}
+        open={altaGanaderoAbierta}
+        onOpenChange={setAltaGanaderoAbierta}
         onCreado={(ganadero) => {
-          setAltaAbierta(false);
+          setAltaGanaderoAbierta(false);
           navigate(`/ganaderos/${ganadero.id}`);
+        }}
+      />
+      <AltaTramiteDialog
+        open={altaTramiteAbierta}
+        onOpenChange={setAltaTramiteAbierta}
+        onCreado={(creado) => {
+          setAltaTramiteAbierta(false);
+          recargar();
+          setTramiteSeleccionado(creado.id);
         }}
       />
     </div>
@@ -253,7 +271,7 @@ export function DashboardPage() {
 }
 
 function CeldaKpi({
-  to,
+  onClick,
   icono: Icono,
   etiqueta,
   pie,
@@ -262,7 +280,7 @@ function CeldaKpi({
   error,
   acento = false,
 }: {
-  to: string;
+  onClick: () => void;
   icono: LucideIcon;
   etiqueta: string;
   pie: string;
@@ -272,9 +290,10 @@ function CeldaKpi({
   acento?: boolean;
 }) {
   return (
-    <Link
-      to={to}
-      className="group/kpi flex flex-col gap-3 border-b border-border p-5 outline-none last:border-b-0 sm:border-r sm:odd:border-b sm:even:border-b sm:[&:nth-child(2)]:border-r-0 lg:border-b-0 lg:border-r lg:last:border-r-0 lg:[&:nth-child(2)]:border-r focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring"
+    <button
+      type="button"
+      onClick={onClick}
+      className="group/kpi flex flex-col gap-3 border-b border-border p-5 text-left outline-none last:border-b-0 sm:border-r sm:odd:border-b sm:even:border-b sm:[&:nth-child(2)]:border-r-0 lg:border-b-0 lg:border-r lg:last:border-r-0 lg:[&:nth-child(2)]:border-r focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring"
     >
       <span className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
         <Icono aria-hidden="true" className="size-4 shrink-0" />
@@ -300,31 +319,37 @@ function CeldaKpi({
         )}
       </span>
       <span className="text-[13px] text-muted-foreground">{pie}</span>
-    </Link>
+    </button>
   );
 }
 
-function ColaDeTrabajo({
+/** Widget grande: la cola de trámites por revisar. Cada fila ABRE el modal de revisión en esta misma
+ * pantalla (no navega), para que el gestor trabaje sin salir del Inicio. */
+function PendientesPorRevisar({
   cola,
   error,
   cargando,
+  onRevisar,
+  onVerTodos,
   onReintentar,
 }: {
   cola: Pagina<Tramite> | null;
   error: ErrorApi | null;
   cargando: boolean;
+  onRevisar: (id: number) => void;
+  onVerTodos: () => void;
   onReintentar: () => void;
 }) {
   const total = cola?.totalElements ?? 0;
   return (
     <section
-      aria-labelledby="cola-de-trabajo-titulo"
+      aria-labelledby="pendientes-titulo"
       className="flex min-w-0 flex-col border border-border bg-card"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border px-5 py-4">
         <div className="flex items-baseline gap-2">
-          <h2 id="cola-de-trabajo-titulo" className="text-base font-bold">
-            Cola de trabajo
+          <h2 id="pendientes-titulo" className="text-base font-bold">
+            Trámites por revisar
           </h2>
           {!cargando && !error && (
             <span className="text-sm text-muted-foreground tabular-nums">
@@ -332,9 +357,9 @@ function ColaDeTrabajo({
             </span>
           )}
         </div>
-        <Link to="/tramites" className={cn(CLASE_ENLACE, "text-sm font-medium")}>
-          {total > 0 ? `Ver los ${total} trámites pendientes` : "Ver todos los trámites"}
-        </Link>
+        <button type="button" onClick={onVerTodos} className="text-sm font-medium text-enlace outline-none hover:underline focus-visible:underline focus-visible:ring-3 focus-visible:ring-ring">
+          {total > 0 ? `Ver los ${total} pendientes` : "Ver todos los trámites"}
+        </button>
       </div>
 
       {error ? (
@@ -357,15 +382,21 @@ function ColaDeTrabajo({
           ))}
         </div>
       ) : total === 0 ? (
-        <p className="px-5 py-6 text-sm text-muted-foreground">
-          No hay trámites pendientes de revisión. En cuanto llegue un mensaje de WhatsApp y la IA lo
-          procese, aparecerá aquí para que lo revises.
-        </p>
+        <div className="flex flex-col items-center gap-2 px-5 py-10 text-center">
+          <span className="grid size-10 place-items-center bg-success text-success-foreground">
+            <CircleCheckBigIcon aria-hidden="true" className="size-5" />
+          </span>
+          <p className="text-sm font-medium">Todo revisado</p>
+          <p className="max-w-sm text-[13px] text-muted-foreground">
+            No hay trámites pendientes de revisión. En cuanto llegue un mensaje de WhatsApp y la IA lo
+            procese, aparecerá aquí para que lo revises.
+          </p>
+        </div>
       ) : (
         <ul className="flex flex-col">
           {cola?.content.map((tramite) => (
             <li key={tramite.id} className="border-b border-border last:border-b-0">
-              <FilaCola tramite={tramite} />
+              <FilaPendiente tramite={tramite} onRevisar={onRevisar} />
             </li>
           ))}
         </ul>
@@ -374,14 +405,16 @@ function ColaDeTrabajo({
   );
 }
 
-function FilaCola({ tramite }: { tramite: Tramite }) {
+function FilaPendiente({ tramite, onRevisar }: { tramite: Tramite; onRevisar: (id: number) => void }) {
   const icono = iconoTipoTramite(tramite.tipoTramite);
   const nombreExplotacion = tramite.explotacionNombre?.trim() || undefined;
   const crotales = tramite.crotales.length;
   return (
-    <Link
-      to="/tramites"
-      className="flex items-center gap-3 px-5 py-3.5 outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring"
+    <button
+      type="button"
+      aria-label={`Revisar trámite #${tramite.id}`}
+      onClick={() => onRevisar(tramite.id)}
+      className="flex w-full items-center gap-3 px-5 py-3.5 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring"
     >
       <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="flex items-center gap-2 font-medium">
@@ -410,6 +443,188 @@ function FilaCola({ tramite }: { tramite: Tramite }) {
       <BadgeEstadoTramite estado={tramite.estado} motivoRechazo={tramite.motivoRechazo} />
       <span className="hidden text-sm font-medium text-enlace sm:inline">Revisar</span>
       <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-    </Link>
+    </button>
   );
+}
+
+/** El embudo de trámites (absorbe la antigua pantalla «Control»): por revisar → aprobado·falta OVZ →
+ * hecho. Cada bloque entra en Trámites ya filtrado por ese estado. */
+function EstadoDeLosTramites({
+  porRevisar,
+  aprobados,
+  hechos,
+  cargando,
+  onIr,
+}: {
+  porRevisar: number | null;
+  aprobados: number | null;
+  hechos: number | null;
+  cargando: boolean;
+  onIr: (estado: EstadoTramite) => void;
+}) {
+  return (
+    <section aria-labelledby="estado-tramites-titulo" className="border border-border bg-card">
+      <div className="border-b border-border px-5 py-4">
+        <h2 id="estado-tramites-titulo" className="text-base font-bold">
+          Estado de los trámites
+        </h2>
+        <p className="mt-0.5 text-[13px] text-muted-foreground">
+          En qué punto está cada trámite. Entra en cada bloque para trabajarlo.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3">
+        <CeldaEmbudo
+          icono={EyeIcon}
+          etiqueta="Por revisar"
+          valor={porRevisar}
+          tono="warning"
+          cargando={cargando}
+          onClick={() => onIr("PENDIENTE_REVISION")}
+        />
+        <CeldaEmbudo
+          icono={CheckIcon}
+          etiqueta="Aprobado · falta OVZ"
+          valor={aprobados}
+          tono="warning"
+          cargando={cargando}
+          onClick={() => onIr("APROBADO")}
+        />
+        <CeldaEmbudo
+          icono={CircleCheckBigIcon}
+          etiqueta="Hecho en OVZ"
+          valor={hechos}
+          tono="success"
+          cargando={cargando}
+          onClick={() => onIr("HECHO_EN_OVZ")}
+        />
+      </div>
+    </section>
+  );
+}
+
+function CeldaEmbudo({
+  icono: Icono,
+  etiqueta,
+  valor,
+  tono,
+  cargando,
+  onClick,
+}: {
+  icono: LucideIcon;
+  etiqueta: string;
+  valor: number | null;
+  tono: "warning" | "success";
+  cargando: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group/embudo flex flex-col gap-2 border-b border-border p-5 text-left outline-none last:border-b-0 sm:border-r sm:border-b-0 sm:last:border-r-0 focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring"
+    >
+      <span className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
+        <Icono
+          aria-hidden="true"
+          className={cn("size-4 shrink-0", tono === "success" ? "text-success-foreground" : "text-warning-foreground")}
+        />
+        {etiqueta}
+      </span>
+      <span className="text-[30px] leading-none font-bold tabular-nums tracking-tight" aria-live="polite">
+        {cargando ? (
+          <span aria-hidden="true" className="inline-block h-7 w-10 animate-pulse bg-muted align-middle" />
+        ) : valor === null ? (
+          <span title="No disponible ahora mismo">—</span>
+        ) : (
+          valor
+        )}
+      </span>
+    </button>
+  );
+}
+
+/** Alertas y plazos (vencimientos y trámites atascados). Una alerta ligada a un trámite se abre y se
+ * revisa aquí mismo; las demás solo informan. La cabecera lleva al calendario. */
+function AlertasYPlazos({
+  alertas,
+  error,
+  cargando,
+  onRevisar,
+  onVerCalendario,
+}: {
+  alertas: Alerta[] | null;
+  error: boolean;
+  cargando: boolean;
+  onRevisar: (id: number) => void;
+  onVerCalendario: () => void;
+}) {
+  return (
+    <section aria-labelledby="alertas-proximas-titulo" className="border border-border bg-card">
+      <div className="flex items-center justify-between gap-2 border-b border-border px-5 py-4">
+        <h2 id="alertas-proximas-titulo" className="text-base font-bold">
+          Alertas y plazos
+        </h2>
+        <button
+          type="button"
+          onClick={onVerCalendario}
+          className="text-[13px] font-medium text-enlace outline-none hover:underline focus-visible:underline focus-visible:ring-3 focus-visible:ring-ring"
+        >
+          Calendario
+        </button>
+      </div>
+      {error ? (
+        <p className="px-5 py-4 text-sm text-muted-foreground">No se han podido cargar las alertas.</p>
+      ) : cargando ? (
+        <div className="flex flex-col gap-0" aria-hidden="true">
+          {[0, 1].map((i) => (
+            <div key={i} className="h-14 animate-pulse border-b border-border bg-muted/40 last:border-b-0" />
+          ))}
+        </div>
+      ) : !alertas || alertas.length === 0 ? (
+        <p className="px-5 py-6 text-sm text-muted-foreground">
+          Sin plazos cercanos ni trámites atascados.
+        </p>
+      ) : (
+        <ul className="divide-y divide-border">
+          {alertas.slice(0, 6).map((a) => (
+            <li key={a.id}>
+              <FilaAlerta alerta={a} onRevisar={onRevisar} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function FilaAlerta({ alerta, onRevisar }: { alerta: Alerta; onRevisar: (id: number) => void }) {
+  const critica = alerta.severidad === "critical";
+  const contenido = (
+    <>
+      <span
+        aria-hidden="true"
+        className={cn("mt-0.5 shrink-0", critica ? "text-danger" : "text-warning-foreground")}
+      >
+        <TriangleAlertIcon className="size-4" />
+      </span>
+      <span className="flex min-w-0 flex-col">
+        <span className="text-sm font-medium">{alerta.titulo}</span>
+        <span className="text-[13px] text-muted-foreground">{alerta.detalle}</span>
+      </span>
+    </>
+  );
+  if (alerta.tramiteId != null) {
+    const id = alerta.tramiteId;
+    return (
+      <button
+        type="button"
+        onClick={() => onRevisar(id)}
+        className="flex w-full items-start gap-2.5 px-5 py-3 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        {contenido}
+        <ChevronRightIcon aria-hidden="true" className="mt-0.5 ml-auto size-4 shrink-0 text-muted-foreground" />
+      </button>
+    );
+  }
+  return <div className="flex items-start gap-2.5 px-5 py-3">{contenido}</div>;
 }

@@ -109,11 +109,22 @@ export function TramitesPage() {
   const [q, setQ] = useState("");
 
   useEffect(() => {
-    const abrir = (location.state as { abrirTramiteId?: number } | null)?.abrirTramiteId;
+    const estado = location.state as
+      | { abrirTramiteId?: number; filtroEstado?: FiltroEstado }
+      | null;
+    const abrir = estado?.abrirTramiteId;
     if (typeof abrir === "number") {
       setTramiteSeleccionado(abrir);
       setFiltroEstado("PENDIENTE_REVISION");
       setVersion((v) => v + 1);
+      return;
+    }
+    // Entrada desde el panel de mando del Inicio: abre la cola ya filtrada por un estado concreto
+    // (p. ej. «Aprobado · falta OVZ»). Es la fusión de la antigua pantalla «Control» con la cola.
+    const filtro = estado?.filtroEstado;
+    if (filtro && (filtro === "TODOS" || filtro in ESTADOS_TRAMITE)) {
+      setFiltroEstado(filtro);
+      setNumeroPagina(0);
     }
   }, [location.state]);
 

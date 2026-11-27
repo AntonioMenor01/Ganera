@@ -5,7 +5,6 @@ import {
   ChartColumnIcon,
   ClipboardListIcon,
   LayoutDashboardIcon,
-  LayoutListIcon,
   MessageCircleIcon,
   SettingsIcon,
   UsersIcon,
@@ -46,13 +45,15 @@ function etiquetaSuscripcion(hook: SuscripcionEstadoHook): string | null {
 
 // Orden del mock «Ganera App v2»: Inicio → Bandeja → Trámites → Ganaderos → Explotaciones →
 // Calendario → Informes → Configuración. Sin Facturación (el cobro va en la landing).
+// Trámites unifica la antigua «Control» (vista por estado): la vista de conjunto por estado vive
+// ahora en el Inicio (panel de mando) y la cola de trabajo es una sola pantalla. /control-tramites
+// se mantiene como redirección a /tramites para marcadores antiguos.
 // /ganaderos/:id también marca "Ganaderos" (NavLink sin `end`). Inicio usa `end` para no
 // activarse en el resto de rutas. Icono decorativo (aria-hidden): el nombre accesible es el texto.
 const ENLACES: { to: string; label: string; Icono: LucideIcon; end?: boolean }[] = [
   { to: "/", label: "Inicio", Icono: LayoutDashboardIcon, end: true },
   { to: "/bandeja", label: "Bandeja", Icono: MessageCircleIcon },
   { to: "/tramites", label: "Trámites", Icono: ClipboardListIcon },
-  { to: "/control-tramites", label: "Control", Icono: LayoutListIcon },
   { to: "/ganaderos", label: "Ganaderos", Icono: UsersIcon },
   { to: "/explotaciones", label: "Explotaciones", Icono: WarehouseIcon },
   { to: "/calendario", label: "Calendario", Icono: CalendarClockIcon },

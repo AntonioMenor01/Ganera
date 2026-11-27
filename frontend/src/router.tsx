@@ -5,7 +5,6 @@ import { LoginPage } from "@/features/auth/LoginPage";
 import { ExplotacionesPage } from "@/features/explotaciones/ExplotacionesPage";
 import { ExplotacionDetallePage } from "@/features/explotaciones/ExplotacionDetallePage";
 import { TramitesPage } from "@/features/tramites/TramitesPage";
-import { ControlTramitesPage } from "@/features/tramites/ControlTramitesPage";
 import { FichaOvzPage } from "@/features/tramites/FichaOvzPage";
 import { GanaderosPage } from "@/features/ganaderos/GanaderosPage";
 import { GanaderoDetallePage } from "@/features/ganaderos/GanaderoDetallePage";
@@ -38,8 +37,9 @@ export const routes: RouteObject[] = [
           // dedicadas de bandeja, calendario ni informes.
           { path: "bandeja", element: <BandejaPage /> },
           { path: "tramites", element: <TramitesPage /> },
-          // Vista de conjunto de TODOS los trámites agrupados por estado (complementa la cola).
-          { path: "control-tramites", element: <ControlTramitesPage /> },
+          // «Control» se fundió en Trámites: la vista por estado vive en el Inicio y la cola de
+          // trabajo es una sola pantalla. Se conserva la ruta como redirección para marcadores.
+          { path: "control-tramites", element: <Navigate to="/tramites" replace /> },
           { path: "ganaderos", element: <GanaderosPage /> },
           { path: "ganaderos/:id", element: <GanaderoDetallePage /> },
           { path: "explotaciones", element: <ExplotacionesPage /> },

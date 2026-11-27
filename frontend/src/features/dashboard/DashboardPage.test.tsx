@@ -40,6 +40,48 @@ function paginaGanaderos(totalElements: number) {
   return { content: [], totalElements, totalPages: 1, number: 0, size: 1 };
 }
 
+/** Detalle mínimo válido para que el modal de revisión (que la cola abre en esta pantalla) cargue. */
+function detalle(id: number) {
+  return {
+    id,
+    tipoTramite: "ALTA_NACIMIENTO",
+    estado: "PENDIENTE_REVISION",
+    motivoError: null,
+    explotacionId: 10,
+    explotacionCodigoRega: "ES100370000124",
+    explotacionNombre: "Dehesa Los Llanos",
+    ganaderoNombre: "Ana Martínez",
+    ganaderoNif: "12345678Z",
+    mensajeOriginal: "alta del 1234",
+    crotales: [],
+    version: 0,
+    origen: "WHATSAPP",
+    estadoExtraccion: "COMPLETADA",
+    crotalesDescartados: 0,
+    hechoEnOvzEn: null,
+    hechoEnOvzPorNombre: null,
+    whatsapp: null,
+    motivoRechazo: null,
+    descartable: false,
+    historialDescarte: [],
+    fechaHecho: null,
+    fechaNacimiento: null,
+    sexo: null,
+    crotalMadreIndicado: null,
+    crotalMadre: null,
+    crotalMadreResolucion: null,
+    numeroMer: null,
+    destinoRega: null,
+    destinoTexto: null,
+    consignatario: null,
+    aptitudMovimiento: null,
+    fechaIdentificacion: null,
+    raza: null,
+    sePresentaraAutomaticamente: false,
+    presentacionOvz: null,
+  };
+}
+
 function conSesion() {
   sessionStorage.setItem("ganera.token", "tok");
   server.use(http.get(apiUrl("/auth/me"), () => HttpResponse.json(USUARIO)));
@@ -65,125 +107,121 @@ function montar() {
   return router;
 }
 
-describe("DashboardPage: saludo y CTAs del mock v2", () => {
-  it("saluda por su nombre de pila, muestra la fecha y los botones de cabecera", async () => {
+/** Handler de /tramites consciente del estado: la cola (PENDIENTE_REVISION, size>1) y los conteos
+ * del embudo (size=1) por estado; cualquier otra llamada devuelve algo benigno. */
+function tramitesPorEstado(mapa: Partial<Record<string, ReturnType<typeof paginaTramites>>>) {
+  server.use(
+    http.get(apiUrl("/tramites"), ({ request }) => {
+      const estado = new URL(request.url).searchParams.get("estado");
+      return HttpResponse.json(mapa[estado ?? "TODOS"] ?? paginaTramites([], 0));
+    }),
+  );
+}
+
+describe("DashboardPage: cabecera y CTAs", () => {
+  it("saluda por su nombre, muestra la fecha y los botones de cabecera", async () => {
     conSesion();
-    server.use(
-      http.get(apiUrl("/tramites"), () => HttpResponse.json(paginaTramites([]))),
-      http.get(apiUrl("/ganaderos"), () => HttpResponse.json(paginaGanaderos(0))),
-    );
+    tramitesPorEstado({ PENDIENTE_REVISION: paginaTramites([]) });
+    server.use(http.get(apiUrl("/ganaderos"), () => HttpResponse.json(paginaGanaderos(0))));
     montar();
 
     const titulo = await screen.findByRole("heading", { level: 1 });
     expect(titulo.textContent).toMatch(/^Buen[oa]s (días|tardes|noches), Lucía$/);
     expect(screen.getByText(/\bde \d{4}$/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Añadir ganadero" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Abrir bandeja" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Nuevo trámite" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Primeros pasos/ })).toBeInTheDocument();
   });
 });
 
-describe("DashboardPage: KPIs", () => {
-  it("muestra las cifras reales y enlaza cada una a su sección", async () => {
+describe("DashboardPage: KPIs del día", () => {
+  it("muestra las cifras reales y lleva a su sección", async () => {
     conSesion();
-    server.use(
-      http.get(apiUrl("/tramites"), () => HttpResponse.json(paginaTramites([tramite({ id: 1 })], 5))),
-      http.get(apiUrl("/ganaderos"), () => HttpResponse.json(paginaGanaderos(42))),
-    );
-    montar();
+    tramitesPorEstado({ PENDIENTE_REVISION: paginaTramites([tramite({ id: 1 })], 5) });
+    server.use(http.get(apiUrl("/ganaderos"), () => HttpResponse.json(paginaGanaderos(42))));
+    const router = montar();
 
-    const pendientes = await screen.findByRole("link", { name: /Trámites pendientes/ });
-    expect(within(pendientes).getByText("5")).toBeInTheDocument();
-    expect(pendientes).toHaveAttribute("href", "/tramites");
-
-    const ganaderos = screen.getByRole("link", { name: /^Ganaderos/ });
+    const porRevisar = await screen.findByRole("button", { name: /Trámites por revisar/ });
+    expect(within(porRevisar).getByText("5")).toBeInTheDocument();
+    const ganaderos = screen.getByRole("button", { name: /^Ganaderos/ });
     expect(within(ganaderos).getByText("42")).toBeInTheDocument();
-    expect(ganaderos).toHaveAttribute("href", "/ganaderos");
+
+    await userEvent.click(ganaderos);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/ganaderos"));
   });
 
-  it("cuenta WhatsApp en Mensajes nuevos y deja Alertas en 0 sin inventar plazos", async () => {
+  it("cuenta los WhatsApp pendientes en «Mensajes nuevos»", async () => {
     conSesion();
-    server.use(
-      http.get(apiUrl("/tramites"), () =>
-        HttpResponse.json(
-          paginaTramites(
-            [
-              tramite({ id: 1, origen: "WHATSAPP" }),
-              tramite({ id: 2, origen: null }),
-              tramite({ id: 3, origen: "WHATSAPP" }),
-            ],
-            3,
-          ),
-        ),
+    tramitesPorEstado({
+      PENDIENTE_REVISION: paginaTramites(
+        [
+          tramite({ id: 1, origen: "WHATSAPP" }),
+          tramite({ id: 2, origen: null }),
+          tramite({ id: 3, origen: "WHATSAPP" }),
+        ],
+        3,
       ),
-      http.get(apiUrl("/ganaderos"), () => HttpResponse.json(paginaGanaderos(0))),
-      http.get(apiUrl("/alertas"), () => HttpResponse.json([])),
-    );
+    });
+    server.use(http.get(apiUrl("/ganaderos"), () => HttpResponse.json(paginaGanaderos(0))));
     montar();
 
-    const mensajes = await screen.findByRole("link", { name: /Mensajes nuevos/ });
+    const mensajes = await screen.findByRole("button", { name: /Mensajes nuevos/ });
     expect(within(mensajes).getByText("2")).toBeInTheDocument();
-    expect(mensajes).toHaveAttribute("href", "/bandeja");
-
-    const alertas = screen.getByRole("link", { name: /Alertas activas/ });
-    expect(within(alertas).getByText("0")).toBeInTheDocument();
-    expect(alertas).toHaveAttribute("href", "/calendario");
-    expect(screen.queryByText("Próximamente")).not.toBeInTheDocument();
   });
 
   it("si falla el conteo de ganaderos, su KPI muestra «—» pero la cola sigue cargando", async () => {
     conSesion();
-    server.use(
-      http.get(apiUrl("/tramites"), () => HttpResponse.json(paginaTramites([tramite({ id: 1 })], 3))),
-      http.get(apiUrl("/ganaderos"), () => new HttpResponse(null, { status: 500 })),
-    );
+    tramitesPorEstado({ PENDIENTE_REVISION: paginaTramites([tramite({ id: 1 })], 3) });
+    server.use(http.get(apiUrl("/ganaderos"), () => new HttpResponse(null, { status: 500 })));
     montar();
 
-    const ganaderos = await screen.findByRole("link", { name: /^Ganaderos/ });
+    const ganaderos = await screen.findByRole("button", { name: /^Ganaderos/ });
     expect(within(ganaderos).getByText("—")).toBeInTheDocument();
-    const pendientes = screen.getByRole("link", { name: /Trámites pendientes/ });
-    expect(within(pendientes).getByText("3")).toBeInTheDocument();
+    const porRevisar = screen.getByRole("button", { name: /Trámites por revisar/ });
+    expect(within(porRevisar).getByText("3")).toBeInTheDocument();
   });
 });
 
-describe("DashboardPage: cola de trabajo", () => {
-  it("lista los pendientes recientes con su tipo y enlaza a la cola", async () => {
+describe("DashboardPage: trámites por revisar (trabajo en la misma pantalla)", () => {
+  it("lista los pendientes y, al abrir uno, la revisión se abre aquí (sin navegar)", async () => {
     conSesion();
-    server.use(
-      http.get(apiUrl("/tramites"), () =>
-        HttpResponse.json(
-          paginaTramites(
-            [
-              tramite({ id: 7, tipoTramite: "ALTA_NACIMIENTO", explotacionCodigoRega: "ES101480000087" }),
-              tramite({ id: 8, tipoTramite: "BAJA_MUERTE", explotacionCodigoRega: "ES100370000124" }),
-            ],
-            5,
-          ),
-        ),
+    tramitesPorEstado({
+      PENDIENTE_REVISION: paginaTramites(
+        [
+          tramite({ id: 7, tipoTramite: "ALTA_NACIMIENTO" }),
+          tramite({ id: 8, tipoTramite: "BAJA_MUERTE" }),
+        ],
+        2,
       ),
+    });
+    server.use(
       http.get(apiUrl("/ganaderos"), () => HttpResponse.json(paginaGanaderos(42))),
+      http.get(apiUrl("/tramites/:id"), ({ params }) =>
+        HttpResponse.json(detalle(Number(params.id))),
+      ),
     );
     const router = montar();
 
-    const region = await screen.findByRole("region", { name: "Cola de trabajo" });
-    expect(within(region).getByText("5 por revisar")).toBeInTheDocument();
+    const region = await screen.findByRole("region", { name: "Trámites por revisar" });
     expect(within(region).getByText("Alta por nacimiento")).toBeInTheDocument();
     expect(within(region).getByText("Baja por muerte")).toBeInTheDocument();
 
-    const filas = within(region).getAllByRole("link");
-    await userEvent.click(filas[0]);
-    await waitFor(() => expect(router.state.location.pathname).toBe("/tramites"));
+    await userEvent.click(within(region).getByRole("button", { name: "Revisar trámite #7" }));
+
+    // El modal se abre EN el inicio (no se navega a /tramites).
+    const dialogo = await screen.findByRole("dialog");
+    expect(within(dialogo).getByText("Trámite #7")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/");
   });
 
-  it("sin pendientes, estado vacío honesto en vez de una lista o un cero suelto", async () => {
+  it("sin pendientes, estado vacío honesto («Todo revisado»)", async () => {
     conSesion();
-    server.use(
-      http.get(apiUrl("/tramites"), () => HttpResponse.json(paginaTramites([], 0))),
-      http.get(apiUrl("/ganaderos"), () => HttpResponse.json(paginaGanaderos(42))),
-    );
+    tramitesPorEstado({ PENDIENTE_REVISION: paginaTramites([], 0) });
+    server.use(http.get(apiUrl("/ganaderos"), () => HttpResponse.json(paginaGanaderos(42))));
     montar();
 
-    const region = await screen.findByRole("region", { name: "Cola de trabajo" });
-    expect(within(region).getByText("sin pendientes")).toBeInTheDocument();
+    const region = await screen.findByRole("region", { name: "Trámites por revisar" });
+    expect(within(region).getByText("Todo revisado")).toBeInTheDocument();
     expect(within(region).getByText(/No hay trámites pendientes de revisión/)).toBeInTheDocument();
   });
 
@@ -193,12 +231,8 @@ describe("DashboardPage: cola de trabajo", () => {
     server.use(
       http.get(apiUrl("/ganaderos"), () => HttpResponse.json(paginaGanaderos(42))),
       http.get(apiUrl("/tramites"), ({ request }) => {
-        // Solo cuenta/falla la petición de la COLA (estado PENDIENTE_REVISION); las otras llamadas a
-        // /tramites (ResumenValor: HECHO_EN_OVZ y totales) devuelven algo benigno sin afectar al test.
         const estado = new URL(request.url).searchParams.get("estado");
-        if (estado !== "PENDIENTE_REVISION") {
-          return HttpResponse.json(paginaTramites([], 0));
-        }
+        if (estado !== "PENDIENTE_REVISION") return HttpResponse.json(paginaTramites([], 0));
         intentos += 1;
         return intentos === 1
           ? new HttpResponse(null, { status: 500 })
@@ -210,8 +244,63 @@ describe("DashboardPage: cola de trabajo", () => {
     expect(await screen.findByText("No se ha podido cargar la cola")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Reintentar" }));
 
-    const region = await screen.findByRole("region", { name: "Cola de trabajo" });
+    const region = await screen.findByRole("region", { name: "Trámites por revisar" });
     expect(within(region).getByText("1 por revisar")).toBeInTheDocument();
     expect(intentos).toBe(2);
+  });
+});
+
+describe("DashboardPage: estado de los trámites (embudo, antigua «Control»)", () => {
+  it("muestra los conteos por estado y entra en Trámites ya filtrado", async () => {
+    conSesion();
+    tramitesPorEstado({
+      PENDIENTE_REVISION: paginaTramites([tramite({ id: 1 })], 4),
+      APROBADO: paginaTramites([], 6),
+      HECHO_EN_OVZ: paginaTramites([], 9),
+    });
+    server.use(http.get(apiUrl("/ganaderos"), () => HttpResponse.json(paginaGanaderos(2))));
+    const router = montar();
+
+    const region = await screen.findByRole("region", { name: "Estado de los trámites" });
+    const aprobado = within(region).getByRole("button", { name: /Aprobado · falta OVZ/ });
+    expect(within(aprobado).getByText("6")).toBeInTheDocument();
+    const hecho = within(region).getByRole("button", { name: /Hecho en OVZ/ });
+    expect(within(hecho).getByText("9")).toBeInTheDocument();
+
+    await userEvent.click(aprobado);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/tramites"));
+    expect((router.state.location.state as { filtroEstado?: string }).filtroEstado).toBe("APROBADO");
+  });
+});
+
+describe("DashboardPage: alertas y plazos", () => {
+  it("lista las alertas y una ligada a un trámite se abre en esta pantalla", async () => {
+    conSesion();
+    tramitesPorEstado({ PENDIENTE_REVISION: paginaTramites([], 0) });
+    server.use(
+      http.get(apiUrl("/ganaderos"), () => HttpResponse.json(paginaGanaderos(2))),
+      http.get(apiUrl("/alertas"), () =>
+        HttpResponse.json([
+          {
+            id: "a1",
+            tipo: "plazo",
+            titulo: "Baja sin presentar en OVZ",
+            detalle: "Vence en 2 días",
+            venceEl: "2026-12-01",
+            tramiteId: 42,
+            severidad: "critical",
+          },
+        ]),
+      ),
+      http.get(apiUrl("/tramites/:id"), ({ params }) => HttpResponse.json(detalle(Number(params.id)))),
+    );
+    montar();
+
+    const region = await screen.findByRole("region", { name: "Alertas y plazos" });
+    const alerta = within(region).getByRole("button", { name: /Baja sin presentar en OVZ/ });
+    await userEvent.click(alerta);
+
+    const dialogo = await screen.findByRole("dialog");
+    expect(within(dialogo).getByText("Trámite #42")).toBeInTheDocument();
   });
 });
