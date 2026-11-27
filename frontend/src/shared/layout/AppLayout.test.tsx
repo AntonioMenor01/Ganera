@@ -9,12 +9,13 @@ import { server } from "@/test/server"
 
 const EMAIL_LARGO = "administracion.gestoria.ejemplo@agroservicios-castilla.es"
 
+// «Explotaciones» ya no es una entrada de la barra: se unificó con «Ganaderos» (una sección, dos
+// vistas con la subnav de la cartera). Quedan 7 enlaces.
 const ENLACES_ESPERADOS = [
   "Inicio",
   "Bandeja",
   "Control",
   "Ganaderos",
-  "Explotaciones",
   "Calendario",
   "Informes",
   "Configuración",
@@ -25,7 +26,6 @@ const HREFS_ESPERADOS = [
   "/bandeja",
   "/tramites",
   "/ganaderos",
-  "/explotaciones",
   "/calendario",
   "/informes",
   "/configuracion",
@@ -139,7 +139,7 @@ afterEach(() => {
 })
 
 describe("AppLayout: barra de navegación", () => {
-  it("hay un solo nav Principal con los 8 enlaces del mock (sin Facturación ni Control)", async () => {
+  it("hay un solo nav Principal con los 7 enlaces del mock (sin Facturación ni Explotaciones)", async () => {
     montarLayout("/tramites")
     await screen.findByText("pantalla tramites")
 
@@ -156,7 +156,9 @@ describe("AppLayout: barra de navegación", () => {
     ["/bandeja", "Bandeja"],
     ["/tramites", "Control"],
     ["/ganaderos", "Ganaderos"],
-    ["/explotaciones", "Explotaciones"],
+    // En /explotaciones (y /explotaciones/:id) la entrada activa es «Ganaderos»: Explotaciones vive
+    // en esa sección (unificación de la cartera).
+    ["/explotaciones", "Ganaderos"],
     ["/calendario", "Calendario"],
     ["/informes", "Informes"],
     ["/configuracion", "Configuración"],
@@ -215,10 +217,9 @@ describe("AppLayout: barra de navegación", () => {
     expect(clases[1]).toContain("lucide-message-circle")
     expect(clases[2]).toContain("lucide-clipboard-list")
     expect(clases[3]).toContain("lucide-users")
-    expect(clases[4]).toContain("lucide-warehouse")
-    expect(clases[5]).toContain("lucide-calendar-clock")
-    expect(clases[6]).toContain("lucide-chart-column")
-    expect(clases[7]).toContain("lucide-settings")
+    expect(clases[4]).toContain("lucide-calendar-clock")
+    expect(clases[5]).toContain("lucide-chart-column")
+    expect(clases[6]).toContain("lucide-settings")
   })
 
   it("la tira es la referencia de offsetLeft de sus enlaces (relative) y se desplaza por dentro", async () => {
@@ -242,26 +243,26 @@ describe("AppLayout: barra de navegación", () => {
     const router = montarLayout("/tramites")
     const nav = await screen.findByRole("navigation", { name: "Principal" })
 
-    // Índices mock (8 enlaces, sin Control): Inicio 0, Bandeja 1, Trámites 2, Ganaderos 3,
-    // Explotaciones 4, Calendario 5 (inicio = 16+i*84, ancho 80).
+    // Índices mock (7 enlaces): Inicio 0, Bandeja 1, Control 2, Ganaderos 3, Calendario 4,
+    // Informes 5, Configuración 6 (inicio = 16+i*84, ancho 80).
     const medidas = simularMedidas(nav, 375)
     const scrollLeftActual = medidas.scrollLeft
 
-    // Explotaciones (352–432) se corta a la derecha con 375 → scroll 432-375+16 = 73.
-    await act(() => router.navigate("/explotaciones"))
+    // Calendario (352–432) se corta a la derecha con 375 → scroll 432-375+16 = 73.
+    await act(() => router.navigate("/calendario"))
     expect(scrollLeftActual()).toBe(73)
 
-    // Calendario (436–516) se corta a la derecha (S=73) → 516-375+16 = 157.
-    await act(() => router.navigate("/calendario"))
+    // Informes (436–516) se corta a la derecha (S=73) → 516-375+16 = 157.
+    await act(() => router.navigate("/informes"))
     expect(scrollLeftActual()).toBe(157)
 
     // Tira más estrecha (220): hay que salir de la ruta para que el efecto se re-dispare.
-    await act(() => router.navigate("/explotaciones"))
-    Object.defineProperty(nav, "clientWidth", { configurable: true, value: 220 })
     await act(() => router.navigate("/calendario"))
+    Object.defineProperty(nav, "clientWidth", { configurable: true, value: 220 })
+    await act(() => router.navigate("/informes"))
     expect(scrollLeftActual()).toBe(312)
 
-    // De vuelta a Trámites (184–264), fuera por la izquierda: 184-16 = 168.
+    // De vuelta a Control (184–264), fuera por la izquierda: 184-16 = 168.
     await act(() => router.navigate("/tramites"))
     expect(scrollLeftActual()).toBe(168)
 
@@ -271,10 +272,10 @@ describe("AppLayout: barra de navegación", () => {
   it("al recibir foco un enlace cortado por la tira, ajusta el scrollLeft para mostrarlo entero (N1)", async () => {
     const scrollIntoView = espiarScrollIntoView()
 
-    montarLayout("/explotaciones")
+    montarLayout("/ganaderos")
     const nav = await screen.findByRole("navigation", { name: "Principal" })
     const medidas = simularMedidas(nav, 220)
-    // Como tras cargar /explotaciones (índice 4 → 432-220+16 = 228) en tira estrecha.
+    // Arrancamos como si la tira estrecha estuviera desplazada a 228.
     nav.scrollLeft = 228
 
     // Control (184–264, antes «Trámites») cortado por la izquierda → 184-16 = 168.
@@ -285,8 +286,8 @@ describe("AppLayout: barra de navegación", () => {
     act(() => within(nav).getByRole("link", { name: "Ganaderos" }).focus())
     expect(medidas.scrollLeft()).toBe(168)
 
-    // Calendario (436–516) cortado a la derecha → 516-220+16 = 312.
-    act(() => within(nav).getByRole("link", { name: "Calendario" }).focus())
+    // Informes (436–516) cortado a la derecha → 516-220+16 = 312.
+    act(() => within(nav).getByRole("link", { name: "Informes" }).focus())
     expect(medidas.scrollLeft()).toBe(312)
 
     expect(scrollIntoView).not.toHaveBeenCalled()
@@ -298,19 +299,19 @@ describe("AppLayout: barra de navegación", () => {
 
     const router = montarLayout("/tramites")
     const nav = await screen.findByRole("navigation", { name: "Principal" })
-    await act(() => router.navigate("/explotaciones"))
+    await act(() => router.navigate("/calendario"))
     const medidas = simularMedidas(nav, 540)
 
     const observador = ResizeObserverFalso.instancias.at(-1)!
-    const explotaciones = within(nav).getByRole("link", { name: "Explotaciones" })
+    const calendario = within(nav).getByRole("link", { name: "Calendario" })
     expect(observador.observados.has(nav)).toBe(true)
-    expect(observador.observados.has(explotaciones)).toBe(true)
+    expect(observador.observados.has(calendario)).toBe(true)
 
-    // Con 540 px Explotaciones (436–516) se ve entera: no mueve.
+    // Con 540 px Calendario (352–432) se ve entera: no mueve.
     act(() => observador.disparar())
     expect(medidas.scrollLeft()).toBe(0)
 
-    // Tira a 220 px: Explotaciones (352–432) cortada → 432-220+16 = 228.
+    // Tira a 220 px: Calendario (352–432) cortada → 432-220+16 = 228.
     Object.defineProperty(nav, "clientWidth", { configurable: true, value: 220 })
     act(() => observador.disparar())
     expect(medidas.scrollLeft()).toBe(228)
@@ -337,7 +338,7 @@ describe("AppLayout: barra de navegación", () => {
     vi.stubGlobal("ResizeObserver", undefined)
     const router = montarLayout("/tramites")
     await screen.findByRole("navigation", { name: "Principal" })
-    await act(() => router.navigate("/explotaciones"))
-    expect(within(screen.getByRole("navigation")).getByRole("link", { name: "Explotaciones" })).toHaveAttribute("aria-current", "page")
+    await act(() => router.navigate("/calendario"))
+    expect(within(screen.getByRole("navigation")).getByRole("link", { name: "Calendario" })).toHaveAttribute("aria-current", "page")
   })
 })

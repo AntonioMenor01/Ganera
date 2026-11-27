@@ -8,7 +8,6 @@ import {
   MessageCircleIcon,
   SettingsIcon,
   UsersIcon,
-  WarehouseIcon,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -43,12 +42,16 @@ function etiquetaSuscripcion(hook: SuscripcionEstadoHook): string | null {
   return mapa[hook.estado.estado];
 }
 
-// Orden del mock «Ganera App v2»: Inicio → Bandeja → Control → Ganaderos → Explotaciones →
-// Calendario → Informes → Configuración. Sin Facturación (el cobro va en la landing).
+// Orden del mock «Ganera App v2»: Inicio → Bandeja → Control → Ganaderos → Calendario → Informes →
+// Configuración. Sin Facturación (el cobro va en la landing).
 // «Control» es la ÚNICA pantalla de trámites (antes había «Trámites» y «Control», nomenclatura
 // duplicada tipo OVZ): controla y gestiona todos los trámites. El Inicio es el tablero del día.
 // La ruta interna sigue siendo /tramites (y /control la redirige), para no romper enlaces, el
 // destino de login ni la ficha OVZ; el cliente solo ve «Control».
+// «Ganaderos» y «Explotaciones» se unificaron (2026-11-27): un ganadero es dueño de sus
+// explotaciones, así que comparten una sola entrada en la barra («Ganaderos») y se cambia entre las
+// dos vistas con la subnavegación de la cartera (SubnavCartera). La ruta /explotaciones sigue viva
+// (la subnav y los enlaces internos la usan); solo deja de tener entrada propia en la barra.
 // /ganaderos/:id también marca "Ganaderos" (NavLink sin `end`). Inicio usa `end` para no
 // activarse en el resto de rutas. Icono decorativo (aria-hidden): el nombre accesible es el texto.
 const ENLACES: { to: string; label: string; Icono: LucideIcon; end?: boolean }[] = [
@@ -56,7 +59,6 @@ const ENLACES: { to: string; label: string; Icono: LucideIcon; end?: boolean }[]
   { to: "/bandeja", label: "Bandeja", Icono: MessageCircleIcon },
   { to: "/tramites", label: "Control", Icono: ClipboardListIcon },
   { to: "/ganaderos", label: "Ganaderos", Icono: UsersIcon },
-  { to: "/explotaciones", label: "Explotaciones", Icono: WarehouseIcon },
   { to: "/calendario", label: "Calendario", Icono: CalendarClockIcon },
   { to: "/informes", label: "Informes", Icono: ChartColumnIcon },
   { to: "/configuracion", label: "Configuración", Icono: SettingsIcon },
@@ -153,24 +155,47 @@ export function AppLayout() {
             }}
             className="relative col-span-2 row-start-2 -mx-4 flex gap-1 overflow-x-auto overscroll-x-contain px-4 py-1 scrollbar-oculta md:mx-0 md:shrink-0 md:overflow-visible md:p-0 lg:min-h-0 lg:flex-1 lg:shrink lg:flex-col lg:gap-0.5 lg:overflow-x-visible lg:overflow-y-auto lg:p-3"
           >
-            {ENLACES.map(({ to, label, Icono, end }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={end}
-                className={({ isActive }) =>
-                  cn(
-                    "flex shrink-0 items-center gap-2 px-2.5 py-2 text-sm font-medium whitespace-nowrap outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring md:py-1.5 lg:h-10 lg:w-full lg:gap-3 lg:py-0",
-                    isActive
-                      ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent",
-                  )
-                }
-              >
-                <Icono aria-hidden="true" className="size-4 shrink-0 lg:size-[18px]" />
-                {label}
-              </NavLink>
-            ))}
+            {ENLACES.map(({ to, label, Icono, end }) => {
+              const claseEnlace = (activo: boolean) =>
+                cn(
+                  "flex shrink-0 items-center gap-2 px-2.5 py-2 text-sm font-medium whitespace-nowrap outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring md:py-1.5 lg:h-10 lg:w-full lg:gap-3 lg:py-0",
+                  activo
+                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent",
+                );
+              const icono = <Icono aria-hidden="true" className="size-4 shrink-0 lg:size-[18px]" />;
+              // «Ganaderos» es la entrada de la cartera: activa también en las vistas de Explotaciones
+              // (/explotaciones y /explotaciones/:id), que viven en esa sección. NavLink no deja marcar
+              // activo por una ruta ajena a su `to`, así que este enlace decide su estado a mano.
+              if (to === "/ganaderos") {
+                const activo =
+                  pathname === "/ganaderos" ||
+                  pathname.startsWith("/ganaderos/") ||
+                  pathname.startsWith("/explotaciones");
+                return (
+                  <Link
+                    key={to}
+                    to={to}
+                    aria-current={activo ? "page" : undefined}
+                    className={claseEnlace(activo)}
+                  >
+                    {icono}
+                    {label}
+                  </Link>
+                );
+              }
+              return (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={end}
+                  className={({ isActive }) => claseEnlace(isActive)}
+                >
+                  {icono}
+                  {label}
+                </NavLink>
+              );
+            })}
           </nav>
           <div className="col-start-2 row-start-1 flex min-w-0 items-center justify-end gap-1.5 md:ml-auto lg:mt-auto lg:ml-0 lg:flex-col lg:items-stretch lg:gap-2 lg:border-t-2 lg:border-divisor lg:p-3">
             {/* Campana de novedades (plazos y cola atascada): siempre visible, desde cualquier pantalla. */}

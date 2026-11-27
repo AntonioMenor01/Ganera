@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   CheckIcon,
-  ChevronRightIcon,
   CircleAlertIcon,
   CompassIcon,
   EyeIcon,
@@ -15,9 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { aErrorApi, mensajeDeError, type ErrorApi } from "@/shared/api/errores";
 import { useAuth } from "@/shared/auth/AuthContext";
-import { etiquetaTipoTramite, iconoTipoTramite, type EstadoTramite } from "@/features/tramites/etiquetas";
-import { BadgeEstadoTramite } from "@/features/tramites/BadgesTramite";
-import { IconoTramite } from "@/features/tramites/IconoTramite";
+import { type EstadoTramite } from "@/features/tramites/etiquetas";
+import { TarjetaTramite } from "@/features/tramites/TarjetaTramite";
 import { TramiteReviewDialog } from "@/features/tramites/TramiteReviewDialog";
 import { AltaTramiteDialog } from "@/features/tramites/AltaTramiteDialog";
 import { listarTramites } from "@/features/tramites/api";
@@ -290,48 +288,5 @@ function ColumnaTablero({
         </div>
       )}
     </section>
-  );
-}
-
-function TarjetaTramite({ tramite, onRevisar }: { tramite: Tramite; onRevisar: (id: number) => void }) {
-  const icono = iconoTipoTramite(tramite.tipoTramite);
-  const nombreExplotacion = tramite.explotacionNombre?.trim() || undefined;
-  const crotales = tramite.crotales.length;
-  return (
-    <button
-      type="button"
-      aria-label={`Revisar trámite #${tramite.id}`}
-      onClick={() => onRevisar(tramite.id)}
-      className="flex w-full items-center gap-3 px-5 py-3.5 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring"
-    >
-      <span className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="flex items-center gap-2 font-medium">
-          {icono && <IconoTramite nombre={icono} className="size-4 shrink-0 text-muted-foreground" />}
-          <span className="truncate">
-            {tramite.tipoTramite ? etiquetaTipoTramite(tramite.tipoTramite) : "Sin determinar"}
-          </span>
-        </span>
-        <span className="min-w-0 truncate text-sm text-muted-foreground">
-          {tramite.explotacionCodigoRega ? (
-            <>
-              <span className="tabular-nums">{tramite.explotacionCodigoRega}</span>
-              {nombreExplotacion && <span> · {nombreExplotacion}</span>}
-            </>
-          ) : (
-            "Sin explotación asignada"
-          )}
-          {crotales > 0 && (
-            <>
-              {" · "}
-              <span className="tabular-nums">{crotales}</span> {crotales === 1 ? "crotal" : "crotales"}
-            </>
-          )}
-        </span>
-        <span className="mt-0.5">
-          <BadgeEstadoTramite estado={tramite.estado} motivoRechazo={tramite.motivoRechazo} />
-        </span>
-      </span>
-      <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-    </button>
   );
 }
