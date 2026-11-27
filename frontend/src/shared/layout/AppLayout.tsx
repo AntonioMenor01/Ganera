@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/shared/auth/AuthContext";
 import { LogoGanera } from "@/shared/brand/LogoGanera";
 import { BuscadorGlobal } from "@/features/search/BuscadorGlobal";
+import { CampanaNovedades } from "@/features/novedades/CampanaNovedades";
 import { PrimerosPasosProvider } from "@/features/onboarding/PrimerosPasosContexto";
 import { PrimerosPasosGuia } from "@/features/onboarding/PrimerosPasosGuia";
 import { PillContinuar } from "@/features/onboarding/PillContinuar";
@@ -169,7 +170,11 @@ export function AppLayout() {
               </NavLink>
             ))}
           </nav>
-          <div className="col-start-2 row-start-1 flex min-w-0 items-center justify-end md:ml-auto lg:mt-auto lg:ml-0 lg:block lg:border-t-2 lg:border-divisor lg:p-3">
+          <div className="col-start-2 row-start-1 flex min-w-0 items-center justify-end gap-1.5 md:ml-auto lg:mt-auto lg:ml-0 lg:flex-col lg:items-stretch lg:gap-2 lg:border-t-2 lg:border-divisor lg:p-3">
+            {/* Campana de novedades (plazos y cola atascada): siempre visible, desde cualquier pantalla. */}
+            <div className="order-first lg:order-none lg:self-start">
+              <CampanaNovedades />
+            </div>
             {/* Tarjeta de usuario del mock v2: iniciales + nombre + email + estado de suscripción. */}
             <div className="flex min-w-0 items-center gap-3 lg:flex-col lg:items-stretch lg:gap-2.5 lg:border lg:border-border lg:bg-card lg:p-2.5">
               {usuario && (

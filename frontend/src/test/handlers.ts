@@ -12,4 +12,7 @@ import { apiUrl } from "./apiBaseUrl"
  */
 export const handlers: RequestHandler[] = [
   http.get(apiUrl("/ganaderos/:id/documentos"), () => HttpResponse.json([])),
+  // La campana de novedades (en AppLayout) pide SIEMPRE las alertas al montarse. Por defecto, lista
+  // vacía (campana "al día", sin badge); un test de novedades lo sobreescribe con su server.use(...).
+  http.get(apiUrl("/alertas"), () => HttpResponse.json([])),
 ]
