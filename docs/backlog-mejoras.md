@@ -36,7 +36,7 @@ despliega Antonio (Clever); los de frontend van a Vercel por `main`.
 | MEJ-06 | P0 ✅ | UX intrusiva | Píldora «Continuar configuración» → descartable con «×» | S |
 | MEJ-07 | P0 ✅ | Verificado | Informes PDF/Excel ya honestos (`disabled` + tooltip) | S |
 | MEJ-08 | P1 | Add (valor) | Multiusuario / equipo real (da sentido a la auditoría) | L |
-| MEJ-09 | P1 | Add | Nombre del ganadero en la tarjeta de trámite | M |
+| MEJ-09 | P1 ✅ | Add | Nombre del ganadero en la tarjeta de trámite (front desplegado; backend pend. Clever) | M |
 | MEJ-10 | P1 | Add | Avisos proactivos por email (plazos / trámites atascados) | M–L |
 | MEJ-11 | P1 | Add | Recuperar contraseña en el login | M |
 | MEJ-12 | P1 | Add | Buscar también trámites en Ctrl+K | S–M |
@@ -133,7 +133,11 @@ despliega Antonio (Clever); los de frontend van a Vercel por `main`.
   «sin decidir»). Definir: ¿todos pueden aprobar o solo el gestor? ¿invitación por email?
 - **No romper:** aislamiento multi-tenant (`gestoriaId` del JWT), tests E2E de dos gestorías.
 
-### MEJ-09 · Nombre del ganadero en la tarjeta de trámite
+### MEJ-09 · Nombre del ganadero en la tarjeta de trámite — ✅ HECHO (PR #64, `a100597`)
+- **Estado:** backend (`TramiteResponse.ganaderoNombre` + `GET /tramites` con `@EntityGraph
+  "explotacion.ganadero"`, sin N+1) y frontend (`TarjetaTramite`, compatible hacia atrás) hechos;
+  **frontend desplegado a Vercel**. ⚠️ El nombre **no sale en producción hasta que Antonio despliegue
+  el backend en Clever** (el frontend degrada mientras tanto).
 - **Problema:** en Inicio/Control las tarjetas lideran con el REGA (14 dígitos) y la finca, pero **no
   el ganadero**. El gestor piensa en clientes, no en códigos. El dato existe (la ficha muestra «2
   trámites pendientes» por explotación), falta traerlo a la lista.
