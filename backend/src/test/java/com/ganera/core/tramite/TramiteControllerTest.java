@@ -361,8 +361,11 @@ class TramiteControllerTest {
         assertThat(porId.get(conCrotales.getId()).explotacionId()).isEqualTo(explotacion.getId());
         assertThat(porId.get(conCrotales.getId()).explotacionCodigoRega()).isEqualTo("ES700000000010");
         assertThat(porId.get(conCrotales.getId()).explotacionNombre()).isEqualTo("Finca crotales");
+        // MEJ-09: la fila lleva el nombre del ganadero de la explotacion; null si no hay explotacion.
+        assertThat(porId.get(conCrotales.getId()).ganaderoNombre()).isEqualTo("Ganadero de prueba detalle");
         assertThat(porId.get(sinCrotales.getId()).explotacionCodigoRega()).isNull();
         assertThat(porId.get(sinCrotales.getId()).explotacionNombre()).isNull();
+        assertThat(porId.get(sinCrotales.getId()).ganaderoNombre()).isNull();
     }
 
     /**

@@ -423,6 +423,9 @@ class HechoEnOvzEndToEndTest {
                             + "cambiara, el contador de cargas sueltas podria quedarse en 0 sin medir nada)")
                     .isPositive();
             assertThat(cargasSueltasDeUsuario()).as(ruta + ": ninguna carga de usuario por fila").isZero();
+            // MEJ-09: el ganadero tambien llega en la consulta de la pagina (EntityGraph
+            // "explotacion.ganadero"), nunca una carga por fila.
+            assertThat(cargasSueltasDeGanadero()).as(ruta + ": ninguna carga de ganadero por fila").isZero();
         }
         JsonNode todo = objectMapper.readTree(get("/tramites?estado=HECHO_EN_OVZ&size=20", tokenAna).getBody());
         List<String> nombres = new ArrayList<>();
@@ -474,6 +477,14 @@ class HechoEnOvzEndToEndTest {
         return SqlCapturadoInspector.capturado().stream()
                 .map(sql -> sql.toLowerCase(Locale.ROOT))
                 .filter(sql -> sql.contains("from usuario "))
+                .count();
+    }
+
+    /** MEJ-09: cargas de ganadero por fila (un SELECT ... from ganadero suelto); deben ser 0. */
+    private long cargasSueltasDeGanadero() {
+        return SqlCapturadoInspector.capturado().stream()
+                .map(sql -> sql.toLowerCase(Locale.ROOT))
+                .filter(sql -> sql.contains("from ganadero "))
                 .count();
     }
 
