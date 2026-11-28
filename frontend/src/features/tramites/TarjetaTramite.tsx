@@ -7,9 +7,10 @@ import type { Tramite } from "./types";
 
 /**
  * Tarjeta de un trámite en una columna de tablero (Inicio y Control). Es un botón entero: abre la
- * revisión en la misma pantalla (sin navegar). Muestra el tipo con su icono, la explotación (REGA ·
- * nombre) y el nº de crotales, y el badge del estado real. Una sola fuente para que el Inicio y el
- * Control se vean igual.
+ * revisión en la misma pantalla (sin navegar). Muestra el tipo con su icono, el GANADERO dueño
+ * (MEJ-09: el gestor piensa en clientes, no en códigos REGA), la explotación (REGA · nombre) y el nº
+ * de crotales, y el badge del estado real. Una sola fuente para que el Inicio y el Control se vean
+ * igual. Si el backend no envía `ganaderoNombre` (anterior a MEJ-09), la tarjeta se ve como antes.
  */
 export function TarjetaTramite({
   tramite,
@@ -19,6 +20,7 @@ export function TarjetaTramite({
   onRevisar: (id: number) => void;
 }) {
   const icono = iconoTipoTramite(tramite.tipoTramite);
+  const ganadero = tramite.ganaderoNombre?.trim() || undefined;
   const nombreExplotacion = tramite.explotacionNombre?.trim() || undefined;
   const crotales = tramite.crotales?.length ?? 0;
   // Mismo criterio que la cola anterior: mientras el trámite está pendiente, una línea de 12px dice
@@ -38,6 +40,11 @@ export function TarjetaTramite({
             {tramite.tipoTramite ? etiquetaTipoTramite(tramite.tipoTramite) : "Sin determinar"}
           </span>
         </span>
+        {ganadero && (
+          <span className="min-w-0 truncate text-sm font-medium text-foreground" title={ganadero}>
+            {ganadero}
+          </span>
+        )}
         <span className="min-w-0 truncate text-sm text-muted-foreground">
           {tramite.explotacionCodigoRega ? (
             <>

@@ -26,6 +26,10 @@ export interface Tramite {
   /** `TramiteResponse` (mini-prompt tras A2): null si el trámite no tiene explotación. */
   explotacionCodigoRega: string | null;
   explotacionNombre: string | null;
+  /** MEJ-09: nombre del ganadero dueño de la explotación, para ver DE QUIÉN es cada trámite. null sin
+   * explotación. Opcional: un backend anterior a MEJ-09 no lo envía (undefined) y la tarjeta degrada
+   * al comportamiento de antes (solo REGA · finca). */
+  ganaderoNombre?: string | null;
   tipoTramite: string | null;
   estado: EstadoTramite;
   motivoError: string | null;

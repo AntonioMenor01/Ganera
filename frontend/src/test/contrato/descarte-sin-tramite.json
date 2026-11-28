@@ -12,6 +12,7 @@
     "explotacionId": 3,
     "explotacionCodigoRega": "ES960000000001",
     "explotacionNombre": "Finca ES960000000001",
+    "ganaderoNombre": "Ganadero ES960000000001",
     "tipoTramite": null,
     "estado": "PENDIENTE_REVISION",
     "motivoError": null,

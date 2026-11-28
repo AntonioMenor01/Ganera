@@ -21,14 +21,16 @@ public interface TramiteRepository extends JpaRepository<Tramite, Long> {
      * La Explotacion (LAZY) se trae en la misma consulta con un left join (EntityGraph; mini-prompt
      * tras A2, punto 5) para el REGA/nombre de cada fila: nunca una consulta por fila. Spring Data
      * no aplica el EntityGraph a la consulta de conteo de la paginacion. Desde «hecho en OVZ»
-     * (2026-10-07) tambien trae al usuario que lo marco (hechoEnOvzPor), por el mismo motivo.
+     * (2026-10-07) tambien trae al usuario que lo marco (hechoEnOvzPor), por el mismo motivo. Desde
+     * MEJ-09 (2026-11-27) tambien el ganadero de la explotacion ("explotacion.ganadero"), para el
+     * nombre del cliente en cada fila sin una consulta por fila.
      */
-    @EntityGraph(attributePaths = {"explotacion", "hechoEnOvzPor"})
+    @EntityGraph(attributePaths = {"explotacion", "explotacion.ganadero", "hechoEnOvzPor"})
     Page<Tramite> findByGestoriaId(Long gestoriaId, Pageable pageable);
 
-    /** Listado paginado filtrado por estado, con gestoriaId explicito. Explotacion en la misma
-     * consulta, como findByGestoriaId, y el usuario que lo marco como hecho en OVZ. */
-    @EntityGraph(attributePaths = {"explotacion", "hechoEnOvzPor"})
+    /** Listado paginado filtrado por estado, con gestoriaId explicito. Explotacion (y su ganadero) en
+     * la misma consulta, como findByGestoriaId, y el usuario que lo marco como hecho en OVZ. */
+    @EntityGraph(attributePaths = {"explotacion", "explotacion.ganadero", "hechoEnOvzPor"})
     Page<Tramite> findByGestoriaIdAndEstado(Long gestoriaId, EstadoTramite estado, Pageable pageable);
 
     /**

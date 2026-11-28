@@ -127,7 +127,7 @@ describe("TramitesPage (Control): tablero de mando", () => {
     expect(within(columna(/Rechazados y descartados/)).getByText("1")).toBeInTheDocument()
   })
 
-  it("una tarjeta muestra el tipo y el badge del estado, y abre la revisión en la misma pantalla", async () => {
+  it("una tarjeta muestra el tipo, el ganadero y el badge, y abre la revisión en la misma pantalla", async () => {
     server.use(
       porEstado([
         tramite(7, {
@@ -135,6 +135,7 @@ describe("TramitesPage (Control): tablero de mando", () => {
           tipoTramite: "SOLICITUD_MOVIMIENTO",
           explotacionCodigoRega: "ES280790000123",
           explotacionNombre: "Finca La Dehesa",
+          ganaderoNombre: "Ganadería Hermanos Prieto SC",
         }),
       ]),
       http.get(apiUrl("/tramites/7"), () => HttpResponse.json(detalle(7, { tipoTramite: "SOLICITUD_MOVIMIENTO" }))),
@@ -144,6 +145,8 @@ describe("TramitesPage (Control): tablero de mando", () => {
 
     const tarjeta = await screen.findByRole("button", { name: "Revisar trámite #7" })
     expect(within(tarjeta).getByText("Solicitud de movimiento")).toBeInTheDocument()
+    // MEJ-09: el ganadero dueño, para ver de quién es el trámite.
+    expect(within(tarjeta).getByText("Ganadería Hermanos Prieto SC")).toBeInTheDocument()
     expect(within(tarjeta).getByText("Pendiente de revisión")).toBeInTheDocument()
     expect(within(tarjeta).getByText(/ES280790000123/)).toBeInTheDocument()
     // Nunca el enum crudo.
@@ -151,6 +154,26 @@ describe("TramitesPage (Control): tablero de mando", () => {
 
     await user.click(tarjeta)
     expect(await screen.findByRole("dialog")).toBeInTheDocument()
+  })
+
+  it("si el backend no envía ganaderoNombre (anterior a MEJ-09), la tarjeta se ve sin él", async () => {
+    server.use(
+      porEstado([
+        tramite(8, {
+          estado: "PENDIENTE_REVISION",
+          tipoTramite: "ALTA_NACIMIENTO",
+          explotacionCodigoRega: "ES280790000999",
+          explotacionNombre: "El Encinar",
+          // ganaderoNombre ausente a propósito (undefined)
+        }),
+      ]),
+    )
+    montar()
+
+    const tarjeta = await screen.findByRole("button", { name: "Revisar trámite #8" })
+    expect(within(tarjeta).getByText(/ES280790000999/)).toBeInTheDocument()
+    // Degrada: sin ganadero, nada se rompe y no aparece un nombre inventado.
+    expect(within(tarjeta).queryByText("undefined")).not.toBeInTheDocument()
   })
 
   it("una columna vacía enseña su frase propia", async () => {

@@ -23,12 +23,18 @@ import java.util.List;
  * <p>motivoRechazo y descartable (mensajes sin tramite, plan 2026-10-12): motivoRechazo es "SIN_TRAMITE" en un
  * tramite descartado y null en cualquier otro (tambien en un rechazo normal); descartable lo decide
  * {@link DescarteTramite#esDescartable} con los crotales que ya lleva la respuesta (sin consultas nuevas).
+ *
+ * <p>ganaderoNombre (MEJ-09, 2026-11-27): el ganadero duenno de la explotacion del tramite, para que la
+ * cola/tablero muestren DE QUIEN es cada tramite (el gestor piensa en clientes, no en codigos REGA).
+ * null si el tramite no tiene explotacion. En el listado el ganadero llega ya cargado en la consulta de
+ * la pagina (EntityGraph "explotacion.ganadero" en TramiteRepository), nunca una consulta por fila.
  */
 public record TramiteResponse(
         Long id,
         Long explotacionId,
         String explotacionCodigoRega,
         String explotacionNombre,
+        String ganaderoNombre,
         String tipoTramite,
         String estado,
         String motivoError,
@@ -44,11 +50,13 @@ public record TramiteResponse(
 
     public static TramiteResponse from(Tramite tramite, List<TramiteCrotalResponse> crotales) {
         boolean tieneExplotacion = tramite.getExplotacion() != null;
+        boolean tieneGanadero = tieneExplotacion && tramite.getExplotacion().getGanadero() != null;
         return new TramiteResponse(
                 tramite.getId(),
                 tieneExplotacion ? tramite.getExplotacion().getId() : null,
                 tieneExplotacion ? tramite.getExplotacion().getCodigoRega() : null,
                 tieneExplotacion ? tramite.getExplotacion().getNombre() : null,
+                tieneGanadero ? tramite.getExplotacion().getGanadero().getNombre() : null,
                 tramite.getTipoTramite() != null ? tramite.getTipoTramite().name() : null,
                 tramite.getEstado().name(),
                 tramite.getMotivoError(),
